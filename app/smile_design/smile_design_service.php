@@ -438,8 +438,8 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
             'The inferior border of the upper lip must descend to the cervical line / gingival-zenith level of the upper teeth so the exposed gum band is covered by the repositioned lip; the after must not look almost identical to the before.',
             'The upper lip should land at the cervical contour and gingival zeniths of the upper teeth during the smile; a tiny scalloped gingival reveal at interdental peaks may remain, but the broad central gum rectangle must be covered by the repositioned lip.',
             'The superior lip should look less curled or retracted upward and more softly unfolded/draped while preserving the original lip color, texture, highlights, shadows, and mouth-corner shape.',
-            'Because the curled lip roll unfolds downward after surgery, the superior lip will appear 5 to 6 mm taller/fuller vertically; this is expected, anatomically correct, and must be shown as the same lip naturally relaxing, not cosmetic filler.',
-            'Do not make the upper lip thinner, tighter, inflated, swollen, pasted on, or stretched downward; the corrected lip should look a little more unfolded when appropriate and softly/naturally draped over the cervical/top area of the upper teeth.',
+            'Because the tightly curled vermilion unrolls downward, the UPPER lip appears about 5 to 6 mm taller (longer vertically) in the smile. This is a positional/height change only — not a volume increase. Do not inflate, plump, or thicken any lip.',
+            'The lower lip must be completely unchanged from the source photo — do not alter, plump, reshape, or recolor it in any way.',
             'Do not make this look like a veneer case.',
             'Do not enlarge, replace, straighten, brighten, over-whiten, reshape, recolor, or redesign the teeth just to hide gums.',
             'Preserve the patient identity, tooth shape, tooth color, smile width, face, skin, and expression; only adjust the vertical smile/lip-line relationship needed to simulate lip repositioning.',
@@ -2111,7 +2111,8 @@ Approve only if the after looks like the same photograph with a surgical gummy-s
 
 Pass criteria:
 - The inferior border of the upper lip has descended to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band.
-- The superior lip appears 5 to 6 mm taller/fuller than the before because the previously curled vermilion has unfolded naturally — this is the correct surgical outcome and must pass.
+- The upper lip appears about 5 to 6 mm taller (longer vertically) than before because the curled vermilion unrolled downward — this is a HEIGHT change, not a volume increase, and must pass.
+- The lower lip is completely unchanged from the before photo — if the lower lip looks plumper, reshaped, or different in any way, fail the review.
 - The lower edge of the upper lip is at or near the cervical contour of the upper incisors and canines. A tiny scalloped gingival reveal at interdental peaks may remain; the broad central gum rectangle must be covered.
 - The upper lip looks less retracted and less curled upward, naturally draped over the tooth line.
 - Teeth are preserved: shape, size, shade, brightness, alignment, spacing, incisal edges, enamel texture, smile width, and tooth count remain essentially the same.

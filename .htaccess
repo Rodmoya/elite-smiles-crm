@@ -1,0 +1,19 @@
+RewriteEngine On
+RewriteBase /crm/
+
+# Do not expose local environment credentials.
+<Files ".env">
+    Require all denied
+</Files>
+
+# Clean landing page URLs: /l/veneers-draper-premium-trust-v1
+RewriteRule ^l/([a-z0-9\-]+)/?$ landing.php?slug=$1 [L,QSA]
+
+# Smile Design Engine routes.
+RewriteRule ^smile-design/cases/([0-9]+)/present/?$ smile-design/cases/present.php?id=$1 [L,QSA]
+RewriteRule ^smile-design/cases/([0-9]+)/?$ smile-design/cases/show.php?id=$1 [L,QSA]
+RewriteRule ^smile-design/consult/([0-9]+)/?$ smile-design/consult/index.php?id=$1 [L,QSA]
+RewriteRule ^smile-design/intake/([A-Za-z0-9_-]+)/?$ smile-design/intake.php?token=$1 [L,QSA]
+RewriteRule ^smile-design/preview/([A-Za-z0-9_-]+)/?$ smile-design/preview.php?token=$1 [L,QSA]
+RewriteRule ^smile-design/real-results/([0-9]+)/present/?$ smile-design/real-results/show.php?id=$1&present=1 [L,QSA]
+RewriteRule ^smile-design/real-results/([0-9]+)/?$ smile-design/real-results/show.php?id=$1 [L,QSA]

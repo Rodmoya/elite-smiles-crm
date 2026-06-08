@@ -1,0 +1,66 @@
+.env
+error_log
+
+# Chrome audit/debug sessions
+.chrome-*/
+
+# Server/deploy artifacts
+deploy-backups/
+_live_site/
+storage/logs/
+storage/smile-design/
+public/uploads/
+.secrets/
+*.log
+
+# OS
+.DS_Store
+._*
+
+# Dev/test scratch files
+landing.php.bak*
+landing-live-backup.php
+landingtest.php
+test_bootstrap.php
+test_plain.php
+site-root/
+site-root-winscp-pull.log
+tools/
+make-password.php
+
+# Screenshot/audit images at repo root (not project assets)
+/after-*.png
+/after-*.jpg
+/al-*.png
+/al-*.jpg
+/anita-*.png
+/automation-*.png
+/back-*.png
+/bell-*.png
+/board-*.png
+/current-*.png
+/custom-*.png
+/denise-*.png
+/details-*.png
+/don-*.png
+/dori-*.png
+/heather-*.png
+/landing-*.png
+/leads-*.png
+/misiona-*.png
+/mobile-*.png
+/monica-*.png
+/nicole-*.png
+/pipeline-*.png
+/ray-*.png
+/scroll-*.png
+/smile-design-*.png
+/sms-*.png
+/stage-*.png
+/trent-*.png
+/update-*.png
+/user-*.png
+/workflow-*.png
+/*.png
+/*.jpg
+/*.zip

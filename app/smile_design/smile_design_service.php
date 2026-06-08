@@ -417,12 +417,12 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
         return implode(' ', [
             'Procedure-specific direction for Veneers + Lip Repositioning:',
             'This is a combined smile-design case, not lip repositioning alone.',
-            'Apply the realistic veneer rules first: improve visible tooth shape, shade, symmetry, width-to-height proportions, incisal edge flow, and small visible spacing only within what porcelain veneers or crowns could plausibly change.',
+            'Apply the veneer simulation first: replace the visible anterior tooth surfaces completely with porcelain veneers at Vita Bleach BL1 shade — bright, luminous, clean porcelain with natural incisal translucency. Do NOT preserve or show through the original stains, yellowing, cracks, or debris.',
+            'Follow the selected LVI style for tooth shape, length, edge form, and characterization.',
             'Do not use veneers to simulate root movement, jaw surgery, major orthodontic arch expansion, implant replacement, or a totally different bite.',
-            'Also simulate lip repositioning surgery for gummy-smile correction: reduce the visible effect of a hypermobile or short upper lip by limiting how far the upper lip elevates during a full smile.',
-            'The after preview should show both a veneer-style dental improvement and a lower, more controlled upper-lip smile line with greatly reduced gingival display.',
-            'Keep the gum architecture believable and avoid overdone ultra-white blocky veneers.',
-            'Keep the result natural and identity-preserving; the patient should look like a realistic post-treatment version of the same person.',
+            'Also simulate lip repositioning surgery: the inferior border of the upper lip must descend to the cervical line of the upper teeth to cover the exposed gum band; the lip will appear 5 to 6 mm taller from unfolding of the curled vermilion.',
+            'The after preview should show both a full BL1 veneer transformation and a lower, repositioned upper-lip smile line with the gum band covered.',
+            'Keep gum architecture believable; keep the result identity-preserving — the patient should look like a realistic post-treatment version of the same person.',
         ]);
     }
 
@@ -480,11 +480,15 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
         return implode(' ', [
             'Procedure-specific direction for Veneers:',
             'This is a cosmetic veneer smile-design preview, not orthodontics, implants, or full-mouth reconstruction.',
-            'Improve visible anterior tooth shape, shade, symmetry, proportion, incisal edge flow, line angles, and small visible chips or minor spacing in a way that porcelain veneers or minimal-prep restorations could realistically achieve.',
+            'This is the INITIAL simulation — show the full intended transformation, not a conservative overlay of the existing teeth.',
+            'Replace the visible anterior tooth surfaces completely with porcelain veneer restorations: new shape, new shade, new surface, new texture.',
+            'Do NOT preserve or show through the original tooth color, stains, yellowing, cracks, chips, debris, or enamel defects. The veneers cover all of that. The before-tooth color must not bleed through.',
+            'Target shade for this initial simulation: Vita Bleach BL1 — the brightest, most luminous bleach shade. The teeth should look bright, clean, and highly polished as high-quality porcelain veneers.',
+            'BL1 means bright, saturated white with natural translucency at the incisal edges — not chalky, not flat, not grey. Think of beautiful high-end porcelain: luminous, slightly warm white body with subtle incisal haze.',
+            'Improve visible anterior tooth shape, symmetry, proportion, incisal edge flow, and line angles in a way porcelain veneers could realistically achieve.',
             'Keep tooth count, root position, jaw position, lip posture, and broad arch relationship believable; do not simulate major orthodontic movement, extraction, implant replacement, or gum surgery.',
             'Respect existing gum architecture and papillae unless a very small cosmetic contour refinement is clearly needed.',
-            'Shade should be natural and patient-appropriate, not opaque neon white; retain lifelike translucency, texture, and individual tooth anatomy.',
-            'Follow the selected LVI style as an aesthetic direction, but keep it within a realistic clinical envelope for the patient photo.',
+            'Follow the selected LVI style as the aesthetic direction for tooth shape, length, edge form, and characterization — apply it fully.',
             'Preserve patient identity, face, skin, hair, lips, camera angle, lighting, and natural expression.',
         ]);
     }

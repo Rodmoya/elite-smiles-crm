@@ -438,7 +438,7 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
             ‘The inferior border of the upper lip must descend to the cervical line / gingival-zenith level of the upper teeth so the exposed gum band is covered by the repositioned lip; the after must not look almost identical to the before.’,
             ‘The upper lip should land at the cervical contour and gingival zeniths of the upper teeth during the smile; a tiny scalloped gingival reveal at interdental peaks may remain, but the broad central gum rectangle must be covered by the repositioned lip.’,
             ‘The superior lip should look less curled or retracted upward and more softly unfolded/draped while preserving the patient’s original lip color, texture, highlights, shadows, and mouth-corner shape.’,
-            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 3 to 4 mm taller/fuller vertically; this is expected, anatomically correct, and must be shown as the same lip naturally relaxing, not cosmetic filler.’,
+            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 5 to 6 mm taller/fuller vertically; this is expected, anatomically correct, and must be shown as the same lip naturally relaxing, not cosmetic filler.’,
             'Do not make the upper lip thinner, tighter, inflated, swollen, pasted on, or stretched downward; the corrected lip should look a little more unfolded when appropriate and softly/naturally draped over the cervical/top area of the upper teeth.',
             'Do not make this look like a veneer case.',
             'Do not enlarge, replace, straighten, brighten, over-whiten, reshape, recolor, or redesign the teeth just to hide gums.',
@@ -1849,7 +1849,7 @@ PROMPT;
         'Requested procedure selected at case creation: ' . $requestedProcedure . '.',
         $procedureGuidance !== '' ? $procedureGuidance : '',
         'Determine what treatment direction appears most appropriate from visible evidence, whether a cosmetic AI preview is appropriate, whether the preview should be upper-only or broader, whether lower teeth should remain untouched, whether missing or compromised teeth are visible, and the main constraints the image-generation step must obey.',
-        'If this is Lip Repositioning only, explicitly evaluate gingival display and whether the after preview should simulate restricted upper-lip elevation: the inferior border of the upper lip should descend to the cervical line / gingival-zenith level of the upper teeth to cover the exposed gum band; the lip will appear 3 to 4 mm taller due to unfolding of the curled vermilion; teeth must be preserved unchanged.',
+        'If this is Lip Repositioning only, explicitly evaluate gingival display and whether the after preview should simulate restricted upper-lip elevation: the inferior border of the upper lip should descend to the cervical line / gingival-zenith level of the upper teeth to cover the exposed gum band; the lip will appear 5 to 6 mm taller due to unfolding of the curled vermilion; teeth must be preserved unchanged.',
         'If this is Veneers + Lip Repositioning, evaluate both the tooth design needs and the lip-line / gum-display correction.',
         'Add concise doctor review notes that would help staff prepare the case.',
         'Set source_before_photo_id to ' . $beforePhotoId . '.',
@@ -2107,7 +2107,7 @@ Approve only if the after looks like the same photograph with a surgical gummy-s
 
 Pass criteria:
 - The inferior border of the upper lip has descended to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band.
-- The superior lip appears 3 to 4 mm taller/fuller than the before because the previously curled vermilion has unfolded naturally — this is the correct surgical outcome and must pass.
+- The superior lip appears 5 to 6 mm taller/fuller than the before because the previously curled vermilion has unfolded naturally — this is the correct surgical outcome and must pass.
 - The lower edge of the upper lip is at or near the cervical contour of the upper incisors and canines. A tiny scalloped gingival reveal at interdental peaks may remain; the broad central gum rectangle must be covered.
 - The upper lip looks less retracted and less curled upward, naturally draped over the tooth line.
 - Teeth are preserved: shape, size, shade, brightness, alignment, spacing, incisal edges, enamel texture, smile width, and tooth count remain essentially the same.
@@ -2125,8 +2125,8 @@ PROMPT;
 
     $userPrompt = implode(' ', [
         'Review the generated lip repositioning preview for target angle ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
-        'The intended surgical effect: the inferior border of the upper lip descends to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band; the superior lip appears 3 to 4 mm taller because the previously curled vermilion unfolds naturally; teeth are unchanged.',
-        'A 3 to 4 mm increase in apparent lip height from unfolding should pass — that is the expected surgical outcome. Reject only if the lip looks swollen, filler-like, inflated, or otherwise unnatural.',
+        'The intended surgical effect: the inferior border of the upper lip descends to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band; the superior lip appears 5 to 6 mm taller because the previously curled vermilion unfolds naturally; teeth are unchanged.',
+        'A 5 to 6 mm increase in apparent lip height from unfolding should pass — that is the expected surgical outcome. Reject only if the lip looks swollen, filler-like, inflated, or otherwise unnatural.',
         'Also reject undercorrection: if the after looks almost identical to the before around the upper lip and gum band, mark change_strength_sufficient false and provide a retry instruction for stronger lip-only lowering.',
         'Use strict judgment: if the after changed the teeth or face to hide the gums, reject it and write a concise retry instruction.',
         'Set score from 0 to 10 where 10 is excellent surgical lip-only simulation.',

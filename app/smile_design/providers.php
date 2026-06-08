@@ -53,8 +53,8 @@ if (!function_exists('smile_design_lip_repositioning_surgical_prompt')) {
             ‘A tiny natural scalloped gingival reveal or papilla at the interdental peaks may remain, but the wide shiny gum rectangle above the upper front teeth must be covered by the repositioned lip.’,
             ‘The bottom edge of the upper lip must follow the patient’s natural smile curvature and land at the cervical contour / gingival-zenith line of the visible upper incisors and canines. For 45-degree angles, apply the same drape along the visible tooth arch.’,
             ‘The upper lip should look less curled upward and less retracted, with a softly unfolded vermilion/roll that drapes lower over the gum line while retaining the same natural lip color, texture, highlights, shadows, and mouth-corner shape from the source photo.’,
-            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 3 to 4 mm taller/fuller vertically. This is expected, anatomically correct, and must be shown. It should look like the same lip naturally relaxing and unrolling, not like cosmetic filler.’,
-            ‘The lip fullness increase of 3 to 4 mm comes entirely from the unfolding of the previously curled vermilion — do not create swollen, inflated, overfilled, or injected-looking lips.
+            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 5 to 6 mm taller/fuller vertically. This is expected, anatomically correct, and must be shown. It should look like the same lip naturally relaxing and unrolling, not like cosmetic filler.’,
+            ‘The lip fullness increase of 5 to 6 mm comes entirely from the unfolding of the previously curled vermilion — do not create swollen, inflated, overfilled, or injected-looking lips.
             'Make the corrected lip softly draped, feathered, and seamless against the gum/upper-tooth line; it must not look swollen, inflated, pasted on, stretched, scarred, or overcorrected.',
             'Absolute tooth lock: preserve the original teeth shape, size, color, shade, brightness, alignment, spacing, incisal edges, enamel texture, tooth count, smile width, and bite relationship.',
             'Do not whiten, brighten, darken, straighten, enlarge, shrink, reshape, replace, clone, smooth, or redesign any tooth.',
@@ -359,7 +359,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             'Preserve the exact same person, face, jawline, cheeks, nose, eyes, eyebrows, skin texture, skin tone, hair, lips, age, expression, camera angle, framing, and lighting.',
             'Do not make the person look younger, slimmer, more glamorous, or like a different patient.',
             $isLipRepositionOnly
-                ? 'For lip repositioning only, keep the teeth themselves unchanged and simulate restricted upper-lip elevator movement: the lower border of the upper lip must descend to the cervical line of the upper teeth, covering the exposed gum band, and the lip will appear 3 to 4 mm taller due to the unfolding of the previously curled vermilion.'
+                ? 'For lip repositioning only, keep the teeth themselves unchanged and simulate restricted upper-lip elevator movement: the lower border of the upper lip must descend to the cervical line of the upper teeth, covering the exposed gum band, and the lip will appear 5 to 6 mm taller due to the unfolding of the previously curled vermilion.'
                 : 'Only change the smile and teeth needed for the requested dental outcome, with minimal gum changes only when required by the smile request.',
             'Target source angle for this generation: ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
             'Edit the first image as the ' . $targetPhotoLabel . ' after preview and keep its same angle, pose, crop, and lighting.',

@@ -2401,10 +2401,7 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         (string)($result['mime_type'] ?? 'image/png'),
         'cases/' . $caseId . '/after',
         'png',
-        [
-            'target_width' => (int)($beforePhoto['width'] ?? 0),
-            'target_height' => (int)($beforePhoto['height'] ?? 0),
-        ]
+        []
     );
     if (empty($stored['ok'])) {
         db_execute(

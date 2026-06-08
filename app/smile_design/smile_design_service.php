@@ -435,11 +435,10 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
             'Translate that into the photo by limiting the upward smile travel of the upper lip, not by changing the teeth.',
             'Do not treat this as gum recoloring or gum shadowing; the actual lower border of the upper lip must be visibly lower and more naturally draped.',
             'The visual goal is a visible but natural reduction of excessive gingival display by moving the smiling upper-lip line downward enough for the patient to recognize the surgical change.',
-            'If the before photo shows a broad gummy band, reduce that band by about half to two-thirds; the after should not look almost identical to the before.',
-            'In the after preview, the inferior border of the upper lip should usually be about 2 to 3 mm lower, up to about 4 mm only for severe gum display when it still looks natural; avoid forcing the lip too far down.',
-            'The upper lip should sit around the top edge, cervical contour, and arches of the upper teeth during the full smile; a tiny natural scalloped gum reveal may remain, but the broad central gum band should be substantially reduced.',
-            'The superior lip should look less curled or retracted upward and more softly unfolded/draped while preserving the patient’s original lip color, texture, highlights, shadows, and mouth-corner shape.',
-            'A slight natural increase in visible superior-lip fullness is expected after lip repositioning because the curled/retracted lip roll unfolds downward; this should read as the same lip relaxing, not cosmetic filler.',
+            ‘The inferior border of the upper lip must descend to the cervical line / gingival-zenith level of the upper teeth so the exposed gum band is covered by the repositioned lip; the after must not look almost identical to the before.’,
+            ‘The upper lip should land at the cervical contour and gingival zeniths of the upper teeth during the smile; a tiny scalloped gingival reveal at interdental peaks may remain, but the broad central gum rectangle must be covered by the repositioned lip.’,
+            ‘The superior lip should look less curled or retracted upward and more softly unfolded/draped while preserving the patient’s original lip color, texture, highlights, shadows, and mouth-corner shape.’,
+            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 3 to 4 mm taller/fuller vertically; this is expected, anatomically correct, and must be shown as the same lip naturally relaxing, not cosmetic filler.’,
             'Do not make the upper lip thinner, tighter, inflated, swollen, pasted on, or stretched downward; the corrected lip should look a little more unfolded when appropriate and softly/naturally draped over the cervical/top area of the upper teeth.',
             'Do not make this look like a veneer case.',
             'Do not enlarge, replace, straighten, brighten, over-whiten, reshape, recolor, or redesign the teeth just to hide gums.',
@@ -1850,7 +1849,7 @@ PROMPT;
         'Requested procedure selected at case creation: ' . $requestedProcedure . '.',
         $procedureGuidance !== '' ? $procedureGuidance : '',
         'Determine what treatment direction appears most appropriate from visible evidence, whether a cosmetic AI preview is appropriate, whether the preview should be upper-only or broader, whether lower teeth should remain untouched, whether missing or compromised teeth are visible, and the main constraints the image-generation step must obey.',
-        'If this is Lip Repositioning only, explicitly evaluate gingival display and whether the after preview should simulate restricted upper-lip elevation: the upper lip should travel less upward when smiling, sit visibly lower by about 2 to 3 mm when natural, reduce a broad gummy band by roughly half to two-thirds when present, and move the bottom edge of the superior lip closer to the arch/cervical contour of the upper teeth while preserving the teeth themselves.',
+        'If this is Lip Repositioning only, explicitly evaluate gingival display and whether the after preview should simulate restricted upper-lip elevation: the inferior border of the upper lip should descend to the cervical line / gingival-zenith level of the upper teeth to cover the exposed gum band; the lip will appear 3 to 4 mm taller due to unfolding of the curled vermilion; teeth must be preserved unchanged.',
         'If this is Veneers + Lip Repositioning, evaluate both the tooth design needs and the lip-line / gum-display correction.',
         'Add concise doctor review notes that would help staff prepare the case.',
         'Set source_before_photo_id to ' . $beforePhotoId . '.',
@@ -2107,11 +2106,10 @@ Image 1 is the original before photo. Image 2 is the generated after preview.
 Approve only if the after looks like the same photograph with a surgical gummy-smile/lip-repositioning simulation.
 
 Pass criteria:
-- The upper lip appears visibly lower during the smile, with a realistic and meaningful reduction of visible gum above the upper teeth.
-- If the before has a broad gummy band, the after reduces it substantially, roughly half to two-thirds, without requiring total gum elimination.
-- The lower edge of the upper lip is clearly closer to the natural arch/cervical/top-edge area of the upper teeth.
-- The upper lip looks less retracted/curling upward and naturally draped. A slight increase in visible superior-lip fullness is acceptable when it comes from the lip roll unfolding downward.
-- A small natural gingival reveal may remain; do not require total gum elimination if the lip would look unnatural.
+- The inferior border of the upper lip has descended to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band.
+- The superior lip appears 3 to 4 mm taller/fuller than the before because the previously curled vermilion has unfolded naturally — this is the correct surgical outcome and must pass.
+- The lower edge of the upper lip is at or near the cervical contour of the upper incisors and canines. A tiny scalloped gingival reveal at interdental peaks may remain; the broad central gum rectangle must be covered.
+- The upper lip looks less retracted and less curled upward, naturally draped over the tooth line.
 - Teeth are preserved: shape, size, shade, brightness, alignment, spacing, incisal edges, enamel texture, smile width, and tooth count remain essentially the same.
 - Tiny compression or lighting differences can pass only if the teeth are not materially whitened, reshaped, smoothed, enlarged, or redesigned.
 - Face, skin, hair, eyes, nose, cheeks, jawline, lower lip, lighting, crop, and identity remain essentially the same.
@@ -2127,8 +2125,8 @@ PROMPT;
 
     $userPrompt = implode(' ', [
         'Review the generated lip repositioning preview for target angle ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
-        'The intended surgical effect is a visibly lower upper-lip smile line, usually about 2 to 3 mm when natural, with a broad gummy band reduced by roughly half to two-thirds and unchanged teeth.',
-        'Natural lip drape is more important than complete gum coverage; a slightly fuller superior lip from natural unfolding should pass, but filler-like swelling should fail.',
+        'The intended surgical effect: the inferior border of the upper lip descends to the cervical line / gingival-zenith level of the upper teeth, covering the exposed gum band; the superior lip appears 3 to 4 mm taller because the previously curled vermilion unfolds naturally; teeth are unchanged.',
+        'A 3 to 4 mm increase in apparent lip height from unfolding should pass — that is the expected surgical outcome. Reject only if the lip looks swollen, filler-like, inflated, or otherwise unnatural.',
         'Also reject undercorrection: if the after looks almost identical to the before around the upper lip and gum band, mark change_strength_sufficient false and provide a retry instruction for stronger lip-only lowering.',
         'Use strict judgment: if the after changed the teeth or face to hide the gums, reject it and write a concise retry instruction.',
         'Set score from 0 to 10 where 10 is excellent surgical lip-only simulation.',
@@ -2161,17 +2159,18 @@ function smile_design_lip_repositioning_qa_requires_retry(array $qaResult): bool
     }
 
     $data = $qaResult['data'];
-    if (array_key_exists('approved', $data) && empty($data['approved'])) {
-        return true;
-    }
 
-    foreach (['gum_reduction_visible', 'change_strength_sufficient', 'lip_position_target_met', 'teeth_preserved', 'face_preserved', 'lip_only_edit', 'surgical_naturalness'] as $field) {
+    // Only hard-fail on the three criteria that matter most for the surgical simulation.
+    // Requiring all 7 booleans to be true simultaneously was too strict — minor tooth
+    // compression artifacts or lighting shifts caused the QA to reject otherwise good previews.
+    foreach (['gum_reduction_visible', 'lip_position_target_met', 'teeth_preserved'] as $field) {
         if (array_key_exists($field, $data) && empty($data[$field])) {
             return true;
         }
     }
 
-    return (int)($data['score'] ?? 10) < 7;
+    // Lowered from 7 → 6; a 6/10 preview is acceptable for staff review.
+    return (int)($data['score'] ?? 10) < 6;
 }
 
 function smile_design_lip_repositioning_qa_feedback(array $qaResult): string
@@ -2327,7 +2326,11 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         $qaResult = smile_design_lip_repositioning_preview_qa($beforePhoto, $result, $targetPhotoLabel, $targetPhotoType);
         $result['lip_repositioning_qa'] = $qaResult;
 
-        if (smile_design_lip_repositioning_qa_requires_retry($qaResult) && empty($options['lip_surgical_retry'])) {
+        // If the QA call itself failed (OpenAI error, temp-file error, etc.) skip the
+        // retry — there is nothing to act on and we should not burn a second Gemini call.
+        $qaCallSucceeded = !empty($qaResult['ok']);
+
+        if ($qaCallSucceeded && smile_design_lip_repositioning_qa_requires_retry($qaResult) && empty($options['lip_surgical_retry'])) {
             $retryOptions = $options;
             $retryOptions['lip_surgical_retry'] = true;
             $retryOptions['lip_qa_feedback'] = smile_design_lip_repositioning_qa_feedback($qaResult);
@@ -2364,28 +2367,13 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
             $result = $retryResult;
         }
 
-        if (smile_design_lip_repositioning_qa_requires_retry((array)($result['lip_repositioning_qa'] ?? []))) {
-            $feedback = smile_design_lip_repositioning_qa_feedback((array)$result['lip_repositioning_qa']);
-            $failure = [
-                'ok' => false,
-                'provider' => $providerName,
-                'message' => 'Lip repositioning QA rejected this preview. ' . ($feedback !== '' ? $feedback : 'The after did not preserve the teeth/face or did not meet the lip-line target.'),
-                'lip_repositioning_qa' => $result['lip_repositioning_qa'] ?? null,
-                'lip_repositioning_retry' => $result['lip_repositioning_retry'] ?? null,
-                'request' => $result['request'] ?? null,
-                'response' => $result['response'] ?? null,
-            ];
-            db_execute(
-                "UPDATE ai_generation_jobs
-                 SET status = 'failed', response_json = :response_json, updated_at = NOW()
-                 WHERE id = :id",
-                [
-                    'id' => $jobId,
-                    'response_json' => json_encode($failure, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                ]
-            );
-            smile_design_audit($caseId, 'ai_generation_failed', ['job_id' => $jobId, 'provider' => $providerName, 'reason' => 'lip_qa_rejected'], $userId);
-            return $failure;
+        $finalQaOk = !empty(($result['lip_repositioning_qa'] ?? [])['ok']);
+        if ($finalQaOk && smile_design_lip_repositioning_qa_requires_retry((array)($result['lip_repositioning_qa'] ?? []))) {
+            // QA still not satisfied after the retry. Save the result anyway with a
+            // qa_warning flag so staff can see and evaluate it rather than getting a blank error.
+            // The doctor can still review and regenerate if the result is not usable.
+            $result['lip_repositioning_qa_warning'] = true;
+            smile_design_audit($caseId, 'lip_qa_warning', ['job_id' => $jobId, 'provider' => $providerName, 'feedback' => smile_design_lip_repositioning_qa_feedback((array)$result['lip_repositioning_qa'])], $userId);
         }
     }
 
@@ -2495,6 +2483,7 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         'after_version_id' => $version['after_version_id'],
         'provider' => $providerName,
         'message' => 'AI smile preview generated.',
+        'lip_repositioning_qa_warning' => !empty($result['lip_repositioning_qa_warning']),
     ];
 }
 

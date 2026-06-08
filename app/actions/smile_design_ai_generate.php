@@ -84,7 +84,11 @@ try {
         ], auth_user_id());
 
         if (!empty($result['ok'])) {
-            $successes[] = $targetLabel;
+            $label = $targetLabel;
+            if (!empty($result['lip_repositioning_qa_warning'])) {
+                $label .= ' (QA review suggested regeneration — please check result)';
+            }
+            $successes[] = $label;
         } else {
             $failures[] = $targetLabel . ': ' . (string)($result['message'] ?? 'Gemini smile preview failed.');
         }

@@ -48,15 +48,13 @@ if (!function_exists('smile_design_lip_repositioning_surgical_prompt')) {
             'Surgical visual goal: simulate restricted upper-lip elevator movement from lip repositioning surgery so the smiling upper lip does not rise as high.',
             'This must be a structural lip-position simulation, not a gum-color retouch. The actual pink upper-lip tissue and its lower border must be redrawn lower over the gum line.',
             'Do not merely darken, desaturate, blur, crop, shadow, or recolor the exposed gum to fake gum reduction. If the upper-lip lower edge is not visibly closer to the tooth line, the edit is wrong.',
-            'Minimum visible correction target: if the source photo shows a broad gummy band, the after preview must clearly reduce that band by about half to two-thirds while still looking natural.',
-            'Lower the inferior border of the upper lip about 2 to 3 mm in the smile, up to about 4 mm only when the source has severe gingival display and the result still looks natural.',
-            'Do not leave the central gum band almost unchanged. The patient should be able to see a clear lip-repositioning effect without needing a side-by-side measurement.',
-            'Do not force total gum removal. A tiny natural scalloped gingival reveal or papilla may remain, but the wide shiny gum rectangle above the upper front teeth should be substantially reduced.',
-            'The bottom edge of the upper lip should follow the patient’s original smile curvature and sit around the natural arch/cervical contour and gingival-zenith/top-edge area of the upper teeth without covering the tooth edges unnaturally.',
-            'For the front angle, the lower edge of the superior lip should sit close to the cervical line/gingival zeniths of the visible upper incisors and canines. For 45-degree angles, apply the same lower drape along the visible tooth arch.',
-            'The upper lip should look less curled upward and less retracted, with a softly unfolded vermilion/roll that drapes lower over the gum line while retaining the same natural lip color, texture, highlights, shadows, and mouth-corner shape from the source photo.',
-            'A slight natural increase in visible superior-lip fullness is expected and acceptable when the curled/retracted lip roll unfolds downward after lip repositioning. This should look like the same lip relaxing and unrolling, not like cosmetic filler.',
-            'Allow the superior lip to look a little fuller/longer vertically only because it is less curled and more naturally draped; do not create swollen, inflated, overfilled, or injected-looking lips.',
+            ‘The lower border of the upper lip must descend to the cervical line / gingival-zenith level of the upper teeth — the exact point where the gum meets the tooth tops — so the exposed gum band is covered by the repositioned lip.’,
+            ‘Do not leave any broad central gum band visible. The patient should be able to see a clear lip-repositioning effect without needing a side-by-side measurement.’,
+            ‘A tiny natural scalloped gingival reveal or papilla at the interdental peaks may remain, but the wide shiny gum rectangle above the upper front teeth must be covered by the repositioned lip.’,
+            ‘The bottom edge of the upper lip must follow the patient’s natural smile curvature and land at the cervical contour / gingival-zenith line of the visible upper incisors and canines. For 45-degree angles, apply the same drape along the visible tooth arch.’,
+            ‘The upper lip should look less curled upward and less retracted, with a softly unfolded vermilion/roll that drapes lower over the gum line while retaining the same natural lip color, texture, highlights, shadows, and mouth-corner shape from the source photo.’,
+            ‘Because the curled lip roll unfolds downward after surgery, the superior lip will appear 3 to 4 mm taller/fuller vertically. This is expected, anatomically correct, and must be shown. It should look like the same lip naturally relaxing and unrolling, not like cosmetic filler.’,
+            ‘The lip fullness increase of 3 to 4 mm comes entirely from the unfolding of the previously curled vermilion — do not create swollen, inflated, overfilled, or injected-looking lips.
             'Make the corrected lip softly draped, feathered, and seamless against the gum/upper-tooth line; it must not look swollen, inflated, pasted on, stretched, scarred, or overcorrected.',
             'Absolute tooth lock: preserve the original teeth shape, size, color, shade, brightness, alignment, spacing, incisal edges, enamel texture, tooth count, smile width, and bite relationship.',
             'Do not whiten, brighten, darken, straighten, enlarge, shrink, reshape, replace, clone, smooth, or redesign any tooth.',
@@ -361,7 +359,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             'Preserve the exact same person, face, jawline, cheeks, nose, eyes, eyebrows, skin texture, skin tone, hair, lips, age, expression, camera angle, framing, and lighting.',
             'Do not make the person look younger, slimmer, more glamorous, or like a different patient.',
             $isLipRepositionOnly
-                ? 'For lip repositioning only, keep the teeth themselves unchanged and simulate restricted upper-lip elevator movement: lower the visible upper-lip smile line about 2 to 3 mm when natural and reduce exposed gum display clearly.'
+                ? 'For lip repositioning only, keep the teeth themselves unchanged and simulate restricted upper-lip elevator movement: the lower border of the upper lip must descend to the cervical line of the upper teeth, covering the exposed gum band, and the lip will appear 3 to 4 mm taller due to the unfolding of the previously curled vermilion.'
                 : 'Only change the smile and teeth needed for the requested dental outcome, with minimal gum changes only when required by the smile request.',
             'Target source angle for this generation: ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
             'Edit the first image as the ' . $targetPhotoLabel . ' after preview and keep its same angle, pose, crop, and lighting.',

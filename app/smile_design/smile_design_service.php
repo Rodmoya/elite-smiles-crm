@@ -417,8 +417,7 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
         return implode(' ', [
             'Procedure-specific direction for Veneers + Lip Repositioning:',
             'This is a combined smile-design case, not lip repositioning alone.',
-            'Apply the veneer simulation first: replace the visible anterior tooth surfaces completely with porcelain veneers at Vita Bleach BL1 shade — bright, luminous, clean porcelain with natural incisal translucency. Do NOT preserve or show through the original stains, yellowing, cracks, or debris.',
-            'Follow the selected LVI style for tooth shape, length, edge form, and characterization.',
+            'Apply the veneer simulation first: replace the visible anterior tooth surfaces completely with porcelain veneers. TWO rules apply simultaneously — SHADE: Vita Bleach BL1 (brightest bleach, luminous warm white, natural incisal translucency, not chalky or grey); SHAPE: follow the selected LVI style fully for tooth form, length, edge design, and characterization. Both rules must be applied together. Do NOT preserve or show through the original stains, yellowing, cracks, or debris.',
             'Do not use veneers to simulate root movement, jaw surgery, major orthodontic arch expansion, implant replacement, or a totally different bite.',
             'Also simulate lip repositioning surgery: the inferior border of the upper lip must descend to the cervical line of the upper teeth to cover the exposed gum band; the lip will appear 5 to 6 mm taller from unfolding of the curled vermilion.',
             'The after preview should show both a full BL1 veneer transformation and a lower, repositioned upper-lip smile line with the gum band covered.',
@@ -482,13 +481,13 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
             'This is a cosmetic veneer smile-design preview, not orthodontics, implants, or full-mouth reconstruction.',
             'This is the INITIAL simulation — show the full intended transformation, not a conservative overlay of the existing teeth.',
             'Replace the visible anterior tooth surfaces completely with porcelain veneer restorations: new shape, new shade, new surface, new texture.',
-            'Do NOT preserve or show through the original tooth color, stains, yellowing, cracks, chips, debris, or enamel defects. The veneers cover all of that. The before-tooth color must not bleed through.',
-            'Target shade for this initial simulation: Vita Bleach BL1 — the brightest, most luminous bleach shade. The teeth should look bright, clean, and highly polished as high-quality porcelain veneers.',
-            'BL1 means bright, saturated white with natural translucency at the incisal edges — not chalky, not flat, not grey. Think of beautiful high-end porcelain: luminous, slightly warm white body with subtle incisal haze.',
-            'Improve visible anterior tooth shape, symmetry, proportion, incisal edge flow, and line angles in a way porcelain veneers could realistically achieve.',
+            'Do NOT preserve or show through the original tooth color, stains, yellowing, cracks, chips, debris, or enamel defects. The veneers fully cover all of that — the before-tooth color must not bleed through at all.',
+            'TWO DESIGN RULES that work together — both must be applied:',
+            'RULE 1 — SHADE: Target shade is Vita Bleach BL1 for this initial simulation. BL1 is the brightest, most luminous bleach shade: bright saturated white body with natural incisal translucency and a subtle warm luminosity. Not chalky, not flat, not grey, not yellowish. Think high-end full-coverage porcelain: luminous, clean, polished, with a soft incisal haze. Apply this shade consistently across all visible anterior veneers.',
+            'RULE 2 — SHAPE / FORM: Follow the selected LVI style fully for tooth shape, length, width, incisal edge form, line angles, surface texture, and characterization. The LVI style defines the design character of the veneers — apply it precisely, not loosely.',
+            'The result must look like BL1-shaded porcelain veneers designed in the selected LVI style — both rules active simultaneously. Do not apply one without the other.',
             'Keep tooth count, root position, jaw position, lip posture, and broad arch relationship believable; do not simulate major orthodontic movement, extraction, implant replacement, or gum surgery.',
             'Respect existing gum architecture and papillae unless a very small cosmetic contour refinement is clearly needed.',
-            'Follow the selected LVI style as the aesthetic direction for tooth shape, length, edge form, and characterization — apply it fully.',
             'Preserve patient identity, face, skin, hair, lips, camera angle, lighting, and natural expression.',
         ]);
     }

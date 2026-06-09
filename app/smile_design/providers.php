@@ -75,7 +75,7 @@ if (!function_exists('smile_design_lip_repositioning_surgical_prompt')) {
             $referenceTitle !== '' ? 'Previous preview reference title: ' . $referenceTitle . '. Treat it as correction context only, not as the source of truth.' : '',
             $referenceNotes !== '' ? 'Previous preview notes: ' . $referenceNotes . '.' : '',
             $internalNotes !== '' ? 'Internal generation notes: ' . $internalNotes . '.' : '',
-            'Output at full native resolution. Preserve all original skin texture, pore detail, hair strand detail, and photographic sharpness throughout the entire image. Do not smooth, blur, soften, or retouch any area outside the upper lip edit zone.',
+            'Do not apply AI beauty retouching, skin smoothing, noise reduction, or sharpening to any part of the image. Outside the upper lip zone, every pixel must stay exactly as it is in the source photo.',
             'Before finalizing: check that (1) the UPPER lip is visibly lower and covers the gum band, (2) the LOWER lip is completely unchanged from the source photo, (3) teeth are unchanged. If the lower lip looks different at all, redo the edit.',
         ], static fn(string $value): bool => trim($value) !== '')));
     }
@@ -204,7 +204,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             ($internalNotes !== '' ? 'Internal generation notes: ' . $internalNotes . '.' : ''),
             'Keep the result realistic and consultation-grade.',
             'Do not add text, labels, watermarks, borders, split screens, or logos.',
-            'Output at full native resolution. Preserve all original skin texture, pore detail, hair strand detail, and photographic sharpness. Do not smooth, blur, soften, or retouch any area outside the edited zone.',
+            'Do not apply AI beauty retouching, skin smoothing, or noise reduction to any area. Outside the edited dental zone, every pixel must stay exactly as it is in the source photo.',
         ];
         if ($referenceVersion) {
             $promptParts[] = 'Use the current preview reference to keep the same overall treatment direction and revise only the requested mouth details.';
@@ -389,7 +389,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             'Do not fabricate perfect model features, fake veneers on unrelated teeth, or dramatic beauty edits outside the requested smile treatment.',
             'Do not add text, labels, arrows, borders, split-screen layouts, or watermarks into the generated image.',
             'This should look like a tasteful consultation preview, not an exaggerated fantasy makeover.',
-            'Output at full native resolution. Preserve all original skin texture, pore detail, hair strand detail, and photographic sharpness. Do not smooth, blur, soften, or retouch any area outside the edited dental zone.',
+            'Do not apply AI beauty retouching, skin smoothing, or noise reduction anywhere. Outside the edited dental zone, every pixel must stay exactly as it is in the source photo.',
         ];
         if ($referenceVersion) {
             $promptParts[] = 'One of the reference images is the current smile preview version. Keep that same overall dental direction and only adjust the smile details requested below.';

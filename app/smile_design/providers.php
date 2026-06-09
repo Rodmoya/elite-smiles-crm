@@ -204,7 +204,6 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             ($internalNotes !== '' ? 'Internal generation notes: ' . $internalNotes . '.' : ''),
             'Keep the result realistic and consultation-grade.',
             'Do not add text, labels, watermarks, borders, split screens, or logos.',
-            'Do not apply AI beauty retouching, skin smoothing, or noise reduction to any area. Outside the edited dental zone, every pixel must stay exactly as it is in the source photo.',
         ];
         if ($referenceVersion) {
             $promptParts[] = 'Use the current preview reference to keep the same overall treatment direction and revise only the requested mouth details.';
@@ -389,7 +388,6 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             'Do not fabricate perfect model features, fake veneers on unrelated teeth, or dramatic beauty edits outside the requested smile treatment.',
             'Do not add text, labels, arrows, borders, split-screen layouts, or watermarks into the generated image.',
             'This should look like a tasteful consultation preview, not an exaggerated fantasy makeover.',
-            'Do not apply AI beauty retouching, skin smoothing, or noise reduction anywhere. Outside the edited dental zone, every pixel must stay exactly as it is in the source photo.',
         ];
         if ($referenceVersion) {
             $promptParts[] = 'One of the reference images is the current smile preview version. Keep that same overall dental direction and only adjust the smile details requested below.';

@@ -29,6 +29,7 @@ jobs:
             error_log
             **/error_log
             storage/logs/**
+            storage/meta-webhooks/**
             storage/smile-design/**
             public/uploads/**
             deploy-backups/**

@@ -57,6 +57,7 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('TWILIO_AUTH_TOKEN',            $_ENV['TWILIO_AUTH_TOKEN']            ?? '');
     define('TWILIO_FROM_NUMBER',           $_ENV['TWILIO_FROM_NUMBER']           ?? '');
     define('TWILIO_MESSAGING_SERVICE_SID', $_ENV['TWILIO_MESSAGING_SERVICE_SID'] ?? '');
+    define('TWILIO_ENABLED',              ($_ENV['TWILIO_ENABLED'] ?? 'false') === 'true');
 
     define('ELITE_QUICK_ACTION_SECRET',      $_ENV['ELITE_QUICK_ACTION_SECRET'] ?? '');
     define('ELITE_QUICK_ACTION_TTL_SECONDS', 86400);
@@ -65,6 +66,14 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_LEAD_EMAIL_TO_TEXT_RECIPIENT', $_ENV['ELITE_LEAD_EMAIL_TO_TEXT_RECIPIENT'] ?? '8016037011@txt.att.net');
     define('ELITE_WEBSITE_WEBHOOK_SECRET', $_ENV['ELITE_WEBSITE_WEBHOOK_SECRET'] ?? '');
     define('ELITE_CODEX_API_TOKEN', $_ENV['ELITE_CODEX_API_TOKEN'] ?? '');
+
+    define('META_WEBHOOK_SECRET',          $_ENV['META_WEBHOOK_SECRET']          ?? '');
+    define('META_VERIFY_TOKEN',            $_ENV['META_VERIFY_TOKEN']            ?? '');
+    define('META_APP_SECRET',              $_ENV['META_APP_SECRET']              ?? '');
+    define('META_ACCESS_TOKEN',            $_ENV['META_ACCESS_TOKEN']            ?? '');
+    define('META_GRAPH_VERSION',           $_ENV['META_GRAPH_VERSION']           ?? 'v23.0');
+    define('META_LEAD_NOTIFICATION_RECIPIENT', $_ENV['META_LEAD_NOTIFICATION_RECIPIENT'] ?? 'leads@elitesmilesutah.com');
+    define('META_NOTIFICATION_FROM_EMAIL',   $_ENV['META_NOTIFICATION_FROM_EMAIL'] ?? ELITE_LEAD_ALERT_FROM_EMAIL);
 
     define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? '');
     define('SMTP_PORT', is_numeric($_ENV['SMTP_PORT'] ?? null) ? (int) $_ENV['SMTP_PORT'] : 587);
@@ -124,10 +133,20 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'min_confidence' => ELITE_AI_MIN_CONFIDENCE,
         ],
         'pushover' => ['app_token' => ELITE_PUSHOVER_APP_TOKEN, 'user_key' => ELITE_PUSHOVER_USER_KEY],
-        'twilio'   => [
+    'twilio'   => [
             'account_sid' => TWILIO_ACCOUNT_SID,
             'from_number' => TWILIO_FROM_NUMBER,
             'messaging_service_sid' => TWILIO_MESSAGING_SERVICE_SID,
+            'enabled' => TWILIO_ENABLED,
+        ],
+        'meta' => [
+            'webhook_secret' => META_WEBHOOK_SECRET,
+            'verify_token' => META_VERIFY_TOKEN,
+            'app_secret' => META_APP_SECRET,
+            'access_token' => META_ACCESS_TOKEN,
+            'graph_version' => META_GRAPH_VERSION,
+            'notification_recipient' => META_LEAD_NOTIFICATION_RECIPIENT,
+            'notification_from_email' => META_NOTIFICATION_FROM_EMAIL,
         ],
         'quick_actions' => ['secret' => ELITE_QUICK_ACTION_SECRET, 'ttl_seconds' => ELITE_QUICK_ACTION_TTL_SECONDS],
         'lead_alerts' => [

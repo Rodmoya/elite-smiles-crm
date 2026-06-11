@@ -8,6 +8,7 @@ error_log
 deploy-backups/
 _live_site/
 storage/logs/
+storage/meta-webhooks/
 storage/smile-design/
 public/uploads/
 .secrets/

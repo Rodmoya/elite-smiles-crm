@@ -867,7 +867,146 @@ if (!function_exists('elite_send_lead_notification_pushover')) {
     }
 }
 
-if (!function_exists('elite_send_lead_notification_email')) {
+if (!function_exists('elite_operator_quick_action_url')) {
+
+    function elite_operator_quick_action_url(array $lead, array $context = []): string
+
+    {
+
+        $url = elite_quick_action_url($lead, $context);
+        if ($url === '') {
+            return '';
+        }
+
+        $mode = strtolower(trim((string)($context['quick_action_mode'] ?? $context['mode'] ?? '')));
+        if (!in_array($mode, ['new_lead', 'follow_up', 'reschedule', 'communication'], true)) {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+        return $url . $separator . 'mode=' . rawurlencode($mode);
+
+    }
+
+}
+
+if (!function_exists('elite_send_operator_follow_up_pushover')) {
+
+    function elite_send_operator_follow_up_pushover(array $lead, array $context = []): bool
+
+    {
+
+        $fullName = elite_string($lead['full_name'] ?? '');
+
+        if ($fullName === '') {
+
+            $fullName = trim(
+
+                elite_string($lead['first_name'] ?? '') . ' ' . elite_string($lead['last_name'] ?? '')
+
+            );
+
+        }
+
+        if ($fullName === '') {
+
+            $fullName = 'Unknown Lead';
+
+        }
+
+        $phone = elite_string($lead['phone'] ?? '');
+        $procedureInterest = elite_string($lead['procedure_interest'] ?? '');
+        $preferredContact = elite_preferred_contact_label(elite_string($lead['preferred_contact'] ?? ''));
+        $source = elite_string($lead['source'] ?? '');
+        $channel = strtolower(trim((string)($context['channel'] ?? '')));
+        $event = strtolower(trim((string)($context['event'] ?? 'follow_up')));
+        $deliveryStatus = trim((string)($context['delivery_status'] ?? ''));
+        $errorCode = trim((string)($context['error_code'] ?? ''));
+        $errorMessage = trim((string)($context['error_message'] ?? ''));
+        $summary = trim((string)($context['summary'] ?? ''));
+        $note = trim((string)($context['note'] ?? ''));
+        $mode = strtolower(trim((string)($context['quick_action_mode'] ?? $context['mode'] ?? '')));
+
+        if (!in_array($mode, ['new_lead', 'follow_up', 'reschedule', 'communication'], true)) {
+            $leadStatus = strtolower(trim((string)($lead['status'] ?? '')));
+            if ($event === 'sms_delivery_issue') {
+                $mode = 'communication';
+            } elseif ($leadStatus === 'consultation_booked') {
+                $mode = 'reschedule';
+            } else {
+                $mode = 'follow_up';
+            }
+        }
+
+        $quickActionUrl = elite_operator_quick_action_url($lead, ['quick_action_mode' => $mode] + $context);
+
+        $titlePrefix = match ($event) {
+            'sms_delivery_issue' => 'SMS Delivery Issue',
+            'communication' => 'Lead Communication',
+            default => 'Lead Follow-Up',
+        };
+
+        $title = $titlePrefix . ' - ' . $fullName;
+
+        $lines = [];
+        if ($summary !== '') {
+            $lines[] = $summary;
+        } else {
+            $lines[] = match ($event) {
+                'sms_delivery_issue' => 'Twilio could not deliver the SMS. Open lead actions to text manually.',
+                default => 'Open lead actions for the next patient communication step.',
+            };
+        }
+
+        if ($channel !== '') {
+            $lines[] = 'Channel: ' . strtoupper($channel);
+        }
+
+        if ($deliveryStatus !== '') {
+            $statusLine = 'Delivery: ' . $deliveryStatus;
+            if ($errorCode !== '') {
+                $statusLine .= ' (' . $errorCode . ')';
+            }
+            $lines[] = $statusLine;
+        }
+
+        if ($phone !== '') {
+            $lines[] = 'Phone: ' . elite_format_phone_for_reading($phone);
+        }
+
+        if ($preferredContact !== 'Not specified') {
+            $lines[] = 'Prefers: ' . $preferredContact;
+        }
+
+        if ($procedureInterest !== '') {
+            $lines[] = 'Procedure: ' . $procedureInterest;
+        }
+
+        if ($source !== '') {
+            $lines[] = 'Source: ' . $source;
+        }
+
+        if ($note !== '') {
+            $lines[] = 'Context: ' . mb_substr($note, 0, 180);
+        } elseif ($errorMessage !== '') {
+            $lines[] = 'Context: ' . mb_substr($errorMessage, 0, 180);
+        }
+
+        $lines[] = '';
+        $lines[] = 'Tap to open quick actions.';
+
+        return elite_send_pushover_notification(
+            $title,
+            implode("\n", $lines),
+            $quickActionUrl !== '' ? $quickActionUrl : null,
+            $quickActionUrl !== '' ? 'Open Lead Actions' : null
+        );
+
+    }
+
+}
+
+if (!function_exists('elite_send_lead_notification_email')) {
     function elite_send_lead_notification_email(array $lead, array $context = []): bool
     {
         $to = trim((string) ($context['to'] ?? elite_lead_notification_recipient()));

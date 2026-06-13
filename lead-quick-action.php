@@ -506,6 +506,7 @@ try {
     $leadId = isset($_GET['lead']) ? (int) $_GET['lead'] : 0;
     $expiresAt = isset($_GET['exp']) ? (int) $_GET['exp'] : 0;
     $sig = elite_qa_string($_GET['sig'] ?? '');
+    $requestedMode = strtolower(elite_qa_string($_GET['mode'] ?? ''));
 
     $isValid = elite_qa_verify_request($leadId, $expiresAt, $sig);
 
@@ -553,9 +554,30 @@ try {
 
     $firstName = elite_qa_first_name_from_full_name($fullName);
     $nameForMessage = $firstName !== '' ? $firstName : $fullName;
+    $quickActionMode = in_array($requestedMode, ['new_lead', 'follow_up', 'reschedule', 'communication'], true)
+        ? $requestedMode
+        : (strtolower($status) === 'consultation_booked' ? 'reschedule' : 'new_lead');
 
+    $heroText = 'Choose the kind of message you want to send and your phone will open the text ready to go.';
+    $cardSubtitle = 'Two ready-to-send message options for faster follow-up.';
+    $helperText = 'Both buttons open your phone\'s text message app with the message already filled in.';
     $textForText = 'Hi ' . $nameForMessage . ', this is Elite Smiles. Thank you for reaching out. We would love to help you achieve the smile you deserve and get your consultation scheduled. What day or time works best for you?';
     $textForCall = 'Hi ' . $nameForMessage . ', this is Elite Smiles. Thank you for reaching out. We would love to help you achieve the smile you deserve and get your consultation scheduled. Is this a good moment for a quick call, or what time works best for you?';
+
+    if ($quickActionMode === 'follow_up' || $quickActionMode === 'communication') {
+        $heroText = 'Open the next outreach step fast. These actions load a ready-to-send text so you can keep the conversation moving.';
+        $cardSubtitle = 'Message options tuned for active follow-up and manual communication.';
+        $textForText = 'Hi ' . $nameForMessage . ', this is Elite Smiles. I wanted to follow up and see what day or time works best for you for the next step. Feel free to text me back here.';
+        $textForCall = 'Hi ' . $nameForMessage . ', this is Elite Smiles. I wanted to follow up with you. Is this a good moment for a quick call, or what time works best for you?';
+    }
+
+    if ($quickActionMode === 'reschedule') {
+        $heroText = 'This lead likely needs a reschedule. Open the right message and your phone will load the text for you.';
+        $cardSubtitle = 'Message options tailored for rescheduling a missed or moved consultation.';
+        $helperText = 'These buttons open your text app with a reschedule message already drafted.';
+        $textForText = 'Hi ' . $nameForMessage . ', this is Elite Smiles. We would love to help you reschedule your consultation. What day or time works best for you next week?';
+        $textForCall = 'Hi ' . $nameForMessage . ', this is Elite Smiles. We wanted to help you reschedule your consultation. Is now a good moment for a quick call, or what time works best for you?';
+    }
 
     $smsTextLink = elite_qa_sms_link($phone, $textForText);
     $smsCallLink = elite_qa_sms_link($phone, $textForCall);
@@ -577,14 +599,14 @@ try {
     <section class="hero">
         <div class="eyebrow">Elite Smiles</div>
         <h1><?php echo elite_qa_escape($fullName); ?></h1>
-        <p>Choose the kind of message you want to send and your phone will open the text ready to go.</p>
+        <p><?php echo elite_qa_escape($heroText); ?></p>
     </section>
 
     <div class="grid">
         <section class="card">
             <div class="card-head">
                 <h2 class="card-title">Quick Actions</h2>
-                <p class="card-subtitle">Two ready-to-send message options for faster follow-up.</p>
+                <p class="card-subtitle"><?php echo elite_qa_escape($cardSubtitle); ?></p>
             </div>
             <div class="card-body">
                 <div class="actions">
@@ -604,7 +626,7 @@ try {
                 <?php if ($phone === ''): ?>
                     <div class="helper">This lead does not have a phone number, so text actions are unavailable.</div>
                 <?php else: ?>
-                    <div class="helper">Both buttons open your phone's text message app with the message already filled in.</div>
+                    <div class="helper"><?php echo elite_qa_escape($helperText); ?></div>
                 <?php endif; ?>
             </div>
         </section>

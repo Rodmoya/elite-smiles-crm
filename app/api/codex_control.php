@@ -573,6 +573,8 @@ if (!function_exists('codex_api_follow_up_lead')) {
         $status = trim((string) codex_api_value('status', ''));
         $nextFollowUpAt = trim((string) codex_api_value('next_follow_up_at', ''));
         $followUpStatus = trim((string) codex_api_value('follow_up_status', ''));
+        $notifyOperator = filter_var(codex_api_value('notify_operator', false), FILTER_VALIDATE_BOOLEAN);
+        $notifyMode = trim((string) codex_api_value('notify_mode', ''));
         $dryRun = filter_var(codex_api_value('dry_run', false), FILTER_VALIDATE_BOOLEAN);
 
         if (!in_array($channel, ['auto', 'email', 'sms', 'note'], true)) {
@@ -713,13 +715,29 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 db_execute('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
             }
 
+            $updatedLead = codex_api_load_lead($leadId);
+            $operatorNotificationSent = false;
+            if ($notifyOperator && function_exists('elite_send_operator_follow_up_pushover')) {
+                $notificationContext = [
+                    'event' => 'follow_up',
+                    'channel' => $channel,
+                    'note' => $note,
+                    'summary' => 'Follow-up completed. Tap to open lead actions and continue the conversation.',
+                ];
+                if ($notifyMode !== '') {
+                    $notificationContext['quick_action_mode'] = $notifyMode;
+                }
+                $operatorNotificationSent = elite_send_operator_follow_up_pushover($updatedLead ?: $lead, $notificationContext);
+            }
+
             codex_api_response([
                 'ok' => true,
                 'message' => 'Follow-up completed.',
                 'lead_id' => $leadId,
                 'channel' => $channel,
                 'delivery' => $sent,
-                'lead' => codex_api_load_lead($leadId),
+                'lead' => $updatedLead,
+                'operator_notification_sent' => $operatorNotificationSent,
                 'thread' => codex_api_timeline($leadId),
             ]);
         } catch (Throwable $e) {

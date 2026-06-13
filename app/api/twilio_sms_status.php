@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/db.php';
+require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 
@@ -72,6 +73,26 @@ try {
                 'error_code' => $errorCode,
                 'error_message' => $errorMessage,
             ], 'Twilio');
+
+            if (function_exists('elite_send_operator_follow_up_pushover')) {
+                $lead = db_one(
+                    'SELECT id, full_name, phone, email, preferred_contact, procedure_interest, source, status
+                     FROM leads
+                     WHERE id = :id
+                     LIMIT 1',
+                    ['id' => $leadId]
+                );
+                if (is_array($lead)) {
+                    elite_send_operator_follow_up_pushover($lead, [
+                        'event' => 'sms_delivery_issue',
+                        'channel' => 'sms',
+                        'delivery_status' => $status,
+                        'error_code' => $errorCode,
+                        'error_message' => $errorMessage,
+                        'quick_action_mode' => 'communication',
+                    ]);
+                }
+            }
         }
     }
 } catch (Throwable $e) {

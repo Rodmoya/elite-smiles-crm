@@ -657,6 +657,10 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
 
         $updates = [];
         $params = ['id' => $leadId];
+        $existingStatus = trim((string)($existing['status'] ?? ''));
+        $incomingStatus = trim((string)($data['status'] ?? ''));
+        $reopenedFromStatus = '';
+        $reopenedToStatus = '';
 
         foreach ([
             'full_name',
@@ -698,6 +702,33 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
             }
         }
 
+        if (
+            leads_has_column('status')
+            && $incomingStatus !== ''
+            && $incomingStatus !== $existingStatus
+            && in_array($existingStatus, ['lost_lead', 'treatment_accepted'], true)
+        ) {
+            $updates[] = '`status` = :status';
+            $params['status'] = $incomingStatus;
+            $reopenedFromStatus = $existingStatus;
+            $reopenedToStatus = $incomingStatus;
+
+            if (leads_has_column('lost_reason')) {
+                $updates[] = '`lost_reason` = :lost_reason';
+                $params['lost_reason'] = null;
+            }
+
+            if (leads_has_column('follow_up_status')) {
+                $updates[] = '`follow_up_status` = :follow_up_status';
+                $params['follow_up_status'] = 'needs_follow_up';
+            }
+
+            if (leads_has_column('next_follow_up_at')) {
+                $updates[] = '`next_follow_up_at` = :next_follow_up_at';
+                $params['next_follow_up_at'] = null;
+            }
+        }
+
         if (leads_has_column('notes')) {
             $incomingNotes = trim((string)($data['notes'] ?? ''));
             if ($incomingNotes !== '') {
@@ -723,10 +754,19 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
         db_execute('UPDATE leads SET ' . implode(', ', $updates) . ' WHERE id = :id LIMIT 1', $params);
 
         if (function_exists('lead_comm_insert_activity')) {
-            lead_comm_insert_activity($leadId, 'duplicate_intake_refresh', 'Duplicate public intake refreshed this existing lead and moved it to the top of the board.', [
+            $activityBody = 'Duplicate public intake refreshed this existing lead and moved it to the top of the board.';
+            $activityMeta = [
                 'source' => 'lead_create_minimal',
                 'duplicate_match_type' => (string)($duplicate['duplicate_match_type'] ?? ''),
-            ], 'Intake');
+            ];
+
+            if ($reopenedFromStatus !== '' && $reopenedToStatus !== '') {
+                $activityBody = 'Duplicate public intake refreshed this lead, reopened it, and moved it to the top of the board.';
+                $activityMeta['status_reopened_from'] = $reopenedFromStatus;
+                $activityMeta['status_reopened_to'] = $reopenedToStatus;
+            }
+
+            lead_comm_insert_activity($leadId, 'duplicate_intake_refresh', $activityBody, $activityMeta, 'Intake');
         }
     }
 }

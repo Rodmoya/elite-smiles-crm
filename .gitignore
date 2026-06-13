@@ -24,10 +24,12 @@ landing-live-backup.php
 landingtest.php
 test_bootstrap.php
 test_plain.php
+_local_preview_*.php
 site-root/
 site-root-winscp-pull.log
 tools/
 make-password.php
+docs/
 
 # Screenshot/audit images at repo root (not project assets)
 /after-*.png

@@ -33,10 +33,12 @@ jobs:
             storage/smile-design/**
             public/uploads/**
             deploy-backups/**
+            docs/**
             .chrome-*/
-            *.png
-            *.jpg
-            *.zip
+            _local_preview_*.php
+            /*.png
+            /*.jpg
+            /*.zip
             _live_site/**
             site-root/**
             tools/**

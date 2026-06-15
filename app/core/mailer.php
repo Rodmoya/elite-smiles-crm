@@ -819,9 +819,347 @@ if (!function_exists('elite_send_pushover_notification')) {
             return false;
         }
     }
-}
-
-if (!function_exists('elite_send_lead_notification_pushover')) {
+}
+
+if (!function_exists('elite_pushover_user_key_heather')) {
+
+    function elite_pushover_user_key_heather(): string
+
+    {
+
+        return defined('ELITE_PUSHOVER_USER_KEY_HEATHER') ? trim((string) ELITE_PUSHOVER_USER_KEY_HEATHER) : '';
+
+    }
+
+}
+
+
+
+if (!function_exists('elite_pushover_user_key_blair')) {
+
+    function elite_pushover_user_key_blair(): string
+
+    {
+
+        return defined('ELITE_PUSHOVER_USER_KEY_BLAIR') ? trim((string) ELITE_PUSHOVER_USER_KEY_BLAIR) : '';
+
+    }
+
+}
+
+
+
+if (!function_exists('elite_pushover_user_keys_attempted_contact')) {
+
+    function elite_pushover_user_keys_attempted_contact(): array
+
+    {
+
+        $configKeys = trim((string) (defined('ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT') ? ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT : ''));
+        $keys = [];
+
+        if ($configKeys !== '') {
+            $raw = array_map('trim', explode(',', $configKeys));
+            foreach ($raw as $key) {
+                if ($key !== '') {
+                    $keys[] = $key;
+                }
+            }
+        }
+
+        $heather = elite_pushover_user_key_heather();
+        $blair = elite_pushover_user_key_blair();
+        $fallback = elite_pushover_user_key();
+
+        if ($heather !== '') {
+            $keys[] = $heather;
+        }
+        if ($blair !== '') {
+            $keys[] = $blair;
+        }
+        if (count($keys) === 0 && $fallback !== '') {
+            $keys[] = $fallback;
+        }
+
+        return array_values(array_unique($keys));
+
+    }
+
+}
+
+
+
+if (!function_exists('elite_attempted_contact_recipient_labels')) {
+
+    function elite_attempted_contact_recipient_labels(): array
+
+    {
+
+        $labels = [];
+        $heather = elite_pushover_user_key_heather();
+        $blair = elite_pushover_user_key_blair();
+        $fallback = elite_pushover_user_key();
+
+        if ($heather !== '') {
+            $labels['Heather'] = $heather;
+        }
+
+        if ($blair !== '') {
+            $labels['Blair'] = $blair;
+        }
+
+        $configKeys = trim((string) (defined('ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT') ? ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT : ''));
+        if ($configKeys !== '') {
+            $raw = array_map('trim', explode(',', $configKeys));
+            $customIndex = 1;
+            foreach ($raw as $key) {
+                if ($key === '') {
+                    continue;
+                }
+                if ($key === $heather || $key === $blair || $key === $fallback) {
+                    continue;
+                }
+                $labels['custom_recipient_' . $customIndex] = $key;
+                $customIndex++;
+            }
+        }
+
+        if (empty($labels) && $fallback !== '') {
+            $labels['Fallback'] = $fallback;
+        }
+
+        return array_keys($labels);
+
+    }
+
+}
+
+if (!function_exists('elite_send_pushover_notification_to_user')) {
+
+    function elite_send_pushover_notification_to_user(
+
+        string $title,
+        string $message,
+        string $userKey,
+        ?string $url = null,
+        ?string $urlTitle = null,
+        ?array &$sendResult = null
+
+    ): bool {
+
+        if (!function_exists('curl_init') || elite_pushover_app_token() === '' || $userKey === '') {
+            if (is_array($sendResult)) {
+                $sendResult['success'] = false;
+                $sendResult['error'] = 'Pushover disabled or invalid configuration.';
+            }
+
+            return false;
+        }
+
+        $postFields = [
+
+            'token'   => elite_pushover_app_token(),
+            'user'    => $userKey,
+            'title'   => trim($title),
+            'message' => trim($message),
+            'sound'   => 'pushover',
+            'priority'=> '0',
+        ];
+
+        if ($url !== null && trim($url) !== '') {
+
+            $postFields['url'] = trim($url);
+
+        }
+
+        if ($urlTitle !== null && trim($urlTitle) !== '') {
+
+            $postFields['url_title'] = trim($urlTitle);
+
+        }
+
+        try {
+
+            $ch = curl_init('https://api.pushover.net/1/messages.json');
+            if ($ch === false) {
+                return false;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => http_build_query($postFields),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/x-www-form-urlencoded',
+                ],
+            ]);
+
+            $response = curl_exec($ch);
+            $curlError = curl_error($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($response === false || $curlError !== '') {
+                error_log('Elite Smiles Pushover cURL error: ' . $curlError);
+                if (is_array($sendResult)) {
+                    $sendResult['success'] = false;
+                    $sendResult['error'] = trim('Pushover delivery failed: ' . $curlError);
+                }
+                return false;
+            }
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                error_log('Elite Smiles Pushover HTTP ' . $httpCode . ' response: ' . (string) $response);
+                if (is_array($sendResult)) {
+                    $sendResult['success'] = false;
+                    $sendResult['error'] = 'Pushover HTTP status ' . $httpCode;
+                }
+                return false;
+            }
+
+            $decoded = json_decode((string) $response, true);
+            if (!is_array($decoded) || (int) ($decoded['status'] ?? 0) !== 1) {
+                error_log('Elite Smiles Pushover invalid response: ' . (string) $response);
+                if (is_array($sendResult)) {
+                    $sendResult['success'] = false;
+                    $sendResult['error'] = 'Pushover returned an invalid response.';
+                }
+                return false;
+            }
+
+            if (is_array($sendResult)) {
+                $sendResult['success'] = true;
+                $sendResult['error'] = '';
+            }
+
+            return true;
+
+        } catch (Throwable $e) {
+            error_log('Elite Smiles Pushover exception: ' . $e->getMessage());
+            if (is_array($sendResult)) {
+                $sendResult['success'] = false;
+                $sendResult['error'] = 'Pushover send exception.';
+            }
+            return false;
+        }
+
+    }
+
+}
+
+
+
+if (!function_exists('elite_send_attempted_contact_pushover')) {
+
+    function elite_send_attempted_contact_pushover(array $lead, array $context = [], ?array &$sendResult = null): bool
+
+    {
+
+        if (is_array($sendResult)) {
+            $sendResult = [
+                'success' => false,
+                'error' => '',
+                'recipients' => [],
+                'sent' => [],
+                'failed' => [],
+            ];
+        }
+
+        if (elite_pushover_app_token() === '' || !function_exists('curl_init')) {
+            if (is_array($sendResult)) {
+                $sendResult['error'] = 'Pushover is not configured or cURL is unavailable.';
+            }
+
+            return false;
+        }
+
+        $recipientKeys = elite_pushover_user_keys_attempted_contact();
+        $recipientLabels = elite_attempted_contact_recipient_labels();
+        if (empty($recipientKeys)) {
+            if (is_array($sendResult)) {
+                $sendResult['error'] = 'No configured attempted-contact Pushover recipients.';
+            }
+
+            return false;
+        }
+        if (is_array($sendResult)) {
+            $sendResult['recipients'] = $recipientLabels;
+        }
+
+        $fullName = elite_string($lead['full_name'] ?? '');
+        if ($fullName === '') {
+            $fullName = trim(elite_string($lead['first_name'] ?? '') . ' ' . elite_string($lead['last_name'] ?? ''));
+        }
+        if ($fullName === '') {
+            $fullName = 'Unknown Lead';
+        }
+
+        $phone = elite_string($lead['phone'] ?? '');
+        $fromStage = trim((string) ($context['from_stage'] ?? ''));
+        $toStage = trim((string) ($context['to_stage'] ?? ''));
+        $leadId = trim((string) ($context['lead_id'] ?? $lead['id'] ?? ''));
+        $updatedBy = trim((string) ($context['updated_by_name'] ?? ''));
+
+        $lines = [];
+        $lines[] = 'Attempted Contact stage reached for ' . $fullName;
+        $lines[] = 'Lead ID: ' . $leadId;
+        if ($phone !== '') {
+            $lines[] = 'Phone: ' . elite_format_phone_for_reading($phone);
+        }
+        if ($fromStage !== '' || $toStage !== '') {
+            $lines[] = 'Stage: ' . ($fromStage !== '' ? $fromStage : 'unknown') . ' -> ' . ($toStage !== '' ? $toStage : 'attempted_contact');
+        }
+        if ($updatedBy !== '') {
+            $lines[] = 'Updated by: ' . $updatedBy;
+        }
+
+        $quickActionUrl = elite_quick_action_url($lead, $context);
+        $title = 'Attempted Contact - ' . $fullName;
+
+        $sentAny = false;
+        $index = 0;
+        foreach ($recipientKeys as $userKey) {
+            $attemptResult = [];
+            $sent = elite_send_pushover_notification_to_user(
+                $title,
+                implode("\n", $lines),
+                $userKey,
+                $quickActionUrl !== '' ? $quickActionUrl : null,
+                $quickActionUrl !== '' ? 'Open Lead Actions' : null,
+                $attemptResult
+            );
+            if (is_array($sendResult)) {
+                $label = $recipientLabels[$index] ?? ('recipient_' . ($index + 1));
+                if ($sent) {
+                    $sendResult['sent'][] = $label;
+                } else {
+                    $sendResult['failed'][] = $label;
+                }
+            }
+            if ($sent) {
+                $sentAny = true;
+            }
+            $index++;
+        }
+        if (is_array($sendResult)) {
+            $sendResult['success'] = $sentAny;
+            if (!$sentAny && $sendResult['error'] === '') {
+                $sendResult['error'] = 'Delivery failed for all configured recipients.';
+            }
+        }
+
+        return $sentAny;
+
+    }
+
+}
+
+
+if (!function_exists('elite_send_lead_notification_pushover')) {
     function elite_send_lead_notification_pushover(array $lead, array $context = []): bool
     {
         $fullName = elite_string($lead['full_name'] ?? '');

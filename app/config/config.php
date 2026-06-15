@@ -52,6 +52,9 @@ if (!defined('ESM_CONFIG_LOADED')) {
 
     define('ELITE_PUSHOVER_APP_TOKEN', $_ENV['ELITE_PUSHOVER_APP_TOKEN'] ?? '');
     define('ELITE_PUSHOVER_USER_KEY',  $_ENV['ELITE_PUSHOVER_USER_KEY']  ?? '');
+    define('ELITE_PUSHOVER_USER_KEY_HEATHER', $_ENV['ELITE_PUSHOVER_USER_KEY_HEATHER'] ?? '');
+    define('ELITE_PUSHOVER_USER_KEY_BLAIR', $_ENV['ELITE_PUSHOVER_USER_KEY_BLAIR'] ?? '');
+    define('ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT', $_ENV['ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT'] ?? '');
 
     define('TWILIO_ACCOUNT_SID',           $_ENV['TWILIO_ACCOUNT_SID']           ?? '');
     define('TWILIO_AUTH_TOKEN',            $_ENV['TWILIO_AUTH_TOKEN']            ?? '');
@@ -132,7 +135,13 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'new_lead_autotext_enabled' => ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED,
             'min_confidence' => ELITE_AI_MIN_CONFIDENCE,
         ],
-        'pushover' => ['app_token' => ELITE_PUSHOVER_APP_TOKEN, 'user_key' => ELITE_PUSHOVER_USER_KEY],
+        'pushover' => [
+            'app_token' => ELITE_PUSHOVER_APP_TOKEN,
+            'user_key' => ELITE_PUSHOVER_USER_KEY,
+            'user_key_heather' => ELITE_PUSHOVER_USER_KEY_HEATHER,
+            'user_key_blair' => ELITE_PUSHOVER_USER_KEY_BLAIR,
+            'user_keys_attempted_contact' => ELITE_PUSHOVER_USER_KEYS_ATTEMPTED_CONTACT,
+        ],
     'twilio'   => [
             'account_sid' => TWILIO_ACCOUNT_SID,
             'from_number' => TWILIO_FROM_NUMBER,

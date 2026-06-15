@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
+require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
@@ -152,7 +153,46 @@ try {
                 'to' => $newStage,
             ]
         );
-    }
+
+            if ($newStage === 'attempted_contact') {
+                $attemptedPushResult = [];
+                $attemptedPushSent = elite_send_attempted_contact_pushover(
+                    $existingLead,
+                    [
+                        'lead_id' => (string) $leadId,
+                        'from_stage' => $oldStage,
+                        'to_stage' => $newStage,
+                        'updated_by_name' => auth_name(),
+                    ],
+                    $attemptedPushResult
+                );
+
+                $recipientLabels = is_array($attemptedPushResult['recipients'] ?? null) ? $attemptedPushResult['recipients'] : [];
+                $sentLabels = is_array($attemptedPushResult['sent'] ?? null) ? $attemptedPushResult['sent'] : [];
+                $failedLabels = is_array($attemptedPushResult['failed'] ?? null) ? $attemptedPushResult['failed'] : [];
+                $recipientText = !empty($recipientLabels) ? implode(', ', $recipientLabels) : 'no configured recipient labels';
+
+                if ($attemptedPushSent) {
+                    $pushStatusMessage = !empty($sentLabels) ? ('Attempted-contact push delivered to ' . implode(', ', $sentLabels) . '.') : 'Attempted-contact push delivered.';
+                } else {
+                    $error = trim((string) ($attemptedPushResult['error'] ?? 'Push delivery failed.'));
+                    if (!empty($failedLabels)) {
+                        $pushStatusMessage = 'Attempted-contact push failed for ' . implode(', ', $failedLabels) . '. ' . $error;
+                    } else {
+                        $pushStatusMessage = 'Attempted-contact push failed. ' . $error;
+                    }
+                }
+
+                lead_comm_insert_activity(
+                    $leadId,
+                    'attempted_contact_push',
+                    $pushStatusMessage,
+                    [
+                        'recipients' => $recipientText,
+                    ]
+                );
+            }
+        }
 
     echo json_encode([
         'ok' => true,

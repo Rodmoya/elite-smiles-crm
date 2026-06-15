@@ -322,6 +322,53 @@ if (!function_exists('dental_models_list')) {
     }
 }
 
+if (!function_exists('dental_models_update_processing_status')) {
+    function dental_models_update_processing_status(int $id, string $status): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        $status = strtolower(trim($status));
+        $allowed = ['original', 'preview_ready', 'missing_file', 'archived'];
+        if (!in_array($status, $allowed, true)) {
+            return false;
+        }
+
+        return db_execute(
+            "UPDATE dental_models
+             SET processing_status = :processing_status, updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id",
+            ['id' => $id, 'processing_status' => $status]
+        );
+    }
+}
+
+if (!function_exists('dental_models_status_label')) {
+    function dental_models_status_label(string $status): string
+    {
+        return match ($status) {
+            'original' => 'Original',
+            'preview_ready' => 'Preview Ready',
+            'missing_file' => 'Missing File',
+            'archived' => 'Archived',
+            default => ucfirst(str_replace('_', ' ', $status)),
+        };
+    }
+}
+
+if (!function_exists('dental_models_status_badge_class')) {
+    function dental_models_status_badge_class(string $status): string
+    {
+        return match ($status) {
+            'original', 'preview_ready' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'missing_file' => 'border-amber-200 bg-amber-50 text-amber-700',
+            'archived' => 'border-slate-200 bg-slate-50 text-slate-600',
+            default => 'border-slate-200 bg-slate-50 text-slate-700',
+        };
+    }
+}
+
 if (!function_exists('dental_models_find')) {
     function dental_models_find(int $id): ?array
     {

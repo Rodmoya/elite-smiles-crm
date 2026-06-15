@@ -23,11 +23,37 @@ $caseId = (int)($model['smile_design_case_id'] ?? 0);
 $status = trim((string)($model['processing_status'] ?? 'original'));
 $fileSize = (int)($model['file_size'] ?? 0);
 $uploadedAt = trim((string)($model['created_at'] ?? ''));
-$modelFilePath = dental_models_resolve_model_file($model);
-if ($modelFilePath === null || !is_file($modelFilePath)) {
-    flash_set('error', 'That STL file is missing from secure storage. Re-upload this case after cleanup.');
-    redirect(base_url('dental-models'));
+$action = (string)post('action', '');
+if (is_post()) {
+    require_csrf();
+
+    if ($action === 'mark_missing' && $modelId > 0) {
+        if (dental_models_update_processing_status($modelId, 'missing_file')) {
+            flash_set('success', 'Model marked as missing file.');
+        } else {
+            flash_set('error', 'Could not update this model status.');
+        }
+        redirect(base_url('dental-models/' . $modelId . '/builder'));
+    }
+
+    if ($action === 'archive_record' && $modelId > 0) {
+        if (dental_models_update_processing_status($modelId, 'archived')) {
+            flash_set('success', 'Model archived for cleanup.');
+        } else {
+            flash_set('error', 'Could not archive this model record.');
+        }
+        redirect(base_url('dental-models/' . $modelId . '/builder'));
+    }
 }
+
+$modelFilePath = dental_models_resolve_model_file($model);
+$missingFromStorage = ($modelFilePath === null || !is_file($modelFilePath));
+if ($missingFromStorage && $status !== 'missing_file' && $status !== 'archived') {
+    dental_models_update_processing_status($modelId, 'missing_file');
+    $status = 'missing_file';
+}
+$statusLabel = $missingFromStorage ? 'Missing File' : (($status === 'preview_ready' || $status === 'original') ? dental_models_status_label($status) : dental_models_status_label('preview_ready'));
+
 $downloadUrl = base_url('dental-models/' . (int)$model['id'] . '/download-original');
 $viewerUrl = base_url('app/actions/dental_model_file.php?id=' . (int)$model['id'] . '&download=0');
 
@@ -44,22 +70,54 @@ dental_models_render_shell_start('Dental Model Builder');
                     Staff-only preview workspace for .stl inspection and cut-plane planning. No mesh editing is performed in V1.
                 </p>
             </div>
-            <a
-                href="<?= e($downloadUrl) ?>"
-                class="shrink-0 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-                Download Original STL
-            </a>
+            <?php if (!$missingFromStorage): ?>
+                <a
+                    href="<?= e($downloadUrl) ?>"
+                    class="shrink-0 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                    Download Original STL
+                </a>
+            <?php endif; ?>
         </div>
-        <div id="dental-viewer-canvas-wrap" class="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900">
-            <div id="dental-viewer-canvas" class="h-[55vh] w-full min-h-[420px]"></div>
-            <div id="dental-viewer-status" class="absolute inset-0 hidden items-center justify-center bg-slate-900/80 text-sm text-white">
-                Loading model viewer...
+        <?php if ($missingFromStorage): ?>
+            <div class="rounded-[1.25rem] border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+                <p class="font-semibold">The original STL file is missing from secure storage.</p>
+                <p class="mt-1">This record cannot be previewed until the STL is re-uploaded.</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <a class="inline-flex rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white" href="<?= e(base_url('dental-models')) ?>">
+                        Back to 3D Design
+                    </a>
+                    <a class="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" href="<?= e(base_url('dental-models/new')) ?>">
+                        Upload New STL
+                    </a>
+                    <form method="post" action="<?= e(base_url('dental-models/' . $modelId . '/builder')) ?>">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="action" value="mark_missing">
+                        <button class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" type="submit">
+                            Mark Record as Missing
+                        </button>
+                    </form>
+                    <form method="post" action="<?= e(base_url('dental-models/' . $modelId . '/builder')) ?>">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="action" value="archive_record">
+                        <button class="rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700" type="submit">
+                            Archive Test Record
+                        </button>
+                    </form>
+                </div>
             </div>
-        </div>
-        <p class="mt-3 text-xs text-slate-500">
-            V1 preview mode: model rendering and movement only. Permanent processing actions are coming in V2.
-        </p>
+        <?php endif; ?>
+        <?php if (!$missingFromStorage): ?>
+            <div id="dental-viewer-canvas-wrap" class="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900">
+                <div id="dental-viewer-canvas" class="h-[55vh] w-full min-h-[420px]"></div>
+                <div id="dental-viewer-status" class="absolute inset-0 hidden items-center justify-center bg-slate-900/80 text-sm text-white">
+                    Loading model viewer...
+                </div>
+            </div>
+            <p class="mt-3 text-xs text-slate-500">
+                V1 preview mode: model rendering and movement only. Permanent processing actions are coming in V2.
+            </p>
+        <?php endif; ?>
     </div>
 
     <aside class="space-y-5">
@@ -68,7 +126,7 @@ dental_models_render_shell_start('Dental Model Builder');
             <div class="mt-3 space-y-2 text-sm">
                 <p><span class="font-semibold text-slate-900">Patient:</span> <?= e($patientName !== '' ? $patientName : 'Unspecified patient') ?></p>
                 <p><span class="font-semibold text-slate-900">Case:</span> <?= $caseId > 0 ? '#' . e((string)$caseId) : 'Unlinked' ?></p>
-                <p><span class="font-semibold text-slate-900">Status:</span> <?= e($status) ?></p>
+                <p><span class="font-semibold text-slate-900">Status:</span> <?= e($statusLabel) ?></p>
                 <p><span class="font-semibold text-slate-900">File size:</span> <?= e(dental_models_format_bytes($fileSize)) ?></p>
                 <p><span class="font-semibold text-slate-900">Uploaded:</span> <?= e($uploadedAt) ?></p>
             </div>
@@ -126,174 +184,176 @@ dental_models_render_shell_start('Dental Model Builder');
     </p>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/STLLoader.js"></script>
-<script>
-(function () {
-    'use strict';
+<?php if (!$missingFromStorage): ?>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/STLLoader.js"></script>
+    <script>
+    (function () {
+        'use strict';
 
-    const viewer = document.getElementById('dental-viewer-canvas');
-    const planeSlider = document.getElementById('cut-plane-slider');
-    const planeLabel = document.getElementById('cut-plane-height-label');
-    const status = document.getElementById('dental-viewer-status');
+        const viewer = document.getElementById('dental-viewer-canvas');
+        const planeSlider = document.getElementById('cut-plane-slider');
+        const planeLabel = document.getElementById('cut-plane-height-label');
+        const status = document.getElementById('dental-viewer-status');
 
-    if (!viewer || !window.THREE || !window.THREE.OrbitControls || !window.THREE.STLLoader) {
-        if (status) {
-            status.classList.remove('hidden');
-            status.textContent = '3D viewer libraries are not available yet.';
-        }
-        return;
-    }
-
-    const modelUrl = <?= json_encode($viewerUrl, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xeef2f7);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    viewer.appendChild(renderer.domElement);
-
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
-    const controls = new window.THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1);
-    keyLight.position.set(8, 14, 8);
-    scene.add(keyLight);
-
-    const fillLight = new THREE.DirectionalLight(0xe8f0ff, 0.45);
-    fillLight.position.set(-9, 6, -8);
-    scene.add(fillLight);
-
-    scene.add(new THREE.HemisphereLight(0xf7faff, 0x4b5563, 0.4));
-
-    const group = new THREE.Group();
-    scene.add(group);
-
-    const loader = new window.THREE.STLLoader();
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    const planeMaterial = new THREE.MeshBasicMaterial({
-        color: 0x60a5fa,
-        transparent: true,
-        opacity: 0.28,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-    });
-    const cutPlane = new THREE.Mesh(geometry, planeMaterial);
-    cutPlane.rotation.x = Math.PI / 2;
-    cutPlane.visible = false;
-    group.add(cutPlane);
-
-    let minY = -10;
-    let maxY = 10;
-
-    function fitViewport() {
-        const width = Math.max(320, viewer.clientWidth);
-        const height = Math.max(240, viewer.clientHeight);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-    }
-
-    function updatePlane(percent) {
-        const value = Math.max(0, Math.min(100, Number(percent) || 0));
-        const y = minY + ((maxY - minY) * (value / 100));
-        cutPlane.position.y = y;
-        if (planeLabel) {
-            planeLabel.textContent = `${value}%`;
-        }
-        renderer.render(scene, camera);
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    }
-
-    function positionCamera(bounds) {
-        const size = bounds.getSize(new window.THREE.Vector3());
-        const radius = Math.max(size.x, size.y, size.z, 1);
-        camera.position.set(radius * 1.2, radius * 1.0, radius * 1.45);
-        controls.target.set(0, 0, 0);
-        controls.update();
-    }
-
-    if (status) status.classList.remove('hidden');
-
-    loader.load(
-        modelUrl,
-        function (geo) {
-            if (status) status.classList.add('hidden');
-            geo.computeBoundingBox();
-            if (!geo.boundingBox) {
-                return;
-            }
-
-            const bbox = new window.THREE.Box3().setFromBufferAttribute(geo.attributes.position);
-            const modelSize = bbox.getSize(new window.THREE.Vector3());
-            const center = bbox.getCenter(new window.THREE.Vector3());
-
-            const normalMat = new window.THREE.MeshStandardMaterial({
-                color: 0x6b7280,
-                roughness: 0.5,
-                metalness: 0.12,
-            });
-
-            const mesh = new window.THREE.Mesh(geo, normalMat);
-            mesh.position.sub(center);
-            group.add(mesh);
-
-            const width = Math.max(modelSize.x, 1);
-            const depth = Math.max(modelSize.z, 1);
-            cutPlane.geometry.dispose();
-            cutPlane.geometry = new window.THREE.PlaneGeometry(width * 1.2, depth * 1.2);
-            cutPlane.visible = true;
-
-            minY = -Math.max(modelSize.y * 0.55, 0.1);
-            maxY = Math.max(modelSize.y * 0.55, 0.1);
-            const boundsLocal = new window.THREE.Box3().setFromObject(mesh);
-            positionCamera(boundsLocal);
-            fitViewport();
-            updatePlane(50);
-            animate();
-        },
-        function () {
+        if (!viewer || !window.THREE || !window.THREE.OrbitControls || !window.THREE.STLLoader) {
             if (status) {
                 status.classList.remove('hidden');
-                status.textContent = 'Loading STL model...';
+                status.textContent = '3D viewer libraries are not available yet.';
             }
-        },
-        function () {
-            if (status) {
-                status.classList.remove('hidden');
-                status.textContent = 'Could not load the STL model. Verify this is a valid STL.';
-            }
+            return;
         }
-    );
 
-    if (planeSlider) {
-        planeSlider.addEventListener('input', function (event) {
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement)) {
-                return;
-            }
-            updatePlane(target.value);
+        const modelUrl = <?= json_encode($viewerUrl, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeef2f7);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        viewer.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+        const controls = new window.THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1);
+        keyLight.position.set(8, 14, 8);
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xe8f0ff, 0.45);
+        fillLight.position.set(-9, 6, -8);
+        scene.add(fillLight);
+
+        scene.add(new THREE.HemisphereLight(0xf7faff, 0x4b5563, 0.4));
+
+        const group = new THREE.Group();
+        scene.add(group);
+
+        const loader = new window.THREE.STLLoader();
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+            color: 0x60a5fa,
+            transparent: true,
+            opacity: 0.28,
+            side: THREE.DoubleSide,
+            depthWrite: false,
         });
-    }
+        const cutPlane = new THREE.Mesh(geometry, planeMaterial);
+        cutPlane.rotation.x = Math.PI / 2;
+        cutPlane.visible = false;
+        group.add(cutPlane);
 
-    window.addEventListener('resize', function () {
+        let minY = -10;
+        let maxY = 10;
+
+        function fitViewport() {
+            const width = Math.max(320, viewer.clientWidth);
+            const height = Math.max(240, viewer.clientHeight);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        function updatePlane(percent) {
+            const value = Math.max(0, Math.min(100, Number(percent) || 0));
+            const y = minY + ((maxY - minY) * (value / 100));
+            cutPlane.position.y = y;
+            if (planeLabel) {
+                planeLabel.textContent = `${value}%`;
+            }
+            renderer.render(scene, camera);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function positionCamera(bounds) {
+            const size = bounds.getSize(new window.THREE.Vector3());
+            const radius = Math.max(size.x, size.y, size.z, 1);
+            camera.position.set(radius * 1.2, radius * 1.0, radius * 1.45);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        if (status) status.classList.remove('hidden');
+
+        loader.load(
+            modelUrl,
+            function (geo) {
+                if (status) status.classList.add('hidden');
+                geo.computeBoundingBox();
+                if (!geo.boundingBox) {
+                    return;
+                }
+
+                const bbox = new window.THREE.Box3().setFromBufferAttribute(geo.attributes.position);
+                const modelSize = bbox.getSize(new window.THREE.Vector3());
+                const center = bbox.getCenter(new window.THREE.Vector3());
+
+                const normalMat = new window.THREE.MeshStandardMaterial({
+                    color: 0x6b7280,
+                    roughness: 0.5,
+                    metalness: 0.12,
+                });
+
+                const mesh = new window.THREE.Mesh(geo, normalMat);
+                mesh.position.sub(center);
+                group.add(mesh);
+
+                const width = Math.max(modelSize.x, 1);
+                const depth = Math.max(modelSize.z, 1);
+                cutPlane.geometry.dispose();
+                cutPlane.geometry = new window.THREE.PlaneGeometry(width * 1.2, depth * 1.2);
+                cutPlane.visible = true;
+
+                minY = -Math.max(modelSize.y * 0.55, 0.1);
+                maxY = Math.max(modelSize.y * 0.55, 0.1);
+                const boundsLocal = new window.THREE.Box3().setFromObject(mesh);
+                positionCamera(boundsLocal);
+                fitViewport();
+                updatePlane(50);
+                animate();
+            },
+            function () {
+                if (status) {
+                    status.classList.remove('hidden');
+                    status.textContent = 'Loading STL model...';
+                }
+            },
+            function () {
+                if (status) {
+                    status.classList.remove('hidden');
+                    status.textContent = 'Could not load the STL model. Verify this is a valid STL.';
+                }
+            }
+        );
+
+        if (planeSlider) {
+            planeSlider.addEventListener('input', function (event) {
+                const target = event.target;
+                if (!(target instanceof HTMLInputElement)) {
+                    return;
+                }
+                updatePlane(target.value);
+            });
+        }
+
+        window.addEventListener('resize', function () {
+            fitViewport();
+        });
+
         fitViewport();
-    });
-
-    fitViewport();
-})();
-</script>
+    })();
+    </script>
+<?php endif; ?>
 
 <?php
 dental_models_render_shell_end();

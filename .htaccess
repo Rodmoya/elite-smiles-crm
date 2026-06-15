@@ -21,3 +21,9 @@ RewriteRule ^smile-design/intake/([A-Za-z0-9_-]+)/?$ smile-design/intake.php?tok
 RewriteRule ^smile-design/preview/([A-Za-z0-9_-]+)/?$ smile-design/preview.php?token=$1 [L,QSA]
 RewriteRule ^smile-design/real-results/([0-9]+)/present/?$ smile-design/real-results/show.php?id=$1&present=1 [L,QSA]
 RewriteRule ^smile-design/real-results/([0-9]+)/?$ smile-design/real-results/show.php?id=$1 [L,QSA]
+
+# Dental model builder routes.
+RewriteRule ^dental-models/?$ dental-models/index.php [L,QSA]
+RewriteRule ^dental-models/new/?$ dental-models/new.php [L,QSA]
+RewriteRule ^dental-models/([0-9]+)/builder/?$ dental-models/builder.php?id=$1 [L,QSA]
+RewriteRule ^dental-models/([0-9]+)/download-original/?$ app/actions/dental_model_file.php?id=$1&download=1 [L,QSA]

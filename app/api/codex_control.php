@@ -15,6 +15,7 @@ require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -665,17 +666,29 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
                     codex_api_response(['ok' => false, 'message' => 'This lead has opted out of SMS.', 'lead_id' => $leadId], 409);
                 }
-                $sendResult = elite_twilio_send_sms(trim((string)($lead['phone'] ?? '')), $message);
+                $sendResult = elite_twilio_send_sms(trim((string)($lead['phone'] ?? '')), $message, [
+                    'lead_id' => $leadId,
+                    'lead' => $lead,
+                    'send_pushover_fallback' => true,
+                    'fallback_summary' => 'Twilio could not send the operator SMS. Open lead actions to retry manually.',
+                    'original_body' => $message,
+                ]);
                 if (empty($sendResult['ok'])) {
-                    codex_api_response(['ok' => false, 'message' => (string)($sendResult['message'] ?? 'SMS failed.'), 'lead_id' => $leadId], 502);
+                    codex_api_response([
+                        'ok' => false,
+                        'message' => (string)($sendResult['message'] ?? 'SMS failed.'),
+                        'lead_id' => $leadId,
+                        'operator_fallback_sent' => (bool)($sendResult['operator_fallback_sent'] ?? false),
+                    ], 502);
                 }
+                $sentBody = (string)($sendResult['body'] ?? $message);
                 $messageRecordId = lead_comm_insert_message([
                     'lead_id' => $leadId,
                     'direction' => 'outbound',
                     'channel' => 'sms',
                     'from_number' => (string)($sendResult['from'] ?? ''),
                     'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
-                    'body' => $message,
+                    'body' => $sentBody,
                     'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
                     'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
                     'is_read' => 1,
@@ -792,6 +805,14 @@ if (!function_exists('codex_api_prepare_sms_followup')) {
 
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
             codex_api_response(['ok' => false, 'message' => 'This lead has opted out of SMS.', 'lead_id' => $leadId], 409);
+        }
+
+        if (!function_exists('elite_send_manual_sms_followup_email')) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Manual text notification helper is unavailable.',
+                'lead_id' => $leadId,
+            ], 503);
         }
 
         $context = ['lead_id' => $leadId];
@@ -1144,17 +1165,29 @@ try {
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
             codex_api_response(['ok' => false, 'message' => 'This lead has opted out of SMS.', 'lead_id' => $leadId], 409);
         }
-        $sendResult = elite_twilio_send_sms(trim((string)($lead['phone'] ?? '')), $message);
+        $sendResult = elite_twilio_send_sms(trim((string)($lead['phone'] ?? '')), $message, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the Codex API SMS. Open lead actions to retry manually.',
+            'original_body' => $message,
+        ]);
         if (empty($sendResult['ok'])) {
-            codex_api_response(['ok' => false, 'message' => (string)($sendResult['message'] ?? 'SMS failed.'), 'lead_id' => $leadId], 502);
+            codex_api_response([
+                'ok' => false,
+                'message' => (string)($sendResult['message'] ?? 'SMS failed.'),
+                'lead_id' => $leadId,
+                'operator_fallback_sent' => (bool)($sendResult['operator_fallback_sent'] ?? false),
+            ], 502);
         }
+        $sentBody = (string)($sendResult['body'] ?? $message);
         $messageRecordId = lead_comm_insert_message([
             'lead_id' => $leadId,
             'direction' => 'outbound',
             'channel' => 'sms',
             'from_number' => (string)($sendResult['from'] ?? ''),
             'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
-            'body' => $message,
+            'body' => $sentBody,
             'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
             'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
             'is_read' => 1,

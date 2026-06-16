@@ -226,7 +226,13 @@ function consultation_reminder_send_sms(array $lead, string $reminderKey, array 
         return ['ok' => true, 'status' => 'already_sent'];
     }
 
-    $send = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$copy['sms']);
+    $send = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$copy['sms'], [
+        'lead_id' => $leadId,
+        'lead' => $lead,
+        'send_pushover_fallback' => true,
+        'fallback_summary' => 'Twilio could not send the appointment reminder SMS. Open lead actions to follow up manually.',
+        'original_body' => (string)$copy['sms'],
+    ]);
     $status = !empty($send['ok']) ? 'sent' : 'failed';
     consultation_reminder_record(
         $leadId,
@@ -239,18 +245,19 @@ function consultation_reminder_send_sms(array $lead, string $reminderKey, array 
     );
 
     if (!empty($send['ok'])) {
+        $sentBody = (string)($send['body'] ?? $copy['sms']);
         $messageId = lead_comm_insert_message([
             'lead_id' => $leadId,
             'direction' => 'outbound',
             'channel' => 'sms',
             'from_number' => (string)($send['from'] ?? ''),
             'to_number' => (string)($send['to'] ?? $lead['phone'] ?? ''),
-            'body' => (string)$copy['sms'],
+            'body' => $sentBody,
             'twilio_message_sid' => (string)($send['twilio_sid'] ?? ''),
             'twilio_status' => (string)($send['twilio_status'] ?? ''),
             'is_read' => 1,
         ]);
-        lead_comm_insert_activity($leadId, 'appointment_sms_reminder', 'Sent appointment reminder SMS: ' . mb_substr((string)$copy['sms'], 0, 220), [
+        lead_comm_insert_activity($leadId, 'appointment_sms_reminder', 'Sent appointment reminder SMS: ' . mb_substr($sentBody, 0, 220), [
             'message_id' => $messageId,
             'reminder_key' => $reminderKey,
             'twilio_sid' => $send['twilio_sid'] ?? '',

@@ -149,6 +149,7 @@ if (!function_exists('lp_handle_standard_post')) {
             'lead_value'         => '10000',
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
+            'suppress_notification_email' => true,
         ];
 
         $crmResult = lead_create_minimal($leadPayload, []);
@@ -283,6 +284,7 @@ if (!function_exists('lp_handle_voucher_post')) {
             'lead_value'         => '10000',
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
+            'suppress_notification_email' => true,
         ];
 
         $crmResult = lead_create_minimal($leadPayload, []);

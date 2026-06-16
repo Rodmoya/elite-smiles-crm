@@ -240,9 +240,9 @@ if (!function_exists('elite_lead_text_message_template')) {
             $name = 'there';
         }
 
-        return 'Hi ' . $name . ', this is Elite Smiles. Thank you for reaching out — we received your information and wanted to follow up with you about your smile consultation.';
-    }
-}
+        return 'Hi ' . $name . ', this is Elite Smiles. Thank you for reaching out — we received your information and wanted to follow up with you about your smile consultation. Reply STOP to opt out.';
+    }
+}
 
 if (!function_exists('elite_mail_line')) {
     function elite_mail_line(string $label, string $value): string

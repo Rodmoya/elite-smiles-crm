@@ -1810,6 +1810,52 @@ $consultationOptions = [
 
 
 
+    function threadTimeValue(value) {
+
+        return new Date(String(value || '').replace(' ', 'T')).getTime() || 0;
+
+    }
+
+
+
+    function sortThreadChronologically(items, timeKey = 'created_at') {
+
+        if (!Array.isArray(items)) return [];
+
+        return [...items].sort((a, b) => {
+
+            const aTime = threadTimeValue(a?.[timeKey] || '');
+
+            const bTime = threadTimeValue(b?.[timeKey] || '');
+
+            if (aTime !== bTime) return aTime - bTime;
+
+            const aId = Number(a?.id || 0);
+
+            const bId = Number(b?.id || 0);
+
+            return aId - bId;
+
+        });
+
+    }
+
+
+
+    function scrollThreadPaneToBottom(element) {
+
+        if (!element) return;
+
+        requestAnimationFrame(() => {
+
+            element.scrollTop = element.scrollHeight;
+
+        });
+
+    }
+
+
+
     function renderMessageThread(messages) {
 
         if (!messageThread) return;
@@ -1822,7 +1868,9 @@ $consultationOptions = [
 
         }
 
-        messageThread.innerHTML = messages.map((message) => {
+        const orderedMessages = sortThreadChronologically(messages);
+
+        messageThread.innerHTML = orderedMessages.map((message) => {
 
             const isOutbound = String(message.direction || '') === 'outbound';
 
@@ -1852,6 +1900,8 @@ $consultationOptions = [
 
         }).join('');
 
+        scrollThreadPaneToBottom(messageThread);
+
     }
 
 
@@ -1868,7 +1918,9 @@ $consultationOptions = [
 
         }
 
-        activityFeed.innerHTML = activities.map((activity) => `
+        const orderedActivities = sortThreadChronologically(activities);
+
+        activityFeed.innerHTML = orderedActivities.map((activity) => `
 
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
 
@@ -1887,6 +1939,8 @@ $consultationOptions = [
             </div>
 
         `).join('');
+
+        scrollThreadPaneToBottom(activityFeed);
 
     }
 
@@ -1933,9 +1987,10 @@ $consultationOptions = [
         });
 
         items.sort((a, b) => {
-            const bTime = new Date(String(b.time || '').replace(' ', 'T')).getTime() || 0;
-            const aTime = new Date(String(a.time || '').replace(' ', 'T')).getTime() || 0;
-            return bTime - aTime;
+            const aTime = threadTimeValue(a.time || '');
+            const bTime = threadTimeValue(b.time || '');
+            if (aTime !== bTime) return aTime - bTime;
+            return Number(a.id || 0) - Number(b.id || 0);
         });
 
         if (!items.length) {
@@ -1962,6 +2017,8 @@ $consultationOptions = [
             </div>
         `).join('');
 
+        scrollThreadPaneToBottom(unifiedTimeline);
+
     }
 
     function renderEmailHistory(emails) {
@@ -1976,7 +2033,9 @@ $consultationOptions = [
 
         }
 
-        emailHistory.innerHTML = emails.map((email) => `
+        const orderedEmails = sortThreadChronologically(emails);
+
+        emailHistory.innerHTML = orderedEmails.map((email) => `
 
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
 
@@ -1999,6 +2058,8 @@ $consultationOptions = [
             </div>
 
         `).join('');
+
+        scrollThreadPaneToBottom(emailHistory);
 
     }
 

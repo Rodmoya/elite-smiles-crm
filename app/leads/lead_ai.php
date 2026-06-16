@@ -298,10 +298,17 @@ if (!function_exists('lead_ai_send_reply_if_safe')) {
             return ['ok' => true, 'sent' => false, 'data' => $data, 'message' => 'AI suggestion saved for review.'];
         }
 
-        $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$data['reply']);
+        $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$data['reply'], [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the automatic SMS. Open lead actions to continue manually.',
+            'original_body' => (string)$data['reply'],
+        ]);
         if (empty($sendResult['ok'])) {
             return ['ok' => false, 'sent' => false, 'data' => $data, 'message' => (string)($sendResult['message'] ?? 'SMS failed.')];
         }
+        $sentBody = (string)($sendResult['body'] ?? $data['reply']);
 
         $messageId = lead_comm_insert_message([
             'lead_id' => $leadId,
@@ -309,13 +316,13 @@ if (!function_exists('lead_ai_send_reply_if_safe')) {
             'channel' => 'sms',
             'from_number' => (string)($sendResult['from'] ?? ''),
             'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
-            'body' => (string)$data['reply'],
+            'body' => $sentBody,
             'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
             'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
             'is_read' => 1,
         ]);
 
-        lead_comm_insert_activity($leadId, 'ai_sms_outbound', 'AI sent SMS to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr((string)$data['reply'], 0, 240), [
+        lead_comm_insert_activity($leadId, 'ai_sms_outbound', 'AI sent SMS to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr($sentBody, 0, 240), [
             'message_id' => $messageId,
             'classification' => $data['classification'] ?? '',
             'twilio_sid' => $sendResult['twilio_sid'] ?? '',

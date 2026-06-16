@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/mailer.php';
 
 if (!function_exists('elite_twilio_normalize_us_number')) {
     function elite_twilio_normalize_us_number(string $phone): string
@@ -99,16 +100,113 @@ if (!function_exists('elite_twilio_validate_request')) {
 }
 
 if (!function_exists('elite_twilio_send_sms')) {
-    function elite_twilio_send_sms(string $to, string $body): array
+    function elite_twilio_opt_out_notice(): string
+    {
+        return 'Reply STOP to opt out.';
+    }
+}
+
+if (!function_exists('elite_twilio_message_has_opt_out_language')) {
+    function elite_twilio_message_has_opt_out_language(string $body): bool
+    {
+        return (bool) preg_match('/\b(reply\s+stop\s+to\s+opt\s+out|stop\s+to\s+opt\s+out|reply\s+stop|opt\s+out)\b/i', $body);
+    }
+}
+
+if (!function_exists('elite_twilio_outbound_sms_count')) {
+    function elite_twilio_outbound_sms_count(int $leadId): int
+    {
+        if ($leadId <= 0) {
+            return 0;
+        }
+
+        try {
+            $row = db_one(
+                "SELECT COUNT(*)
+                 FROM lead_messages
+                 WHERE lead_id = :lead_id
+                   AND direction = 'outbound'
+                   AND channel = 'sms'",
+                ['lead_id' => $leadId]
+            );
+            return (int) array_values($row ?: [0])[0];
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+}
+
+if (!function_exists('elite_twilio_should_append_opt_out_notice')) {
+    function elite_twilio_should_append_opt_out_notice(array $context = []): bool
+    {
+        if (array_key_exists('append_opt_out_notice', $context)) {
+            return (bool) $context['append_opt_out_notice'];
+        }
+
+        $leadId = (int) ($context['lead_id'] ?? 0);
+        if ($leadId > 0) {
+            return elite_twilio_outbound_sms_count($leadId) === 0;
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('elite_twilio_prepare_sms_body')) {
+    function elite_twilio_prepare_sms_body(string $body, array $context = []): string
+    {
+        $body = trim($body);
+        if ($body === '') {
+            return '';
+        }
+
+        if (!elite_twilio_should_append_opt_out_notice($context) || elite_twilio_message_has_opt_out_language($body)) {
+            return $body;
+        }
+
+        return rtrim($body, " \t\n\r\0\x0B.") . '. ' . elite_twilio_opt_out_notice();
+    }
+}
+
+if (!function_exists('elite_twilio_send_failure_fallback')) {
+    function elite_twilio_send_failure_fallback(array $context, array $failure): bool
+    {
+        $lead = $context['lead'] ?? null;
+        if (!is_array($lead) || !function_exists('elite_send_operator_follow_up_pushover')) {
+            return false;
+        }
+
+        $summary = trim((string) ($context['fallback_summary'] ?? 'Twilio SMS failed before the message could be queued. Open lead actions to retry manually.'));
+        $note = trim((string) ($failure['body'] ?? ''));
+        if ($note === '') {
+            $note = trim((string) ($context['original_body'] ?? ''));
+        }
+
+        return elite_send_operator_follow_up_pushover($lead, [
+            'event' => 'sms_delivery_issue',
+            'channel' => 'sms',
+            'delivery_status' => (string) ($failure['twilio_status'] ?? 'send_failed'),
+            'error_code' => (string) ($failure['twilio_code'] ?? ''),
+            'error_message' => (string) ($failure['message'] ?? ''),
+            'summary' => $summary,
+            'note' => $note,
+            'quick_action_mode' => 'communication',
+        ]);
+    }
+}
+
+if (!function_exists('elite_twilio_send_sms')) {
+    function elite_twilio_send_sms(string $to, string $body, array $context = []): array
     {
         $to = elite_twilio_normalize_us_number($to);
-        $body = trim($body);
+        $body = elite_twilio_prepare_sms_body($body, $context);
 
         if (!elite_twilio_is_configured()) {
             return [
                 'ok' => false,
                 'message' => 'Twilio is not configured yet. Add the account SID, auth token, and sender number to .env.',
                 'status_code' => 0,
+                'body' => $body,
             ];
         }
 
@@ -117,6 +215,7 @@ if (!function_exists('elite_twilio_send_sms')) {
                 'ok' => false,
                 'message' => 'Lead phone number is not a valid US mobile number.',
                 'status_code' => 0,
+                'body' => $body,
             ];
         }
 
@@ -125,6 +224,7 @@ if (!function_exists('elite_twilio_send_sms')) {
                 'ok' => false,
                 'message' => 'Message cannot be empty.',
                 'status_code' => 0,
+                'body' => $body,
             ];
         }
 
@@ -133,6 +233,7 @@ if (!function_exists('elite_twilio_send_sms')) {
                 'ok' => false,
                 'message' => 'Message is too long for SMS.',
                 'status_code' => 0,
+                'body' => $body,
             ];
         }
 
@@ -164,6 +265,7 @@ if (!function_exists('elite_twilio_send_sms')) {
                     'ok' => false,
                     'message' => 'Could not initialize Twilio request.',
                     'status_code' => 0,
+                    'body' => $body,
                 ];
             }
 
@@ -221,12 +323,20 @@ if (!function_exists('elite_twilio_send_sms')) {
                 'curl_error' => $curlError,
             ]);
 
-            return [
+            $result = [
                 'ok' => false,
                 'message' => $decoded['message'] ?? ($curlError !== '' ? $curlError : 'Twilio rejected the SMS request.'),
                 'status_code' => $statusCode,
                 'twilio_code' => $decoded['code'] ?? null,
+                'twilio_status' => $decoded['status'] ?? '',
+                'body' => $body,
             ];
+
+            if (!empty($context['send_pushover_fallback'])) {
+                $result['operator_fallback_sent'] = elite_twilio_send_failure_fallback($context, $result);
+            }
+
+            return $result;
         }
 
         esm_log('twilio_sms', 'Twilio SMS sent', [
@@ -244,6 +354,7 @@ if (!function_exists('elite_twilio_send_sms')) {
             'from' => TWILIO_MESSAGING_SERVICE_SID !== '' ? TWILIO_MESSAGING_SERVICE_SID : TWILIO_FROM_NUMBER,
             'twilio_sid' => $decoded['sid'] ?? '',
             'twilio_status' => $decoded['status'] ?? '',
+            'body' => $body,
         ];
     }
 }

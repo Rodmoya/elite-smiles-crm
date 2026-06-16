@@ -771,6 +771,69 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
     }
 }
 
+if (!function_exists('lead_dispatch_operator_intake_alerts')) {
+    function lead_dispatch_operator_intake_alerts(array $lead, array $context = []): void
+    {
+        $leadId = (int)($context['lead_id'] ?? $lead['id'] ?? 0);
+        $createdAt = (string)($context['created_at'] ?? $lead['created_at'] ?? now());
+        $campaign = (string)($context['campaign'] ?? $lead['campaign'] ?? '');
+        $landingPage = (string)($context['landing_page'] ?? $lead['landing_page'] ?? '');
+        $sendNotificationEmail = empty($context['suppress_notification_email']);
+
+        $emailToTextSent = false;
+        if (function_exists('elite_send_lead_email_to_text_alert')) {
+            try {
+                $emailToTextSent = elite_send_lead_email_to_text_alert($lead, [
+                    'lead_id' => $leadId,
+                    'created_at' => $createdAt,
+                    'campaign' => $campaign,
+                    'landing_page' => $landingPage,
+                ]);
+            } catch (Throwable $e) {
+                if (function_exists('esm_log')) {
+                    esm_log('lead_alerts', 'Email-to-text lead alert failed.', [
+                        'lead_id' => $leadId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        $notificationTriggered = false;
+        if ($sendNotificationEmail && function_exists('elite_send_lead_notification_email')) {
+            try {
+                $notificationTriggered = elite_send_lead_notification_email($lead, [
+                    'lead_id' => $leadId,
+                    'created_at' => $createdAt,
+                    'campaign' => $campaign,
+                    'landing_page' => $landingPage,
+                ]);
+            } catch (Throwable $e) {
+                if (function_exists('esm_log')) {
+                    esm_log('lead_alerts', 'Lead notification email/pushover failed.', [
+                        'lead_id' => $leadId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        if ($leadId > 0 && function_exists('lead_comm_insert_activity')) {
+            $body = 'Triggered intake operator alerts.';
+            if (!$emailToTextSent && !$notificationTriggered) {
+                $body = 'Tried to trigger intake operator alerts, but no alert channel reported success.';
+            }
+
+            lead_comm_insert_activity($leadId, 'intake_alerts_triggered', $body, [
+                'email_to_text_sent' => $emailToTextSent,
+                'notification_triggered' => $notificationTriggered,
+                'notification_email_suppressed' => !$sendNotificationEmail,
+                'source' => (string)($context['source'] ?? 'lead_create_minimal'),
+            ], 'Intake');
+        }
+    }
+}
+
 if (!function_exists('lead_create_minimal')) {
     function lead_create_minimal(array $input, array $user = []): array
     {
@@ -820,8 +883,25 @@ if (!function_exists('lead_create_minimal')) {
             try {
                 $duplicate = lead_find_duplicate($data);
                 if ($duplicate) {
+                    $duplicateId = (int)($duplicate['id'] ?? 0);
                     if (!empty($data['refresh_duplicate'])) {
                         lead_refresh_duplicate_from_input($duplicate, $data);
+
+                        if ($duplicateId > 0) {
+                            $alertLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $duplicateId]);
+                            if (!$alertLead) {
+                                $alertLead = array_merge($duplicate, $data, ['id' => $duplicateId]);
+                            }
+
+                            lead_dispatch_operator_intake_alerts($alertLead, [
+                                'lead_id' => $duplicateId,
+                                'created_at' => (string)($alertLead['created_at'] ?? now()),
+                                'campaign' => (string)($alertLead['campaign'] ?? $data['campaign']),
+                                'landing_page' => (string)($alertLead['landing_page'] ?? $data['landing_page']),
+                                'suppress_notification_email' => !empty($data['suppress_notification_email']),
+                                'source' => 'lead_create_minimal_duplicate_refresh',
+                            ]);
+                        }
                     }
 
                     return [
@@ -930,26 +1010,19 @@ if (!function_exists('lead_create_minimal')) {
             $sql = "INSERT INTO leads (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
             $leadId = (int) db_insert($sql, $params);
 
-            if ($leadId > 0 && function_exists('elite_send_lead_email_to_text_alert')) {
-                try {
-                    $alertLead = $data;
-                    $alertLead['id'] = $leadId;
-                    $alertLead['lead_value'] = $leadValue;
-                    $alertLead['created_at'] = $candidateValues['created_at'];
-                    elite_send_lead_email_to_text_alert($alertLead, [
-                        'lead_id' => $leadId,
-                        'created_at' => $candidateValues['created_at'],
-                        'campaign' => $data['campaign'],
-                        'landing_page' => $data['landing_page'],
-                    ]);
-                } catch (Throwable $e) {
-                    if (function_exists('esm_log')) {
-                        esm_log('lead_alerts', 'Email-to-text lead alert failed.', [
-                            'lead_id' => $leadId,
-                            'message' => $e->getMessage(),
-                        ]);
-                    }
-                }
+            if ($leadId > 0) {
+                $alertLead = $data;
+                $alertLead['id'] = $leadId;
+                $alertLead['lead_value'] = $leadValue;
+                $alertLead['created_at'] = $candidateValues['created_at'];
+                lead_dispatch_operator_intake_alerts($alertLead, [
+                    'lead_id' => $leadId,
+                    'created_at' => $candidateValues['created_at'],
+                    'campaign' => $data['campaign'],
+                    'landing_page' => $data['landing_page'],
+                    'suppress_notification_email' => !empty($data['suppress_notification_email']),
+                    'source' => 'lead_create_minimal_insert',
+                ]);
             }
 
             if ($leadId > 0 && function_exists('lead_email_maybe_send_first_touch')) {
@@ -958,6 +1031,19 @@ if (!function_exists('lead_create_minimal')) {
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('lead_email', 'Automatic first-touch email hook failed.', [
+                            'lead_id' => $leadId,
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            if ($leadId > 0 && function_exists('lead_ai_maybe_send_new_lead_sms')) {
+                try {
+                    lead_ai_maybe_send_new_lead_sms($leadId);
+                } catch (Throwable $e) {
+                    if (function_exists('esm_log')) {
+                        esm_log('openai', 'Automatic new-lead SMS hook failed.', [
                             'lead_id' => $leadId,
                             'message' => $e->getMessage(),
                         ]);

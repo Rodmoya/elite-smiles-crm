@@ -126,7 +126,13 @@ if ($smsOptStatus === 'opted_out') {
 }
 
 $phone = trim((string) ($lead['phone'] ?? ''));
-$sendResult = elite_twilio_send_sms($phone, $message);
+$sendResult = elite_twilio_send_sms($phone, $message, [
+    'lead_id' => $leadId,
+    'lead' => $lead,
+    'send_pushover_fallback' => true,
+    'fallback_summary' => 'Twilio could not send the CRM SMS. Open lead actions to retry manually.',
+    'original_body' => $message,
+]);
 
 if (!($sendResult['ok'] ?? false)) {
     lead_sms_json_response(502, [
@@ -135,8 +141,11 @@ if (!($sendResult['ok'] ?? false)) {
         'lead_id' => $leadId,
         'status_code' => $sendResult['status_code'] ?? 0,
         'twilio_code' => $sendResult['twilio_code'] ?? null,
+        'operator_fallback_sent' => (bool)($sendResult['operator_fallback_sent'] ?? false),
     ]);
 }
+
+$sentBody = (string)($sendResult['body'] ?? $message);
 
 $messageRecordId = lead_comm_insert_message([
     'lead_id' => $leadId,
@@ -144,13 +153,13 @@ $messageRecordId = lead_comm_insert_message([
     'channel' => 'sms',
     'from_number' => (string)($sendResult['from'] ?? ''),
     'to_number' => (string)($sendResult['to'] ?? $phone),
-    'body' => $message,
+    'body' => $sentBody,
     'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
     'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
     'is_read' => 1,
 ]);
 
-lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult['to'] ?? $phone) . ': ' . mb_substr($message, 0, 240), [
+lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult['to'] ?? $phone) . ': ' . mb_substr($sentBody, 0, 240), [
     'message_id' => $messageRecordId,
     'twilio_sid' => $sendResult['twilio_sid'] ?? '',
     'twilio_status' => $sendResult['twilio_status'] ?? '',
@@ -158,7 +167,7 @@ lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult
 lead_comm_update_rollup($leadId);
 
 $notes = (string) ($lead['notes'] ?? '');
-$auditLine = '[' . date('Y-m-d H:i') . '] SMS sent via Twilio to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr($message, 0, 240);
+$auditLine = '[' . date('Y-m-d H:i') . '] SMS sent via Twilio to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr($sentBody, 0, 240);
 $updatedNotes = trim($notes) !== '' ? rtrim($notes) . "\n\n" . $auditLine : $auditLine;
 
 if (function_exists('leads_has_column') && leads_has_column('notes')) {

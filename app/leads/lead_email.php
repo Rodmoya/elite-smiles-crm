@@ -565,6 +565,17 @@ if (!function_exists('lead_email_record_inbound')) {
         try {
             $sets = ['updated_at = :now'];
             $params = ['id' => $leadId, 'now' => now()];
+            $currentStage = trim((string)($lead['status'] ?? ''));
+            if (
+                lead_email_column_exists('leads', 'status')
+                && in_array($currentStage, ['new_lead', 'attempted_contact', 'contacted', ''], true)
+            ) {
+                $sets[] = "status = 'in_contact'";
+                if (lead_email_column_exists('leads', 'pipeline_position') && function_exists('lead_pipeline_next_position')) {
+                    $sets[] = 'pipeline_position = :pipeline_position';
+                    $params['pipeline_position'] = lead_pipeline_next_position('in_contact');
+                }
+            }
             if (lead_email_column_exists('leads', 'last_inbound_at')) {
                 $sets[] = 'last_inbound_at = :now';
             }
@@ -754,15 +765,27 @@ if (!function_exists('lead_email_unsubscribe')) {
 }
 
 if (!function_exists('lead_email_maybe_send_first_touch')) {
-    function lead_email_maybe_send_first_touch(int $leadId): void
+    function lead_email_maybe_send_first_touch(int $leadId): array
     {
         if (!defined('ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED') || !ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED) {
-            return;
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => 'Auto first-touch email disabled.',
+            ];
         }
 
         $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
         if (!$lead || trim((string)($lead['email'] ?? '')) === '') {
-            return;
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => 'Lead has no valid email address.',
+            ];
         }
 
         $template = lead_email_default_first_touch($lead);
@@ -773,5 +796,13 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                 'message' => $result['message'] ?? '',
             ]);
         }
+
+        return [
+            'attempted' => true,
+            'sent' => !empty($result['ok']),
+            'subject' => $template['subject'],
+            'body' => $template['body'],
+            'status_label' => !empty($result['ok']) ? 'Auto email sent.' : ((string)($result['message'] ?? 'Auto email failed.')),
+        ];
     }
 }

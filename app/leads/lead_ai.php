@@ -28,7 +28,7 @@ if (!function_exists('lead_ai_schema')) {
                 'note' => ['type' => 'string'],
                 'recommended_stage' => [
                     'type' => 'string',
-                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'consultation_booked', 'treatment_accepted', 'opted_out', 'lost_lead'],
+                    'enum' => ['new_lead', 'attempted_contact', 'in_contact', 'contacted', 'consultation_booked', 'treatment_accepted', 'opted_out', 'lost_lead'],
                 ],
                 'needs_human_review' => ['type' => 'boolean'],
                 'should_send' => ['type' => 'boolean'],
@@ -55,7 +55,7 @@ if (!function_exists('lead_ai_email_schema')) {
                 'note' => ['type' => 'string'],
                 'recommended_stage' => [
                     'type' => 'string',
-                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'consultation_booked', 'treatment_accepted', 'opted_out', 'lost_lead'],
+                    'enum' => ['new_lead', 'attempted_contact', 'in_contact', 'contacted', 'consultation_booked', 'treatment_accepted', 'opted_out', 'lost_lead'],
                 ],
                 'next_follow_up_at' => ['type' => 'string'],
                 'needs_human_review' => ['type' => 'boolean'],
@@ -378,7 +378,14 @@ if (!function_exists('lead_ai_send_reply_if_safe')) {
         ], 'OpenAI');
         lead_comm_update_rollup($leadId);
 
-        return ['ok' => true, 'sent' => true, 'data' => $data, 'message' => 'AI reply sent.'];
+        return [
+            'ok' => true,
+            'sent' => true,
+            'data' => $data,
+            'body' => $sentBody,
+            'to' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
+            'message' => 'AI reply sent.',
+        ];
     }
 }
 
@@ -400,10 +407,15 @@ if (!function_exists('lead_ai_maybe_autoreply_inbound')) {
 }
 
 if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
-    function lead_ai_maybe_send_new_lead_sms(int $leadId): void
+    function lead_ai_maybe_send_new_lead_sms(int $leadId): array
     {
         if (!ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED) {
-            return;
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Auto new-lead SMS disabled.',
+            ];
         }
 
         $result = lead_ai_send_reply_if_safe($leadId, 'New landing page lead submitted. Send the first friendly follow-up text.', 'new_lead');
@@ -413,5 +425,14 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
                 'message' => $result['message'] ?? '',
             ]);
         }
+
+        return [
+            'attempted' => true,
+            'sent' => !empty($result['sent']),
+            'body' => (string)($result['body'] ?? $result['data']['reply'] ?? ''),
+            'status_label' => !empty($result['sent'])
+                ? 'Auto SMS sent.'
+                : ((string)($result['message'] ?? 'Auto SMS not sent.')),
+        ];
     }
 }

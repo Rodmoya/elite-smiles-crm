@@ -58,7 +58,9 @@ if (!leads_table_exists()) {
 }
 
 $leadId = (int) post('lead_id');
-$newStage = trim((string) post('status'));
+$newStage = trim((string) post('status'));
+$orderedIds = $_POST['ordered_ids'] ?? [];
+$sourceOrderedIds = $_POST['source_ordered_ids'] ?? [];
 
 if ($leadId <= 0) {
     http_response_code(422);
@@ -89,6 +91,7 @@ if (!isset($allowedStages[$newStage])) {
 }
 
 try {
+    lead_pipeline_ensure_schema();
     lead_comm_ensure_schema();
     $existingLead = db_one(
         "SELECT * FROM leads WHERE id = :id LIMIT 1",
@@ -124,10 +127,23 @@ if (leads_has_column('status')) {
 
 if (leads_has_column('updated_at')) {
     $setParts[] = "updated_at = :updated_at";
-    $params['updated_at'] = now();
-}
-
-if (empty($setParts)) {
+    $params['updated_at'] = now();
+}
+
+if (leads_has_column('pipeline_position')) {
+    $pipelinePosition = lead_pipeline_next_position($newStage);
+    $normalizedOrderedIds = is_array($orderedIds) ? $orderedIds : [$orderedIds];
+    foreach ($normalizedOrderedIds as $index => $orderedId) {
+        if ((int) $orderedId === $leadId) {
+            $pipelinePosition = max(1, count($normalizedOrderedIds) - (int) $index);
+            break;
+        }
+    }
+    $setParts[] = 'pipeline_position = :pipeline_position';
+    $params['pipeline_position'] = $pipelinePosition;
+}
+
+if (empty($setParts)) {
     http_response_code(500);
     echo json_encode([
         'ok' => false,
@@ -193,6 +209,14 @@ try {
                 );
             }
         }
+
+    if (is_array($orderedIds) && $orderedIds !== []) {
+        lead_pipeline_save_stage_order($newStage, $orderedIds);
+    }
+
+    if ($oldStage !== '' && $oldStage !== $newStage && is_array($sourceOrderedIds) && $sourceOrderedIds !== []) {
+        lead_pipeline_save_stage_order($oldStage, $sourceOrderedIds);
+    }
 
     echo json_encode([
         'ok' => true,

@@ -103,6 +103,24 @@ if ($command === 'opt_out') {
         'source' => 'twilio_sms_webhook',
         'body' => $body,
     ], 'Twilio');
+} else {
+    $currentStage = trim((string)($lead['status'] ?? ''));
+    if (in_array($currentStage, ['new_lead', 'attempted_contact', 'contacted', ''], true) && function_exists('leads_has_column') && leads_has_column('status')) {
+        $setParts = ["status = 'in_contact'"];
+        $params = ['id' => $leadId];
+        if (leads_has_column('pipeline_position') && function_exists('lead_pipeline_next_position')) {
+            $setParts[] = 'pipeline_position = :pipeline_position';
+            $params['pipeline_position'] = lead_pipeline_next_position('in_contact');
+        }
+        if (leads_has_column('updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = now();
+        }
+        db_execute(
+            'UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1',
+            $params
+        );
+    }
 }
 
 lead_comm_update_rollup($leadId);

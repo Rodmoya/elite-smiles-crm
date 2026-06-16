@@ -56,9 +56,13 @@ if (!function_exists('leads_table_exists')) {
 }
 
 if (!function_exists('leads_table_columns')) {
-    function leads_table_columns(): array
+    function leads_table_columns(bool $refresh = false): array
     {
         static $columns = null;
+
+        if ($refresh) {
+            $columns = null;
+        }
 
         if ($columns !== null) {
             return $columns;
@@ -91,6 +95,131 @@ if (!function_exists('leads_has_column')) {
     {
         $columns = leads_table_columns();
         return isset($columns[$column]);
+    }
+}
+
+if (!function_exists('lead_pipeline_position_column')) {
+    function lead_pipeline_position_column(): string
+    {
+        return 'pipeline_position';
+    }
+}
+
+if (!function_exists('lead_pipeline_ensure_schema')) {
+    function lead_pipeline_ensure_schema(): void
+    {
+        static $done = false;
+
+        if ($done) {
+            return;
+        }
+
+        $done = true;
+
+        if (!leads_table_exists()) {
+            return;
+        }
+
+        $column = lead_pipeline_position_column();
+
+        if (!leads_has_column($column)) {
+            try {
+                db_query("ALTER TABLE leads ADD COLUMN {$column} INT NOT NULL DEFAULT 0");
+                leads_table_columns(true);
+            } catch (Throwable $e) {
+                if (function_exists('esm_log')) {
+                    esm_log('lead_pipeline', 'Could not add pipeline position column.', [
+                        'column' => $column,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        try {
+            db_query("ALTER TABLE leads ADD INDEX idx_leads_status_pipeline_position (status, {$column}, updated_at, id)");
+        } catch (Throwable $e) {
+            // Index may already exist.
+        }
+    }
+}
+
+if (!function_exists('lead_pipeline_next_position')) {
+    function lead_pipeline_next_position(string $stageKey): int
+    {
+        lead_pipeline_ensure_schema();
+
+        $stageKey = trim($stageKey);
+        $column = lead_pipeline_position_column();
+
+        if ($stageKey === '' || !leads_has_column('status') || !leads_has_column($column)) {
+            return 0;
+        }
+
+        try {
+            return (int) db_value(
+                "SELECT COALESCE(MAX({$column}), 0) + 1 FROM leads WHERE status = :status" . lead_pipeline_visibility_sql('AND'),
+                ['status' => $stageKey]
+            );
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+}
+
+if (!function_exists('lead_pipeline_save_stage_order')) {
+    function lead_pipeline_save_stage_order(string $stageKey, array $orderedLeadIds): bool
+    {
+        lead_pipeline_ensure_schema();
+
+        $stageKey = trim($stageKey);
+        $column = lead_pipeline_position_column();
+
+        if ($stageKey === '' || !leads_has_column('status') || !leads_has_column($column)) {
+            return false;
+        }
+
+        $leadIds = [];
+        foreach ($orderedLeadIds as $leadId) {
+            $id = (int) $leadId;
+            if ($id > 0 && !in_array($id, $leadIds, true)) {
+                $leadIds[] = $id;
+            }
+        }
+
+        if ($leadIds === []) {
+            return false;
+        }
+
+        $position = count($leadIds);
+
+        try {
+            foreach ($leadIds as $leadId) {
+                db_execute(
+                    "UPDATE leads
+                     SET {$column} = :pipeline_position
+                     WHERE id = :id AND status = :status
+                     LIMIT 1",
+                    [
+                        'pipeline_position' => $position,
+                        'id' => $leadId,
+                        'status' => $stageKey,
+                    ]
+                );
+                $position--;
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('lead_pipeline', 'Could not save stage order.', [
+                    'stage' => $stageKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return false;
+        }
     }
 }
 
@@ -373,6 +502,8 @@ if (!function_exists('lead_pipeline_stage_values')) {
 if (!function_exists('lead_pipeline_rows')) {
     function lead_pipeline_rows(int $limit = 250): array
     {
+        lead_pipeline_ensure_schema();
+
         $grouped = [];
         $stageMap = lead_stage_map_ordered();
 
@@ -425,6 +556,7 @@ if (!function_exists('lead_pipeline_rows')) {
             'scheduling_preferred_time',
             'follow_up_status',
             'last_follow_up_check_at',
+            'pipeline_position',
             'created_at',
             'updated_at'
         ] as $field) {
@@ -434,13 +566,20 @@ if (!function_exists('lead_pipeline_rows')) {
         }
 
         $limit = max(1, min(1000, $limit));
-        $orderBy = leads_has_column('updated_at') ? 'updated_at DESC, id DESC' : 'id DESC';
+        $orderBy = [];
+        if (leads_has_column(lead_pipeline_position_column())) {
+            $orderBy[] = lead_pipeline_position_column() . ' DESC';
+        }
+        if (leads_has_column('updated_at')) {
+            $orderBy[] = 'updated_at DESC';
+        }
+        $orderBy[] = 'id DESC';
 
         try {
             $rows = db_all("
                 SELECT " . implode(', ', $selectFields) . "
                 FROM leads" . lead_pipeline_visibility_sql('WHERE') . "
-                ORDER BY {$orderBy}
+                ORDER BY " . implode(', ', $orderBy) . "
                 LIMIT {$limit}
             ");
 
@@ -837,6 +976,8 @@ if (!function_exists('lead_dispatch_operator_intake_alerts')) {
 if (!function_exists('lead_create_minimal')) {
     function lead_create_minimal(array $input, array $user = []): array
     {
+        lead_pipeline_ensure_schema();
+
         if (!leads_table_exists()) {
             return [
                 'ok' => false,
@@ -990,6 +1131,7 @@ if (!function_exists('lead_create_minimal')) {
             'lead_value' => $leadValue,
             'lost_reason' => $data['lost_reason'] !== '' ? $data['lost_reason'] : null,
             'notes' => $data['notes'],
+            'pipeline_position' => lead_pipeline_next_position($data['status']),
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -1025,9 +1167,10 @@ if (!function_exists('lead_create_minimal')) {
                 ]);
             }
 
+            $firstTouchEmail = ['attempted' => false, 'sent' => false];
             if ($leadId > 0 && function_exists('lead_email_maybe_send_first_touch')) {
                 try {
-                    lead_email_maybe_send_first_touch($leadId);
+                    $firstTouchEmail = lead_email_maybe_send_first_touch($leadId);
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('lead_email', 'Automatic first-touch email hook failed.', [
@@ -1038,12 +1181,47 @@ if (!function_exists('lead_create_minimal')) {
                 }
             }
 
+            $firstTouchSms = ['attempted' => false, 'sent' => false];
             if ($leadId > 0 && function_exists('lead_ai_maybe_send_new_lead_sms')) {
                 try {
-                    lead_ai_maybe_send_new_lead_sms($leadId);
+                    $firstTouchSms = lead_ai_maybe_send_new_lead_sms($leadId);
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('openai', 'Automatic new-lead SMS hook failed.', [
+                            'lead_id' => $leadId,
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            if ($leadId > 0 && function_exists('elite_send_new_lead_autoresponse_summary')) {
+                try {
+                    $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                    if ($freshLead) {
+                        elite_send_new_lead_autoresponse_summary($freshLead, [
+                            'lead_id' => $leadId,
+                            'created_at' => $candidateValues['created_at'],
+                            'campaign' => $data['campaign'],
+                            'landing_page' => $data['landing_page'],
+                            'auto_response_email_subject' => (string) ($firstTouchEmail['subject'] ?? ''),
+                            'auto_response_email_body' => (string) ($firstTouchEmail['body'] ?? ''),
+                            'auto_response_email_status' => (string) ($firstTouchEmail['status_label'] ?? ''),
+                            'auto_response_sms_body' => (string) ($firstTouchSms['body'] ?? ''),
+                            'auto_response_sms_status' => (string) ($firstTouchSms['status_label'] ?? ''),
+                        ]);
+
+                        if (function_exists('lead_comm_insert_activity')) {
+                            lead_comm_insert_activity($leadId, 'autoresponse_alerts_sent', 'Sent new-lead auto-response summary alerts.', [
+                                'email_sent' => !empty($firstTouchEmail['sent']),
+                                'sms_sent' => !empty($firstTouchSms['sent']),
+                                'summary_email_to' => 'lead@hi.elitesmilesutah.com',
+                            ], 'System');
+                        }
+                    }
+                } catch (Throwable $e) {
+                    if (function_exists('esm_log')) {
+                        esm_log('lead_alerts', 'New-lead auto-response summary alerts failed.', [
                             'lead_id' => $leadId,
                             'message' => $e->getMessage(),
                         ]);

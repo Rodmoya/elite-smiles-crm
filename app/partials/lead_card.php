@@ -356,6 +356,18 @@ $showAttributionDetails = (
     <?php endif; ?>
 
     <div class="mt-4 flex items-center gap-2 text-slate-500">
+        <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-move-card="up" title="Move up" aria-label="Move up in this column">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m18 15-6-6-6 6"></path>
+            </svg>
+        </button>
+
+        <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-move-card="down" title="Move down" aria-label="Move down in this column">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+            </svg>
+        </button>
+
         <button type="button" class="lead-open-modal relative inline-flex h-6 w-6 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Call or text" aria-label="Open communication">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.91.32 1.8.59 2.65a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.43-1.16a2 2 0 0 1 2.11-.45c.85.27 1.74.47 2.65.59A2 2 0 0 1 22 16.92Z"></path>

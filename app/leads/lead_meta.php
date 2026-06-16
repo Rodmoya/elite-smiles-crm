@@ -12,12 +12,13 @@ declare(strict_types=1);
 if (!function_exists('lead_stage_labels')) {
     function lead_stage_labels(): array
     {
-        return [
-            'new_lead'            => 'New Lead',
-            'attempted_contact'   => 'Attempted Contact',
-            'contacted'           => 'Contacted',
-            'consultation_booked' => 'Consultation Booked',
-            'treatment_accepted'  => 'Sale Closed',
+        return [
+            'new_lead'            => 'New Lead',
+            'attempted_contact'   => 'Attempted Contact',
+            'in_contact'          => 'In Contact',
+            'contacted'           => 'Contacted',
+            'consultation_booked' => 'Consultation Booked',
+            'treatment_accepted'  => 'Sale Closed',
             'opted_out'           => 'Opted Out',
 
             'lost_lead'           => 'Lead Lost',
@@ -28,12 +29,13 @@ if (!function_exists('lead_stage_labels')) {
 if (!function_exists('lead_stage_order')) {
     function lead_stage_order(): array
     {
-        return [
-            'new_lead',
-            'attempted_contact',
-            'contacted',
-            'consultation_booked',
-            'treatment_accepted',
+        return [
+            'new_lead',
+            'attempted_contact',
+            'in_contact',
+            'contacted',
+            'consultation_booked',
+            'treatment_accepted',
             'opted_out',
 
             'lost_lead',
@@ -44,12 +46,13 @@ if (!function_exists('lead_stage_order')) {
 if (!function_exists('lead_stage_badge_class')) {
     function lead_stage_badge_class(string $status): string
     {
-        return match ($status) {
-            'new_lead'            => 'border-sky-200 bg-sky-50 text-sky-700',
-            'attempted_contact'   => 'border-indigo-200 bg-indigo-50 text-indigo-700',
-            'contacted'           => 'border-violet-200 bg-violet-50 text-violet-700',
-            'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
-            'treatment_accepted'  => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        return match ($status) {
+            'new_lead'            => 'border-sky-200 bg-sky-50 text-sky-700',
+            'attempted_contact'   => 'border-indigo-200 bg-indigo-50 text-indigo-700',
+            'in_contact'          => 'border-teal-200 bg-teal-50 text-teal-700',
+            'contacted'           => 'border-violet-200 bg-violet-50 text-violet-700',
+            'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
+            'treatment_accepted'  => 'border-emerald-200 bg-emerald-50 text-emerald-700',
             'opted_out'           => 'border-slate-300 bg-slate-100 text-slate-700',
 
             'lost_lead'           => 'border-rose-200 bg-rose-50 text-rose-700',

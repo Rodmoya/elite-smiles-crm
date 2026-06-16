@@ -129,6 +129,7 @@ if (!function_exists('lead_comm_ensure_schema')) {
         lead_comm_add_leads_column('scheduling_preferred_time', 'VARCHAR(120) NULL');
         lead_comm_add_leads_column('follow_up_status', "VARCHAR(50) NOT NULL DEFAULT 'not_checked'");
         lead_comm_add_leads_column('last_follow_up_check_at', 'DATETIME NULL');
+        lead_comm_add_leads_column('pipeline_position', 'INT NOT NULL DEFAULT 0');
     }
 }
 
@@ -448,6 +449,9 @@ if (!function_exists('lead_comm_create_inbound_lead')) {
             'status' => function_exists('lead_default_stage') ? lead_default_stage() : 'new_lead',
             'assigned_to' => 'Rod Moya',
             'notes' => 'Inbound SMS received before matching an existing lead: ' . mb_substr($body, 0, 240),
+            'pipeline_position' => function_exists('lead_pipeline_next_position')
+                ? lead_pipeline_next_position(function_exists('lead_default_stage') ? lead_default_stage() : 'new_lead')
+                : 0,
             'created_at' => now(),
             'updated_at' => now(),
         ];

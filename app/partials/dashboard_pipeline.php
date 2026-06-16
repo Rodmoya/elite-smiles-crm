@@ -2687,24 +2687,55 @@ $consultationOptions = [
             || current.smsOptStatus !== original.smsOptStatus;
     }
 
-    function moveCardToStage(card, stageKey) {
-        const targetColumn = board.querySelector('.pipeline-column[data-stage-key="' + CSS.escape(stageKey) + '"]');
-        if (!targetColumn) return false;
-
-        const targetDropzone = targetColumn.querySelector('.pipeline-dropzone');
-        if (!targetDropzone) return false;
-
-        const emptyState = targetDropzone.querySelector('.empty-state');
-        if (emptyState) emptyState.remove();
-
-        targetDropzone.prepend(card);
-        updateColumnCounts();
-        return true;
-    }
-
-    function setDeleteButtonState(disabled) {
-        if (!deleteLeadButton) return;
-        deleteLeadButton.disabled = !!disabled;
+    function moveCardToStage(card, stageKey) {
+
+        const targetColumn = board.querySelector('.pipeline-column[data-stage-key="' + CSS.escape(stageKey) + '"]');
+
+        if (!targetColumn) return false;
+
+        const targetDropzone = targetColumn.querySelector('.pipeline-dropzone');
+
+        if (!targetDropzone) return false;
+
+        const emptyState = targetDropzone.querySelector('.empty-state');
+
+        if (emptyState) emptyState.remove();
+
+        targetDropzone.prepend(card);
+
+        updateColumnCounts();
+
+        return true;
+
+    }
+
+    function getDropzoneLeadIds(dropzone) {
+        if (!dropzone) return [];
+        return Array.from(dropzone.querySelectorAll('.lead-card'))
+            .map((card) => card.dataset.leadId || '')
+            .filter(Boolean);
+    }
+    function restoreDropzoneOrder(dropzone, orderedIds) {
+        if (!dropzone || !Array.isArray(orderedIds) || orderedIds.length === 0) return;
+        const cardsById = new Map(
+            Array.from(board.querySelectorAll('.lead-card'))
+                .map((card) => [card.dataset.leadId || '', card])
+                .filter(([leadId]) => leadId)
+        );
+        orderedIds.forEach((leadId) => {
+            const card = cardsById.get(String(leadId));
+            if (card) {
+                dropzone.appendChild(card);
+            }
+        });
+        updateColumnCounts();
+    }
+    function adjacentLeadCard(card, direction) {
+        let sibling = direction === 'up' ? card.previousElementSibling : card.nextElementSibling;
+        while (sibling && !sibling.classList.contains('lead-card')) {
+            sibling = direction === 'up' ? sibling.previousElementSibling : sibling.nextElementSibling;
+        }
+        return sibling;
     }
     function setWorkspacePresentation(mode) {
         if (!modal) return;
@@ -3098,10 +3129,14 @@ $consultationOptions = [
 
             if (requestedStageKey && requestedStageKey !== originalStageKey) {
                 const requestedStageLabel = stageLabelMap[requestedStageKey] || requestedStageKey;
-                moveCardToStage(activeCard, requestedStageKey);
+                moveCardToStage(activeCard, requestedStageKey);
+                const targetDropzone = activeCard.parentElement;
 
                 try {
-                    await saveLeadStage(activeCard, requestedStageKey, requestedStageLabel);
+                    await saveLeadStage(activeCard, requestedStageKey, requestedStageLabel, {
+                        orderedIds: getDropzoneLeadIds(targetDropzone),
+                        sourceOrderedIds: originalDropzone ? getDropzoneLeadIds(originalDropzone).filter((id) => id !== (activeCard.dataset.leadId || '')) : [],
+                    });
                 } catch (stageError) {
                     if (originalDropzone) {
                         originalDropzone.prepend(activeCard);
@@ -3745,12 +3780,18 @@ $consultationOptions = [
         hardCloseLeadModal();
     }
 
-    async function saveLeadStage(card, newStageKey, newStageLabel) {
+    async function saveLeadStage(card, newStageKey, newStageLabel, options = {}) {
         const leadId = card.dataset.leadId || '';
         const formData = new FormData();
         formData.append('_csrf_token', csrfToken);
         formData.append('lead_id', leadId);
-        formData.append('status', newStageKey);
+        formData.append('status', newStageKey);
+        (Array.isArray(options.orderedIds) ? options.orderedIds : []).forEach((orderedId) => {
+            formData.append('ordered_ids[]', orderedId);
+        });
+        (Array.isArray(options.sourceOrderedIds) ? options.sourceOrderedIds : []).forEach((orderedId) => {
+            formData.append('source_ordered_ids[]', orderedId);
+        });
 
         const response = await fetch(saveStageUrl, {
             method: 'POST',
@@ -3899,7 +3940,36 @@ $consultationOptions = [
     if (saveNewLeadButton) saveNewLeadButton.addEventListener('click', createLead);
     if (deleteLeadButton) deleteLeadButton.addEventListener('click', requestDeleteLead);
 
-    board.querySelectorAll('.lead-card').forEach((card) => {
+    board.addEventListener('click', async function (event) {
+        const moveButton = event.target.closest('[data-move-card]');
+        if (!moveButton) return;
+        const card = moveButton.closest('.lead-card');
+        const dropzone = card ? card.parentElement : null;
+        const direction = moveButton.getAttribute('data-move-card') || '';
+        if (!card || !dropzone || isSaving || isDeletingLead) return;
+        const adjacent = adjacentLeadCard(card, direction);
+        if (!adjacent) return;
+        const originalOrder = getDropzoneLeadIds(dropzone);
+        if (direction === 'up') {
+            dropzone.insertBefore(card, adjacent);
+        } else {
+            dropzone.insertBefore(adjacent, card);
+        }
+        updateColumnCounts();
+        try {
+            await saveLeadStage(
+                card,
+                card.dataset.stageKey || '',
+                card.dataset.leadStageLabel || '',
+                { orderedIds: getDropzoneLeadIds(dropzone) }
+            );
+        } catch (error) {
+            restoreDropzoneOrder(dropzone, originalOrder);
+            alert(error.message || 'Failed to move the lead.');
+        }
+    });
+
+    board.querySelectorAll('.lead-card').forEach((card) => {
         card.addEventListener('dragstart', function () {
             draggedCard = card;
             sourceDropzone = card.parentElement;
@@ -3958,7 +4028,9 @@ $consultationOptions = [
             const newStageKey = column.dataset.stageKey || '';
             const newStageLabel = column.dataset.stageLabel || newStageKey;
 
-            if (!newStageKey || oldStageKey === newStageKey) return;
+            if (!newStageKey || oldStageKey === newStageKey) return;
+
+            const sourceOrderBeforeMove = getDropzoneLeadIds(sourceDropzone);
 
             const emptyState = dropzone.querySelector('.empty-state');
             if (emptyState) emptyState.remove();
@@ -3967,7 +4039,10 @@ $consultationOptions = [
             updateColumnCounts();
 
             try {
-                await saveLeadStage(draggedCard, newStageKey, newStageLabel);
+                await saveLeadStage(draggedCard, newStageKey, newStageLabel, {
+                    orderedIds: getDropzoneLeadIds(dropzone),
+                    sourceOrderedIds: sourceOrderBeforeMove.filter((id) => id !== (draggedCard.dataset.leadId || '')),
+                });
                 if (activeCard && activeCard === draggedCard && leadStageInput) {
                     leadStageInput.value = newStageKey;
                 }

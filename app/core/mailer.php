@@ -1398,7 +1398,120 @@ if (!function_exists('elite_send_lead_notification_email')) {
     }
 }
 
-if (!function_exists('elite_send_invite_email')) {
+if (!function_exists('elite_send_new_lead_autoresponse_summary')) {
+    function elite_send_new_lead_autoresponse_summary(array $lead, array $context = []): bool
+    {
+        $to = 'lead@hi.elitesmilesutah.com';
+        $fullName = trim((string) ($lead['full_name'] ?? ''));
+        if ($fullName === '') {
+            $fullName = trim(
+                ((string) ($lead['first_name'] ?? '')) . ' ' . ((string) ($lead['last_name'] ?? ''))
+            );
+        }
+        if ($fullName === '') {
+            $fullName = 'Unknown Lead';
+        }
+
+        $leadId = trim((string) ($context['lead_id'] ?? $lead['id'] ?? ''));
+        $createdAt = trim((string) ($context['created_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s')));
+        $phone = trim((string) ($lead['phone'] ?? ''));
+        $email = trim((string) ($lead['email'] ?? ''));
+        $procedure = trim((string) ($lead['procedure_interest'] ?? ''));
+        $campaign = trim((string) ($context['campaign'] ?? $lead['campaign'] ?? ''));
+        $landingPage = trim((string) ($context['landing_page'] ?? $lead['landing_page'] ?? ''));
+        $smsBody = trim((string) ($context['auto_response_sms_body'] ?? ''));
+        $smsStatus = trim((string) ($context['auto_response_sms_status'] ?? ''));
+        $emailSubject = trim((string) ($context['auto_response_email_subject'] ?? ''));
+        $emailBody = trim((string) ($context['auto_response_email_body'] ?? ''));
+        $emailStatus = trim((string) ($context['auto_response_email_status'] ?? ''));
+        $quickActionUrl = elite_quick_action_url($lead, $context);
+
+        $subject = 'New Lead Auto-Response | ' . $fullName;
+        $plainLines = [
+            'ELITE SMILES AUTO-RESPONSE SUMMARY',
+            str_repeat('=', 35),
+            '',
+            elite_mail_line('Lead ID', $leadId),
+            elite_mail_line('Received At', $createdAt),
+            elite_mail_line('Full Name', $fullName),
+            elite_mail_line('Phone', $phone !== '' ? elite_format_phone_for_reading($phone) : ''),
+            elite_mail_line('Email', $email),
+            elite_mail_line('Procedure', $procedure),
+            elite_mail_line('Campaign', $campaign),
+            elite_mail_line('Landing Page', $landingPage),
+            elite_mail_line('Summary Email', $to),
+            '',
+            elite_mail_line('SMS Status', $smsStatus !== '' ? $smsStatus : 'No SMS auto-response sent.'),
+            $smsBody !== '' ? ('SMS Sent:' . "\n" . $smsBody) : '',
+            '',
+            elite_mail_line('Email Status', $emailStatus !== '' ? $emailStatus : 'No email auto-response sent.'),
+            $emailSubject !== '' ? elite_mail_line('Email Subject', $emailSubject) : '',
+            $emailBody !== '' ? ('Email Sent:' . "\n" . $emailBody) : '',
+        ];
+        $plainMessage = implode("\n", array_values(array_filter($plainLines, static fn ($line) => $line !== '')));
+
+        $htmlMessage = '<!doctype html><html><body style="margin:0;padding:24px;background:#f7f4ef;font-family:Arial,sans-serif;color:#2c241d;">';
+        $htmlMessage .= '<div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #ece7df;border-radius:20px;overflow:hidden;">';
+        $htmlMessage .= '<div style="background:#111111;color:#ffffff;padding:28px 30px;"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:0.75;">Elite Smiles</div><div style="margin-top:8px;font-size:28px;font-weight:800;line-height:1.2;">New Lead Auto-Response Summary</div><div style="margin-top:10px;font-size:15px;color:#e8ded0;">Auto-response activity has been logged for ' . elite_escape_html($fullName) . '.</div></div>';
+        $htmlMessage .= '<div style="padding:28px 30px;">';
+        $htmlMessage .= '<div style="font-size:18px;font-weight:800;margin-bottom:12px;color:#2c241d;">Lead Summary</div><table style="width:100%;border-collapse:collapse;margin-bottom:24px;">';
+        $htmlMessage .= elite_notification_row_html('Lead ID', $leadId);
+        $htmlMessage .= elite_notification_row_html('Received At', $createdAt);
+        $htmlMessage .= elite_notification_row_html('Full Name', $fullName);
+        $htmlMessage .= elite_notification_row_html('Phone', $phone !== '' ? elite_format_phone_for_reading($phone) : '');
+        $htmlMessage .= elite_notification_row_html('Email', $email);
+        $htmlMessage .= elite_notification_row_html('Procedure', $procedure);
+        $htmlMessage .= elite_notification_row_html('Campaign', $campaign);
+        $htmlMessage .= elite_notification_row_html('Landing Page', $landingPage);
+        $htmlMessage .= elite_notification_row_html('Summary Email', $to);
+        $htmlMessage .= '</table>';
+
+        $htmlMessage .= '<div style="font-size:18px;font-weight:800;margin-bottom:12px;color:#2c241d;">SMS Auto-Response</div>';
+        $htmlMessage .= '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">';
+        $htmlMessage .= elite_notification_row_html('Status', $smsStatus !== '' ? $smsStatus : 'No SMS auto-response sent.');
+        $htmlMessage .= '</table>';
+        if ($smsBody !== '') {
+            $htmlMessage .= '<div style="background:#faf7f2;border:1px solid #ece7df;border-radius:16px;padding:16px 18px;margin-bottom:24px;font-size:15px;line-height:1.6;color:#5b5147;">' . nl2br(elite_escape_html($smsBody)) . '</div>';
+        }
+
+        $htmlMessage .= '<div style="font-size:18px;font-weight:800;margin-bottom:12px;color:#2c241d;">Email Auto-Response</div>';
+        $htmlMessage .= '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">';
+        $htmlMessage .= elite_notification_row_html('Status', $emailStatus !== '' ? $emailStatus : 'No email auto-response sent.');
+        if ($emailSubject !== '') {
+            $htmlMessage .= elite_notification_row_html('Subject', $emailSubject);
+        }
+        $htmlMessage .= '</table>';
+        if ($emailBody !== '') {
+            $htmlMessage .= '<div style="background:#faf7f2;border:1px solid #ece7df;border-radius:16px;padding:16px 18px;margin-bottom:24px;font-size:15px;line-height:1.6;color:#5b5147;">' . nl2br(elite_escape_html($emailBody)) . '</div>';
+        }
+        $htmlMessage .= '</div></div></body></html>';
+
+        $emailSent = elite_send_mail_multipart($to, $subject, $plainMessage, $htmlMessage, null);
+
+        $pushLines = [
+            $procedure !== '' ? 'Procedure: ' . $procedure : '',
+            $phone !== '' ? 'Phone: ' . elite_format_phone_for_reading($phone) : '',
+            'SMS: ' . ($smsStatus !== '' ? $smsStatus : 'Not sent'),
+            $smsBody !== '' ? 'SMS sent: ' . mb_substr($smsBody, 0, 140) : '',
+            'Email: ' . ($emailStatus !== '' ? $emailStatus : 'Not sent'),
+            $emailSubject !== '' ? 'Email subject: ' . $emailSubject : '',
+            'Summary emailed to lead@hi.elitesmilesutah.com.',
+            '',
+            'Tap to open lead actions.',
+        ];
+
+        $pushSent = elite_send_pushover_notification(
+            'Lead Auto-Response • ' . $fullName,
+            implode("\n", array_values(array_filter($pushLines, static fn ($line) => $line !== ''))),
+            $quickActionUrl !== '' ? $quickActionUrl : null,
+            $quickActionUrl !== '' ? 'Open Lead Actions' : null
+        );
+
+        return $emailSent || $pushSent;
+    }
+}
+
+if (!function_exists('elite_send_invite_email')) {
     function elite_send_invite_email(string $toEmail, string $firstName, string $inviteLink): bool
     {
         $toEmail = trim($toEmail);

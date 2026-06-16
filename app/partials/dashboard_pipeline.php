@@ -1103,6 +1103,14 @@ $consultationOptions = [
 
                                             <button
                                                 type="button"
+                                                id="modal-lead-improve-sms-button"
+                                                class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                            >
+                                                Improve
+                                            </button>
+
+                                            <button
+                                                type="button"
                                                 id="modal-lead-send-sms-button"
                                                 class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                                                 title="Send SMS"
@@ -1177,6 +1185,14 @@ $consultationOptions = [
                                         class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
                                     >
                                         AI Draft
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        id="modal-lead-improve-email-button"
+                                        class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                    >
+                                        Improve
                                     </button>
 
                                     <button
@@ -1283,8 +1299,10 @@ $consultationOptions = [
     const saveButtonCommunications = document.getElementById('modal-lead-save-button-communications');
 
     const draftSmsButton = document.getElementById('modal-lead-draft-sms-button');
+    const improveSmsButton = document.getElementById('modal-lead-improve-sms-button');
     const sendSmsButton = document.getElementById('modal-lead-send-sms-button');
     const draftEmailButton = document.getElementById('modal-lead-draft-email-button');
+    const improveEmailButton = document.getElementById('modal-lead-improve-email-button');
     const draftBothButton = document.getElementById('modal-ai-draft-both-button');
     const sendEmailButton = document.getElementById('modal-lead-send-email-button');
     const loadThreadButton = document.getElementById('modal-lead-load-thread-button');
@@ -1865,8 +1883,16 @@ $consultationOptions = [
             draftSmsButton.disabled = !hasLead || smsOptedOut || busy;
         }
 
+        if (improveSmsButton) {
+            improveSmsButton.disabled = !hasLead || smsOptedOut || busy;
+        }
+
         if (draftEmailButton) {
             draftEmailButton.disabled = !hasLead || busy;
+        }
+
+        if (improveEmailButton) {
+            improveEmailButton.disabled = !hasLead || busy;
         }
 
         if (draftBothButton) {
@@ -1902,6 +1928,41 @@ $consultationOptions = [
         }
 
         return 'Draft both a warm SMS and a warm follow-up email for this lead. Keep the message aligned across both channels and move toward scheduling a consultation with Dr. Meden.';
+
+    }
+
+    function buildImproveInstruction(channel) {
+
+        const extraInstruction = getAiInstructionValue();
+
+        if (channel === 'sms') {
+            const currentMessage = smsInput ? smsInput.value.trim() : '';
+
+            if (!currentMessage) return '';
+
+            return [
+                'Improve the following SMS so it sounds warm, friendly, professional, and grammatically perfect.',
+                'Keep the core meaning, keep it concise, and make it feel natural for a real patient conversation.',
+                extraInstruction !== '' ? 'Operator instruction: ' + extraInstruction : '',
+                'Current SMS:',
+                currentMessage,
+            ].filter(Boolean).join('\n\n');
+        }
+
+        const currentSubject = emailSubjectInput ? emailSubjectInput.value.trim() : '';
+        const currentBody = emailBodyInput ? emailBodyInput.value.trim() : '';
+
+        if (!currentSubject && !currentBody) return '';
+
+        return [
+            'Improve the following patient email so it sounds warm, friendly, professional, and grammatically perfect.',
+            'Keep the core meaning, make it read naturally, and preserve the intent of the draft.',
+            extraInstruction !== '' ? 'Operator instruction: ' + extraInstruction : '',
+            'Current subject:',
+            currentSubject || '(no subject)',
+            'Current email body:',
+            currentBody || '(no body)',
+        ].filter(Boolean).join('\n\n');
 
     }
 
@@ -3272,6 +3333,65 @@ $consultationOptions = [
 
     }
 
+    async function improveLeadSms() {
+
+        const currentMessage = smsInput ? smsInput.value.trim() : '';
+
+        if (!currentMessage) {
+            if (smsStatus) smsStatus.textContent = 'Write an SMS first, then click Improve.';
+            setAiStatusMessage('Write an SMS first, then click Improve.');
+            return false;
+        }
+
+        if (smsTemplateSelect) smsTemplateSelect.value = '';
+
+        const originalInstruction = aiInstructionInput ? aiInstructionInput.value : '';
+        const improveInstruction = buildImproveInstruction('sms');
+
+        if (!improveInstruction) {
+            if (smsStatus) smsStatus.textContent = 'Write an SMS first, then click Improve.';
+            return false;
+        }
+
+        if (aiInstructionInput) aiInstructionInput.value = improveInstruction;
+
+        try {
+            return await draftLeadSms();
+        } finally {
+            if (aiInstructionInput) aiInstructionInput.value = originalInstruction;
+        }
+
+    }
+
+    async function improveLeadEmail() {
+
+        const currentSubject = emailSubjectInput ? emailSubjectInput.value.trim() : '';
+        const currentBody = emailBodyInput ? emailBodyInput.value.trim() : '';
+
+        if (!currentSubject && !currentBody) {
+            if (emailStatus) emailStatus.textContent = 'Write an email first, then click Improve.';
+            setAiStatusMessage('Write an email first, then click Improve.');
+            return false;
+        }
+
+        const originalInstruction = aiInstructionInput ? aiInstructionInput.value : '';
+        const improveInstruction = buildImproveInstruction('email');
+
+        if (!improveInstruction) {
+            if (emailStatus) emailStatus.textContent = 'Write an email first, then click Improve.';
+            return false;
+        }
+
+        if (aiInstructionInput) aiInstructionInput.value = improveInstruction;
+
+        try {
+            return await draftLeadEmail();
+        } finally {
+            if (aiInstructionInput) aiInstructionInput.value = originalInstruction;
+        }
+
+    }
+
     async function draftLeadBoth() {
 
         if (isDraftingBoth || isDraftingSms || isDraftingEmail) return false;
@@ -3692,8 +3812,10 @@ $consultationOptions = [
     if (saveButtonCommunications) saveButtonCommunications.addEventListener('click', saveLeadDetails);
 
     if (draftSmsButton) draftSmsButton.addEventListener('click', draftLeadSms);
+    if (improveSmsButton) improveSmsButton.addEventListener('click', improveLeadSms);
     if (sendSmsButton) sendSmsButton.addEventListener('click', sendLeadSms);
     if (draftEmailButton) draftEmailButton.addEventListener('click', draftLeadEmail);
+    if (improveEmailButton) improveEmailButton.addEventListener('click', improveLeadEmail);
     if (draftBothButton) draftBothButton.addEventListener('click', draftLeadBoth);
     if (sendEmailButton) sendEmailButton.addEventListener('click', sendLeadEmail);
     if (saveCommunicationNoteButton) saveCommunicationNoteButton.addEventListener('click', saveCommunicationNote);

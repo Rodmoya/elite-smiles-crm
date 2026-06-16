@@ -1047,6 +1047,27 @@ $consultationOptions = [
                             </div>
 
                             <div id="modal-composer-body">
+                            <div id="modal-ai-assistant-panel" class="mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                                <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
+                                <textarea
+                                    rows="4"
+                                    id="modal-ai-instruction-input"
+                                    class="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                    placeholder="Send a follow-up text and email. Mention Dr. Meden will review the case and ask what time works best."
+                                ></textarea>
+
+                                <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                    <p id="modal-ai-status" class="min-h-4 text-xs text-slate-500"></p>
+
+                                    <button
+                                        type="button"
+                                        id="modal-ai-draft-both-button"
+                                        class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                    >
+                                        Draft Both
+                                    </button>
+                                </div>
+                            </div>
                             <div id="modal-composer-panel-sms" data-composer-panel="sms" class="hidden">
                                 <label for="modal-sms-template-select" class="sr-only">Answer Template</label>
                                 <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -1071,19 +1092,29 @@ $consultationOptions = [
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <p id="modal-lead-sms-status" class="min-h-4 text-xs text-slate-500"></p>
 
-                                        <button
-                                            type="button"
-                                            id="modal-lead-send-sms-button"
-                                            class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                            title="Send SMS"
-                                            aria-label="Send SMS"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <path d="m22 2-7 20-4-9-9-4Z"></path>
-                                                <path d="M22 2 11 13"></path>
-                                            </svg>
-                                            Send SMS
-                                        </button>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                id="modal-lead-draft-sms-button"
+                                                class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                            >
+                                                AI Draft
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                id="modal-lead-send-sms-button"
+                                                class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                title="Send SMS"
+                                                aria-label="Send SMS"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="m22 2-7 20-4-9-9-4Z"></path>
+                                                    <path d="M22 2 11 13"></path>
+                                                </svg>
+                                                Send SMS
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1251,8 +1282,10 @@ $consultationOptions = [
     const saveButtonNotesSmall = document.getElementById('modal-lead-save-notes-button');
     const saveButtonCommunications = document.getElementById('modal-lead-save-button-communications');
 
+    const draftSmsButton = document.getElementById('modal-lead-draft-sms-button');
     const sendSmsButton = document.getElementById('modal-lead-send-sms-button');
     const draftEmailButton = document.getElementById('modal-lead-draft-email-button');
+    const draftBothButton = document.getElementById('modal-ai-draft-both-button');
     const sendEmailButton = document.getElementById('modal-lead-send-email-button');
     const loadThreadButton = document.getElementById('modal-lead-load-thread-button');
     const followupCheckButton = document.getElementById('run-followup-check');
@@ -1294,6 +1327,9 @@ $consultationOptions = [
     const smsTemplateSelect = document.getElementById('modal-sms-template-select');
 
     const smsStatus = document.getElementById('modal-lead-sms-status');
+    const aiInstructionPanel = document.getElementById('modal-ai-assistant-panel');
+    const aiInstructionInput = document.getElementById('modal-ai-instruction-input');
+    const aiStatus = document.getElementById('modal-ai-status');
     const emailSubjectInput = document.getElementById('modal-lead-email-subject-input');
     const emailBodyInput = document.getElementById('modal-lead-email-body-input');
     const emailStatus = document.getElementById('modal-lead-email-status');
@@ -1360,8 +1396,10 @@ $consultationOptions = [
     let isCreatingLead = false;
     let isDeletingLead = false;
 
+    let isDraftingSms = false;
     let isSendingSms = false;
     let isDraftingEmail = false;
+    let isDraftingBoth = false;
     let isSendingEmail = false;
     let composerMode = 'sms';
 
@@ -1372,6 +1410,7 @@ $consultationOptions = [
     const deleteLeadUrl = <?= json_encode(base_url('app/actions/lead_delete.php')) ?>;
 
     const sendSmsUrl = <?= json_encode(base_url('app/actions/lead_send_sms.php')) ?>;
+    const smsDraftUrl = <?= json_encode(base_url('app/actions/lead_sms_draft.php')) ?>;
     const emailDraftUrl = <?= json_encode(base_url('app/actions/lead_email_draft.php')) ?>;
     const sendEmailUrl = <?= json_encode(base_url('app/actions/lead_send_email.php')) ?>;
     const threadUrl = <?= json_encode(base_url('app/actions/lead_get_thread.php')) ?>;
@@ -1525,6 +1564,10 @@ $consultationOptions = [
         composerPanels.forEach((panel) => {
             panel.classList.toggle('hidden', panel.dataset.composerPanel !== composerMode);
         });
+
+        if (aiInstructionPanel) {
+            aiInstructionPanel.classList.toggle('hidden', composerMode === 'note');
+        }
 
         if (composerMode === 'email' && activeCard && emailBodyInput && emailBodyInput.value.trim() === '') {
             emailBodyInput.value = defaultEmailBody(activeCard);
@@ -1805,6 +1848,177 @@ $consultationOptions = [
                 : 'Write a polished text to this lead...';
 
         }
+
+        refreshAiDraftUi();
+
+    }
+
+    function refreshAiDraftUi() {
+
+        const hasLead = !!activeCard;
+
+        const smsOptedOut = String(activeCard?.dataset?.leadSmsOptStatus || 'unknown').toLowerCase() === 'opted_out';
+
+        const busy = isDraftingSms || isDraftingEmail || isDraftingBoth || isSendingSms || isSendingEmail || isSaving || isDeletingLead;
+
+        if (draftSmsButton) {
+            draftSmsButton.disabled = !hasLead || smsOptedOut || busy;
+        }
+
+        if (draftEmailButton) {
+            draftEmailButton.disabled = !hasLead || busy;
+        }
+
+        if (draftBothButton) {
+            draftBothButton.disabled = !hasLead || smsOptedOut || busy;
+        }
+
+        if (aiInstructionInput) {
+            aiInstructionInput.disabled = busy;
+        }
+
+    }
+
+    function setAiStatusMessage(message) {
+
+        if (aiStatus) aiStatus.textContent = message || '';
+
+    }
+
+    function getAiInstructionValue() {
+
+        return aiInstructionInput ? aiInstructionInput.value.trim() : '';
+
+    }
+
+    function defaultAiInstruction(channel) {
+
+        if (channel === 'sms') {
+            return 'Draft a warm, concise SMS follow-up for this lead. Continue the conversation naturally and move toward scheduling a consultation with Dr. Meden.';
+        }
+
+        if (channel === 'email') {
+            return 'Draft a warm, professional follow-up email for this lead. Continue the conversation naturally and move toward scheduling a consultation with Dr. Meden.';
+        }
+
+        return 'Draft both a warm SMS and a warm follow-up email for this lead. Keep the message aligned across both channels and move toward scheduling a consultation with Dr. Meden.';
+
+    }
+
+    function applyDraftedFollowUp(value) {
+
+        const normalized = String(value || '').trim();
+
+        if (!normalized || !modalLeadNextFollowUpInput) return;
+
+        modalLeadNextFollowUpInput.value = toDatetimeLocal(normalized);
+
+    }
+
+    async function ensureLeadReadyForAi(channel) {
+
+        if (!activeCard || isDeletingLead || isSaving) return null;
+
+        const leadId = activeCard.dataset.leadId || '';
+
+        const phone = modalLeadPhoneInput ? modalLeadPhoneInput.value.trim() : (activeCard.dataset.leadPhone || '');
+
+        const email = modalLeadEmailInput ? modalLeadEmailInput.value.trim() : (activeCard.dataset.leadEmail || '');
+
+        if (!leadId) {
+            if (channel === 'email') {
+                if (emailStatus) emailStatus.textContent = 'Could not determine which lead to email.';
+            } else if (channel === 'sms') {
+                if (smsStatus) smsStatus.textContent = 'Could not determine which lead to text.';
+            } else {
+                setAiStatusMessage('Could not determine which lead to draft for.');
+            }
+            return null;
+        }
+
+        if ((channel === 'sms' || channel === 'both') && !phone) {
+            if (smsStatus) smsStatus.textContent = 'Add a lead phone number before drafting.';
+            if (channel === 'both') setAiStatusMessage('Add a lead phone number before drafting both messages.');
+            return null;
+        }
+
+        if ((channel === 'email' || channel === 'both') && !email) {
+            if (emailStatus) emailStatus.textContent = 'Add an email address before drafting.';
+            if (channel === 'both') setAiStatusMessage('Add an email address before drafting both messages.');
+            return null;
+        }
+
+        if ((channel === 'sms' || channel === 'both') && String(activeCard.dataset.leadSmsOptStatus || 'unknown').toLowerCase() === 'opted_out') {
+            if (smsStatus) smsStatus.textContent = 'This lead opted out of SMS. Do not draft or send texts unless they opt back in.';
+            if (channel === 'both') setAiStatusMessage('This lead opted out of SMS, so Draft Both is unavailable.');
+            return null;
+        }
+
+        if (isDirty()) {
+            if (channel === 'email') {
+                if (emailStatus) emailStatus.textContent = 'Saving lead details before drafting...';
+            } else if (channel === 'sms') {
+                if (smsStatus) smsStatus.textContent = 'Saving lead details before drafting...';
+            } else {
+                setAiStatusMessage('Saving lead details before drafting...');
+            }
+
+            const saved = await saveLeadDetails();
+            if (!saved) {
+                if (channel === 'email') {
+                    if (emailStatus) emailStatus.textContent = 'Save the lead details before drafting email.';
+                } else if (channel === 'sms') {
+                    if (smsStatus) smsStatus.textContent = 'Save the lead details before drafting SMS.';
+                } else {
+                    setAiStatusMessage('Save the lead details before drafting.');
+                }
+                return null;
+            }
+        }
+
+        return { leadId, phone, email };
+
+    }
+
+    async function requestSmsDraft(leadId, instruction, mode = 'operator_follow_up_sms') {
+
+        const formData = new FormData();
+        formData.append('_csrf_token', csrfToken);
+        formData.append('lead_id', leadId);
+        formData.append('mode', mode);
+        formData.append('instruction', instruction);
+
+        const response = await fetch(smsDraftUrl, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const data = await parseJsonResponse(response);
+        if (!response.ok || !data.ok) throw new Error(data.message || 'Failed to draft SMS.');
+        return data;
+
+    }
+
+    async function requestEmailDraft(leadId, instruction, mode = 'operator_follow_up_email') {
+
+        const formData = new FormData();
+        formData.append('_csrf_token', csrfToken);
+        formData.append('lead_id', leadId);
+        formData.append('mode', mode);
+        formData.append('instruction', instruction);
+
+        const response = await fetch(emailDraftUrl, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const data = await parseJsonResponse(response);
+        if (!response.ok || !data.ok) throw new Error(data.message || 'Failed to draft email.');
+        return data;
 
     }
 
@@ -2505,6 +2719,8 @@ $consultationOptions = [
         if (smsTemplateSelect) smsTemplateSelect.value = 'first_follow_up';
 
         if (smsStatus) smsStatus.textContent = '';
+        if (aiInstructionInput) aiInstructionInput.value = '';
+        setAiStatusMessage('');
         if (emailSubjectInput) emailSubjectInput.value = 'Your Elite Smiles consultation request';
         if (emailBodyInput) emailBodyInput.value = defaultEmailBody(card);
         if (emailStatus) emailStatus.textContent = '';
@@ -2514,6 +2730,7 @@ $consultationOptions = [
         setComposerCollapsed(true);
 
         setSmsOptUi(card.dataset.leadSmsOptStatus || 'unknown');
+        refreshAiDraftUi();
 
         renderThreadSnapshot({ messages: [], activities: [], emails: [] });
 
@@ -2830,7 +3047,7 @@ $consultationOptions = [
 
     async function sendLeadSms() {
 
-        if (!activeCard || isSendingSms || isDeletingLead || isSaving) return false;
+        if (!activeCard || isSendingSms || isDraftingSms || isDraftingBoth || isDeletingLead || isSaving) return false;
 
         const leadId = activeCard.dataset.leadId || '';
 
@@ -2893,6 +3110,7 @@ $consultationOptions = [
         isSendingSms = true;
 
         if (sendSmsButton) sendSmsButton.disabled = true;
+        refreshAiDraftUi();
 
         if (saveButton) saveButton.disabled = true;
 
@@ -2975,79 +3193,134 @@ $consultationOptions = [
             if (saveButtonCommunications) saveButtonCommunications.disabled = false;
 
             setSmsOptUi(activeCard?.dataset.leadSmsOptStatus || 'unknown');
+            refreshAiDraftUi();
 
+        }
+
+    }
+
+    async function draftLeadSms() {
+
+        if (isDraftingSms || isDraftingBoth) return false;
+
+        const prepared = await ensureLeadReadyForAi('sms');
+        if (!prepared) return false;
+
+        isDraftingSms = true;
+        refreshAiDraftUi();
+        if (sendSmsButton) sendSmsButton.disabled = true;
+        if (smsStatus) smsStatus.textContent = 'Drafting SMS with AI...';
+        setAiStatusMessage('Drafting SMS...');
+
+        try {
+            const instruction = getAiInstructionValue() || defaultAiInstruction('sms');
+            const data = await requestSmsDraft(prepared.leadId, instruction);
+
+            if (smsInput) smsInput.value = data.draft?.reply || '';
+            if (smsStatus) smsStatus.textContent = 'SMS drafted. Review before sending.';
+            setAiStatusMessage('SMS drafted.');
+
+            await loadLeadThread();
+            return true;
+        } catch (error) {
+            if (smsStatus) smsStatus.textContent = error.message || 'Failed to draft SMS.';
+            setAiStatusMessage(error.message || 'Failed to draft SMS.');
+            return false;
+        } finally {
+            isDraftingSms = false;
+            if (sendSmsButton) sendSmsButton.disabled = false;
+            refreshAiDraftUi();
+            setSmsOptUi(activeCard?.dataset.leadSmsOptStatus || 'unknown');
         }
 
     }
 
     async function draftLeadEmail() {
 
-        if (!activeCard || isDraftingEmail || isDeletingLead || isSaving) return false;
+        if (isDraftingEmail || isDraftingBoth) return false;
 
-        const leadId = activeCard.dataset.leadId || '';
-        const email = modalLeadEmailInput ? modalLeadEmailInput.value.trim() : (activeCard.dataset.leadEmail || '');
-
-        if (!leadId) {
-            if (emailStatus) emailStatus.textContent = 'Could not determine which lead to email.';
-            return false;
-        }
-
-        if (!email) {
-            if (emailStatus) emailStatus.textContent = 'Add an email address before drafting.';
-            return false;
-        }
-
-        if (isDirty()) {
-            if (emailStatus) emailStatus.textContent = 'Saving lead details before drafting...';
-            const saved = await saveLeadDetails();
-            if (!saved) {
-                if (emailStatus) emailStatus.textContent = 'Save the lead details before drafting email.';
-                return false;
-            }
-        }
+        const prepared = await ensureLeadReadyForAi('email');
+        if (!prepared) return false;
 
         isDraftingEmail = true;
-        if (draftEmailButton) draftEmailButton.disabled = true;
+        refreshAiDraftUi();
         if (sendEmailButton) sendEmailButton.disabled = true;
         if (emailStatus) emailStatus.textContent = 'Drafting email with AI...';
+        setAiStatusMessage('Drafting email...');
 
         try {
-            const formData = new FormData();
-            formData.append('_csrf_token', csrfToken);
-            formData.append('lead_id', leadId);
-            formData.append('mode', 'first_touch_email');
-            formData.append('instruction', 'Draft a concise first follow-up email for this lead. Invite them to schedule a free consultation.');
-
-            const response = await fetch(emailDraftUrl, {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin',
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-
-            const data = await parseJsonResponse(response);
-            if (!response.ok || !data.ok) throw new Error(data.message || 'Failed to draft email.');
+            const instruction = getAiInstructionValue() || defaultAiInstruction('email');
+            const data = await requestEmailDraft(prepared.leadId, instruction);
 
             if (emailSubjectInput) emailSubjectInput.value = data.draft?.subject || '';
             if (emailBodyInput) emailBodyInput.value = data.draft?.body || '';
+            applyDraftedFollowUp(data.draft?.next_follow_up_at || '');
             if (emailStatus) emailStatus.textContent = 'Email drafted. Review before sending.';
+            setAiStatusMessage('Email drafted.');
 
             await loadLeadThread();
             return true;
         } catch (error) {
             if (emailStatus) emailStatus.textContent = error.message || 'Failed to draft email.';
+            setAiStatusMessage(error.message || 'Failed to draft email.');
             return false;
         } finally {
             isDraftingEmail = false;
-            if (draftEmailButton) draftEmailButton.disabled = false;
             if (sendEmailButton) sendEmailButton.disabled = false;
+            refreshAiDraftUi();
+        }
+
+    }
+
+    async function draftLeadBoth() {
+
+        if (isDraftingBoth || isDraftingSms || isDraftingEmail) return false;
+
+        const prepared = await ensureLeadReadyForAi('both');
+        if (!prepared) return false;
+
+        isDraftingBoth = true;
+        refreshAiDraftUi();
+        if (sendSmsButton) sendSmsButton.disabled = true;
+        if (sendEmailButton) sendEmailButton.disabled = true;
+        if (smsStatus) smsStatus.textContent = 'Drafting SMS with AI...';
+        if (emailStatus) emailStatus.textContent = 'Drafting email with AI...';
+        setAiStatusMessage('Drafting SMS and email...');
+
+        try {
+            const baseInstruction = getAiInstructionValue() || defaultAiInstruction('both');
+            const emailData = await requestEmailDraft(prepared.leadId, baseInstruction, 'operator_follow_up_email');
+            const smsData = await requestSmsDraft(prepared.leadId, baseInstruction, 'operator_follow_up_sms');
+
+            if (emailSubjectInput) emailSubjectInput.value = emailData.draft?.subject || '';
+            if (emailBodyInput) emailBodyInput.value = emailData.draft?.body || '';
+            if (smsInput) smsInput.value = smsData.draft?.reply || '';
+            applyDraftedFollowUp(emailData.draft?.next_follow_up_at || '');
+
+            if (emailStatus) emailStatus.textContent = 'Email drafted. Review before sending.';
+            if (smsStatus) smsStatus.textContent = 'SMS drafted. Review before sending.';
+            setAiStatusMessage('SMS and email drafted. Review and send when ready.');
+
+            await loadLeadThread();
+            return true;
+        } catch (error) {
+            if (emailStatus) emailStatus.textContent = error.message || 'Failed to draft email.';
+            if (smsStatus) smsStatus.textContent = error.message || 'Failed to draft SMS.';
+            setAiStatusMessage(error.message || 'Failed to draft both messages.');
+            return false;
+        } finally {
+            isDraftingBoth = false;
+            if (sendSmsButton) sendSmsButton.disabled = false;
+            if (sendEmailButton) sendEmailButton.disabled = false;
+            refreshAiDraftUi();
+            setSmsOptUi(activeCard?.dataset.leadSmsOptStatus || 'unknown');
         }
 
     }
 
     async function sendLeadEmail() {
 
-        if (!activeCard || isSendingEmail || isDraftingEmail || isDeletingLead || isSaving) return false;
+        if (!activeCard || isSendingEmail || isDraftingEmail || isDraftingBoth || isDeletingLead || isSaving) return false;
 
         const leadId = activeCard.dataset.leadId || '';
         const email = modalLeadEmailInput ? modalLeadEmailInput.value.trim() : (activeCard.dataset.leadEmail || '');
@@ -3081,6 +3354,7 @@ $consultationOptions = [
         isSendingEmail = true;
         if (draftEmailButton) draftEmailButton.disabled = true;
         if (sendEmailButton) sendEmailButton.disabled = true;
+        refreshAiDraftUi();
         if (saveButton) saveButton.disabled = true;
         if (saveButtonCommunications) saveButtonCommunications.disabled = true;
         if (emailStatus) emailStatus.textContent = 'Sending email...';
@@ -3110,10 +3384,10 @@ $consultationOptions = [
             return false;
         } finally {
             isSendingEmail = false;
-            if (draftEmailButton) draftEmailButton.disabled = false;
             if (sendEmailButton) sendEmailButton.disabled = false;
             if (saveButton) saveButton.disabled = false;
             if (saveButtonCommunications) saveButtonCommunications.disabled = false;
+            refreshAiDraftUi();
         }
 
     }
@@ -3411,12 +3685,16 @@ $consultationOptions = [
     });
 
     if (saveButton) saveButton.addEventListener('click', saveLeadDetails);
-    if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
+    refreshAiDraftUi();
+
+    if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
     if (saveButtonNotesSmall) saveButtonNotesSmall.addEventListener('click', saveLeadDetails);
     if (saveButtonCommunications) saveButtonCommunications.addEventListener('click', saveLeadDetails);
 
+    if (draftSmsButton) draftSmsButton.addEventListener('click', draftLeadSms);
     if (sendSmsButton) sendSmsButton.addEventListener('click', sendLeadSms);
     if (draftEmailButton) draftEmailButton.addEventListener('click', draftLeadEmail);
+    if (draftBothButton) draftBothButton.addEventListener('click', draftLeadBoth);
     if (sendEmailButton) sendEmailButton.addEventListener('click', sendLeadEmail);
     if (saveCommunicationNoteButton) saveCommunicationNoteButton.addEventListener('click', saveCommunicationNote);
 

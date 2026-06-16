@@ -81,6 +81,8 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
             'Scheduling: if the patient wants to schedule, ask for date of birth and preferred day/time unless those are already known. If a specific time is confirmed by the office context, confirm it clearly.',
             'Directions: give clear address and offer to help by phone if needed.',
+            'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
+            'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: do not message if the patient asks to stop. If they say STOP/CANCEL/UNSUBSCRIBE, classify not_interested, recommend opted_out, should_send false, needs_human_review false.',
             'Return only JSON matching the schema.',
         ]);
@@ -100,6 +102,8 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Invite clinical questions to be reviewed with Dr. Meden.',
             'Scheduling: if the patient wants to schedule, ask whether mornings or afternoons work better. If the office context already includes a specific confirmed time, confirm it clearly.',
+            'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
+            'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
             'Return only JSON matching the schema.',
         ]);
@@ -118,20 +122,72 @@ if (!function_exists('lead_ai_first_name')) {
     }
 }
 
+if (!function_exists('lead_ai_recent_sms_thread')) {
+    function lead_ai_recent_sms_thread(int $leadId, int $limit = 8): array
+    {
+        $messages = [];
+        if ($leadId <= 0) {
+            return $messages;
+        }
+
+        foreach (array_reverse(lead_comm_recent_messages($leadId, $limit)) as $message) {
+            $messages[] = [
+                'direction' => (string)($message['direction'] ?? ''),
+                'body' => mb_substr((string)($message['body'] ?? ''), 0, 700),
+                'created_at' => (string)($message['created_at'] ?? ''),
+            ];
+        }
+
+        return $messages;
+    }
+}
+
+if (!function_exists('lead_ai_recent_email_thread')) {
+    function lead_ai_recent_email_thread(int $leadId, int $limit = 8): array
+    {
+        $emails = [];
+        if ($leadId <= 0 || !function_exists('lead_email_recent')) {
+            return $emails;
+        }
+
+        foreach (array_reverse(lead_email_recent($leadId, $limit)) as $email) {
+            $emails[] = [
+                'direction' => (string)($email['direction'] ?? ''),
+                'subject' => (string)($email['subject'] ?? ''),
+                'body' => mb_substr((string)($email['body'] ?? ''), 0, 900),
+                'created_at' => (string)($email['created_at'] ?? ''),
+            ];
+        }
+
+        return $emails;
+    }
+}
+
+if (!function_exists('lead_ai_recent_activity_log')) {
+    function lead_ai_recent_activity_log(int $leadId, int $limit = 8): array
+    {
+        $activities = [];
+        if ($leadId <= 0 || !function_exists('lead_comm_recent_activities')) {
+            return $activities;
+        }
+
+        foreach (array_reverse(lead_comm_recent_activities($leadId, $limit)) as $activity) {
+            $activities[] = [
+                'type' => (string)($activity['type'] ?? ''),
+                'body' => mb_substr((string)($activity['body'] ?? ''), 0, 400),
+                'created_by' => (string)($activity['created_by'] ?? ''),
+                'created_at' => (string)($activity['created_at'] ?? ''),
+            ];
+        }
+
+        return $activities;
+    }
+}
+
 if (!function_exists('lead_ai_context')) {
     function lead_ai_context(array $lead, string $latestMessage = '', string $mode = 'inbound_sms'): string
     {
-        $messages = [];
         $leadId = (int)($lead['id'] ?? 0);
-        if ($leadId > 0) {
-            foreach (array_reverse(lead_comm_recent_messages($leadId, 8)) as $message) {
-                $messages[] = [
-                    'direction' => (string)($message['direction'] ?? ''),
-                    'body' => (string)($message['body'] ?? ''),
-                    'created_at' => (string)($message['created_at'] ?? ''),
-                ];
-            }
-        }
 
         return json_encode([
             'mode' => $mode,
@@ -153,8 +209,10 @@ if (!function_exists('lead_ai_context')) {
                 'scheduling_preferred_time' => (string)($lead['scheduling_preferred_time'] ?? ''),
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1200),
             ],
-            'latest_patient_message' => $latestMessage,
-            'recent_sms_thread' => $messages,
+            'prompt_context' => $latestMessage,
+            'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 8),
+            'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
+            'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 }
@@ -162,18 +220,7 @@ if (!function_exists('lead_ai_context')) {
 if (!function_exists('lead_ai_email_context')) {
     function lead_ai_email_context(array $lead, string $latestMessage = '', string $mode = 'email_draft'): string
     {
-        $emails = [];
         $leadId = (int)($lead['id'] ?? 0);
-        if ($leadId > 0 && function_exists('lead_email_recent')) {
-            foreach (array_reverse(lead_email_recent($leadId, 8)) as $email) {
-                $emails[] = [
-                    'direction' => (string)($email['direction'] ?? ''),
-                    'subject' => (string)($email['subject'] ?? ''),
-                    'body' => mb_substr((string)($email['body'] ?? ''), 0, 900),
-                    'created_at' => (string)($email['created_at'] ?? ''),
-                ];
-            }
-        }
 
         return json_encode([
             'mode' => $mode,
@@ -195,8 +242,10 @@ if (!function_exists('lead_ai_email_context')) {
                 'next_follow_up_at' => (string)($lead['next_follow_up_at'] ?? ''),
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1600),
             ],
-            'latest_context_or_instruction' => $latestMessage,
-            'recent_email_thread' => $emails,
+            'prompt_context' => $latestMessage,
+            'recent_email_thread' => lead_ai_recent_email_thread($leadId, 8),
+            'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
+            'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 }

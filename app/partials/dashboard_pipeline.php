@@ -1048,24 +1048,37 @@ $consultationOptions = [
 
                             <div id="modal-composer-body">
                             <div id="modal-ai-assistant-panel" class="mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                                <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
-                                <textarea
-                                    rows="4"
-                                    id="modal-ai-instruction-input"
-                                    class="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
-                                    placeholder="Send a follow-up text and email. Mention Dr. Meden will review the case and ask what time works best."
-                                ></textarea>
-
-                                <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-                                    <p id="modal-ai-status" class="min-h-4 text-xs text-slate-500"></p>
-
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
                                     <button
                                         type="button"
-                                        id="modal-ai-draft-both-button"
-                                        class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                        id="modal-ai-collapse-toggle"
+                                        class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                                        aria-expanded="false"
                                     >
-                                        Draft Both
+                                        Show
                                     </button>
+                                </div>
+
+                                <div id="modal-ai-assistant-body" class="mt-3 hidden">
+                                    <textarea
+                                        rows="4"
+                                        id="modal-ai-instruction-input"
+                                        class="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                        placeholder="Send a follow-up text and email. Mention Dr. Meden will review the case and ask what time works best."
+                                    ></textarea>
+
+                                    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                        <p id="modal-ai-status" class="min-h-4 text-xs text-slate-500"></p>
+
+                                        <button
+                                            type="button"
+                                            id="modal-ai-draft-both-button"
+                                            class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                                        >
+                                            Draft Both
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div id="modal-composer-panel-sms" data-composer-panel="sms" class="hidden">
@@ -1346,8 +1359,10 @@ $consultationOptions = [
 
     const smsStatus = document.getElementById('modal-lead-sms-status');
     const aiInstructionPanel = document.getElementById('modal-ai-assistant-panel');
+    const aiInstructionBody = document.getElementById('modal-ai-assistant-body');
     const aiInstructionInput = document.getElementById('modal-ai-instruction-input');
     const aiStatus = document.getElementById('modal-ai-status');
+    const aiCollapseToggle = document.getElementById('modal-ai-collapse-toggle');
     const emailSubjectInput = document.getElementById('modal-lead-email-subject-input');
     const emailBodyInput = document.getElementById('modal-lead-email-body-input');
     const emailStatus = document.getElementById('modal-lead-email-status');
@@ -1908,6 +1923,16 @@ $consultationOptions = [
     function setAiStatusMessage(message) {
 
         if (aiStatus) aiStatus.textContent = message || '';
+
+    }
+
+    function setAiInstructionCollapsed(collapsed) {
+
+        if (!aiInstructionBody || !aiCollapseToggle) return;
+
+        aiInstructionBody.classList.toggle('hidden', collapsed);
+        aiCollapseToggle.textContent = collapsed ? 'Show' : 'Hide';
+        aiCollapseToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
     }
 
@@ -2782,6 +2807,7 @@ $consultationOptions = [
         if (smsStatus) smsStatus.textContent = '';
         if (aiInstructionInput) aiInstructionInput.value = '';
         setAiStatusMessage('');
+        setAiInstructionCollapsed(true);
         if (emailSubjectInput) emailSubjectInput.value = 'Your Elite Smiles consultation request';
         if (emailBodyInput) emailBodyInput.value = defaultEmailBody(card);
         if (emailStatus) emailStatus.textContent = '';
@@ -3806,6 +3832,7 @@ $consultationOptions = [
 
     if (saveButton) saveButton.addEventListener('click', saveLeadDetails);
     refreshAiDraftUi();
+    setAiInstructionCollapsed(true);
 
     if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
     if (saveButtonNotesSmall) saveButtonNotesSmall.addEventListener('click', saveLeadDetails);
@@ -3842,6 +3869,12 @@ $consultationOptions = [
     if (composerCollapseToggle) {
         composerCollapseToggle.addEventListener('click', function () {
             setComposerCollapsed(composerCollapseToggle.getAttribute('aria-expanded') === 'true');
+        });
+    }
+
+    if (aiCollapseToggle) {
+        aiCollapseToggle.addEventListener('click', function () {
+            setAiInstructionCollapsed(aiCollapseToggle.getAttribute('aria-expanded') === 'true');
         });
     }
 

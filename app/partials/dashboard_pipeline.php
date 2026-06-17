@@ -3940,17 +3940,17 @@ $consultationOptions = [
     if (saveNewLeadButton) saveNewLeadButton.addEventListener('click', createLead);
     if (deleteLeadButton) deleteLeadButton.addEventListener('click', requestDeleteLead);
 
-    board.addEventListener('click', async function (event) {
+    board.addEventListener('click', function (event) {
         const openButton = event.target.closest('[data-open-lead-modal]');
-        if (openButton) {
-            const card = openButton.closest('.lead-card');
-            if (!card) return;
-            event.preventDefault();
-            event.stopPropagation();
-            openLeadModal(card, openButton.dataset.openTab || 'communications');
-            return;
-        }
+        if (!openButton) return;
+        const card = openButton.closest('.lead-card');
+        if (!card) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openLeadModal(card, openButton.dataset.openTab || 'communications');
+    }, true);
 
+    board.addEventListener('click', async function (event) {
         const moveButton = event.target.closest('[data-move-card]');
         if (!moveButton) return;
         const card = moveButton.closest('.lead-card');

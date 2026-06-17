@@ -47,6 +47,17 @@ try {
     $lviStyleKey = smile_design_procedure_mode($procedureLabel) === 'lip_repositioning'
         ? ''
         : (string)($case['lvi_style_key'] ?? '');
+    $shadeGoal = (string)post('shade_goal', (string)($case['shade_goal'] ?? '210'));
+    $treatmentScope = (string)post('treatment_scope', (string)($case['treatment_scope'] ?? 'upper'));
+    $smileWidthGoal = (string)post('smile_width_goal', (string)($case['smile_width_goal'] ?? 'keep_current'));
+
+    smile_design_update_case_preferences($caseId, [
+        'procedure_interest' => $procedureLabel,
+        'selected_style' => $lviStyleKey,
+        'shade_goal' => $shadeGoal,
+        'treatment_scope' => $treatmentScope,
+        'smile_width_goal' => $smileWidthGoal,
+    ], auth_user_id());
 
     $successes = [];
     $failures = [];
@@ -79,6 +90,9 @@ try {
             'custom_request' => $adjustmentRequest,
             'procedure_label' => $procedureLabel,
             'lvi_style_key' => $lviStyleKey,
+            'shade_goal' => $shadeGoal,
+            'treatment_scope' => $treatmentScope,
+            'smile_width_goal' => $smileWidthGoal,
             'photo_type' => $photoType,
             'target_photo_type' => $photoType,
             'target_photo_label' => $label,

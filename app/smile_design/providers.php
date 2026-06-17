@@ -147,7 +147,30 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $procedureMode = function_exists('smile_design_procedure_mode') ? smile_design_procedure_mode($procedure) : 'general';
         $isLipRepositionOnly = $procedureMode === 'lip_repositioning';
         $isDiagnosticPreview = $procedureMode === 'general';
+        $isVeneerSimulation = in_array($procedureMode, ['veneers', 'veneers_lip_repositioning'], true);
         $procedureGuidance = function_exists('smile_design_procedure_prompt_guidance') ? smile_design_procedure_prompt_guidance($procedure) : '';
+        $shadeDetail = function_exists('smile_design_shade_detail')
+            ? smile_design_shade_detail((string)($options['shade_goal'] ?? $case['shade_goal'] ?? ''), $normalizedStyleKey)
+            : ['label' => 'Chromascop 210', 'title' => 'Bright White', 'description' => 'Premium bright white.', 'prompt' => 'Chromascop 210 bright white porcelain shade.'];
+        $treatmentScope = function_exists('smile_design_normalize_treatment_scope')
+            ? smile_design_normalize_treatment_scope((string)($options['treatment_scope'] ?? $case['treatment_scope'] ?? ''), $procedure)
+            : 'upper';
+        $treatmentScopeLabel = function_exists('smile_design_treatment_scope_label')
+            ? smile_design_treatment_scope_label($treatmentScope, $procedure)
+            : ucfirst($treatmentScope);
+        $treatmentScopeGuidance = function_exists('smile_design_treatment_scope_prompt_guidance')
+            ? smile_design_treatment_scope_prompt_guidance($treatmentScope, $procedure)
+            : '';
+        $smileWidthGoal = function_exists('smile_design_normalize_smile_width_goal')
+            ? smile_design_normalize_smile_width_goal((string)($options['smile_width_goal'] ?? $case['smile_width_goal'] ?? ''))
+            : 'keep_current';
+        $smileWidthLabel = function_exists('smile_design_smile_width_label')
+            ? smile_design_smile_width_label($smileWidthGoal)
+            : 'Keep current smile width';
+        $smileWidthGuidance = function_exists('smile_design_smile_width_prompt_guidance')
+            ? smile_design_smile_width_prompt_guidance($smileWidthGoal)
+            : '';
+        $styleAnatomy = function_exists('smile_design_style_generation_guidance') ? smile_design_style_generation_guidance($normalizedStyleKey) : '';
         $customRequest = trim((string)($options['custom_request'] ?? ''));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
@@ -168,6 +191,10 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $scope = trim((string)($analysis['smile_scope'] ?? ''));
         $referenceTitle = trim((string)($referenceVersion['version_title'] ?? ''));
         $referenceNotes = trim((string)($referenceVersion['notes'] ?? ''));
+        $veneerAngleGuidance = '';
+        if ($isVeneerSimulation && $targetPhotoType !== 'front') {
+            $veneerAngleGuidance = 'For this angled veneer view, keep the visible laterals and canines in the same porcelain shade family and brightness level as the front view. Do not let side-angle shadow or natural tooth warmth make the visible veneers look yellower, duller, or less finished. The whitening jump must still be obvious from this angle, especially across the visible canine-to-canine segment.';
+        }
 
         $promptParts = [
             'You are editing a dental consultation photo for Elite Smiles.',
@@ -188,6 +215,16 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             $isLipRepositionOnly ? 'No LVI tooth style applies because this is Lip Repositioning only.' : 'Target smile style: ' . $styleName . '.',
             (!$isLipRepositionOnly && $styleCategory !== '' ? 'LVI style category: ' . $styleCategory . '.' : ''),
             (!$isLipRepositionOnly && $styleDescription !== '' ? 'LVI style guidance: ' . $styleDescription : ''),
+            (!$isLipRepositionOnly && $styleAnatomy !== '' ? 'LVI anatomy blueprint: ' . $styleAnatomy : ''),
+            (!$isLipRepositionOnly ? 'Selected treatment scope: ' . $treatmentScopeLabel . '.' : ''),
+            (!$isLipRepositionOnly && $treatmentScopeGuidance !== '' ? $treatmentScopeGuidance : ''),
+            (!$isLipRepositionOnly ? 'Selected smile width goal: ' . $smileWidthLabel . '.' : ''),
+            (!$isLipRepositionOnly && $smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
+            ($isVeneerSimulation ? 'Selected veneer shade target: ' . (string)$shadeDetail['prompt'] : ''),
+            ($isVeneerSimulation ? 'For veneers, the visible anterior tooth surfaces must read as complete porcelain restorations in the selected shade. Do not leave behind natural yellowing, craze lines, mottling, stains, chips, or patchy enamel bleed-through.' : ''),
+            ($isVeneerSimulation ? 'Keep the veneers uniformly bright within the selected shade family while preserving natural-looking incisal translucency, subtle depth, and polished glaze. The result should look like high-end porcelain, not natural teeth with whitening.' : ''),
+            ($isVeneerSimulation ? 'The whitening jump must be immediately visible at normal screen viewing distance. If the after could be mistaken for only a mild cleanup or small whitening pass, it is too subtle - make the value increase stronger while keeping the same patient and realistic porcelain depth.' : ''),
+            ($veneerAngleGuidance !== '' ? $veneerAngleGuidance : ''),
             'Requested procedure: ' . $procedure . '.',
             ($procedureGuidance !== '' ? $procedureGuidance : ''),
             'Procedure realism rules are binding: stay inside the selected treatment scope, do not add unsupported procedures, and do not create a fantasy smile that could not plausibly be treated from this case.',
@@ -330,7 +367,12 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $procedureMode = function_exists('smile_design_procedure_mode') ? smile_design_procedure_mode($procedure) : 'general';
         $isLipRepositionOnly = $procedureMode === 'lip_repositioning';
         $isDiagnosticPreview = $procedureMode === 'general';
+        $isVeneerSimulation = in_array($procedureMode, ['veneers', 'veneers_lip_repositioning'], true);
         $procedureGuidance = function_exists('smile_design_procedure_prompt_guidance') ? smile_design_procedure_prompt_guidance($procedure) : '';
+        $shadeDetail = function_exists('smile_design_shade_detail')
+            ? smile_design_shade_detail((string)($options['shade_goal'] ?? $case['shade_goal'] ?? ''), $normalizedStyleKey)
+            : ['label' => 'Chromascop 210', 'title' => 'Bright White', 'description' => 'Premium bright white.', 'prompt' => 'Chromascop 210 bright white porcelain shade.'];
+        $styleAnatomy = function_exists('smile_design_style_generation_guidance') ? smile_design_style_generation_guidance($normalizedStyleKey) : '';
         $customRequest = trim((string)($options['custom_request'] ?? ''));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
@@ -352,6 +394,10 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $scope = trim((string)($analysis['smile_scope'] ?? ''));
         $referenceTitle = trim((string)($referenceVersion['version_title'] ?? ''));
         $referenceNotes = trim((string)($referenceVersion['notes'] ?? ''));
+        $veneerAngleGuidance = '';
+        if ($isVeneerSimulation && $targetPhotoType !== 'front') {
+            $veneerAngleGuidance = 'For this angled veneer view, keep the visible laterals and canines in the same porcelain shade family and brightness level as the front view. Do not let side-angle shadow or natural tooth warmth make the visible veneers look yellower, duller, or less finished. The whitening jump must still be obvious from this angle, especially across the visible canine-to-canine segment.';
+        }
 
         $promptParts = [
             'Create a realistic cosmetic smile design preview from this patient photo for an Elite Smiles consultation.',
@@ -368,6 +414,12 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
                 : ($isDiagnosticPreview ? 'Create a conservative diagnostic smile preview based on visible evidence. Do not over-treat or invent an aggressive irreversible plan.' : 'Improve the visible smile to fit a ' . $styleName . ' style for ' . $procedure . '.'),
             (!$isLipRepositionOnly && $styleCategory !== '' ? 'LVI style category: ' . $styleCategory . '.' : ''),
             (!$isLipRepositionOnly && $styleDescription !== '' ? 'LVI style guidance: ' . $styleDescription : ''),
+            (!$isLipRepositionOnly && $styleAnatomy !== '' ? 'LVI anatomy blueprint: ' . $styleAnatomy : ''),
+            ($isVeneerSimulation ? 'Selected veneer shade target: ' . (string)$shadeDetail['prompt'] : ''),
+            ($isVeneerSimulation ? 'For veneers, completely replace the visible anterior tooth surfaces with porcelain in the selected shade. Do not allow the original yellowing, dark fissures, cracks, stains, or uneven enamel color to remain visible in the final result.' : ''),
+            ($isVeneerSimulation ? 'The result must read as polished porcelain veneers with consistent shade, clean value, natural incisal translucency, and realistic surface gloss. It must not look like simple whitening on the natural teeth.' : ''),
+            ($isVeneerSimulation ? 'The brightness increase must be obvious on screen. If the after only looks a little cleaner than the before, it is not enough. Make the veneers visibly whiter and more luminous while still dimensional and natural-looking.' : ''),
+            ($veneerAngleGuidance !== '' ? $veneerAngleGuidance : ''),
             ($procedureGuidance !== '' ? $procedureGuidance : ''),
             'Procedure realism rules are binding: stay inside the selected treatment scope, do not add unsupported procedures, and do not create a fantasy smile that could not plausibly be treated from this case.',
             ($recommendedProcedure !== '' ? 'Case analysis recommended procedure: ' . $recommendedProcedure . '.' : ''),

@@ -19,6 +19,7 @@ if (!$version) {
 }
 
 $caseId = (int)$version['case_id'];
+$case = smile_design_case($caseId);
 $beforePhotoId = (int)post('before_photo_id', (int)($version['before_photo_id'] ?? 0));
 if ($beforePhotoId <= 0) {
     $primary = smile_design_primary_before_photo($caseId);
@@ -45,11 +46,22 @@ $noteParts = array_values(array_filter([
 ]));
 $procedureLabel = (string)post('procedure_label', (string)($version['procedure_label'] ?? ''));
 $lviStyleKey = (string)post('lvi_style_key', (string)($version['lvi_style_key'] ?? ''));
+$shadeGoal = (string)post('shade_goal', (string)($case['shade_goal'] ?? '210'));
+$treatmentScope = (string)post('treatment_scope', (string)($case['treatment_scope'] ?? 'upper'));
+$smileWidthGoal = (string)post('smile_width_goal', (string)($case['smile_width_goal'] ?? 'keep_current'));
 if (smile_design_procedure_mode($procedureLabel) === 'lip_repositioning') {
     $lviStyleKey = '';
 }
 
 try {
+    smile_design_update_case_preferences($caseId, [
+        'procedure_interest' => $procedureLabel,
+        'selected_style' => $lviStyleKey,
+        'shade_goal' => $shadeGoal,
+        'treatment_scope' => $treatmentScope,
+        'smile_width_goal' => $smileWidthGoal,
+    ], auth_user_id());
+
     $result = smile_design_create_ai_after_version($caseId, $beforePhotoId, [
         'provider' => 'google_gemini',
         'reference_after_version_id' => $versionId,
@@ -57,6 +69,9 @@ try {
         'custom_request' => $adjustmentRequest,
         'procedure_label' => $procedureLabel,
         'lvi_style_key' => $lviStyleKey,
+        'shade_goal' => $shadeGoal,
+        'treatment_scope' => $treatmentScope,
+        'smile_width_goal' => $smileWidthGoal,
         'photo_type' => post('photo_type', (string)($version['photo_type'] ?? 'front')),
         'notes' => implode("\n", $noteParts),
         'refresh_analysis' => post('refresh_analysis', '') === '1',

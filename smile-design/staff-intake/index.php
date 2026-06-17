@@ -16,7 +16,10 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
             <label class="block text-sm font-semibold">Phone<input required name="phone" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
             <label class="block text-sm font-semibold">Procedure<select name="procedure_interest" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3" data-sd-procedure-select><?php foreach (smile_design_procedure_options() as $key => $label): ?><option value="<?= e($label) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
             <label class="block text-sm font-semibold sm:col-span-2">Email <span class="font-normal text-slate-500">(optional)</span><input name="email" type="email" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
-            <label class="block text-sm font-semibold" data-sd-lvi-style-field>LVI style <span class="font-normal text-slate-500">(optional)</span><select name="selected_style" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_style_options() as $key => $label): ?><option value="<?= e($key) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label class="block text-sm font-semibold" data-sd-lvi-style-field>LVI style <span class="font-normal text-slate-500">(optional)</span><select name="selected_style" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_style_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'natural' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label class="block text-sm font-semibold" data-sd-shade-field>Veneer shade <span class="font-normal text-slate-500">(default)</span><select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === '110' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'upper' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'keep_current' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
         </div>
 
         <details class="mt-4 rounded-md bg-slate-50 p-4">
@@ -66,6 +69,8 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
     const procedureSelect = document.querySelector('[data-sd-procedure-select]');
     const lviStyleField = document.querySelector('[data-sd-lvi-style-field]');
     const lviStyleSelect = lviStyleField ? lviStyleField.querySelector('select') : null;
+    const shadeField = document.querySelector('[data-sd-shade-field]');
+    const shadeSelect = shadeField ? shadeField.querySelector('select') : null;
     let heicConverterPromise = null;
     let preparingCount = 0;
     function isLipRepositionOnly(value) {
@@ -75,9 +80,14 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
     function syncLviStyleVisibility() {
         const hideStyle = procedureSelect && isLipRepositionOnly(procedureSelect.value);
         if (lviStyleField) lviStyleField.classList.toggle('hidden', !!hideStyle);
+        if (shadeField) shadeField.classList.toggle('hidden', !!hideStyle);
         if (lviStyleSelect) {
             lviStyleSelect.disabled = !!hideStyle;
             if (hideStyle) lviStyleSelect.value = 'natural';
+        }
+        if (shadeSelect) {
+            shadeSelect.disabled = !!hideStyle;
+            if (hideStyle) shadeSelect.value = '110';
         }
     }
     function isHeicFile(file) {

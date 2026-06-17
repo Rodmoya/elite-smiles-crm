@@ -32,5 +32,13 @@ smile_design_update_case_contact($caseId, [
     'phone' => post('phone', ''),
 ], auth_user_id());
 
-flash_set('success', 'Patient and contact details updated.');
+smile_design_update_case_preferences($caseId, [
+    'procedure_interest' => post('procedure_interest', (string)($case['procedure_interest'] ?? '')),
+    'selected_style' => post('selected_style', (string)($case['selected_style'] ?? 'natural')),
+    'shade_goal' => post('shade_goal', (string)($case['shade_goal'] ?? '110')),
+    'treatment_scope' => post('treatment_scope', (string)($case['treatment_scope'] ?? 'upper')),
+    'smile_width_goal' => post('smile_width_goal', (string)($case['smile_width_goal'] ?? 'keep_current')),
+], auth_user_id());
+
+flash_set('success', 'Case details updated.');
 redirect(base_url('smile-design/cases/' . $caseId . '#source'));

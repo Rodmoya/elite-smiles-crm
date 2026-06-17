@@ -23,11 +23,23 @@ try {
     $baseTitle = trim((string)post('version_title', 'After Preview'));
     $procedureLabel = (string)post('procedure_label', $case['procedure_interest'] ?? '');
     $lviStyleKey = (string)post('lvi_style_key', $case['lvi_style_key'] ?? '');
+    $shadeGoal = (string)post('shade_goal', $case['shade_goal'] ?? '210');
+    $treatmentScope = (string)post('treatment_scope', $case['treatment_scope'] ?? 'upper');
+    $smileWidthGoal = (string)post('smile_width_goal', $case['smile_width_goal'] ?? 'keep_current');
     if (smile_design_procedure_mode($procedureLabel) === 'lip_repositioning') {
         $lviStyleKey = '';
     }
     $notes = (string)post('notes', '');
     $refreshAnalysis = post('refresh_analysis', '') === '1';
+
+    smile_design_update_case_preferences($caseId, [
+        'procedure_interest' => $procedureLabel,
+        'selected_style' => $lviStyleKey,
+        'shade_goal' => $shadeGoal,
+        'treatment_scope' => $treatmentScope,
+        'smile_width_goal' => $smileWidthGoal,
+    ], auth_user_id());
+
     $frontPhoto = smile_design_find_before_photo_by_type($caseId, 'front', true);
     if (!$frontPhoto) {
         flash_set('error', 'A front before photo is required before generating an after preview.');
@@ -73,6 +85,9 @@ try {
             'custom_request' => $customRequest,
             'procedure_label' => $procedureLabel,
             'lvi_style_key' => $lviStyleKey,
+            'shade_goal' => $shadeGoal,
+            'treatment_scope' => $treatmentScope,
+            'smile_width_goal' => $smileWidthGoal,
             'photo_type' => $targetPhotoType,
             'target_photo_type' => $targetPhotoType,
             'target_photo_label' => $targetLabel,

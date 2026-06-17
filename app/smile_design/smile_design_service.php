@@ -28,6 +28,8 @@ function smile_design_ensure_schema(): void
         selected_style VARCHAR(80) NULL,
         lvi_style_key VARCHAR(80) NULL,
         shade_goal VARCHAR(80) NULL,
+        treatment_scope VARCHAR(40) NULL,
+        smile_width_goal VARCHAR(80) NULL,
         notes TEXT NULL,
         doctor_notes TEXT NULL,
         status VARCHAR(80) NOT NULL DEFAULT 'draft',
@@ -283,6 +285,8 @@ function smile_design_schema_upgrade_columns(): void
         ['smile_cases', 'ai_analysis_summary', "ALTER TABLE smile_cases ADD COLUMN ai_analysis_summary TEXT NULL AFTER ai_analysis_provider"],
         ['smile_cases', 'ai_analysis_json', "ALTER TABLE smile_cases ADD COLUMN ai_analysis_json MEDIUMTEXT NULL AFTER ai_analysis_summary"],
         ['smile_cases', 'ai_analysis_updated_at', "ALTER TABLE smile_cases ADD COLUMN ai_analysis_updated_at DATETIME NULL AFTER ai_analysis_json"],
+        ['smile_cases', 'treatment_scope', "ALTER TABLE smile_cases ADD COLUMN treatment_scope VARCHAR(40) NULL AFTER shade_goal"],
+        ['smile_cases', 'smile_width_goal', "ALTER TABLE smile_cases ADD COLUMN smile_width_goal VARCHAR(80) NULL AFTER treatment_scope"],
         ['smile_case_photos', 'photo_type', "ALTER TABLE smile_case_photos ADD COLUMN photo_type VARCHAR(80) NULL AFTER kind"],
         ['smile_case_photos', 'source_type', "ALTER TABLE smile_case_photos ADD COLUMN source_type VARCHAR(40) NOT NULL DEFAULT 'uploaded' AFTER kind"],
         ['smile_preview_links', 'token_plaintext', "ALTER TABLE smile_preview_links ADD COLUMN token_plaintext VARCHAR(255) NULL AFTER token_hash"],
@@ -358,18 +362,18 @@ function smile_design_status_labels(): array
 function smile_design_lvi_catalog(): array
 {
     return [
-        'aggressive' => ['title' => 'Aggressive', 'category' => 'Mature', 'description' => 'Bold, assertive tooth form with stronger line angles and a high-energy cosmetic presence.'],
-        'vigorous' => ['title' => 'Vigorous', 'category' => 'Mature', 'description' => 'Strong, masculine-leaning contours with energetic shape and presence.'],
-        'focused' => ['title' => 'Focused', 'category' => 'Mature', 'description' => 'Clean symmetry and controlled line angles for a precise, refined look.'],
-        'functional' => ['title' => 'Functional', 'category' => 'Mature', 'description' => 'Balanced esthetics with practical, bite-conscious shape language and softer emphasis.'],
-        'dominant' => ['title' => 'Dominant', 'category' => 'Mature', 'description' => 'Stronger central dominance and confident proportions for a powerful smile.'],
-        'enhanced' => ['title' => 'Enhanced', 'category' => 'Mature', 'description' => 'Noticeable cosmetic refinement with balanced proportion and polished contours.'],
-        'natural' => ['title' => 'Natural', 'category' => 'Natural', 'description' => 'Gentle rounded edges and believable anatomy for a soft, traditionally natural smile.'],
-        'oval' => ['title' => 'Oval', 'category' => 'Natural', 'description' => 'Softer rounded line angles and curved tooth form for an elegant, calm look.'],
-        'softened' => ['title' => 'Softened', 'category' => 'Natural', 'description' => 'Reduced visual tension and gentler contours for a subtle, approachable result.'],
-        'hollywood' => ['title' => 'Hollywood', 'category' => 'Youthful', 'description' => 'Bright, symmetrical, polished veneer style with strong cosmetic impact.'],
-        'youthful' => ['title' => 'Youthful', 'category' => 'Youthful', 'description' => 'Fresh, lively proportions with rounded form and rejuvenated smile energy.'],
-        'mature' => ['title' => 'Mature', 'category' => 'Youthful', 'description' => 'Subtle refinement that preserves age-appropriate character while improving esthetics.'],
+        'aggressive' => ['title' => 'Aggressive', 'category' => 'Bold', 'description' => 'Flat, squared anterior anatomy with strong line angles and an assertive cosmetic presence.'],
+        'vigorous' => ['title' => 'Vigorous', 'category' => 'Bold', 'description' => 'Strong square centrals with pointed canines and energetic, high-presence contours.'],
+        'focused' => ['title' => 'Focused', 'category' => 'Refined', 'description' => 'Square centrals with inward-flaring laterals and precise, controlled symmetry.'],
+        'functional' => ['title' => 'Functional', 'category' => 'Functional', 'description' => 'Balanced esthetics with flatter incisal surfaces and bite-conscious form.'],
+        'dominant' => ['title' => 'Dominant', 'category' => 'Bold', 'description' => 'Large square centrals with noticeably shorter laterals and strong midline focus.'],
+        'enhanced' => ['title' => 'Enhanced', 'category' => 'Classic', 'description' => 'Structured centrals with rounded lateral edges and softened, polished cosmetic refinement.'],
+        'natural' => ['title' => 'Natural', 'category' => 'Classic', 'description' => 'Square centrals, rounded lateral edges, and pointed canines for believable natural anatomy.'],
+        'oval' => ['title' => 'Oval', 'category' => 'Soft', 'description' => 'Curved line angles and rounded anterior anatomy for an elegant, softer smile.'],
+        'softened' => ['title' => 'Softened', 'category' => 'Soft', 'description' => 'Rounder contours and reduced sharpness for a gentle, approachable presentation.'],
+        'hollywood' => ['title' => 'Hollywood', 'category' => 'Bold', 'description' => 'Uniform square anatomy with bright, polished porcelain impact and celebrity-style symmetry.'],
+        'youthful' => ['title' => 'Youthful', 'category' => 'Classic', 'description' => 'Square centrals with longer rounded laterals and deeper embrasures for fresh smile energy.'],
+        'mature' => ['title' => 'Mature', 'category' => 'Functional', 'description' => 'Symmetrical but age-aware anatomy with flatter edges and restrained brightness.'],
         'doctor_selected' => ['title' => 'Doctor Selected', 'category' => 'Custom', 'description' => 'Use doctor judgment to guide the final smile design direction.'],
     ];
 }
@@ -389,12 +393,196 @@ function smile_design_style_detail(string $style): array
     return $catalog[strtolower(trim($style))] ?? $catalog['natural'];
 }
 
+function smile_design_normalize_style_key(string $style, string $fallback = 'natural'): string
+{
+    $normalized = strtolower(trim($style));
+    $normalized = preg_replace('/^lvi\s+/i', '', $normalized) ?? $normalized;
+    $normalized = str_replace(['-', ' '], '_', $normalized);
+    return array_key_exists($normalized, smile_design_style_options()) ? $normalized : $fallback;
+}
+
 function smile_design_style_map(string $style): string
 {
-    $detail = smile_design_style_detail($style);
+    $detail = smile_design_style_detail(smile_design_normalize_style_key($style));
     return $detail['title'] === 'Doctor Selected'
         ? 'Doctor Selected'
         : 'LVI ' . (string)$detail['title'];
+}
+
+function smile_design_style_generation_guidance(string $style): string
+{
+    return match (strtolower(trim($style))) {
+        'hollywood' => 'Hollywood style anatomy: square central incisors, square laterals slightly shorter than the centrals, and pointed canines. Keep the smile highly uniform, polished, and visually strong with crisp line angles and controlled embrasures.',
+        'natural' => 'Natural style anatomy: square central incisors, lateral incisors with rounded incisal edges and slightly shorter length than the centrals, and pointed canines. Keep embrasures progressive and believable with classic central dominance.',
+        'youthful' => 'Youthful style anatomy: square central incisors, rounded laterals that stay close to central length, and pointed canines. Use deeper, more playful embrasures and unworn, lively incisal energy.',
+        'enhanced' => 'Enhanced style anatomy: square central incisors, laterals with rounded incisal edges, and blunt canines. Keep the result softened yet structured, polished, and proportionate.',
+        'softened' => 'Softened style anatomy: rounded centrals, rounded laterals, and blunt canines. Minimize sharp transitions and keep the smile calm and gentle.',
+        'oval' => 'Oval style anatomy: rounded central incisors, rounded laterals, and rounded canines. Use curved line angles and soft embrasures for a feminine, elegant read.',
+        'aggressive' => 'Aggressive style anatomy: square centrals, square laterals, and square canines with flat incisal energy across the smile. The read should be strong, dominant, and assertive.',
+        'vigorous' => 'Vigorous style anatomy: square central incisors, square laterals, and pointed prominent canines. Keep strong line angles and energetic canine anchoring.',
+        'dominant' => 'Dominant style anatomy: larger square centrals, noticeably shorter square laterals, and blunt canines. Central dominance must be obvious and intentional.',
+        'focused' => 'Focused style anatomy: square central incisors, rounded laterals that subtly flare inward toward the midline, and blunt canines. Keep the smile precise and slightly convergent toward the center.',
+        'functional' => 'Functional style anatomy: square centrals, square laterals, and blunt canines with flatter, bite-conscious incisal form. Avoid exaggerated youthfulness or extreme brightness.',
+        'mature' => 'Mature style anatomy: square centrals, square laterals, and blunt canines with subtle age-appropriate flattening and restrained embrasure depth. Preserve dignity and realism.',
+        default => 'Natural style anatomy: square central incisors, lateral incisors with rounded incisal edges and slightly shorter length than the centrals, and pointed canines. Keep embrasures progressive and believable with classic central dominance.',
+    };
+}
+
+function smile_design_shade_catalog(): array
+{
+    return [
+        '110' => ['group' => '100', 'label' => 'Chromascop 110', 'title' => 'Hollywood White', 'hex' => '#F4F0E6', 'rgb' => '244, 240, 230', 'description' => 'Highest-value bleach white with luminous porcelain brightness and soft incisal translucency.'],
+        '120' => ['group' => '100', 'label' => 'Chromascop 120', 'title' => 'Bright Bleach White', 'hex' => '#EFECE0', 'rgb' => '239, 236, 224', 'description' => 'Bright bleach-white porcelain with slightly softer warmth than 110.'],
+        '130' => ['group' => '100', 'label' => 'Chromascop 130', 'title' => 'Soft Bleach White', 'hex' => '#EAE6D9', 'rgb' => '234, 230, 217', 'description' => 'High-value white with a softer natural haze and controlled warmth.'],
+        '140' => ['group' => '100', 'label' => 'Chromascop 140', 'title' => 'Warm Bleach White', 'hex' => '#E5E0D2', 'rgb' => '229, 224, 210', 'description' => 'Bleach-family shade with slightly warmer body color and gentler value.'],
+        '210' => ['group' => '200', 'label' => 'Chromascop 210', 'title' => 'Bright White', 'hex' => '#EBE4D3', 'rgb' => '235, 228, 211', 'description' => 'Premium bright white that still reads natural under real light. Use when a softer natural-white screen result is desired.'],
+        '220' => ['group' => '200', 'label' => 'Chromascop 220', 'title' => 'Warm Natural White', 'hex' => '#E6DCCA', 'rgb' => '230, 220, 202', 'description' => 'Warm white with realistic body color and a slightly softer value than 210.'],
+        '230' => ['group' => '200', 'label' => 'Chromascop 230', 'title' => 'Soft Natural White', 'hex' => '#E1D4B9', 'rgb' => '225, 212, 185', 'description' => 'Natural white with more warmth and restraint for subtle cosmetic cases.'],
+        '240' => ['group' => '200', 'label' => 'Chromascop 240', 'title' => 'Warm Blend White', 'hex' => '#DBCBB0', 'rgb' => '219, 203, 176', 'description' => 'Warm, believable white for softer or more conservative veneer blending.'],
+        '310' => ['group' => '300', 'label' => 'Chromascop 310', 'title' => 'Mature Blend Light', 'hex' => '#E3DAC9', 'rgb' => '227, 218, 201', 'description' => 'Light mature blend shade with restrained value and natural depth.'],
+        '320' => ['group' => '300', 'label' => 'Chromascop 320', 'title' => 'Mature Blend', 'hex' => '#DDD1BB', 'rgb' => '221, 209, 187', 'description' => 'Balanced mature shade with more gray-brown restraint for conservative cases.'],
+        '330' => ['group' => '300', 'label' => 'Chromascop 330', 'title' => 'Mature Warm Blend', 'hex' => '#D7C7AD', 'rgb' => '215, 199, 173', 'description' => 'Warmer mature shade for blending with age-appropriate dentition.'],
+        '340' => ['group' => '300', 'label' => 'Chromascop 340', 'title' => 'Deep Mature Blend', 'hex' => '#CEBCA0', 'rgb' => '206, 188, 160', 'description' => 'Deeper mature blend with obvious restraint and warmth.'],
+        '410' => ['group' => '400', 'label' => 'Chromascop 410', 'title' => 'Light Gray Blend', 'hex' => '#DDD9CD', 'rgb' => '221, 217, 205', 'description' => 'Cooler light gray blend used for age-aware or desaturated restorative matching.'],
+        '510' => ['group' => '500', 'label' => 'Chromascop 510', 'title' => 'Dark Natural Core', 'hex' => '#D5C5AC', 'rgb' => '213, 197, 172', 'description' => 'Darker natural core tone for mature or restorative blending cases.'],
+    ];
+}
+
+function smile_design_shade_options(): array
+{
+    $options = [];
+    foreach (smile_design_shade_catalog() as $key => $detail) {
+        $options[$key] = $detail['label'] . ' - ' . $detail['title'];
+    }
+    return $options;
+}
+
+function smile_design_default_shade_for_style(string $style): string
+{
+    return match (strtolower(trim($style))) {
+        'hollywood', 'vigorous', 'aggressive' => '110',
+        'dominant' => '120',
+        'natural', 'enhanced', 'youthful', 'focused', 'doctor_selected' => '110',
+        'oval', 'softened' => '220',
+        'functional', 'mature' => '310',
+        default => '210',
+    };
+}
+
+function smile_design_normalize_shade_goal(string $shadeGoal, string $style = 'natural'): string
+{
+    $normalized = strtolower(trim($shadeGoal));
+    $normalized = str_replace(['chromascop', 'shade', '-', '_'], [' ', ' ', ' ', ' '], $normalized);
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    $normalized = trim($normalized);
+    $catalog = smile_design_shade_catalog();
+
+    if ($normalized !== '' && isset($catalog[$normalized])) {
+        return $normalized;
+    }
+
+    if (preg_match('/\b(110|120|130|140|210|220|230|240|310|320|330|340|410|510)\b/', $normalized, $matches)) {
+        return $matches[1];
+    }
+
+    return match ($normalized) {
+        '', 'doctor consult', 'doctor selected', 'default' => smile_design_default_shade_for_style($style),
+        'bright white', 'brightwhite', 'natural bright', 'natural white', 'premium white' => '110',
+        'warm natural white', 'warm white' => '220',
+        'hollywood white', 'bleach white', 'bl1', 'bleach', 'hollywood bleach' => '110',
+        'mature blend', 'restorative blend', 'functional blend' => '310',
+        default => smile_design_default_shade_for_style($style),
+    };
+}
+
+function smile_design_shade_detail(string $shadeGoal, string $style = 'natural'): array
+{
+    $code = smile_design_normalize_shade_goal($shadeGoal, $style);
+    $catalog = smile_design_shade_catalog();
+    $detail = $catalog[$code] ?? $catalog[smile_design_default_shade_for_style($style)];
+    $detail['code'] = $code;
+    $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Base digital reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). For on-screen consultation previews, preserve this shade family but render it noticeably higher-value and more luminous than the raw tab so the smile reads clearly bright white on phones and laptop displays, with an immediately visible whitening jump from the before photo.';
+    return $detail;
+}
+
+function smile_design_treatment_scope_options(): array
+{
+    return [
+        'upper' => 'Upper smile only',
+        'lower' => 'Lower smile only',
+        'both' => 'Upper and lower',
+    ];
+}
+
+function smile_design_default_treatment_scope(string $procedure = ''): string
+{
+    return 'upper';
+}
+
+function smile_design_normalize_treatment_scope(string $scope, string $procedure = ''): string
+{
+    $normalized = strtolower(trim($scope));
+    $normalized = str_replace(['-', '_'], ' ', $normalized);
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    $normalized = trim($normalized);
+
+    return match ($normalized) {
+        'upper', 'upper smile', 'upper only', 'top', 'top only' => 'upper',
+        'lower', 'lower smile', 'lower only', 'bottom', 'bottom only' => 'lower',
+        'both', 'upper and lower', 'upper lower', 'full smile', 'both arches' => 'both',
+        default => smile_design_default_treatment_scope($procedure),
+    };
+}
+
+function smile_design_treatment_scope_label(string $scope, string $procedure = ''): string
+{
+    $normalized = smile_design_normalize_treatment_scope($scope, $procedure);
+    return smile_design_treatment_scope_options()[$normalized] ?? smile_design_treatment_scope_options()[smile_design_default_treatment_scope($procedure)];
+}
+
+function smile_design_treatment_scope_prompt_guidance(string $scope, string $procedure = ''): string
+{
+    return match (smile_design_normalize_treatment_scope($scope, $procedure)) {
+        'upper' => 'Treatment scope: upper smile only. Redesign only the visible upper teeth or restorations. Do not alter lower teeth unless the selected procedure explicitly requires it and they are the treatment target.',
+        'lower' => 'Treatment scope: lower smile only. Redesign only the visible lower teeth or restorations. Keep the upper teeth unchanged unless they need to remain as untouched context.',
+        'both' => 'Treatment scope: upper and lower. If both arches are clearly visible, coordinate the shade, anatomy, and finish across both arches while keeping the result believable and proportional. If only one arch is visible, treat only what the photo actually shows.',
+        default => 'Treatment scope: upper smile only. Focus the treatment on the visible upper teeth and preserve untreated areas.',
+    };
+}
+
+function smile_design_smile_width_options(): array
+{
+    return [
+        'keep_current' => 'Keep current smile width',
+        'wider_smile' => 'Wider / fuller smile',
+    ];
+}
+
+function smile_design_normalize_smile_width_goal(string $goal): string
+{
+    $normalized = strtolower(trim($goal));
+    $normalized = str_replace(['-', '_'], ' ', $normalized);
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    $normalized = trim($normalized);
+
+    return match ($normalized) {
+        'wider', 'wide', 'wider smile', 'fuller', 'fuller smile', 'broaden', 'broader smile', 'posterior fullness' => 'wider_smile',
+        default => 'keep_current',
+    };
+}
+
+function smile_design_smile_width_label(string $goal): string
+{
+    $normalized = smile_design_normalize_smile_width_goal($goal);
+    return smile_design_smile_width_options()[$normalized] ?? smile_design_smile_width_options()['keep_current'];
+}
+
+function smile_design_smile_width_prompt_guidance(string $goal): string
+{
+    return match (smile_design_normalize_smile_width_goal($goal)) {
+        'wider_smile' => 'Smile width goal: create a fuller, wider smile by subtly increasing posterior crown presence and buccal-corridor fill where clinically believable. The smile should read broader and more complete without looking orthodontically expanded, fake, or overbuilt.',
+        default => 'Smile width goal: keep the patient\'s current smile width and arch fullness. Do not broaden the buccal corridor or create extra posterior fullness unless another instruction explicitly calls for it.',
+    };
 }
 
 function smile_design_procedure_options(): array
@@ -417,10 +605,10 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
         return implode(' ', [
             'Procedure-specific direction for Veneers + Lip Repositioning:',
             'This is a combined smile-design case, not lip repositioning alone.',
-            'Apply the veneer simulation first: replace the visible anterior tooth surfaces completely with porcelain veneers. TWO rules apply simultaneously — SHADE: Vita Bleach BL1 (brightest bleach, luminous warm white, natural incisal translucency, not chalky or grey); SHAPE: follow the selected LVI style fully for tooth form, length, edge design, and characterization. Both rules must be applied together. Do NOT preserve or show through the original stains, yellowing, cracks, or debris.',
+            'Apply the veneer simulation first: replace the visible anterior tooth surfaces completely with porcelain veneers. TWO rules apply simultaneously - SHADE: use the selected veneer shade target exactly and do not allow the original stains, yellowing, cracks, debris, or mottling to show through; SHAPE: follow the selected LVI style fully for tooth form, length, edge design, embrasures, line angles, and characterization. Both rules must be applied together.',
             'Do not use veneers to simulate root movement, jaw surgery, major orthodontic arch expansion, implant replacement, or a totally different bite.',
             'Also simulate lip repositioning surgery: the inferior border of the upper lip must descend to the cervical line of the upper teeth to cover the exposed gum band; the lip will appear 5 to 6 mm taller from unfolding of the curled vermilion.',
-            'The after preview should show both a full BL1 veneer transformation and a lower, repositioned upper-lip smile line with the gum band covered.',
+            'The after preview should show both a full porcelain veneer transformation in the selected shade family and a lower, repositioned upper-lip smile line with the gum band covered.',
             'Keep gum architecture believable; keep the result identity-preserving — the patient should look like a realistic post-treatment version of the same person.',
         ]);
     }
@@ -483,9 +671,9 @@ function smile_design_procedure_prompt_guidance(string $procedure): string
             'Replace the visible anterior tooth surfaces completely with porcelain veneer restorations: new shape, new shade, new surface, new texture.',
             'Do NOT preserve or show through the original tooth color, stains, yellowing, cracks, chips, debris, or enamel defects. The veneers fully cover all of that — the before-tooth color must not bleed through at all.',
             'TWO DESIGN RULES that work together — both must be applied:',
-            'RULE 1 — SHADE: Target shade is Vita Bleach BL1 for this initial simulation. BL1 is the brightest, most luminous bleach shade: bright saturated white body with natural incisal translucency and a subtle warm luminosity. Not chalky, not flat, not grey, not yellowish. Think high-end full-coverage porcelain: luminous, clean, polished, with a soft incisal haze. Apply this shade consistently across all visible anterior veneers.',
-            'RULE 2 — SHAPE / FORM: Follow the selected LVI style fully for tooth shape, length, width, incisal edge form, line angles, surface texture, and characterization. The LVI style defines the design character of the veneers — apply it precisely, not loosely.',
-            'The result must look like BL1-shaded porcelain veneers designed in the selected LVI style — both rules active simultaneously. Do not apply one without the other.',
+            'RULE 1 — SHADE: Use the selected veneer shade target exactly. The final veneers must read as finished porcelain in that shade family with consistent body color, clean value, natural incisal translucency, and no visible leftover yellowing, cracks, stains, or patchy natural enamel color.',
+            'RULE 2 — SHAPE / FORM: Follow the selected LVI style fully for tooth shape, length, width, incisal edge form, embrasures, line angles, surface texture, and characterization. The LVI style defines the design character of the veneers — apply it precisely, not loosely.',
+            'The result must look like porcelain veneers designed in the selected LVI style and selected shade family — both rules active simultaneously. Do not apply one without the other.',
             'Keep tooth count, root position, jaw position, lip posture, and broad arch relationship believable; do not simulate major orthodontic movement, extraction, implant replacement, or gum surgery.',
             'Respect existing gum architecture and papillae unless a very small cosmetic contour refinement is clearly needed.',
             'Preserve patient identity, face, skin, hair, lips, camera angle, lighting, and natural expression.',
@@ -953,19 +1141,18 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
 
     $procedureInterest = trim((string)($data['procedure_interest'] ?? 'Smile Design Preview'));
     $isLipRepositionOnly = smile_design_procedure_mode($procedureInterest) === 'lip_repositioning';
-    $styleKey = strtolower(trim((string)($data['selected_style'] ?? 'natural')));
-    if (!array_key_exists($styleKey, smile_design_style_options())) {
-        $styleKey = 'natural';
-    }
+    $styleKey = smile_design_normalize_style_key((string)($data['selected_style'] ?? 'natural'));
     if ($isLipRepositionOnly) {
         $styleKey = '';
     }
+    $treatmentScope = smile_design_normalize_treatment_scope((string)($data['treatment_scope'] ?? ''), $procedureInterest);
+    $smileWidthGoal = smile_design_normalize_smile_width_goal((string)($data['smile_width_goal'] ?? ''));
 
     $caseId = db_insert(
         "INSERT INTO smile_cases
-         (lead_id, first_name, last_name, patient_name, email, phone, procedure_interest, selected_style, lvi_style_key, shade_goal, notes, status, visibility, consent_status, created_by)
+         (lead_id, first_name, last_name, patient_name, email, phone, procedure_interest, selected_style, lvi_style_key, shade_goal, treatment_scope, smile_width_goal, notes, status, visibility, consent_status, created_by)
          VALUES
-         (:lead_id, :first_name, :last_name, :patient_name, :email, :phone, :procedure_interest, :selected_style, :lvi_style_key, :shade_goal, :notes, :status, :visibility, :consent_status, :created_by)",
+         (:lead_id, :first_name, :last_name, :patient_name, :email, :phone, :procedure_interest, :selected_style, :lvi_style_key, :shade_goal, :treatment_scope, :smile_width_goal, :notes, :status, :visibility, :consent_status, :created_by)",
         [
             'lead_id' => (int)($data['lead_id'] ?? 0) ?: null,
             'first_name' => trim((string)($data['first_name'] ?? '')) ?: null,
@@ -976,7 +1163,9 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
             'procedure_interest' => $procedureInterest ?: null,
             'selected_style' => $styleKey !== '' ? $styleKey : null,
             'lvi_style_key' => $styleKey !== '' ? smile_design_style_map($styleKey) : null,
-            'shade_goal' => trim((string)($data['shade_goal'] ?? 'Natural bright')) ?: null,
+            'shade_goal' => smile_design_normalize_shade_goal((string)($data['shade_goal'] ?? '210'), $styleKey),
+            'treatment_scope' => $treatmentScope,
+            'smile_width_goal' => $smileWidthGoal,
             'notes' => trim((string)($data['notes'] ?? '')) ?: null,
             'status' => trim((string)($data['status'] ?? 'draft')) ?: 'draft',
             'visibility' => trim((string)($data['visibility'] ?? 'internal_only')) ?: 'internal_only',
@@ -1157,6 +1346,57 @@ function smile_design_update_case_contact(int $caseId, array $data, ?int $userId
         'patient_name' => $patientName,
         'email' => $email,
         'phone' => $phone,
+    ], $userId);
+
+    return true;
+}
+
+function smile_design_update_case_preferences(int $caseId, array $data, ?int $userId = null): bool
+{
+    $case = smile_design_case($caseId);
+    if (!$case) {
+        return false;
+    }
+
+    $procedureInterest = trim((string)($data['procedure_interest'] ?? (string)($case['procedure_interest'] ?? 'Smile Design Preview')));
+    $isLipRepositionOnly = smile_design_procedure_mode($procedureInterest) === 'lip_repositioning';
+    $fallbackStyle = trim((string)($case['selected_style'] ?? '')) !== ''
+        ? (string)$case['selected_style']
+        : (string)($case['lvi_style_key'] ?? 'natural');
+    $styleKey = smile_design_normalize_style_key((string)($data['selected_style'] ?? $fallbackStyle));
+    if ($isLipRepositionOnly) {
+        $styleKey = '';
+    }
+    $shadeGoal = smile_design_normalize_shade_goal((string)($data['shade_goal'] ?? (string)($case['shade_goal'] ?? '')), $styleKey !== '' ? $styleKey : 'natural');
+    $treatmentScope = smile_design_normalize_treatment_scope((string)($data['treatment_scope'] ?? (string)($case['treatment_scope'] ?? '')), $procedureInterest);
+    $smileWidthGoal = smile_design_normalize_smile_width_goal((string)($data['smile_width_goal'] ?? (string)($case['smile_width_goal'] ?? '')));
+
+    db_execute(
+        "UPDATE smile_cases
+         SET procedure_interest = :procedure_interest,
+             selected_style = :selected_style,
+             lvi_style_key = :lvi_style_key,
+             shade_goal = :shade_goal,
+             treatment_scope = :treatment_scope,
+             smile_width_goal = :smile_width_goal
+         WHERE id = :id",
+        [
+            'id' => $caseId,
+            'procedure_interest' => $procedureInterest !== '' ? $procedureInterest : null,
+            'selected_style' => $styleKey !== '' ? $styleKey : null,
+            'lvi_style_key' => $styleKey !== '' ? smile_design_style_map($styleKey) : null,
+            'shade_goal' => $shadeGoal,
+            'treatment_scope' => $treatmentScope,
+            'smile_width_goal' => $smileWidthGoal,
+        ]
+    );
+
+    smile_design_audit($caseId, 'case_preferences_updated', [
+        'procedure_interest' => $procedureInterest,
+        'selected_style' => $styleKey,
+        'shade_goal' => $shadeGoal,
+        'treatment_scope' => $treatmentScope,
+        'smile_width_goal' => $smileWidthGoal,
     ], $userId);
 
     return true;
@@ -2209,6 +2449,177 @@ function smile_design_lip_repositioning_qa_feedback(array $qaResult): string
     ], static fn(string $value): bool => trim($value) !== ''))));
 }
 
+function smile_design_veneer_preview_qa(array $beforePhoto, array $generationResult, string $targetPhotoLabel, string $targetPhotoType, array $context = []): array
+{
+    if (!function_exists('elite_openai_images_json_response')) {
+        return ['ok' => false, 'message' => 'OpenAI image comparison helper is not available.'];
+    }
+
+    $beforePath = smile_design_safe_storage_path((string)($beforePhoto['storage_key'] ?? ''));
+    if (!$beforePath || !is_file($beforePath)) {
+        return ['ok' => false, 'message' => 'Before photo for veneer QA is missing.'];
+    }
+
+    $binary = base64_decode((string)($generationResult['image_base64'] ?? ''), true);
+    if (!is_string($binary) || $binary === '') {
+        return ['ok' => false, 'message' => 'Generated image for veneer QA is unreadable.'];
+    }
+
+    $tempBase = tempnam(sys_get_temp_dir(), 'esm-veneerqa-');
+    if ($tempBase === false) {
+        return ['ok' => false, 'message' => 'Could not create veneer QA temp file.'];
+    }
+
+    $extension = match (strtolower((string)($generationResult['mime_type'] ?? 'image/png'))) {
+        'image/jpeg', 'image/jpg' => '.jpg',
+        'image/webp' => '.webp',
+        default => '.png',
+    };
+    $afterPath = $tempBase . $extension;
+    @unlink($tempBase);
+    if (@file_put_contents($afterPath, $binary) === false) {
+        return ['ok' => false, 'message' => 'Could not write veneer QA image.'];
+    }
+
+    $styleKey = (string)($context['style_key'] ?? 'natural');
+    $styleDetail = smile_design_style_detail($styleKey);
+    $shadeDetail = smile_design_shade_detail((string)($context['shade_goal'] ?? ''), $styleKey);
+    $schema = [
+        'type' => 'object',
+        'additionalProperties' => false,
+        'properties' => [
+            'approved' => ['type' => 'boolean'],
+            'score' => ['type' => 'integer'],
+            'porcelain_coverage_complete' => ['type' => 'boolean'],
+            'shade_target_met' => ['type' => 'boolean'],
+            'defects_removed' => ['type' => 'boolean'],
+            'style_match_sufficient' => ['type' => 'boolean'],
+            'face_preserved' => ['type' => 'boolean'],
+            'dental_scope_preserved' => ['type' => 'boolean'],
+            'natural_luminosity' => ['type' => 'boolean'],
+            'assessment' => ['type' => 'string'],
+            'issues' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'retry_instruction' => ['type' => 'string'],
+        ],
+        'required' => [
+            'approved',
+            'score',
+            'porcelain_coverage_complete',
+            'shade_target_met',
+            'defects_removed',
+            'style_match_sufficient',
+            'face_preserved',
+            'dental_scope_preserved',
+            'natural_luminosity',
+            'assessment',
+            'issues',
+            'retry_instruction',
+        ],
+    ];
+
+    $systemPrompt = <<<PROMPT
+You are the QA reviewer for Elite Smiles veneer preview images.
+
+Image 1 is the original before photo. Image 2 is the generated after preview.
+Approve only if the after looks like the same patient photo with a believable high-end porcelain veneer simulation.
+
+Pass criteria:
+- The visible anterior teeth now read as completed porcelain veneers rather than natural teeth with whitening.
+- The original yellowing, stains, cracks, chips, mottling, debris, or enamel defects no longer show through on the veneered tooth surfaces.
+- The shade matches the selected target family closely enough to be recognized on screen.
+- The tooth form follows the selected LVI style closely enough to be recognizable in the centrals, laterals, canines, line angles, and embrasures.
+- Face, lips, gums, identity, lighting, and camera setup remain essentially the same.
+- The result stays inside veneer scope: no fantasy orthodontics, no implant replacement, no jaw surgery, and no unrelated beauty retouching.
+- The veneers should look bright and polished but still dimensional, with natural incisal translucency and believable porcelain gloss.
+
+Fail criteria:
+- The after still looks like natural teeth with whitening instead of veneers.
+- Before-photo discoloration, cracks, chips, or defects remain visibly present on the veneered teeth.
+- The shade is materially darker, yellower, patchier, flatter, chalkier, or grayer than the selected target.
+- The LVI style is too weak or the tooth anatomy does not reflect the requested style.
+- The face, gums, lips, or identity changed materially.
+- The result over-treats the case with unrelated procedures or fantasy smile changes.
+
+Return only structured JSON matching the schema.
+PROMPT;
+
+    $userPrompt = implode(' ', [
+        'Review the generated veneer preview for target angle ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
+        'Requested LVI style: ' . (string)($styleDetail['title'] ?? 'Natural') . '.',
+        smile_design_style_generation_guidance($styleKey),
+        'Selected veneer shade target: ' . (string)$shadeDetail['prompt'],
+        'Reject the preview if the result still looks like natural teeth with whitening or if before-photo defects still show through instead of a full porcelain replacement look.',
+        'Set score from 0 to 10 where 10 is an excellent veneer simulation.',
+    ]);
+
+    try {
+        $result = elite_openai_images_json_response([$beforePath, $afterPath], $systemPrompt, $userPrompt, $schema, 'veneer_preview_qa', 'high');
+    } finally {
+        if (is_file($afterPath)) {
+            @unlink($afterPath);
+        }
+    }
+
+    if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
+        return ['ok' => false, 'message' => (string)($result['message'] ?? 'Veneer QA failed.')];
+    }
+
+    return [
+        'ok' => true,
+        'provider' => 'openai',
+        'data' => $result['data'],
+        'status_code' => $result['status_code'] ?? null,
+    ];
+}
+
+function smile_design_veneer_qa_requires_retry(array $qaResult): bool
+{
+    if (empty($qaResult['ok']) || !is_array($qaResult['data'] ?? null)) {
+        return true;
+    }
+
+    $data = $qaResult['data'];
+    foreach (['porcelain_coverage_complete', 'shade_target_met', 'defects_removed', 'face_preserved'] as $field) {
+        if (array_key_exists($field, $data) && empty($data[$field])) {
+            return true;
+        }
+    }
+
+    return (int)($data['score'] ?? 10) < 7;
+}
+
+function smile_design_veneer_qa_feedback(array $qaResult): string
+{
+    if (empty($qaResult['ok']) || !is_array($qaResult['data'] ?? null)) {
+        $message = trim((string)($qaResult['message'] ?? 'Veneer QA did not return a usable review.'));
+        return $message . ' Retry should strengthen the veneer simulation while preserving the same patient identity.';
+    }
+
+    $data = is_array($qaResult['data'] ?? null) ? $qaResult['data'] : [];
+    $issueLabels = [
+        'porcelain_coverage_complete' => 'The result still reads like natural teeth instead of finished porcelain veneers',
+        'shade_target_met' => 'The veneer shade is not bright enough or does not match the selected target family',
+        'defects_removed' => 'Original stains, cracks, chips, yellowing, or mottling are still showing through',
+        'style_match_sufficient' => 'The requested LVI style anatomy is too weak or not recognizable enough',
+        'face_preserved' => 'Face, lips, gums, or identity changed too much',
+        'dental_scope_preserved' => 'The edit drifted outside realistic veneer scope',
+        'natural_luminosity' => 'The porcelain finish looks too flat, chalky, grey, or digitally fake',
+    ];
+    $issues = array_values(array_filter(array_map(
+        static fn($issue): string => $issueLabels[trim((string)$issue)] ?? trim((string)$issue),
+        (array)($data['issues'] ?? [])
+    )));
+    $retryInstruction = trim((string)($data['retry_instruction'] ?? ''));
+    $assessment = trim((string)($data['assessment'] ?? ''));
+
+    return trim(implode(' ', array_values(array_filter([
+        $assessment !== '' ? 'Assessment: ' . $assessment : '',
+        $issues !== [] ? 'Issues: ' . implode('; ', $issues) . '.' : '',
+        $retryInstruction !== '' ? 'Retry instruction: ' . $retryInstruction : '',
+        'Retry must preserve the same patient identity while making the veneers read as complete porcelain in the selected shade and style.',
+    ], static fn(string $value): bool => trim($value) !== ''))));
+}
+
 function smile_design_image_provider(string $provider = 'openai'): SmileDesignImageProvider
 {
     return match (strtolower(trim($provider))) {
@@ -2245,13 +2656,24 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
     $provider = smile_design_image_provider($providerName);
     $procedureForMode = trim((string)($options['procedure_label'] ?? $case['procedure_interest'] ?? ''));
     $isLipRepositionOnlyGeneration = smile_design_procedure_mode($procedureForMode) === 'lip_repositioning';
+    $isVeneerOnlyGeneration = smile_design_procedure_mode($procedureForMode) === 'veneers';
+    $resolvedStyleKey = smile_design_normalize_style_key((string)($options['lvi_style_key'] ?? $case['selected_style'] ?? $case['lvi_style_key'] ?? 'natural'));
+    if ($isLipRepositionOnlyGeneration) {
+        $resolvedStyleKey = 'natural';
+    }
+    $resolvedTreatmentScope = smile_design_normalize_treatment_scope((string)($options['treatment_scope'] ?? $case['treatment_scope'] ?? ''), $procedureForMode);
+    $resolvedSmileWidthGoal = smile_design_normalize_smile_width_goal((string)($options['smile_width_goal'] ?? $case['smile_width_goal'] ?? ''));
+    $options['treatment_scope'] = $resolvedTreatmentScope;
+    $options['smile_width_goal'] = $resolvedSmileWidthGoal;
+    $options['shade_goal'] = smile_design_normalize_shade_goal((string)($options['shade_goal'] ?? $case['shade_goal'] ?? ''), $resolvedStyleKey);
     $promptSummary = trim((string)($options['custom_request'] ?? ''));
     if ($promptSummary === '') {
         $summaryProcedure = (string)($options['procedure_label'] ?? $case['procedure_interest'] ?? 'smile design');
         if (smile_design_procedure_mode($summaryProcedure) === 'lip_repositioning') {
             $promptSummary = trim($summaryProcedure . ' surgical lip-line preview');
         } else {
-            $promptSummary = trim((string)($options['lvi_style_key'] ?? $case['selected_style'] ?? 'natural') . ' ' . $summaryProcedure);
+            $summaryWidth = $resolvedSmileWidthGoal === 'wider_smile' ? 'wider smile' : 'keep width';
+            $promptSummary = trim($resolvedStyleKey . ' ' . (string)$options['shade_goal'] . ' ' . $resolvedTreatmentScope . ' ' . $summaryWidth . ' ' . $summaryProcedure);
         }
     }
 
@@ -2379,6 +2801,59 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
             $result['lip_repositioning_qa_warning'] = true;
             smile_design_audit($caseId, 'lip_qa_warning', ['job_id' => $jobId, 'provider' => $providerName, 'feedback' => smile_design_lip_repositioning_qa_feedback((array)$result['lip_repositioning_qa'])], $userId);
         }
+    } elseif ($isVeneerOnlyGeneration && (($options['veneer_preview_qa'] ?? true) !== false)) {
+        $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? smile_design_photo_type_options()[(string)($beforePhoto['photo_type'] ?? 'front')] ?? 'Front'));
+        $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? $beforePhoto['photo_type'] ?? 'front'));
+        $veneerQaContext = [
+            'style_key' => $resolvedStyleKey,
+            'shade_goal' => (string)($options['shade_goal'] ?? ''),
+        ];
+        $qaResult = smile_design_veneer_preview_qa($beforePhoto, $result, $targetPhotoLabel, $targetPhotoType, $veneerQaContext);
+        $result['veneer_preview_qa'] = $qaResult;
+        $qaCallSucceeded = !empty($qaResult['ok']);
+
+        if ($qaCallSucceeded && smile_design_veneer_qa_requires_retry($qaResult) && empty($options['veneer_preview_retry'])) {
+            $retryOptions = $options;
+            $retryOptions['veneer_preview_retry'] = true;
+            $retryOptions['custom_request'] = trim(implode("\n", array_values(array_filter([
+                trim((string)($options['custom_request'] ?? '')),
+                smile_design_veneer_qa_feedback($qaResult),
+                'Automatic veneer QA retry emphasis: fully replace the visible anterior tooth surfaces with finished porcelain veneers in the selected shade. Remove all visible yellowing, stains, cracks, mottling, and patchy natural enamel from the veneered teeth. Make the requested LVI anatomy more obvious while preserving the same patient, gums, lips, and facial identity.',
+            ], static fn(string $value): bool => trim($value) !== ''))));
+            $retryResult = $provider->createPreview($case, $sourcePhotos, $retryOptions);
+
+            if (empty($retryResult['ok'])) {
+                $retryResult['veneer_preview_retry'] = [
+                    'used' => true,
+                    'first_qa' => $qaResult,
+                ];
+                db_execute(
+                    "UPDATE ai_generation_jobs
+                     SET status = 'failed', response_json = :response_json, updated_at = NOW()
+                     WHERE id = :id",
+                    [
+                        'id' => $jobId,
+                        'response_json' => json_encode($retryResult, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    ]
+                );
+                smile_design_audit($caseId, 'ai_generation_failed', ['job_id' => $jobId, 'provider' => $providerName, 'reason' => 'veneer_qa_retry_failed'], $userId);
+                return $retryResult;
+            }
+
+            $retryQaResult = smile_design_veneer_preview_qa($beforePhoto, $retryResult, $targetPhotoLabel, $targetPhotoType, $veneerQaContext);
+            $retryResult['veneer_preview_qa'] = $retryQaResult;
+            $retryResult['veneer_preview_retry'] = [
+                'used' => true,
+                'first_qa' => $qaResult,
+            ];
+            $result = $retryResult;
+        }
+
+        $finalQaOk = !empty(($result['veneer_preview_qa'] ?? [])['ok']);
+        if ($finalQaOk && smile_design_veneer_qa_requires_retry((array)($result['veneer_preview_qa'] ?? []))) {
+            $result['veneer_preview_qa_warning'] = true;
+            smile_design_audit($caseId, 'veneer_qa_warning', ['job_id' => $jobId, 'provider' => $providerName, 'feedback' => smile_design_veneer_qa_feedback((array)$result['veneer_preview_qa'])], $userId);
+        }
     }
 
     $binary = base64_decode((string)($result['image_base64'] ?? ''), true);
@@ -2461,6 +2936,11 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
                 'auto_selected' => $autoSelected,
                 'lip_repositioning_qa' => $result['lip_repositioning_qa'] ?? null,
                 'lip_repositioning_retry' => $result['lip_repositioning_retry'] ?? null,
+                'shade_goal' => $options['shade_goal'] ?? null,
+                'treatment_scope' => $options['treatment_scope'] ?? null,
+                'smile_width_goal' => $options['smile_width_goal'] ?? null,
+                'veneer_preview_qa' => $result['veneer_preview_qa'] ?? null,
+                'veneer_preview_retry' => $result['veneer_preview_retry'] ?? null,
             ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'is_selected' => $autoSelected ? 1 : 0,
         ]
@@ -2485,6 +2965,7 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         'provider' => $providerName,
         'message' => 'AI smile preview generated.',
         'lip_repositioning_qa_warning' => !empty($result['lip_repositioning_qa_warning']),
+        'veneer_preview_qa_warning' => !empty($result['veneer_preview_qa_warning']),
     ];
 }
 

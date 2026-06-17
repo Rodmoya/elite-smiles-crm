@@ -3941,6 +3941,16 @@ $consultationOptions = [
     if (deleteLeadButton) deleteLeadButton.addEventListener('click', requestDeleteLead);
 
     board.addEventListener('click', async function (event) {
+        const openButton = event.target.closest('[data-open-lead-modal]');
+        if (openButton) {
+            const card = openButton.closest('.lead-card');
+            if (!card) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openLeadModal(card, openButton.dataset.openTab || 'communications');
+            return;
+        }
+
         const moveButton = event.target.closest('[data-move-card]');
         if (!moveButton) return;
         const card = moveButton.closest('.lead-card');

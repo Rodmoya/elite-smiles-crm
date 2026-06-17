@@ -2737,6 +2737,12 @@ $consultationOptions = [
         }
         return sibling;
     }
+
+    function setDeleteButtonState(disabled) {
+        if (!deleteLeadButton) return;
+        deleteLeadButton.disabled = !!disabled;
+    }
+
     function setWorkspacePresentation(mode) {
         if (!modal) return;
 

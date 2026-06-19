@@ -35,6 +35,15 @@ $sampleId = db_insert(
         'created_by' => auth_user_id(),
     ]
 );
+db_query(
+    "UPDATE lvi_style_samples
+     SET sample_storage_key = :storage_key
+     WHERE style_key = :style_key",
+    [
+        'storage_key' => $stored['storage_key'],
+        'style_key' => $style,
+    ]
+);
 smile_design_audit(null, 'lvi_sample_uploaded', ['lvi_sample_id' => $sampleId, 'style_key' => $style], auth_user_id());
 flash_set('success', 'LVI sample uploaded.');
 redirect(base_url('smile-design/lvi-library'));

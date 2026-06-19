@@ -27,6 +27,14 @@ function smile_design_internal_boot(string $pageTitle = 'Smile Design'): array
 
 function smile_design_page_header(string $title, string $subtitle = ''): void
 {
+    $galleryLinkResult = smile_design_issue_or_reuse_gallery_link(auth_user_id(), 90);
+    $consultRoomNavLink = is_array($galleryLinkResult['link'] ?? null) && is_array($galleryLinkResult['link'])
+        ? (string)($galleryLinkResult['link']['gallery_url'] ?? '')
+        : '';
+    if ($consultRoomNavLink === '') {
+        $consultRoomNavLink = base_url('app/actions/smile_design_open_gallery.php');
+    }
+
     ?>
     <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -45,13 +53,17 @@ function smile_design_page_header(string $title, string $subtitle = ''): void
         <?php foreach ([
             ['Dashboard', 'smile-design'],
             ['Staff Intake', 'smile-design/staff-intake'],
-            ['Consult Tool', 'smile-design/consult'],
             ['Cases', 'smile-design/cases'],
             ['Gallery', 'smile-design/gallery'],
             ['LVI Library', 'smile-design/lvi-library'],
             ['Diagnostics', 'smile-design/diagnostics'],
+            ['Consult Room', $consultRoomNavLink],
         ] as [$label, $path]): ?>
-            <a class="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700" href="<?= e(base_url($path)) ?>"><?= e($label) ?></a>
+            <?php if (str_starts_with((string)$path, 'http') || str_starts_with((string)$path, '/')): ?>
+                <a class="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700" href="<?= e($path) ?>" target="_blank" rel="noreferrer"><?= e($label) ?></a>
+            <?php else: ?>
+                <a class="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700" href="<?= e(base_url($path)) ?>"><?= e($label) ?></a>
+            <?php endif; ?>
         <?php endforeach; ?>
     </nav>
     <?php

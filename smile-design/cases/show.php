@@ -21,6 +21,11 @@ $displayBeforePhoto = smile_design_find_before_photo_by_type($caseId, 'front', t
 $afterVersions = smile_design_after_versions($caseId, true);
 $selectedAfter = smile_design_selected_after_version($caseId);
 $previewAfter = smile_design_patient_preview_version($caseId);
+$galleryLinkResult = smile_design_issue_or_reuse_gallery_link(auth_user_id(), 90);
+$consultRoomGalleryUrl = is_array($galleryLinkResult['link'] ?? null) ? (string)($galleryLinkResult['link']['gallery_url'] ?? '') : '';
+$consultRoomCaseUrl = $consultRoomGalleryUrl !== ''
+    ? $consultRoomGalleryUrl . (str_contains($consultRoomGalleryUrl, '?') ? '&' : '?') . 'case_id=' . $caseId
+    : base_url('smile-design/gallery?case_id=' . $caseId);
 $previewLinks = smile_design_preview_links($caseId, true, 10);
 $activePreviewLink = smile_design_active_preview_link($caseId);
 $activePreviewUrl = $activePreviewLink ? smile_design_preview_link_url($activePreviewLink) : null;
@@ -73,6 +78,9 @@ $selectedAfterByAngle = [];
 foreach ($angleDefinitions as $photoType => $label) {
     $selectedAfterByAngle[$photoType] = smile_design_selected_after_version($caseId, $photoType);
 }
+$selectedRevealAnglesReady = count(array_filter($selectedAfterByAngle, static fn($version): bool => is_array($version))) === count($angleDefinitions);
+$latestRevealVideo = smile_design_latest_case_video($caseId);
+$latestRevealVideoUrl = $latestRevealVideo ? smile_design_case_video_url((int)$latestRevealVideo['id']) : '';
 $frontViewerPhoto = $angleBeforePhotos['front'] ?? $displayBeforePhoto;
 $inputGallery = [];
 $viewerAfterVersion = null;
@@ -210,7 +218,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
     <?php endforeach; ?>
     <div class="ml-auto flex flex-wrap gap-2">
         <a class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white" href="<?= e(base_url('smile-design/cases/' . $caseId . '/present')) ?>">Present</a>
-        <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e(base_url('smile-design/consult/' . $caseId)) ?>">Consult Tool</a>
+        <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e($consultRoomCaseUrl) ?>">Consult Room</a>
         <form method="POST" action="<?= e(base_url('app/actions/smile_design_case_delete.php')) ?>" data-confirm="Delete this entire smile case? This will remove before photos, after versions, links, and activity for this case.">
             <?= csrf_input() ?>
             <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
@@ -259,7 +267,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             <?php foreach ($uploadedBeforePhotos as $photo): ?>
                                 <div class="rounded-md border border-slate-200 p-3">
                                     <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" alt="Before photo thumbnail" data-lightbox-src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" data-lightbox-alt="<?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> before photo">
-                                    <p class="mt-2 text-xs font-semibold text-slate-600"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> · #<?= e((string)$photo['id']) ?></p>
+                                    <p class="mt-2 text-xs font-semibold text-slate-600"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> Â· #<?= e((string)$photo['id']) ?></p>
                                     <form class="mt-3 grid gap-2" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>">
                                         <?= csrf_input() ?>
                                         <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
@@ -354,12 +362,12 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         <p class="text-slate-500">Procedure and style</p>
                         <p class="mt-1 font-semibold"><?= e((string)$case['procedure_interest']) ?></p>
                         <?php if ($isLipRepositionOnlyCase): ?>
-                            <p class="mt-1 text-slate-600">Lip repositioning only · no LVI tooth style</p>
+                            <p class="mt-1 text-slate-600">Lip repositioning only Â· no LVI tooth style</p>
                         <?php else: ?>
-                            <p class="mt-1 text-slate-600"><?= e((string)$case['lvi_style_key']) ?> · <?= e((string)$case['selected_style']) ?></p>
-                            <p class="mt-1 text-slate-600"><?= e((string)$caseShadeDetail['label']) ?> · <?= e((string)$caseShadeDetail['title']) ?></p>
+                            <p class="mt-1 text-slate-600"><?= e((string)$case['lvi_style_key']) ?> Â· <?= e((string)$case['selected_style']) ?></p>
+                            <p class="mt-1 text-slate-600"><?= e((string)$caseShadeDetail['label']) ?> Â· <?= e((string)$caseShadeDetail['title']) ?></p>
                         <?php endif; ?>
-                        <p class="mt-1 text-slate-600"><?= e(smile_design_treatment_scope_label((string)$caseTreatmentScope, (string)($case['procedure_interest'] ?? ''))) ?> Â· <?= e(smile_design_smile_width_label((string)$caseSmileWidthGoal)) ?></p>
+                        <p class="mt-1 text-slate-600"><?= e(smile_design_treatment_scope_label((string)$caseTreatmentScope, (string)($case['procedure_interest'] ?? ''))) ?> Ã‚Â· <?= e(smile_design_smile_width_label((string)$caseSmileWidthGoal)) ?></p>
                     </div>
                     <div class="rounded-md bg-slate-50 p-4">
                         <p class="text-slate-500">Notes</p>
@@ -417,8 +425,8 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                 </div>
                 <details class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
                     <summary class="cursor-pointer text-sm font-semibold text-slate-900">Generate another full set</summary>
-                    <form class="mt-4 grid gap-4 md:grid-cols-2 js-ai-submit-form" method="POST" action="<?= e(base_url('app/actions/smile_design_ai_generate.php')) ?>">
-                        <?= csrf_input() ?><input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
+                    <form class="mt-4 grid gap-4 md:grid-cols-2 js-ai-submit-form" method="POST" action="<?= e(base_url('app/actions/smile_design_ai_generate.php')) ?>" data-preserve-open-sets>
+                        <?= csrf_input() ?><input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>"><input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#generate')) ?>">
                         <div class="rounded-md border border-slate-200 bg-white p-4 text-sm md:col-span-2">
                             <p class="font-semibold text-slate-900">Angles that will generate</p>
                             <div class="mt-3 flex flex-wrap gap-2">
@@ -438,7 +446,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             <input type="hidden" name="treatment_scope" value="<?= e((string)$caseTreatmentScope) ?>">
                             <input type="hidden" name="smile_width_goal" value="<?= e((string)$caseSmileWidthGoal) ?>">
                         <?php else: ?>
-                            <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> · <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
+                            <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> Â· <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
                             <label class="block text-sm font-semibold">Veneer shade<select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseShadeDetail['code'] === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                             <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseTreatmentScope === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                             <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseSmileWidthGoal === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
@@ -541,7 +549,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         $setVersionCount = count($set['versions']);
                         $setIsActive = $setSelectedCount > 0;
                         $setIsFullyActive = $setVersionCount > 0 && $setSelectedCount === $setVersionCount;
-                        $setStartsOpen = isset($requestedOpenSetKeys[$setKey]) || $setIsActive || ($activeAfterIds === [] && $setKey === $firstSetKey);
+                        $setStartsOpen = false;
                         ?>
                         <section class="rounded-md border <?= $setIsActive ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white' ?> p-4">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -615,19 +623,13 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                         <img class="h-44 w-full rounded-md bg-slate-100 object-contain" src="<?= e(smile_design_after_url((int)$version['id'])) ?>" alt="After version" data-lightbox-src="<?= e(smile_design_after_url((int)$version['id'])) ?>" data-lightbox-alt="#<?= e((string)$version['version_number']) ?> <?= e((string)$version['version_title']) ?>">
                                         <div class="mt-3 flex items-start justify-between gap-3">
                                             <div class="flex min-w-0 items-start gap-2">
-                                                <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_update.php')) ?>" class="shrink-0" data-preserve-open-sets>
-                                                    <?= csrf_input() ?>
-                                                    <input type="hidden" name="after_version_id" value="<?= e((string)$version['id']) ?>">
-                                                    <input type="hidden" name="after_action" value="select">
-                                                    <input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#generate')) ?>">
-                                                    <button class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded border <?= $isVersionSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-500 hover:border-slate-500' ?>" type="submit" title="Use this <?= e($versionAngleLabel) ?> in Compare" aria-label="Use #<?= e((string)$version['version_number']) ?> <?= e($versionAngleLabel) ?> in Compare" aria-pressed="<?= $isVersionSelected ? 'true' : 'false' ?>" <?= $isVersionSelected ? 'disabled' : '' ?>>
-                                                        <?php if ($isVersionSelected): ?><svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg><?php endif; ?>
-                                                    </button>
-                                                </form>
+                                                <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border <?= $isVersionSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-400' ?>" title="<?= $isVersionSelected ? 'Selected for simulation' : 'Not selected' ?>">
+                                                    <?php if ($isVersionSelected): ?><svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg><?php endif; ?>
+                                                </span>
                                                 <div class="min-w-0">
                                                 <p class="text-sm font-semibold">#<?= e((string)$version['version_number']) ?> <?= e((string)$version['version_title']) ?></p>
-                                                <p class="mt-1 text-xs text-slate-500"><?= e($label) ?> · <?= e(smile_design_source_type_labels()[(string)$version['source_type']] ?? (string)$version['source_type']) ?></p>
-                                                <p class="mt-1 text-xs text-slate-500"><?= $isLipRepositionOnlyCase ? 'No LVI tooth style' : e((string)$version['lvi_style_key']) ?> · <?= e($versionAngleLabel) ?></p>
+                                                <p class="mt-1 text-xs text-slate-500"><?= e($label) ?> Â· <?= e(smile_design_source_type_labels()[(string)$version['source_type']] ?? (string)$version['source_type']) ?></p>
+                                                <p class="mt-1 text-xs text-slate-500"><?= $isLipRepositionOnlyCase ? 'No LVI tooth style' : e((string)$version['lvi_style_key']) ?> Â· <?= e($versionAngleLabel) ?></p>
                                                 </div>
                                             </div>
                                             <div class="flex flex-col items-end gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -639,63 +641,20 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                         </div>
                                         <?php if (!empty($version['notes'])): ?><p class="mt-3 text-sm leading-6 text-slate-600"><?= e((string)$version['notes']) ?></p><?php endif; ?>
                                         <div class="mt-4 flex flex-wrap gap-2">
-                                            <?php foreach ([['select', 'Set Doctor Selected'], [(int)$version['approved_for_patient_preview'] === 1 ? 'unapprove_preview' : 'approve_preview', (int)$version['approved_for_patient_preview'] === 1 ? 'Remove From Customer Link' : 'Use on Customer Link'], [(int)$version['approved_for_office_gallery'] === 1 ? 'unapprove_gallery' : 'approve_gallery', (int)$version['approved_for_office_gallery'] === 1 ? 'Remove From Gallery' : 'Use in Gallery'], ['archive', 'Archive'], ['delete', 'Delete']] as [$action, $text]): ?>
+                                            <?php foreach ([['archive', (int)$version['archived'] === 1 ? 'Archived' : 'Archive'], ['delete', 'Delete']] as [$action, $text]): ?>
                                                 <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_update.php')) ?>">
                                                     <?= csrf_input() ?>
                                                     <input type="hidden" name="after_version_id" value="<?= e((string)$version['id']) ?>">
                                                     <input type="hidden" name="after_action" value="<?= e($action) ?>">
-                                                    <button class="rounded-md border <?= $action === 'delete' ? 'border-rose-300 text-rose-700' : 'border-slate-300' ?> px-2 py-1.5 text-xs font-semibold" type="submit" <?= $action === 'delete' ? 'onclick="return confirm(\'Delete this after version? This cannot be undone.\')"' : '' ?>><?= e($text) ?></button>
+                                                    <button class="rounded-md border <?= $action === 'delete' ? 'border-rose-300 text-rose-700' : 'border-slate-300 text-slate-700' ?> px-2 py-1.5 text-xs font-semibold" type="submit" <?= $action === 'delete' ? 'onclick="return confirm(\'Delete this after version? This cannot be undone.\')"' : '' ?> <?= $action === 'archive' && (int)$version['archived'] === 1 ? 'disabled' : '' ?>><?= e($text) ?></button>
                                                 </form>
                                             <?php endforeach; ?>
                                         </div>
-                                        <form class="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 js-ai-submit-form" method="POST" action="<?= e(base_url('app/actions/smile_design_after_adjust.php')) ?>">
-                                            <?= csrf_input() ?>
-                                            <input type="hidden" name="after_version_id" value="<?= e((string)$version['id']) ?>">
-                                            <input type="hidden" name="before_photo_id" value="<?= e((string)($version['before_photo_id'] ?? $primaryBefore['id'] ?? 0)) ?>">
-                                            <input type="hidden" name="procedure_label" value="<?= e((string)($version['procedure_label'] ?? $case['procedure_interest'] ?? '')) ?>">
-                                            <input type="hidden" name="lvi_style_key" value="<?= $isLipRepositionOnlyCase ? '' : e((string)($version['lvi_style_key'] ?? $case['lvi_style_key'] ?? '')) ?>">
-                                            <input type="hidden" name="shade_goal" value="<?= e((string)$caseShadeDetail['code']) ?>">
-                                            <input type="hidden" name="photo_type" value="<?= e((string)($version['photo_type'] ?? 'front')) ?>">
-                                            <?php if ($isLipRepositionOnlyCase): ?>
-                                                <input type="hidden" name="treatment_scope" value="<?= e((string)$caseTreatmentScope) ?>">
-                                                <input type="hidden" name="smile_width_goal" value="<?= e((string)$caseSmileWidthGoal) ?>">
-                                            <?php endif; ?>
-                                            <?php if (!$isLipRepositionOnlyCase): ?>
-                                                <label class="block text-sm font-semibold text-slate-900">
-                                                    Treatment scope
-                                                    <select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal">
-                                                        <?php foreach (smile_design_treatment_scope_options() as $key => $label): ?>
-                                                            <option value="<?= e($key) ?>" <?= (string)$caseTreatmentScope === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </label>
-                                                <label class="block text-sm font-semibold text-slate-900">
-                                                    Smile width
-                                                    <select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal">
-                                                        <?php foreach (smile_design_smile_width_options() as $key => $label): ?>
-                                                            <option value="<?= e($key) ?>" <?= (string)$caseSmileWidthGoal === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </label>
-                                            <?php endif; ?>
-                                            <label class="block text-sm font-semibold text-slate-900">
-                                                Make adjustments and resend
-                                                <textarea name="adjustment_request" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Example: keep the same person and same smile direction, but shorten the upper centrals a little, soften the canines, and make the shade slightly warmer."></textarea>
-                                            </label>
-                                            <label class="block text-sm font-semibold text-slate-900">
-                                                New version title
-                                                <input name="version_title" value="<?= e('Revision of #' . (string)$version['version_number']) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal">
-                                            </label>
-                                            <label class="block text-sm font-semibold text-slate-900">
-                                                Internal note
-                                                <input name="notes" value="" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Optional note for the team.">
-                                            </label>
-                                            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" name="refresh_analysis" value="1" class="h-4 w-4 rounded border-slate-300"> Re-run AI case analysis before this revision</label>
-                                            <button class="rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white inline-flex items-center justify-center gap-2" type="submit" data-ai-submit-button data-default-label="Resend with Adjustments">
-                                                <span class="hidden h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" data-ai-spinner></span>
-                                                <span data-ai-label>Resend with Adjustments</span>
-                                            </button>
-                                        </form>
+                                        <a
+                                            class="mt-4 inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                            href="<?= e(base_url('smile-design/adjust?case_id=' . $caseId . '&version_id=' . (int)$version['id'])) ?>">
+                                            Open fullscreen edit
+                                        </a>
                                         <p class="mt-3 text-xs leading-5 text-slate-500"><?= e($disclaimer) ?></p>
                                     </article>
                                 <?php endforeach; ?>
@@ -704,8 +663,8 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-            <form class="grid gap-4 md:grid-cols-2 js-ai-submit-form" method="POST" action="<?= e(base_url('app/actions/smile_design_ai_generate.php')) ?>">
-                <?= csrf_input() ?><input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
+            <form class="grid gap-4 md:grid-cols-2 js-ai-submit-form" method="POST" action="<?= e(base_url('app/actions/smile_design_ai_generate.php')) ?>" data-preserve-open-sets>
+                <?= csrf_input() ?><input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>"><input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#generate')) ?>">
                 <div class="md:col-span-2">
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Generate</p>
                     <h2 class="mt-2 text-lg font-semibold text-slate-900">Generate After Preview</h2>
@@ -731,7 +690,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <input type="hidden" name="lvi_style_key" value="">
                     <input type="hidden" name="shade_goal" value="<?= e((string)$caseShadeDetail['code']) ?>">
                 <?php else: ?>
-                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> · <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
+                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> Â· <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
                     <label class="block text-sm font-semibold">Veneer shade<select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseShadeDetail['code'] === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                 <?php endif; ?>
                 <label class="block text-sm font-semibold md:col-span-2">Custom request<textarea name="custom_request" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Example: upper veneers only, natural white, close small gaps, keep it subtle. Do not change face, hair, skin, lips, or overall identity."></textarea></label>
@@ -751,10 +710,43 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare</p>
                     <h2 class="mt-2 text-lg font-semibold">Review source and selected result</h2>
                 </div>
-                <p class="text-sm text-slate-500">Viewer modes: Input, Result, Compare, B/A, and Opacity.</p>
+                <p class="text-sm text-slate-500">Viewer modes: Input, Result, Compare, B/A, Opacity, Zoom, and Video.</p>
             </div>
             <div class="mt-5 overflow-hidden rounded-md bg-black p-3">
-                <?php smile_before_after_viewer($beforeUrl, $afterUrl, ['title' => (string)$case['patient_name'], 'mode' => 'ba', 'alignment' => $alignment, 'alignment_edit' => $alignmentEdit, 'input_gallery' => $inputGallery]); ?>
+                <?php smile_before_after_viewer($beforeUrl, $afterUrl, [
+                    'title' => (string)$case['patient_name'],
+                    'mode' => 'ba',
+                    'alignment' => $alignment,
+                    'alignment_edit' => $alignmentEdit,
+                    'input_gallery' => $inputGallery,
+                    'video_url' => $latestRevealVideoUrl,
+                    'video_generate' => $selectedRevealAnglesReady ? [
+                        'action' => base_url('app/actions/smile_design_reveal_video_generate.php'),
+                        'loading_label' => $latestRevealVideo ? 'Re-generating smile reveal video...' : 'Generating smile reveal video...',
+                        'hidden' => [
+                            'case_id' => $caseId,
+                            'return_url' => base_url('smile-design/cases/' . $caseId . '#compare'),
+                        ],
+                    ] : [],
+                    'video_delete' => $latestRevealVideo ? [
+                        'action' => base_url('app/actions/smile_design_reveal_video_delete.php'),
+                        'hidden' => [
+                            'case_id' => $caseId,
+                            'video_id' => (int)$latestRevealVideo['id'],
+                            'return_url' => base_url('smile-design/cases/' . $caseId . '#compare'),
+                        ],
+                    ] : [],
+                ]); ?>
+                <?php if ($latestRevealVideo): ?>
+                    <div class="mt-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs leading-5 text-white/70">
+                        Latest reveal video: <span class="font-semibold text-white"><?= e((string)($latestRevealVideo['video_title'] ?? 'Smile Reveal Video')) ?></span>
+                        <?php if (!empty($latestRevealVideo['created_at'])): ?> &middot; <?= e(format_datetime((string)$latestRevealVideo['created_at'])) ?><?php endif; ?>
+                    </div>
+                <?php elseif (!$selectedRevealAnglesReady): ?>
+                    <div class="mt-3 rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                        Select generated after images for Front, Left 45, and Right 45 to enable the reveal video button.
+                    </div>
+                <?php endif; ?>
                 <p class="mt-3 px-1 text-xs leading-5 text-white/65">Internal smile design preview. Use alignment controls to keep the doctor-selected version presentation-ready.</p>
             </div>
         </section>
@@ -778,7 +770,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                 </div>
                 <div class="rounded-md bg-slate-50 p-4">
                     <p class="text-sm font-semibold text-slate-900">Alignment workflow</p>
-                    <p class="mt-2 text-sm text-slate-600">Use the viewer’s alignment controls below Compare to refine framing before presenting or sharing.</p>
+                    <p class="mt-2 text-sm text-slate-600">Use the viewerâ€™s alignment controls below Compare to refine framing before presenting or sharing.</p>
                 </div>
             </div>
         </section>
@@ -936,14 +928,14 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         foreach (array_slice($payload, 0, 3, true) as $key => $value) {
                             $pairs[] = $key . ': ' . (is_scalar($value) ? (string)$value : json_encode($value, JSON_UNESCAPED_SLASHES));
                         }
-                        $payloadSummary = implode(' · ', $pairs);
+                        $payloadSummary = implode(' Â· ', $pairs);
                     }
                     ?>
                     <div class="rounded-md border border-slate-200 p-3">
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <p class="text-sm font-semibold"><?= e(str_replace('_', ' ', (string)$event['event_key'])) ?></p>
-                                <p class="mt-1 text-xs text-slate-500"><?= e((string)($event['user_name'] ?: 'System')) ?> · <?= e(format_datetime((string)$event['created_at'])) ?></p>
+                                <p class="mt-1 text-xs text-slate-500"><?= e((string)($event['user_name'] ?: 'System')) ?> Â· <?= e(format_datetime((string)$event['created_at'])) ?></p>
                             </div>
                         </div>
                         <?php if ($payloadSummary !== ''): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= e($payloadSummary) ?></p><?php endif; ?>
@@ -974,14 +966,14 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <p class="mt-1 text-sm leading-6 text-slate-600">Use this after treatment is completed. Attach the real clinical after to the matching before angle so it can be used on the customer link and in the office gallery.</p>
                                 </div>
                                 <input type="hidden" name="source_type" value="actual_clinical_after">
-                                <label class="block text-sm font-semibold">Match before photo<select name="before_photo_id" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach ($uploadedBeforePhotos as $photo): ?><option value="<?= e((string)$photo['id']) ?>"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Front') ?> · #<?= e((string)$photo['id']) ?></option><?php endforeach; ?></select></label>
+                                <label class="block text-sm font-semibold">Match before photo<select name="before_photo_id" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach ($uploadedBeforePhotos as $photo): ?><option value="<?= e((string)$photo['id']) ?>"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Front') ?> Â· #<?= e((string)$photo['id']) ?></option><?php endforeach; ?></select></label>
                                 <label class="block text-sm font-semibold">Photo type / angle<select name="photo_type" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_photo_type_options() as $key => $label): ?><option value="<?= e($key) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
                                 <label class="block text-sm font-semibold">Version title<input name="version_title" value="Real After" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
                                 <label class="block text-sm font-semibold">Procedure<input name="procedure_label" value="<?= e((string)$case['procedure_interest']) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
                                 <?php if ($isLipRepositionOnlyCase): ?>
                                     <input type="hidden" name="lvi_style_key" value="">
                                 <?php else: ?>
-                                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><option value="<?= e($key) ?>" <?= (string)$case['lvi_style_key'] === (string)$key ? 'selected' : '' ?>><?= e((string)($meta['key'] ?? $key)) ?> · <?= e((string)($meta['name'] ?? $key)) ?></option><?php endforeach; ?></select></label>
+                                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><option value="<?= e($key) ?>" <?= (string)$case['lvi_style_key'] === (string)$key ? 'selected' : '' ?>><?= e((string)($meta['key'] ?? $key)) ?> Â· <?= e((string)($meta['name'] ?? $key)) ?></option><?php endforeach; ?></select></label>
                                 <?php endif; ?>
                                 <label class="block text-sm font-semibold md:col-span-2">After image<input required name="after_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2"></label>
                                 <label class="block text-sm font-semibold md:col-span-2">Notes<textarea name="notes" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Completed treatment note, date, shade, or any clinical context."></textarea></label>
@@ -1020,6 +1012,172 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
     </div>
 </div>
 
+<style>
+#adjust-fullscreen-modal .adjust-overlay-anchor-layer {
+    pointer-events: none;
+}
+#adjust-fullscreen-modal .adjust-overlay-anchor-layer button {
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    border-radius: 999px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    color: #fff;
+    display: grid;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    place-items: center;
+    transform: translate(-50%, -50%);
+    transition: transform 120ms ease;
+}
+#adjust-fullscreen-modal .adjust-overlay-anchor-layer .adjust-anchor-point {
+    position: absolute;
+}
+#adjust-fullscreen-modal .adjust-overlay-anchor-layer .adjust-anchor-point[data-editable="true"] {
+    pointer-events: auto;
+    cursor: grab;
+}
+#adjust-fullscreen-modal .adjust-overlay-anchor-layer .adjust-anchor-point[data-editable="true"].active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(1.15);
+}
+#adjust-fullscreen-modal .adjust-anchor-path {
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+#adjust-fullscreen-modal .adjust-mask-fill {
+    pointer-events: none;
+    mix-blend-mode: multiply;
+}
+</style>
+
+<div id="adjust-fullscreen-modal" class="fixed inset-0 z-[80] hidden overflow-hidden bg-slate-950/90 p-3 lg:p-5">
+    <div class="mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl">
+        <div class="flex flex-wrap items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Adjust and resend</p>
+                <h2 class="mt-0.5 text-lg font-semibold text-slate-900" id="adjust-modal-title">Edit preview version</h2>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700" id="adjust-modal-badge">Version #0</span>
+                <button id="adjust-modal-close" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-700" aria-label="Close adjust editor">×</button>
+            </div>
+        </div>
+        <form id="adjust-fullscreen-form" class="js-ai-submit-form min-h-0 flex-1 p-4 md:pt-3" method="POST" action="<?= e(base_url('app/actions/smile_design_after_adjust.php')) ?>" data-preserve-open-sets>
+            <?= csrf_input() ?>
+            <input type="hidden" name="after_version_id" value="">
+            <input type="hidden" name="before_photo_id" value="">
+            <input type="hidden" name="procedure_label" value="">
+            <input type="hidden" name="lvi_style_key" value="">
+            <input type="hidden" name="shade_goal" value="">
+            <input type="hidden" name="photo_type" value="">
+            <input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#compare')) ?>">
+            <input type="hidden" name="shape_scale_delta" value="0">
+            <input type="hidden" name="smile_length_delta" value="0">
+            <input type="hidden" name="smile_width_delta" value="0">
+            <input type="hidden" name="shade_brightness_delta" value="0">
+            <input type="hidden" name="anchor_points" value="">
+            <input type="hidden" name="precision_mode" value="balanced">
+            <div class="grid min-h-0 gap-3 lg:grid-cols-[300px_minmax(0,1fr)]">
+                <aside class="flex min-h-0 flex-col justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="space-y-4">
+                        <section>
+                            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Quick settings</p>
+                            <div class="mt-3 space-y-3">
+                                <label class="block text-sm font-semibold text-slate-900">
+                                    New version title
+                                    <input name="version_title" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value="">
+                                </label>
+                                <label class="block text-sm font-semibold text-slate-900">
+                                    Treatment scope
+                                    <select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal">
+                                        <?php foreach (smile_design_treatment_scope_options() as $key => $label): ?>
+                                            <option value="<?= e($key) ?>"><?= e($label) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label class="block text-sm font-semibold text-slate-900">
+                                    Smile width
+                                    <select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal">
+                                        <?php foreach (smile_design_smile_width_options() as $key => $label): ?>
+                                            <option value="<?= e($key) ?>"><?= e($label) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                            </div>
+                        </section>
+                        <label class="flex items-start gap-2 text-sm font-semibold text-slate-700">
+                            <input type="checkbox" name="refresh_analysis" value="1" class="mt-0.5 h-4 w-4 rounded border-slate-300">
+                            Re-run AI case analysis before this revision
+                        </label>
+                        <label class="block text-sm font-semibold text-slate-900">
+                            Internal note
+                            <input name="notes" value="" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Optional note for the team.">
+                        </label>
+                    </div>
+                    <div>
+                        <button class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white" type="submit" data-ai-submit-button data-default-label="Resend with Adjustments">
+                            <span class="hidden h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" data-ai-spinner></span>
+                            <span data-ai-label>Resend with Adjustments</span>
+                        </button>
+                    </div>
+                </aside>
+                <div class="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+                    <section class="grid min-h-0 gap-3 rounded-xl border border-slate-200 bg-slate-950/5 p-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-semibold text-slate-700">Smile edit mask</p>
+                                <p class="mt-1 text-[11px] font-medium text-slate-500">Work on one photo only. Drag the 8 anchors to fit the mouth, then resend.</p>
+                            </div>
+                            <label class="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                                Zoom
+                                <input id="adjust-modal-zoom-range" type="range" min="100" max="240" step="5" value="145" class="w-32 accent-slate-900">
+                                <span id="adjust-modal-zoom-value" class="min-w-[42px] text-right">145%</span>
+                            </label>
+                        </div>
+                        <div id="adjust-modal-work-frame" class="relative min-h-0 flex-1 overflow-hidden rounded-md border border-slate-200 bg-slate-950/5" style="min-height: 62vh;">
+                            <div id="adjust-modal-work-stage" class="absolute inset-0 transition-transform duration-150 ease-out">
+                                <img id="adjust-modal-work-preview" class="h-full w-full object-contain select-none" src="" alt="Smile edit reference" draggable="false">
+                                <div id="adjust-modal-anchor-overlay" class="adjust-overlay-anchor-layer absolute inset-0"></div>
+                                <svg id="adjust-modal-anchor-path" class="adjust-anchor-path absolute inset-0" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                                    <polygon class="adjust-mask-fill" fill="rgba(244,63,94,0.22)" stroke="none"></polygon>
+                                    <polyline fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="0.42" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                                </svg>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="rounded-md border border-slate-200 bg-white p-3">
+                        <label class="block text-sm font-semibold text-slate-900">
+                            Make adjustments and resend
+                            <textarea name="adjustment_request" rows="4" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Example: keep the same person and same smile direction, but shorten the upper centrals a little, soften the canines, and make the shade slightly brighter."></textarea>
+                        </label>
+                        <details class="mt-3 rounded-md border border-slate-200 bg-slate-50">
+                            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Precision controls</summary>
+                            <div class="mt-3 grid gap-3 border-t border-slate-200 p-3 sm:grid-cols-2">
+                                <label class="text-xs font-semibold text-slate-800">
+                                    Shape shift: <span id="adjust-modal-shape-value" class="font-bold">0</span>%
+                                    <input type="range" min="-30" max="30" value="0" class="mt-1 w-full" data-adjust-range="shape_scale_delta">
+                                </label>
+                                <label class="text-xs font-semibold text-slate-800">
+                                    Smile length: <span id="adjust-modal-length-value" class="font-bold">0</span>%
+                                    <input type="range" min="-30" max="30" value="0" class="mt-1 w-full" data-adjust-range="smile_length_delta">
+                                </label>
+                                <label class="text-xs font-semibold text-slate-800">
+                                    Smile width: <span id="adjust-modal-width-value" class="font-bold">0</span>%
+                                    <input type="range" min="-40" max="40" value="0" class="mt-1 w-full" data-adjust-range="smile_width_delta">
+                                </label>
+                                <label class="text-xs font-semibold text-slate-800">
+                                    Shade brightness: <span id="adjust-modal-shade-value" class="font-bold">0</span>
+                                    <input type="range" min="-25" max="25" value="0" class="mt-1 w-full" data-adjust-range="shade_brightness_delta">
+                                </label>
+                            </div>
+                        </details>
+                    </section>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const caseReviewBaseUrl = <?= json_encode(base_url('smile-design/cases/' . $caseId), JSON_UNESCAPED_SLASHES) ?>;
@@ -1028,6 +1186,18 @@ document.addEventListener('DOMContentLoaded', function () {
   const confirmMessage = document.getElementById('confirm-modal-message');
   const confirmCancel = document.getElementById('confirm-modal-cancel');
   const confirmContinue = document.getElementById('confirm-modal-continue');
+  const adjustModal = document.getElementById('adjust-fullscreen-modal');
+  const adjustModalClose = document.getElementById('adjust-modal-close');
+  const adjustModalTitle = document.getElementById('adjust-modal-title');
+  const adjustModalBadge = document.getElementById('adjust-modal-badge');
+  const adjustModalForm = document.getElementById('adjust-fullscreen-form');
+  const adjustWorkPreview = document.getElementById('adjust-modal-work-preview');
+  const adjustWorkFrame = document.getElementById('adjust-modal-work-frame');
+  const adjustWorkStage = document.getElementById('adjust-modal-work-stage');
+  const adjustAnchorOverlay = document.getElementById('adjust-modal-anchor-overlay');
+  const adjustAnchorPath = document.getElementById('adjust-modal-anchor-path');
+  const adjustZoomRange = document.getElementById('adjust-modal-zoom-range');
+  const adjustZoomValue = document.getElementById('adjust-modal-zoom-value');
   const lightbox = document.getElementById('image-lightbox');
   const lightboxImage = document.getElementById('image-lightbox-image');
   const lightboxClose = document.getElementById('image-lightbox-close');
@@ -1047,6 +1217,372 @@ document.addEventListener('DOMContentLoaded', function () {
     caseProcedureSelect.addEventListener('change', syncCasePreferenceFields);
     syncCasePreferenceFields();
   }
+  const adjustDefaultZoom = 145;
+  const adjustAnchorDefaults = [
+    { key: 'upper_left', label: 'Upper left lip edge', x: 31, y: 43, size: 18, color: '#ef4444' },
+    { key: 'upper_center', label: 'Upper center lip edge', x: 50, y: 42, size: 18, color: '#ef4444' },
+    { key: 'upper_right', label: 'Upper right lip edge', x: 69, y: 43, size: 18, color: '#ef4444' },
+    { key: 'right_inner', label: 'Right smile corner', x: 73, y: 50, size: 18, color: '#ef4444' },
+    { key: 'lower_right', label: 'Lower right lip edge', x: 69, y: 59, size: 18, color: '#ef4444' },
+    { key: 'lower_center', label: 'Lower center lip edge', x: 50, y: 61, size: 18, color: '#ef4444' },
+    { key: 'lower_left', label: 'Lower left lip edge', x: 31, y: 59, size: 18, color: '#ef4444' },
+    { key: 'left_inner', label: 'Left smile corner', x: 27, y: 50, size: 18, color: '#ef4444' },
+  ];
+  const adjustAnchorPathOrder = ['upper_left', 'upper_center', 'upper_right', 'right_inner', 'lower_right', 'lower_center', 'lower_left', 'left_inner', 'upper_left'];
+  const normalizeAdjustAnchor = function (value, min, max) {
+    const parsed = Number.parseFloat(value || '');
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+    return Math.max(min, Math.min(max, parsed));
+  };
+  const getAdjustAnchorValue = function () {
+    return adjustAnchorDefaults.map(function (point) {
+      return {
+        key: point.key,
+        label: point.label,
+        x: point.x,
+        y: point.y,
+        size: point.size,
+        color: point.color,
+      };
+    });
+  };
+  const readAnchorPoints = function (raw) {
+    try {
+      if (!raw || typeof raw !== 'string') return getAdjustAnchorValue();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || !parsed.length) return getAdjustAnchorValue();
+      const keyed = {};
+      parsed.forEach(function (point) {
+        const key = typeof point === 'object' && point !== null ? String(point.key || '') : '';
+        if (!key) return;
+        const x = normalizeAdjustAnchor(point.x ?? point.px ?? 0, 0, 100);
+        const y = normalizeAdjustAnchor(point.y ?? point.py ?? 0, 0, 100);
+        keyed[key] = {
+          key,
+          x,
+          y,
+          label: String(point.label || key).trim() || key,
+          size: Number.parseFloat(point.size || 14),
+          color: String(point.color || '#ffffff'),
+        };
+      });
+      const base = getAdjustAnchorValue();
+      return base.map(function (point) {
+        return keyed[point.key] || point;
+      });
+    } catch (error) {
+      return getAdjustAnchorValue();
+    }
+  };
+  const writeAnchorPoints = function (points) {
+    const input = adjustModalForm && adjustModalForm.querySelector('input[name="anchor_points"]') ? adjustModalForm.querySelector('input[name="anchor_points"]') : null;
+    if (!input) return;
+    input.value = JSON.stringify(points);
+  };
+  const getAnchorLinePoints = function (points) {
+    const values = {};
+    points.forEach(function (point) {
+      values[String(point.key || '').trim()] = point;
+    });
+    return adjustAnchorPathOrder
+      .map(function (key) { return values[key] ? `${values[key].x},${values[key].y}` : ''; })
+      .filter(Boolean)
+      .join(' ');
+  };
+  const getAnchorCentroid = function (points) {
+    if (!Array.isArray(points) || !points.length) {
+      return { x: 50, y: 50 };
+    }
+    const total = points.reduce(function (carry, point) {
+      return {
+        x: carry.x + Number(point.x || 0),
+        y: carry.y + Number(point.y || 0),
+      };
+    }, { x: 0, y: 0 });
+    return {
+      x: total.x / points.length,
+      y: total.y / points.length,
+    };
+  };
+  const syncAdjustZoom = function (points) {
+    if (!adjustWorkStage) return;
+    const zoomValue = adjustZoomRange ? normalizeAdjustAnchor(adjustZoomRange.value, 100, 240) : adjustDefaultZoom;
+    const scale = zoomValue / 100;
+    const centroid = getAnchorCentroid(points);
+    const frameRect = adjustWorkFrame ? adjustWorkFrame.getBoundingClientRect() : null;
+    const frameWidth = frameRect ? frameRect.width : 0;
+    const frameHeight = frameRect ? frameRect.height : 0;
+    const centroidX = (centroid.x / 100) * frameWidth;
+    const centroidY = (centroid.y / 100) * frameHeight;
+    const desiredX = frameWidth * 0.5;
+    const desiredY = frameHeight * 0.5;
+    let offsetX = desiredX - (centroidX * scale);
+    let offsetY = desiredY - (centroidY * scale);
+    const minOffsetX = frameWidth - (frameWidth * scale);
+    const minOffsetY = frameHeight - (frameHeight * scale);
+    offsetX = Math.max(minOffsetX, Math.min(0, offsetX));
+    offsetY = Math.max(minOffsetY, Math.min(0, offsetY));
+    adjustWorkStage.style.transformOrigin = '0 0';
+    adjustWorkStage.style.transform = 'translate(' + offsetX + 'px, ' + offsetY + 'px) scale(' + scale + ')';
+    if (adjustZoomValue) {
+      adjustZoomValue.textContent = Math.round(zoomValue) + '%';
+    }
+  };
+  const buildAnchorButton = function (point, editable) {
+    const marker = document.createElement('button');
+    const size = Math.max(10, normalizeAdjustAnchor(point.size || 14, 10, 22));
+    marker.type = 'button';
+    marker.className = 'adjust-anchor-point';
+    marker.style.left = point.x + '%';
+    marker.style.top = point.y + '%';
+    marker.style.width = size + 'px';
+    marker.style.height = size + 'px';
+    marker.style.backgroundColor = String(point.color || '#ffffff');
+    marker.dataset.anchorKey = String(point.key || '');
+    marker.dataset.anchorLabel = String(point.label || '');
+    marker.dataset.editable = String(editable);
+    marker.style.touchAction = 'none';
+    marker.setAttribute('title', String(point.label || point.key || 'Anchor point'));
+    marker.textContent = '\u2022';
+    return marker;
+  };
+  const renderAdjustAnchors = function (points, editable) {
+    const path = adjustAnchorPath ? adjustAnchorPath.querySelector('polyline') : null;
+    const fill = adjustAnchorPath ? adjustAnchorPath.querySelector('polygon') : null;
+    if (!adjustAnchorOverlay) return;
+    adjustAnchorOverlay.innerHTML = '';
+    if (!points || !points.length) return;
+    points.forEach(function (point) {
+      const afterMarker = buildAnchorButton(point, editable);
+      adjustAnchorOverlay.appendChild(afterMarker);
+      if (editable) {
+        afterMarker.setAttribute('data-editable', 'true');
+      }
+    });
+    if (editable) {
+      adjustAnchorOverlay.classList.remove('pointer-events-none');
+      adjustAnchorOverlay.querySelectorAll('.adjust-anchor-point[data-editable="true"]').forEach(function (anchor) {
+        anchor.addEventListener('pointerdown', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          anchor.setPointerCapture(event.pointerId);
+          anchor.setAttribute('touch-action', 'none');
+          anchor.classList.add('active');
+          const startMove = function (moveEvent) {
+            if (!adjustAnchorOverlay || !adjustAnchorOverlay.parentElement) return;
+            const containerRect = adjustAnchorOverlay.parentElement.getBoundingClientRect();
+            const nextX = Math.max(0, Math.min(100, ((moveEvent.clientX - containerRect.left) / containerRect.width) * 100));
+            const nextY = Math.max(0, Math.min(100, ((moveEvent.clientY - containerRect.top) / containerRect.height) * 100));
+            anchor.style.left = nextX + '%';
+            anchor.style.top = nextY + '%';
+            const key = anchor.getAttribute('data-anchor-key');
+            const point = points.find(function (entry) { return String(entry.key) === String(key); });
+            if (point) {
+              point.x = Math.round(nextX * 100) / 100;
+              point.y = Math.round(nextY * 100) / 100;
+            }
+            if (path) {
+              path.setAttribute('points', getAnchorLinePoints(points));
+            }
+            if (fill) {
+              fill.setAttribute('points', getAnchorLinePoints(points));
+            }
+            syncAdjustZoom(points);
+            writeAnchorPoints(points);
+          };
+          const finishMove = function () {
+            anchor.classList.remove('active');
+            window.removeEventListener('pointermove', startMove);
+            window.removeEventListener('pointerup', finishMove);
+            window.removeEventListener('pointercancel', finishMove);
+          };
+          window.addEventListener('pointermove', startMove);
+          window.addEventListener('pointerup', finishMove, { once: true });
+          window.addEventListener('pointercancel', finishMove, { once: true });
+        });
+      });
+    } else {
+      adjustAnchorOverlay.classList.add('pointer-events-none');
+    }
+    if (path) {
+      path.setAttribute('points', getAnchorLinePoints(points));
+    }
+    if (fill) {
+      fill.setAttribute('points', getAnchorLinePoints(points));
+    }
+    adjustAnchorOverlay.classList.toggle('pointer-events-none', !editable);
+    syncAdjustZoom(points);
+    writeAnchorPoints(points);
+  };
+  function getRangeConfig(rangeName) {
+    const configs = {
+      shape_scale_delta: { label: 'adjust-modal-shape-value', input: 'shape_scale_delta', suffix: '%' },
+      smile_length_delta: { label: 'adjust-modal-length-value', input: 'smile_length_delta', suffix: '%' },
+      smile_width_delta: { label: 'adjust-modal-width-value', input: 'smile_width_delta', suffix: '%' },
+      shade_brightness_delta: { label: 'adjust-modal-shade-value', input: 'shade_brightness_delta', suffix: '' },
+    };
+    return configs[rangeName] || null;
+  }
+  function syncAdjustRange(range) {
+    const key = range.getAttribute('data-adjust-range');
+    const config = getRangeConfig(key);
+    if (!config || !adjustModalForm) return;
+    const value = String(range.value || 0);
+    const display = document.getElementById(config.label);
+    const hidden = adjustModalForm.querySelector('input[name="' + config.input + '"]');
+    if (display) {
+      display.textContent = value + config.suffix;
+    }
+    if (hidden) {
+      hidden.value = value;
+    }
+  }
+  function resetAdjustRangeInputs() {
+    document.querySelectorAll('[data-adjust-range]').forEach(function (range) {
+      range.value = '0';
+      syncAdjustRange(range);
+    });
+  }
+  document.querySelectorAll('[data-adjust-range]').forEach(function (range) {
+    syncAdjustRange(range);
+    range.addEventListener('input', function () {
+      syncAdjustRange(range);
+    });
+  });
+  if (adjustZoomRange) {
+    adjustZoomRange.addEventListener('input', function () {
+      const currentPoints = readAnchorPoints(adjustModalForm && adjustModalForm.querySelector('input[name="anchor_points"]') ? adjustModalForm.querySelector('input[name="anchor_points"]').value : '');
+      syncAdjustZoom(currentPoints);
+    });
+  }
+  window.addEventListener('resize', function () {
+    if (!adjustModal || adjustModal.classList.contains('hidden')) return;
+    const currentPoints = readAnchorPoints(adjustModalForm && adjustModalForm.querySelector('input[name="anchor_points"]') ? adjustModalForm.querySelector('input[name="anchor_points"]').value : '');
+    syncAdjustZoom(currentPoints);
+  });
+  function closeAdjustModal() {
+    if (!adjustModal) return;
+    adjustModal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    if (adjustAnchorOverlay) {
+      adjustAnchorOverlay.innerHTML = '';
+      adjustAnchorOverlay.classList.add('pointer-events-none');
+    }
+    if (adjustWorkPreview) {
+      adjustWorkPreview.setAttribute('src', '');
+    }
+  }
+  function openAdjustModal(button) {
+    if (!adjustModal || !adjustModalForm || !adjustModalTitle) return;
+    const getter = function (key) { return button.getAttribute('data-adjust-' + key) || ''; };
+    const versionId = getter('version-id');
+    const versionNumber = getter('version-number');
+    const versionTitle = getter('version-title');
+    const procedureLabel = getter('procedure-label');
+    const treatmentScope = getter('treatment-scope');
+    const widthGoal = getter('width-goal');
+    const photoType = getter('photo-type');
+    const lviStyle = getter('lvi-style');
+    const shadeGoal = getter('shade');
+    const beforePhotoId = getter('before-photo-id');
+    const beforePhotoUrl = getter('before-url');
+    const afterPhotoUrl = getter('photo-url');
+    const isLipRepositionOnly = String(procedureLabel).toLowerCase().includes('lip reposition') && !String(procedureLabel).toLowerCase().includes('veneer');
+
+    adjustModalTitle.textContent = 'Edit version #' + (versionNumber || '0');
+    if (adjustModalBadge) {
+      adjustModalBadge.textContent = 'Version #' + (versionNumber || '0');
+    }
+    if (adjustModalForm.querySelector('input[name=\"after_version_id\"]')) {
+      adjustModalForm.querySelector('input[name=\"after_version_id\"]').value = versionId;
+    }
+    if (adjustModalForm.querySelector('input[name=\"before_photo_id\"]')) {
+      adjustModalForm.querySelector('input[name=\"before_photo_id\"]').value = beforePhotoId;
+    }
+    if (adjustModalForm.querySelector('input[name=\"procedure_label\"]')) {
+      adjustModalForm.querySelector('input[name=\"procedure_label\"]').value = procedureLabel;
+    }
+    if (adjustModalForm.querySelector('input[name=\"lvi_style_key\"]')) {
+      adjustModalForm.querySelector('input[name=\"lvi_style_key\"]').value = lviStyle;
+    }
+    if (adjustModalForm.querySelector('input[name=\"shade_goal\"]')) {
+      adjustModalForm.querySelector('input[name=\"shade_goal\"]').value = shadeGoal;
+    }
+    if (adjustModalForm.querySelector('input[name=\"photo_type\"]')) {
+      adjustModalForm.querySelector('input[name=\"photo_type\"]').value = photoType;
+    }
+    if (adjustModalForm.querySelector('input[name=\"precision_mode\"]')) {
+      adjustModalForm.querySelector('input[name=\"precision_mode\"]').value = 'balanced';
+    }
+    const anchorPointsInput = adjustModalForm.querySelector('input[name=\"anchor_points\"]');
+    const anchorPoints = readAnchorPoints(anchorPointsInput ? anchorPointsInput.value : '');
+    writeAnchorPoints(anchorPoints);
+    if (adjustModalForm.querySelector('input[name=\"version_title\"]')) {
+      adjustModalForm.querySelector('input[name=\"version_title\"]').value = 'Revision of #' + (versionNumber || '0') + (versionTitle ? ' ' + versionTitle : '');
+    }
+    if (adjustModalForm.querySelector('textarea[name=\"adjustment_request\"]')) {
+      adjustModalForm.querySelector('textarea[name=\"adjustment_request\"]').value = '';
+    }
+    if (adjustModalForm.querySelector('input[name=\"notes\"]')) {
+      adjustModalForm.querySelector('input[name=\"notes\"]').value = '';
+    }
+    if (adjustModalForm.querySelector('select[name=\"treatment_scope\"]')) {
+      adjustModalForm.querySelector('select[name=\"treatment_scope\"]').value = treatmentScope;
+      adjustModalForm.querySelector('select[name=\"treatment_scope\"]').disabled = isLipRepositionOnly;
+    }
+    if (adjustModalForm.querySelector('select[name=\"smile_width_goal\"]')) {
+      adjustModalForm.querySelector('select[name=\"smile_width_goal\"]').value = widthGoal;
+      adjustModalForm.querySelector('select[name=\"smile_width_goal\"]').disabled = isLipRepositionOnly;
+    }
+    if (adjustModalForm.querySelector('input[name=\"shape_scale_delta\"]')) {
+      adjustModalForm.querySelector('input[name=\"shape_scale_delta\"]').value = '0';
+    }
+    if (adjustModalForm.querySelector('input[name=\"smile_length_delta\"]')) {
+      adjustModalForm.querySelector('input[name=\"smile_length_delta\"]').value = '0';
+    }
+    if (adjustModalForm.querySelector('input[name=\"smile_width_delta\"]')) {
+      adjustModalForm.querySelector('input[name=\"smile_width_delta\"]').value = '0';
+    }
+    if (adjustModalForm.querySelector('input[name=\"shade_brightness_delta\"]')) {
+      adjustModalForm.querySelector('input[name=\"shade_brightness_delta\"]').value = '0';
+    }
+    resetAdjustRangeInputs();
+    if (adjustZoomRange) {
+      adjustZoomRange.value = String(adjustDefaultZoom);
+    }
+    if (adjustWorkPreview) {
+      adjustWorkPreview.setAttribute('src', beforePhotoUrl || afterPhotoUrl || '');
+      adjustWorkPreview.setAttribute('alt', 'Version #' + (versionNumber || '0') + ' smile edit reference');
+    }
+    renderAdjustAnchors(anchorPoints || getAdjustAnchorValue(), true);
+    const returnUrlInput = adjustModalForm.querySelector('input[name=\"return_url\"]');
+    if (returnUrlInput) {
+      returnUrlInput.value = reviewReturnUrl().replace(/#.*$/, '#compare');
+    }
+    adjustModal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    const firstField = adjustModalForm.querySelector('textarea[name=\"adjustment_request\"]');
+    if (firstField) {
+      firstField.focus();
+    }
+  }
+  if (adjustModalClose) {
+    adjustModalClose.addEventListener('click', closeAdjustModal);
+  }
+  if (adjustModal) {
+    adjustModal.addEventListener('click', function (event) {
+      if (event.target === adjustModal) {
+        closeAdjustModal();
+      }
+    });
+  }
+  document.querySelectorAll('[data-open-adjust-modal]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      openAdjustModal(button);
+    });
+  });
   function closeLightbox() {
     if (!lightbox || !lightboxImage) return;
     lightbox.classList.add('hidden');
@@ -1078,6 +1614,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
+      if (adjustModal && !adjustModal.classList.contains('hidden')) {
+        closeAdjustModal();
+        return;
+      }
       closeLightbox();
     }
   });
@@ -1171,6 +1711,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!button) return;
       const spinner = button.querySelector('[data-ai-spinner]');
       const label = button.querySelector('[data-ai-label]');
+      if (form === adjustModalForm) {
+        closeAdjustModal();
+      }
       button.disabled = true;
       button.classList.add('opacity-80', 'cursor-wait');
       if (spinner) spinner.classList.remove('hidden');

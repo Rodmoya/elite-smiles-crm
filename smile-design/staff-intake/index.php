@@ -4,11 +4,15 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
 $user = smile_design_internal_boot('Staff Intake');
+$mobileUploadToken = smile_design_issue_mobile_upload_token(auth_user_id(), 24);
+$mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
+$mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=' . rawurlencode($mobileUploadUrl);
 smile_design_render_shell_start('Staff Intake');
 smile_design_page_header('Staff Intake', 'Create a smile case fast with one strong front before photo, then refine details inside the case workspace.');
 ?>
 <form class="grid gap-5 lg:grid-cols-[1fr_0.85fr]" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_staff_intake_submit.php')) ?>" data-sd-staff-intake data-loading-label="Creating case and analyzing photo...">
     <?= csrf_input() ?>
+    <input type="hidden" name="mobile_upload_token" value="<?= e($mobileUploadToken) ?>">
     <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm font-semibold">First name<input required name="first_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
@@ -36,11 +40,21 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
 
     <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold">Staff Photo Upload</p>
+        <div class="mt-3 grid gap-4 rounded-md border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[150px_1fr]">
+            <div class="rounded-md bg-white p-2 shadow-sm">
+                <img class="h-auto w-full" src="<?= e($mobileUploadQrUrl) ?>" alt="Mobile upload QR code">
+            </div>
+            <div>
+                <p class="text-sm font-semibold text-slate-950">Upload from phone</p>
+                <p class="mt-2 text-sm leading-6 text-slate-600">Scan this QR code to upload Front, Left 45, and Right 45 photos from your phone. This link is upload-only and expires in 24 hours.</p>
+                <a class="mt-3 inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700" href="<?= e($mobileUploadUrl) ?>" target="_blank" rel="noreferrer">Open mobile upload link</a>
+            </div>
+        </div>
         <div data-sd-photo-field>
             <label class="mt-3 flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                 <span class="text-base font-semibold text-slate-900">Front BEFORE photo</span>
-                <span class="mt-2 text-sm text-slate-500">JPG, PNG, WebP, HEIC, or HEIF. HEIC files are converted to JPG at full resolution.</span>
-                <input required name="before_photo_front" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="sr-only" data-sd-photo-input data-sd-photo-label="Front">
+                <span class="mt-2 text-sm text-slate-500">Upload here or use the phone QR above. JPG, PNG, WebP, HEIC, or HEIF.</span>
+                <input name="before_photo_front" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="sr-only" data-sd-photo-input data-sd-photo-label="Front">
             </label>
             <img class="mt-4 hidden max-h-[420px] w-full rounded-md object-contain ring-1 ring-slate-200" alt="Selected front photo preview" data-sd-photo-preview>
             <p class="mt-3 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" data-sd-photo-status></p>

@@ -110,6 +110,25 @@ function smile_design_ensure_schema(): void
         INDEX idx_smile_preview_purpose (purpose)
     ) {$charset}");
 
+    db_query("CREATE TABLE IF NOT EXISTS smile_mobile_uploads (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        token_hash CHAR(64) NOT NULL,
+        photo_type VARCHAR(80) NOT NULL DEFAULT 'front',
+        storage_key VARCHAR(255) NOT NULL,
+        original_name VARCHAR(255) NULL,
+        mime_type VARCHAR(120) NOT NULL,
+        file_size INT UNSIGNED NOT NULL DEFAULT 0,
+        width INT UNSIGNED NULL,
+        height INT UNSIGNED NULL,
+        metadata_json MEDIUMTEXT NULL,
+        imported_case_id INT UNSIGNED NULL,
+        imported_photo_id INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        imported_at DATETIME NULL,
+        INDEX idx_mobile_upload_token (token_hash),
+        INDEX idx_mobile_upload_imported (imported_case_id)
+    ) {$charset}");
+
     db_query("CREATE TABLE IF NOT EXISTS smile_notifications (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         case_id INT UNSIGNED NULL,
@@ -181,6 +200,27 @@ function smile_design_ensure_schema(): void
         INDEX idx_smile_after_selected (case_id, selected_by_doctor),
         INDEX idx_smile_after_preview (case_id, approved_for_patient_preview),
         INDEX idx_smile_after_archived (archived)
+    ) {$charset}");
+
+    db_query("CREATE TABLE IF NOT EXISTS smile_case_videos (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        case_id INT UNSIGNED NOT NULL,
+        storage_key VARCHAR(255) NOT NULL,
+        video_title VARCHAR(190) NOT NULL DEFAULT 'Smile Reveal Video',
+        source_type VARCHAR(80) NOT NULL DEFAULT 'ai_reveal',
+        model VARCHAR(120) NULL,
+        prompt TEXT NULL,
+        mime_type VARCHAR(120) NOT NULL DEFAULT 'video/mp4',
+        file_size INT UNSIGNED NOT NULL DEFAULT 0,
+        duration_seconds INT UNSIGNED NULL,
+        aspect_ratio VARCHAR(20) NULL,
+        source_after_ids VARCHAR(255) NULL,
+        approved_for_office_gallery TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_smile_case_videos_case (case_id),
+        INDEX idx_smile_case_videos_gallery (approved_for_office_gallery),
+        INDEX idx_smile_case_videos_created (created_at)
     ) {$charset}");
 
     db_query("CREATE TABLE IF NOT EXISTS lvi_sample_images (
@@ -289,6 +329,7 @@ function smile_design_schema_upgrade_columns(): void
         ['smile_cases', 'smile_width_goal', "ALTER TABLE smile_cases ADD COLUMN smile_width_goal VARCHAR(80) NULL AFTER treatment_scope"],
         ['smile_case_photos', 'photo_type', "ALTER TABLE smile_case_photos ADD COLUMN photo_type VARCHAR(80) NULL AFTER kind"],
         ['smile_case_photos', 'source_type', "ALTER TABLE smile_case_photos ADD COLUMN source_type VARCHAR(40) NOT NULL DEFAULT 'uploaded' AFTER kind"],
+        ['smile_case_photos', 'metadata_json', "ALTER TABLE smile_case_photos ADD COLUMN metadata_json MEDIUMTEXT NULL AFTER height"],
         ['smile_preview_links', 'token_plaintext', "ALTER TABLE smile_preview_links ADD COLUMN token_plaintext VARCHAR(255) NULL AFTER token_hash"],
         ['smile_preview_links', 'view_count', "ALTER TABLE smile_preview_links ADD COLUMN view_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER used_at"],
         ['smile_preview_links', 'last_viewed_at', "ALTER TABLE smile_preview_links ADD COLUMN last_viewed_at DATETIME NULL AFTER view_count"],
@@ -319,27 +360,23 @@ function smile_design_schema_upgrade_columns(): void
 
 function smile_design_seed_lvi_samples(): void
 {
-    $samples = [
-        ['natural', 'Natural', 'Soft incisal shape, believable brightness, and balanced symmetry.'],
-        ['enhanced', 'Enhanced', 'Noticeable cosmetic improvement while staying proportional and refined.'],
-        ['youthful', 'Youthful', 'Softer transitions, fresh proportions, and a brighter but natural finish.'],
-        ['hollywood', 'Hollywood', 'High-value brightness with fuller contours and polished line angles.'],
-        ['softened', 'Softened', 'Gentle contours and low visual tension for a softer smile line.'],
-        ['oval', 'Oval', 'Rounded line angles and elegant tooth form with a calm presentation.'],
-        ['dominant', 'Dominant', 'Stronger central presence and confident proportions.'],
-        ['functional', 'Functional', 'Balanced esthetics with bite-conscious shape language.'],
-        ['mature', 'Mature', 'Subtle refinement that preserves age-appropriate character.'],
-        ['vigorous', 'Vigorous', 'Energetic contours and brighter presence without excess sharpness.'],
-        ['focused', 'Focused', 'Clean symmetry and controlled brightness for a precise look.'],
-        ['aggressive', 'Aggressive', 'Bold cosmetic presence with high contrast and assertive form.'],
-    ];
+    $catalog = smile_design_lvi_catalog();
+    $sortOrder = 0;
+    foreach ($catalog as $key => $meta) {
+        if ($key === 'doctor_selected') {
+            continue;
+        }
 
-    foreach ($samples as [$key, $title, $description]) {
         db_query(
             "INSERT INTO lvi_style_samples (style_key, title, description, sort_order)
              VALUES (:style_key, :title, :description, :sort_order)
              ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description), sort_order = VALUES(sort_order), is_active = 1",
-            ['style_key' => $key, 'title' => $title, 'description' => $description, 'sort_order' => array_search($key, array_column($samples, 0), true) ?: 0]
+            [
+                'style_key' => $key,
+                'title' => (string)($meta['title'] ?? ucfirst(str_replace('_', ' ', $key))),
+                'description' => (string)($meta['description'] ?? ''),
+                'sort_order' => $sortOrder++,
+            ]
         );
     }
 }
@@ -362,19 +399,110 @@ function smile_design_status_labels(): array
 function smile_design_lvi_catalog(): array
 {
     return [
-        'aggressive' => ['title' => 'Aggressive', 'category' => 'Bold', 'description' => 'Flat, squared anterior anatomy with strong line angles and an assertive cosmetic presence.'],
-        'vigorous' => ['title' => 'Vigorous', 'category' => 'Bold', 'description' => 'Strong square centrals with pointed canines and energetic, high-presence contours.'],
-        'focused' => ['title' => 'Focused', 'category' => 'Refined', 'description' => 'Square centrals with inward-flaring laterals and precise, controlled symmetry.'],
-        'functional' => ['title' => 'Functional', 'category' => 'Functional', 'description' => 'Balanced esthetics with flatter incisal surfaces and bite-conscious form.'],
-        'dominant' => ['title' => 'Dominant', 'category' => 'Bold', 'description' => 'Large square centrals with noticeably shorter laterals and strong midline focus.'],
-        'enhanced' => ['title' => 'Enhanced', 'category' => 'Classic', 'description' => 'Structured centrals with rounded lateral edges and softened, polished cosmetic refinement.'],
-        'natural' => ['title' => 'Natural', 'category' => 'Classic', 'description' => 'Square centrals, rounded lateral edges, and pointed canines for believable natural anatomy.'],
-        'oval' => ['title' => 'Oval', 'category' => 'Soft', 'description' => 'Curved line angles and rounded anterior anatomy for an elegant, softer smile.'],
-        'softened' => ['title' => 'Softened', 'category' => 'Soft', 'description' => 'Rounder contours and reduced sharpness for a gentle, approachable presentation.'],
-        'hollywood' => ['title' => 'Hollywood', 'category' => 'Bold', 'description' => 'Uniform square anatomy with bright, polished porcelain impact and celebrity-style symmetry.'],
-        'youthful' => ['title' => 'Youthful', 'category' => 'Classic', 'description' => 'Square centrals with longer rounded laterals and deeper embrasures for fresh smile energy.'],
-        'mature' => ['title' => 'Mature', 'category' => 'Functional', 'description' => 'Symmetrical but age-aware anatomy with flatter edges and restrained brightness.'],
-        'doctor_selected' => ['title' => 'Doctor Selected', 'category' => 'Custom', 'description' => 'Use doctor judgment to guide the final smile design direction.'],
+        'aggressive' => [
+            'title' => 'Aggressive',
+            'category' => 'Square & Angular',
+            'description' => 'Flat, square anterior anatomy with a hard-edged, highly uniform presentation.',
+            'morphology' => 'Square centrals and laterals with straight incisal edges, minimal rounding, and square canine tips.',
+            'aesthetic_effect' => 'Projects strength, force, and a stripped-down masculine read with very little softness.',
+            'generation_guidance' => 'Build a forceful square smile across the social six. Keep central and lateral incisors flat at the incisal edge, keep line angles broad and straight, keep embrasures tight and controlled, and square off the canine tips instead of making them playful or pointed. The smile should read uniform, firm, and assertive rather than youthful or glamorous.',
+        ],
+        'dominant' => [
+            'title' => 'Dominant',
+            'category' => 'Square & Angular',
+            'description' => 'Lengthened square centrals with a visible incisal step that makes the front two teeth lead the smile.',
+            'morphology' => 'Centrals are longer and square; laterals are shorter, slightly recessed, and elevated off the incisal plane; canines are sharply pointed.',
+            'aesthetic_effect' => 'Creates obvious central dominance and a bold, authoritative focal point at the midline.',
+            'generation_guidance' => 'Make the centrals visually dominant. Lengthen and square the centrals, keep the laterals shorter and set slightly higher to create a clear incisal step, and use sharper canine energy than the softer styles. The smile should direct attention into the front two teeth first, with confidence and authority rather than softness.',
+        ],
+        'mature' => [
+            'title' => 'Mature',
+            'category' => 'Square & Angular',
+            'description' => 'Age-aware square anatomy with flatter edges and restrained variation that still looks polished.',
+            'morphology' => 'Flat incisal edges across centrals and laterals, square line angles, and slightly flattened canine tips that suggest smooth attrition.',
+            'aesthetic_effect' => 'Conveys maturity, stability, and seriousness without making the smile look worn out.',
+            'generation_guidance' => 'Preserve a refined age-aware smile. Keep the centrals and laterals relatively flat at the incisal edge, keep embrasures modest, and slightly soften the canine points into a more mature flattened finish. Avoid deep youthful scalloping, excessive brightness, or exaggerated glamour. The result should feel dignified and stable.',
+        ],
+        'vigorous' => [
+            'title' => 'Vigorous',
+            'category' => 'Square & Angular',
+            'description' => 'Square incisors energized by prominent pointed canines and a more athletic smile line.',
+            'morphology' => 'Square central and lateral incisors paired with sharp, pronounced canines that extend slightly beyond the incisal line.',
+            'aesthetic_effect' => 'Feels athletic, dynamic, and high-energy while staying grounded in square tooth form.',
+            'generation_guidance' => 'Keep the incisor architecture square, but inject energy through the canines. The centrals and laterals should stay broad and fairly flat, while the canines become more prominent, sharper, and slightly longer in visual presence. Embrasures can open a touch more around the canines so the smile feels athletic and vigorous instead of static.',
+        ],
+        'oval' => [
+            'title' => 'Oval',
+            'category' => 'Rounded & Softened',
+            'description' => 'Fully rounded anterior anatomy with repeating soft curves across the visible smile.',
+            'morphology' => 'Centrals, laterals, and canines all have rounded incisal edges and curved line angles with an oval geometry.',
+            'aesthetic_effect' => 'Highly gentle and elegant; softens strong facial structures and avoids any severe read.',
+            'generation_guidance' => 'Round the entire smile architecture. Use curved line angles on the centrals, laterals, and canines, keep the incisal corners soft, and avoid flat aggressive edges. Embrasures should be smooth and graceful rather than tight or angular. The overall impression should feel elegant, feminine, and calming.',
+        ],
+        'softened' => [
+            'title' => 'Softened',
+            'category' => 'Rounded & Softened',
+            'description' => 'Structured smile anatomy with every sharp corner micro-rounded into a warmer presentation.',
+            'morphology' => 'Square-based tooth forms remain, but all line angles, corners, and incisal edges are smoothed and lightly rounded.',
+            'aesthetic_effect' => 'Balances structure and warmth so the smile does not feel boxy, severe, or overly fabricated.',
+            'generation_guidance' => 'Start from a structured square smile and gently soften every transition. Keep the centrals and laterals organized and proportional, but micro-round the corners, line angles, and incisal edges so nothing feels harsh. Canines should be restrained rather than pointed. The smile should feel approachable and warm without becoming overly oval or youthful.',
+        ],
+        'youthful' => [
+            'title' => 'Youthful',
+            'category' => 'Rounded & Softened',
+            'description' => 'Fresh unworn smile anatomy with more incisal scallop, open embrasures, and visible youthful energy.',
+            'morphology' => 'Longer centrals, shorter laterals, scalloped unworn incisal edges, open embrasures, and moderately pointed canines.',
+            'aesthetic_effect' => 'Mimics young natural dentition before wear flattens the smile line.',
+            'generation_guidance' => 'Create a lively unworn smile. Keep the centrals slightly longer than the laterals, increase the incisal step, deepen the embrasures, and preserve fresh incisal scalloping instead of flattening the edge. Let the canines stay moderately pointed. The final read should feel young, fresh, and energetic rather than polished flat.',
+        ],
+        'enhanced' => [
+            'title' => 'Enhanced',
+            'category' => 'Balanced / Natural',
+            'description' => 'The classic cosmetic balance: structured, symmetrical, and flattering without looking artificial.',
+            'morphology' => 'Square centrals with slightly softened line angles, slightly shorter laterals with gently rounded disto-incisal corners, and softly pointed canines.',
+            'aesthetic_effect' => 'Universally flattering, clean, and highly popular for premium cosmetic veneer design.',
+            'generation_guidance' => 'Use a polished cosmetic blueprint with strong symmetry and restrained softness. Keep the centrals square and organized, shorten the laterals slightly, round the distal corners on the laterals, and keep the canines softly pointed instead of flat or sharp. Embrasures should be controlled and elegant. This should look refined, expensive, and broadly flattering.',
+        ],
+        'focused' => [
+            'title' => 'Focused',
+            'category' => 'Balanced / Natural',
+            'description' => 'A center-bright smile that pulls attention inward by stepping the laterals up off the incisal plane.',
+            'morphology' => 'Square, slightly elongated centrals with rounded laterals positioned higher to create a distinct step; canines stay controlled.',
+            'aesthetic_effect' => 'Visually concentrates brightness and attention on the centrals, creating a precise and intentional center focus.',
+            'generation_guidance' => 'Aim visual attention into the centrals. Keep the centrals square and slightly elongated, lift the laterals higher off the incisal plane, and use rounded lateral corners so the step feels intentional rather than abrupt. Canines should support the frame without overpowering the center. The smile should feel precise, bright, and center-weighted.',
+        ],
+        'functional' => [
+            'title' => 'Functional',
+            'category' => 'Balanced / Natural',
+            'description' => 'Clean cosmetic symmetry shaped around flatter canines and longevity-conscious occlusal form.',
+            'morphology' => 'Slightly rounded line angles, flatter and shorter canines, and a practical anterior form designed to reduce lateral interference.',
+            'aesthetic_effect' => 'Prioritizes occlusal harmony and durability while still presenting a clean esthetic outcome.',
+            'generation_guidance' => 'Keep the smile attractive but function-first. Use balanced symmetry, slightly softened line angles, and shorter flatter canine forms instead of heroic points. Avoid dramatic incisal scalloping or high-glamour exaggeration. The result should feel clinically sensible, durable, and still polished.',
+        ],
+        'hollywood' => [
+            'title' => 'Hollywood',
+            'category' => 'Balanced / Hollywood',
+            'description' => 'A celebrity-style smile with near-level incisal edges, closed embrasures, and maximum tooth display.',
+            'morphology' => 'Centrals and laterals are near-equal in length, forming a straight horizontal plane with closed embrasures; canines are integrated into the flat plane.',
+            'aesthetic_effect' => 'Maximizes brightness, uniformity, and full-arch visual impact with almost zero variation.',
+            'generation_guidance' => 'Create a celebrity veneer read. Keep centrals and laterals nearly level in length, minimize the incisal step, close the embrasures, and carry a straight bright incisal plane across the smile. Canines should integrate smoothly into that plane instead of standing out. The outcome should feel polished, uniform, and unmistakably high-glamour.',
+        ],
+        'natural' => [
+            'title' => 'Natural',
+            'category' => 'Balanced / Natural',
+            'description' => 'Believable premium dentistry that preserves organic variation instead of chasing perfect uniformity.',
+            'morphology' => 'Square centrals, slightly rounded laterals with organic variation in length and tilt, and gently pointed canines.',
+            'aesthetic_effect' => 'Keeps the smile refined and attractive while still reading as real dentition rather than an obviously fabricated set.',
+            'generation_guidance' => 'Build a premium natural smile, not a flat celebrity strip. Keep the centrals square and dominant, let the laterals stay slightly shorter with mild organic variation in corner softness and position, and keep the canines gently pointed. Preserve believable progressive embrasures and subtle individuality so the result looks real, high-end, and human.',
+        ],
+        'doctor_selected' => [
+            'title' => 'Doctor Selected',
+            'category' => 'Custom',
+            'description' => 'Use doctor judgment to blend the most appropriate LVI morphology for the case.',
+            'morphology' => 'Follow the clinician’s selected balance of incisal step, embrasures, line angles, and canine energy.',
+            'aesthetic_effect' => 'Allows case-by-case tuning when one named library style is too rigid.',
+            'generation_guidance' => 'Use the doctor’s direction as the dominant rule and blend the closest LVI traits needed for the case.',
+        ],
     ];
 }
 
@@ -390,7 +518,8 @@ function smile_design_style_options(): array
 function smile_design_style_detail(string $style): array
 {
     $catalog = smile_design_lvi_catalog();
-    return $catalog[strtolower(trim($style))] ?? $catalog['natural'];
+    $normalized = smile_design_normalize_style_key($style);
+    return $catalog[$normalized] ?? $catalog['natural'];
 }
 
 function smile_design_normalize_style_key(string $style, string $fallback = 'natural'): string
@@ -411,40 +540,73 @@ function smile_design_style_map(string $style): string
 
 function smile_design_style_generation_guidance(string $style): string
 {
-    return match (strtolower(trim($style))) {
-        'hollywood' => 'Hollywood style anatomy: square central incisors, square laterals slightly shorter than the centrals, and pointed canines. Keep the smile highly uniform, polished, and visually strong with crisp line angles and controlled embrasures.',
-        'natural' => 'Natural style anatomy: square central incisors, lateral incisors with rounded incisal edges and slightly shorter length than the centrals, and pointed canines. Keep embrasures progressive and believable with classic central dominance.',
-        'youthful' => 'Youthful style anatomy: square central incisors, rounded laterals that stay close to central length, and pointed canines. Use deeper, more playful embrasures and unworn, lively incisal energy.',
-        'enhanced' => 'Enhanced style anatomy: square central incisors, laterals with rounded incisal edges, and blunt canines. Keep the result softened yet structured, polished, and proportionate.',
-        'softened' => 'Softened style anatomy: rounded centrals, rounded laterals, and blunt canines. Minimize sharp transitions and keep the smile calm and gentle.',
-        'oval' => 'Oval style anatomy: rounded central incisors, rounded laterals, and rounded canines. Use curved line angles and soft embrasures for a feminine, elegant read.',
-        'aggressive' => 'Aggressive style anatomy: square centrals, square laterals, and square canines with flat incisal energy across the smile. The read should be strong, dominant, and assertive.',
-        'vigorous' => 'Vigorous style anatomy: square central incisors, square laterals, and pointed prominent canines. Keep strong line angles and energetic canine anchoring.',
-        'dominant' => 'Dominant style anatomy: larger square centrals, noticeably shorter square laterals, and blunt canines. Central dominance must be obvious and intentional.',
-        'focused' => 'Focused style anatomy: square central incisors, rounded laterals that subtly flare inward toward the midline, and blunt canines. Keep the smile precise and slightly convergent toward the center.',
-        'functional' => 'Functional style anatomy: square centrals, square laterals, and blunt canines with flatter, bite-conscious incisal form. Avoid exaggerated youthfulness or extreme brightness.',
-        'mature' => 'Mature style anatomy: square centrals, square laterals, and blunt canines with subtle age-appropriate flattening and restrained embrasure depth. Preserve dignity and realism.',
-        default => 'Natural style anatomy: square central incisors, lateral incisors with rounded incisal edges and slightly shorter length than the centrals, and pointed canines. Keep embrasures progressive and believable with classic central dominance.',
-    };
+    $detail = smile_design_style_detail($style);
+    return (string)($detail['generation_guidance'] ?? smile_design_lvi_catalog()['natural']['generation_guidance']);
+}
+
+function smile_design_lvi_style_reference_images(string $style, int $limit = 2): array
+{
+    smile_design_ensure_schema();
+
+    $normalized = smile_design_normalize_style_key($style);
+    $limit = max(1, min(6, $limit));
+
+    return db_all(
+        "SELECT * FROM lvi_sample_images
+         WHERE style_key = :style_key AND is_active = 1
+         ORDER BY sort_order ASC, id DESC
+         LIMIT {$limit}",
+        ['style_key' => $normalized]
+    );
+}
+
+function smile_design_lvi_style_reference_assets(string $style, int $limit = 2): array
+{
+    $assets = [];
+    foreach (smile_design_lvi_style_reference_images($style, $limit) as $image) {
+        $storageKey = (string)($image['storage_key'] ?? '');
+        if ($storageKey === '') {
+            continue;
+        }
+
+        $resolved = smile_design_safe_storage_path($storageKey);
+        if (!$resolved || !is_file($resolved)) {
+            continue;
+        }
+
+        $assets[] = [
+            'id' => (int)($image['id'] ?? 0),
+            'style_key' => (string)($image['style_key'] ?? ''),
+            'title' => (string)($image['title'] ?? ''),
+            'description' => (string)($image['description'] ?? ''),
+            'storage_key' => $storageKey,
+            'path' => $resolved,
+            'mime_type' => (string)($image['mime_type'] ?? ''),
+            'procedure_label' => (string)($image['procedure_label'] ?? ''),
+            'tags' => (string)($image['tags'] ?? ''),
+        ];
+    }
+
+    return $assets;
 }
 
 function smile_design_shade_catalog(): array
 {
     return [
-        '110' => ['group' => '100', 'label' => 'Chromascop 110', 'title' => 'Hollywood White', 'hex' => '#F4F0E6', 'rgb' => '244, 240, 230', 'description' => 'Highest-value bleach white with luminous porcelain brightness and soft incisal translucency.'],
-        '120' => ['group' => '100', 'label' => 'Chromascop 120', 'title' => 'Bright Bleach White', 'hex' => '#EFECE0', 'rgb' => '239, 236, 224', 'description' => 'Bright bleach-white porcelain with slightly softer warmth than 110.'],
-        '130' => ['group' => '100', 'label' => 'Chromascop 130', 'title' => 'Soft Bleach White', 'hex' => '#EAE6D9', 'rgb' => '234, 230, 217', 'description' => 'High-value white with a softer natural haze and controlled warmth.'],
-        '140' => ['group' => '100', 'label' => 'Chromascop 140', 'title' => 'Warm Bleach White', 'hex' => '#E5E0D2', 'rgb' => '229, 224, 210', 'description' => 'Bleach-family shade with slightly warmer body color and gentler value.'],
-        '210' => ['group' => '200', 'label' => 'Chromascop 210', 'title' => 'Bright White', 'hex' => '#EBE4D3', 'rgb' => '235, 228, 211', 'description' => 'Premium bright white that still reads natural under real light. Use when a softer natural-white screen result is desired.'],
-        '220' => ['group' => '200', 'label' => 'Chromascop 220', 'title' => 'Warm Natural White', 'hex' => '#E6DCCA', 'rgb' => '230, 220, 202', 'description' => 'Warm white with realistic body color and a slightly softer value than 210.'],
-        '230' => ['group' => '200', 'label' => 'Chromascop 230', 'title' => 'Soft Natural White', 'hex' => '#E1D4B9', 'rgb' => '225, 212, 185', 'description' => 'Natural white with more warmth and restraint for subtle cosmetic cases.'],
-        '240' => ['group' => '200', 'label' => 'Chromascop 240', 'title' => 'Warm Blend White', 'hex' => '#DBCBB0', 'rgb' => '219, 203, 176', 'description' => 'Warm, believable white for softer or more conservative veneer blending.'],
-        '310' => ['group' => '300', 'label' => 'Chromascop 310', 'title' => 'Mature Blend Light', 'hex' => '#E3DAC9', 'rgb' => '227, 218, 201', 'description' => 'Light mature blend shade with restrained value and natural depth.'],
-        '320' => ['group' => '300', 'label' => 'Chromascop 320', 'title' => 'Mature Blend', 'hex' => '#DDD1BB', 'rgb' => '221, 209, 187', 'description' => 'Balanced mature shade with more gray-brown restraint for conservative cases.'],
-        '330' => ['group' => '300', 'label' => 'Chromascop 330', 'title' => 'Mature Warm Blend', 'hex' => '#D7C7AD', 'rgb' => '215, 199, 173', 'description' => 'Warmer mature shade for blending with age-appropriate dentition.'],
-        '340' => ['group' => '300', 'label' => 'Chromascop 340', 'title' => 'Deep Mature Blend', 'hex' => '#CEBCA0', 'rgb' => '206, 188, 160', 'description' => 'Deeper mature blend with obvious restraint and warmth.'],
-        '410' => ['group' => '400', 'label' => 'Chromascop 410', 'title' => 'Light Gray Blend', 'hex' => '#DDD9CD', 'rgb' => '221, 217, 205', 'description' => 'Cooler light gray blend used for age-aware or desaturated restorative matching.'],
-        '510' => ['group' => '500', 'label' => 'Chromascop 510', 'title' => 'Dark Natural Core', 'hex' => '#D5C5AC', 'rgb' => '213, 197, 172', 'description' => 'Darker natural core tone for mature or restorative blending cases.'],
+        '110' => ['group' => '100', 'label' => 'Chromascop 110', 'title' => 'Hollywood White', 'hex' => '#FFFFFF', 'rgb' => '255, 255, 255', 'value_step' => 0, 'description' => 'Anchor shade for the flawless veneer material sample: maximum clean Hollywood-white porcelain body, zero yellow, soft incisal translucency only at the bottom edge.'],
+        '120' => ['group' => '100', 'label' => 'Chromascop 120', 'title' => 'Bright Bleach White', 'hex' => '#FAF9F4', 'rgb' => '250, 249, 244', 'value_step' => 1, 'description' => 'One controlled step softer than 110 while still reading as bleach-white porcelain, clean and non-yellow.'],
+        '130' => ['group' => '100', 'label' => 'Chromascop 130', 'title' => 'Soft Bleach White', 'hex' => '#F6F3EA', 'rgb' => '246, 243, 234', 'value_step' => 2, 'description' => 'Two controlled steps softer than 110, still bright cosmetic porcelain with only a gentle neutral warmth.'],
+        '140' => ['group' => '100', 'label' => 'Chromascop 140', 'title' => 'Warm Bleach White', 'hex' => '#F1ECDD', 'rgb' => '241, 236, 221', 'value_step' => 3, 'description' => 'Three controlled steps softer than 110 with restrained warmth, not yellow or stained.'],
+        '210' => ['group' => '200', 'label' => 'Chromascop 210', 'title' => 'Bright White', 'hex' => '#F2EBDD', 'rgb' => '242, 235, 221', 'value_step' => 4, 'description' => 'Bright natural-white porcelain, visibly below the bleach group but still clean, premium, and whiter than natural enamel.'],
+        '220' => ['group' => '200', 'label' => 'Chromascop 220', 'title' => 'Warm Natural White', 'hex' => '#EDE4D2', 'rgb' => '237, 228, 210', 'value_step' => 5, 'description' => 'Natural-white porcelain with controlled warmth, softer than 210 but never cream/yellow or old-tooth colored.'],
+        '230' => ['group' => '200', 'label' => 'Chromascop 230', 'title' => 'Soft Natural White', 'hex' => '#E7DBC6', 'rgb' => '231, 219, 198', 'value_step' => 6, 'description' => 'Softer natural-white porcelain with a calm value, still clean and uniform.'],
+        '240' => ['group' => '200', 'label' => 'Chromascop 240', 'title' => 'Warm Blend White', 'hex' => '#E0D0B8', 'rgb' => '224, 208, 184', 'value_step' => 7, 'description' => 'Warm blend porcelain for conservative cases, lower value but still polished and stain-free.'],
+        '310' => ['group' => '300', 'label' => 'Chromascop 310', 'title' => 'Mature Blend Light', 'hex' => '#E3DAC9', 'rgb' => '227, 218, 201', 'value_step' => 8, 'description' => 'Light mature porcelain blend with restrained value and clean depth.'],
+        '320' => ['group' => '300', 'label' => 'Chromascop 320', 'title' => 'Mature Blend', 'hex' => '#DDD1BB', 'rgb' => '221, 209, 187', 'value_step' => 9, 'description' => 'Balanced mature porcelain blend with more gray-brown restraint for conservative cases.'],
+        '330' => ['group' => '300', 'label' => 'Chromascop 330', 'title' => 'Mature Warm Blend', 'hex' => '#D7C7AD', 'rgb' => '215, 199, 173', 'value_step' => 10, 'description' => 'Warmer mature porcelain shade for age-appropriate restorative blending.'],
+        '340' => ['group' => '300', 'label' => 'Chromascop 340', 'title' => 'Deep Mature Blend', 'hex' => '#CEBCA0', 'rgb' => '206, 188, 160', 'value_step' => 11, 'description' => 'Deeper mature porcelain blend with obvious value restraint and warmth.'],
+        '410' => ['group' => '400', 'label' => 'Chromascop 410', 'title' => 'Light Gray Blend', 'hex' => '#DDD9CD', 'rgb' => '221, 217, 205', 'value_step' => 9, 'description' => 'Cooler light gray porcelain blend used for age-aware or desaturated restorative matching.'],
+        '510' => ['group' => '500', 'label' => 'Chromascop 510', 'title' => 'Dark Natural Core', 'hex' => '#D5C5AC', 'rgb' => '213, 197, 172', 'value_step' => 12, 'description' => 'Darker natural-core porcelain tone for mature or restorative blending cases.'],
     ];
 }
 
@@ -501,7 +663,11 @@ function smile_design_shade_detail(string $shadeGoal, string $style = 'natural')
     $catalog = smile_design_shade_catalog();
     $detail = $catalog[$code] ?? $catalog[smile_design_default_shade_for_style($style)];
     $detail['code'] = $code;
-    $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Base digital reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). For on-screen consultation previews, preserve this shade family but render it noticeably higher-value and more luminous than the raw tab so the smile reads clearly bright white on phones and laptop displays, with an immediately visible whitening jump from the before photo.';
+    $valueStep = (int)($detail['value_step'] ?? 0);
+    $relativeValue = $valueStep === 0
+        ? 'This is the maximum-value anchor and should visually match the flawless veneer material reference body shade.'
+        : 'Render this as exactly ' . $valueStep . ' controlled brightness step' . ($valueStep === 1 ? '' : 's') . ' below Chromascop 110, reducing value gradually from the material reference without adding stain, mottling, or old-enamel yellow.';
+    $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Digital screen reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). ' . $relativeValue . ' The shade selector controls brightness and warmth; the porcelain material reference controls finish only. Keep the veneer body clean and uniform in this selected shade, with subtle incisal translucency only at the bottom edge. For on-screen consultation previews, the result must still read as polished high-end porcelain rather than cleaned natural teeth.';
     return $detail;
 }
 
@@ -580,7 +746,7 @@ function smile_design_smile_width_label(string $goal): string
 function smile_design_smile_width_prompt_guidance(string $goal): string
 {
     return match (smile_design_normalize_smile_width_goal($goal)) {
-        'wider_smile' => 'Smile width goal: create a fuller, wider smile by subtly increasing posterior crown presence and buccal-corridor fill where clinically believable. The smile should read broader and more complete without looking orthodontically expanded, fake, or overbuilt.',
+        'wider_smile' => 'Smile width goal: create a visibly fuller, wider veneer smile by increasing posterior crown presence and reducing dark buccal corridors where clinically believable. Make the premolar/canine area read broader and more supportive so the mouth looks fuller from corner to corner. This should be a noticeable smile-design improvement compared with the before photo, not a tiny preservation pass, while still avoiding fake orthodontic expansion or overbuilt teeth.',
         default => 'Smile width goal: keep the patient\'s current smile width and arch fullness. Do not broaden the buccal corridor or create extra posterior fullness unless another instruction explicitly calls for it.',
     };
 }
@@ -738,7 +904,7 @@ function smile_design_source_type_labels(): array
     return [
         'manual_upload' => 'Manual Upload',
         'gem_test_output' => 'Gem Test Output',
-        'ai_preview' => 'AI Preview Placeholder',
+        'ai_preview' => 'AI Preview',
         'actual_clinical_after' => 'Actual Clinical After',
         'other' => 'Other',
     ];
@@ -748,6 +914,7 @@ function smile_design_photo_source_labels(): array
 {
     return [
         'uploaded' => 'Uploaded',
+        'mobile_upload' => 'Mobile Upload',
         'ai_reference' => 'AI Reference',
     ];
 }
@@ -944,6 +1111,21 @@ function smile_design_preview_link_url(array $link): ?string
     return base_url('smile-design/preview/' . rawurlencode($token));
 }
 
+function smile_design_mobile_upload_url(string $token): string
+{
+    return base_url('smile-design/mobile-upload?token=' . rawurlencode($token));
+}
+
+function smile_design_gallery_link_url(array $link): ?string
+{
+    $token = trim((string)($link['token_plaintext'] ?? ''));
+    if ($token === '') {
+        return null;
+    }
+
+    return base_url('smile-design/gallery?token=' . rawurlencode($token));
+}
+
 function smile_design_active_preview_link(int $caseId): ?array
 {
     return db_one(
@@ -1038,6 +1220,22 @@ function smile_design_verify_token(string $token, string $purpose): ?array
         return null;
     }
 
+    if ($purpose === 'gallery' || $purpose === 'mobile_upload') {
+        $row = db_one(
+            "SELECT spl.*
+             FROM smile_preview_links spl
+             WHERE spl.token_hash = :token_hash
+               AND spl.purpose = :purpose
+               AND spl.case_id = 0
+               AND spl.revoked_at IS NULL
+               AND (spl.expires_at IS NULL OR spl.expires_at > NOW())
+             LIMIT 1",
+            ['token_hash' => smile_design_token_hash($token), 'purpose' => $purpose]
+        );
+
+        return $row ?: null;
+    }
+
     $row = db_one(
         "SELECT spl.*, sc.patient_name, sc.email, sc.phone, sc.status, sc.visibility
          FROM smile_preview_links spl
@@ -1060,6 +1258,129 @@ function smile_design_record_preview_view(array $link, string $token): void
         ['id' => (int)$link['id']]
     );
     smile_design_audit((int)$link['case_id'], 'preview_viewed', ['link_id' => (int)$link['id']], null);
+}
+
+function smile_design_issue_mobile_upload_token(?int $createdBy = null, int $hours = 24): string
+{
+    $token = smile_design_generate_token();
+    $expiresAt = date('Y-m-d H:i:s', time() + (max(1, $hours) * 3600));
+    db_insert(
+        "INSERT INTO smile_preview_links (case_id, token_hash, token_plaintext, purpose, expires_at, created_by)
+         VALUES (0, :token_hash, :token_plaintext, 'mobile_upload', :expires_at, :created_by)",
+        [
+            'token_hash' => smile_design_token_hash($token),
+            'token_plaintext' => $token,
+            'expires_at' => $expiresAt,
+            'created_by' => $createdBy,
+        ]
+    );
+    return $token;
+}
+
+function smile_design_mobile_uploads_for_token(string $token, bool $latestOnly = true): array
+{
+    $rows = db_all(
+        "SELECT *
+         FROM smile_mobile_uploads
+         WHERE token_hash = :token_hash
+           AND imported_case_id IS NULL
+         ORDER BY created_at DESC, id DESC",
+        ['token_hash' => smile_design_token_hash($token)]
+    );
+    if (!$latestOnly) {
+        return $rows;
+    }
+
+    $latest = [];
+    foreach ($rows as $row) {
+        $photoType = (string)($row['photo_type'] ?? 'front');
+        if (!isset($latest[$photoType])) {
+            $latest[$photoType] = $row;
+        }
+    }
+    return $latest;
+}
+
+function smile_design_store_mobile_upload(string $token, array $file, string $photoType): array
+{
+    $link = smile_design_verify_token($token, 'mobile_upload');
+    if (!$link) {
+        return ['ok' => false, 'message' => 'This upload link is expired. Please scan a fresh QR code.'];
+    }
+    if (!array_key_exists($photoType, smile_design_photo_type_options())) {
+        $photoType = 'front';
+    }
+
+    $stored = smile_design_store_private_image($file, 'mobile-upload/' . substr(smile_design_token_hash($token), 0, 16));
+    if (empty($stored['ok'])) {
+        return $stored;
+    }
+
+    $uploadId = db_insert(
+        "INSERT INTO smile_mobile_uploads
+         (token_hash, photo_type, storage_key, original_name, mime_type, file_size, width, height, metadata_json)
+         VALUES (:token_hash, :photo_type, :storage_key, :original_name, :mime_type, :file_size, :width, :height, :metadata_json)",
+        [
+            'token_hash' => smile_design_token_hash($token),
+            'photo_type' => $photoType,
+            'storage_key' => (string)$stored['storage_key'],
+            'original_name' => basename((string)($file['name'] ?? 'mobile-photo')),
+            'mime_type' => (string)$stored['mime_type'],
+            'file_size' => (int)($stored['file_size'] ?? 0),
+            'width' => isset($stored['width']) ? (int)$stored['width'] : null,
+            'height' => isset($stored['height']) ? (int)$stored['height'] : null,
+            'metadata_json' => trim((string)($stored['metadata_json'] ?? '')) ?: null,
+        ]
+    );
+
+    smile_design_audit(null, 'mobile_upload_received', ['upload_id' => $uploadId, 'photo_type' => $photoType], null);
+    return ['ok' => true, 'upload_id' => $uploadId, 'photo_type' => $photoType];
+}
+
+function smile_design_import_mobile_uploads_to_case(string $token, int $caseId, ?int $userId = null, array $skipPhotoTypes = []): array
+{
+    $link = smile_design_verify_token($token, 'mobile_upload');
+    if (!$link || $caseId <= 0) {
+        return ['ok' => false, 'message' => 'Mobile upload link was not valid.', 'photo_ids' => []];
+    }
+
+    $latest = smile_design_mobile_uploads_for_token($token, true);
+    $photoIds = [];
+    foreach (['front', 'left_45', 'right_45'] as $photoType) {
+        if (in_array($photoType, $skipPhotoTypes, true)) {
+            continue;
+        }
+        $upload = $latest[$photoType] ?? null;
+        if (!$upload) {
+            continue;
+        }
+        $insert = smile_design_insert_before_photo_record($caseId, [
+            'storage_key' => (string)$upload['storage_key'],
+            'mime_type' => (string)$upload['mime_type'],
+            'file_size' => (int)$upload['file_size'],
+            'width' => isset($upload['width']) ? (int)$upload['width'] : null,
+            'height' => isset($upload['height']) ? (int)$upload['height'] : null,
+            'metadata_json' => trim((string)($upload['metadata_json'] ?? '')) ?: null,
+        ], [
+            'photo_type' => $photoType,
+            'source_type' => 'mobile_upload',
+            'original_name' => (string)($upload['original_name'] ?? 'mobile-photo'),
+        ], $userId);
+        if (!empty($insert['ok'])) {
+            $photoIds[$photoType] = (int)$insert['photo_id'];
+            db_execute(
+                'UPDATE smile_mobile_uploads SET imported_case_id = :case_id, imported_photo_id = :photo_id, imported_at = NOW() WHERE id = :id',
+                ['case_id' => $caseId, 'photo_id' => (int)$insert['photo_id'], 'id' => (int)$upload['id']]
+            );
+        }
+    }
+
+    if ($photoIds !== []) {
+        db_execute('UPDATE smile_preview_links SET used_at = NOW() WHERE id = :id', ['id' => (int)$link['id']]);
+        smile_design_audit($caseId, 'mobile_uploads_imported', ['photo_ids' => $photoIds], $userId);
+    }
+
+    return ['ok' => true, 'photo_ids' => $photoIds];
 }
 
 function smile_design_revoke_preview_links(int $caseId, ?int $userId = null): void
@@ -1351,6 +1672,48 @@ function smile_design_update_case_contact(int $caseId, array $data, ?int $userId
     return true;
 }
 
+function smile_design_active_gallery_link(): ?array
+{
+    return db_one(
+        "SELECT *
+         FROM smile_preview_links
+         WHERE case_id = 0
+           AND purpose = 'gallery'
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY id DESC
+         LIMIT 1"
+    ) ?: null;
+}
+
+function smile_design_issue_or_reuse_gallery_link(?int $createdBy = null, int $days = 90): array
+{
+    $active = smile_design_active_gallery_link();
+    if ($active && trim((string)($active['token_plaintext'] ?? '')) !== '') {
+        $active['gallery_url'] = smile_design_gallery_link_url($active);
+        return ['created' => false, 'link' => $active];
+    }
+
+    $token = smile_design_create_link(0, 'gallery', $createdBy, $days);
+    $link = db_one(
+        "SELECT *
+         FROM smile_preview_links
+         WHERE case_id = 0
+           AND purpose = 'gallery'
+           AND token_hash = :token_hash
+         ORDER BY id DESC
+         LIMIT 1",
+        ['token_hash' => smile_design_token_hash($token)]
+    ) ?: null;
+
+    if (!$link) {
+        return ['created' => true, 'link' => null];
+    }
+
+    $link['gallery_url'] = smile_design_gallery_link_url($link);
+    return ['created' => true, 'link' => $link];
+}
+
 function smile_design_update_case_preferences(int $caseId, array $data, ?int $userId = null): bool
 {
     $case = smile_design_case($caseId);
@@ -1439,6 +1802,244 @@ function smile_design_after_url(int $versionId, string $token = ''): string
         $query .= '&token=' . rawurlencode($token);
     }
     return base_url('app/actions/smile_design_photo.php?' . $query);
+}
+
+function smile_design_case_video_url(int $videoId, string $token = ''): string
+{
+    $query = 'video_id=' . $videoId;
+    if ($token !== '') {
+        $query .= '&token=' . rawurlencode($token);
+    }
+    return base_url('app/actions/smile_design_photo.php?' . $query);
+}
+
+function smile_design_latest_case_video(int $caseId): ?array
+{
+    return db_one(
+        "SELECT * FROM smile_case_videos WHERE case_id = :case_id ORDER BY id DESC LIMIT 1",
+        ['case_id' => $caseId]
+    ) ?: null;
+}
+
+function smile_design_delete_case_video(int $videoId, ?int $userId = null): array
+{
+    $video = db_one('SELECT * FROM smile_case_videos WHERE id = :id LIMIT 1', ['id' => $videoId]);
+    if (!$video) {
+        return ['ok' => false, 'message' => 'Video was not found.'];
+    }
+
+    $caseId = (int)($video['case_id'] ?? 0);
+    $storageKey = trim((string)($video['storage_key'] ?? ''));
+    $filePath = $storageKey !== '' ? smile_design_safe_storage_path($storageKey) : null;
+    if ($filePath && is_file($filePath)) {
+        @unlink($filePath);
+    }
+
+    db_execute('DELETE FROM smile_case_videos WHERE id = :id', ['id' => $videoId]);
+    smile_design_audit($caseId, 'case_reveal_video_deleted', [
+        'video_id' => $videoId,
+        'storage_key' => $storageKey,
+    ], $userId);
+
+    return ['ok' => true, 'video_id' => $videoId, 'case_id' => $caseId];
+}
+
+function smile_design_delete_case_videos(int $caseId, ?int $userId = null, array $exceptVideoIds = []): int
+{
+    $except = array_values(array_filter(array_map('intval', $exceptVideoIds), static fn(int $id): bool => $id > 0));
+    $videos = db_all(
+        'SELECT * FROM smile_case_videos WHERE case_id = :case_id ORDER BY id ASC',
+        ['case_id' => $caseId]
+    );
+    $deleted = 0;
+    foreach ($videos as $video) {
+        $videoId = (int)($video['id'] ?? 0);
+        if ($videoId <= 0 || in_array($videoId, $except, true)) {
+            continue;
+        }
+        $result = smile_design_delete_case_video($videoId, $userId);
+        if (!empty($result['ok'])) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
+function smile_design_case_gallery_videos(int $limit = 24): array
+{
+    $limit = max(1, min(100, $limit));
+    return db_all(
+        "SELECT scv.*, sc.patient_name, sc.procedure_interest, sc.lvi_style_key
+         FROM smile_case_videos scv
+         INNER JOIN smile_cases sc ON sc.id = scv.case_id
+         WHERE scv.approved_for_office_gallery = 1
+         ORDER BY scv.created_at DESC, scv.id DESC
+         LIMIT {$limit}"
+    );
+}
+
+function smile_design_selected_after_angles(int $caseId): array
+{
+    $angles = [
+        'front' => 'Front',
+        'left_45' => 'Left 45',
+        'right_45' => 'Right 45',
+    ];
+    $selected = [];
+    foreach ($angles as $photoType => $label) {
+        $version = smile_design_selected_after_version($caseId, $photoType);
+        if ($version) {
+            $selected[$photoType] = $version + ['angle_label' => $label];
+        }
+    }
+    return $selected;
+}
+
+function smile_design_store_case_video_binary(int $caseId, string $binary, string $mimeType, array $data = [], ?int $userId = null): array
+{
+    if ($binary === '') {
+        return ['ok' => false, 'message' => 'Generated video payload was empty.'];
+    }
+
+    $extension = match (strtolower($mimeType)) {
+        'video/webm' => 'webm',
+        'video/quicktime' => 'mov',
+        default => 'mp4',
+    };
+    $storagePrefix = 'cases/' . $caseId . '/videos';
+    $directory = smile_design_private_root() . '/' . $storagePrefix;
+    ensure_directory($directory);
+    $storageKey = $storagePrefix . '/' . date('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
+    $target = smile_design_private_root() . '/' . $storageKey;
+    if (@file_put_contents($target, $binary) === false || !is_file($target)) {
+        return ['ok' => false, 'message' => 'Could not save the generated video.'];
+    }
+
+    $videoId = db_insert(
+        "INSERT INTO smile_case_videos
+         (case_id, storage_key, video_title, source_type, model, prompt, mime_type, file_size, duration_seconds, aspect_ratio, source_after_ids, approved_for_office_gallery, created_by)
+         VALUES
+         (:case_id, :storage_key, :video_title, :source_type, :model, :prompt, :mime_type, :file_size, :duration_seconds, :aspect_ratio, :source_after_ids, :approved_for_office_gallery, :created_by)",
+        [
+            'case_id' => $caseId,
+            'storage_key' => $storageKey,
+            'video_title' => trim((string)($data['video_title'] ?? 'Smile Reveal Video')) ?: 'Smile Reveal Video',
+            'source_type' => trim((string)($data['source_type'] ?? 'ai_reveal')) ?: 'ai_reveal',
+            'model' => trim((string)($data['model'] ?? '')) ?: null,
+            'prompt' => trim((string)($data['prompt'] ?? '')) ?: null,
+            'mime_type' => $mimeType,
+            'file_size' => (int)filesize($target),
+            'duration_seconds' => isset($data['duration_seconds']) ? (int)$data['duration_seconds'] : null,
+            'aspect_ratio' => trim((string)($data['aspect_ratio'] ?? '')) ?: null,
+            'source_after_ids' => trim((string)($data['source_after_ids'] ?? '')) ?: null,
+            'approved_for_office_gallery' => !empty($data['approved_for_office_gallery']) ? 1 : 0,
+            'created_by' => $userId,
+        ]
+    );
+
+    smile_design_audit($caseId, 'case_reveal_video_created', [
+        'video_id' => $videoId,
+        'model' => trim((string)($data['model'] ?? '')),
+        'source_after_ids' => trim((string)($data['source_after_ids'] ?? '')),
+    ], $userId);
+
+    return ['ok' => true, 'video_id' => $videoId, 'storage_key' => $storageKey, 'mime_type' => $mimeType, 'file_size' => (int)filesize($target)];
+}
+
+function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = null): array
+{
+    if (!function_exists('elite_gemini_generate_video_from_references')) {
+        return ['ok' => false, 'message' => 'Gemini video helper is unavailable.'];
+    }
+    $case = smile_design_case($caseId);
+    if (!$case) {
+        return ['ok' => false, 'message' => 'Case not found.'];
+    }
+    $selectedAngles = smile_design_selected_after_angles($caseId);
+    $required = ['front', 'left_45', 'right_45'];
+    $missing = array_values(array_filter($required, static fn(string $angle): bool => empty($selectedAngles[$angle])));
+    if ($missing !== []) {
+        return ['ok' => false, 'message' => 'Generate and select all three after angles before video: ' . implode(', ', $missing) . '.'];
+    }
+    $existingVideoIds = array_map(
+        static fn(array $video): int => (int)($video['id'] ?? 0),
+        db_all('SELECT id FROM smile_case_videos WHERE case_id = :case_id', ['case_id' => $caseId])
+    );
+
+    $imagePaths = [];
+    $afterIds = [];
+    foreach ($required as $angle) {
+        $version = $selectedAngles[$angle];
+        $path = smile_design_safe_storage_path((string)($version['storage_key'] ?? ''));
+        if (!$path || !is_file($path)) {
+            return ['ok' => false, 'message' => 'Selected after image is missing for ' . $angle . '.'];
+        }
+        $imagePaths[] = [
+            'path' => $path,
+            'mime_type' => elite_gemini_detect_image_mime_type($path),
+        ];
+        $afterIds[] = (int)$version['id'];
+    }
+
+    $patientName = trim((string)($case['patient_name'] ?? 'patient'));
+    $prompt = implode(' ', [
+        'Create an 8-second silent cinematic patient smile reveal video for an internal cosmetic dentistry consultation.',
+        'No audio, no music, no voiceover, no sound effects, no spoken words, and no subtitles.',
+        'The person must not talk, speak, mouth words, lip-sync, or move their mouth like they are saying anything.',
+        'Mouth movement is limited to a natural transition from relaxed/closed lips into a clean smile reveal and then a steady held smile.',
+        'Use the three reference images as the exact same patient and final smile result: front, left 45, and right 45 after views.',
+        'The patient starts centered with head slightly inclined downward, eyes closed or softly lowered.',
+        'Then the patient slowly raises their head, opens their eyes, and smiles, revealing the new flawless porcelain veneer smile.',
+        'The head turns naturally to the patient left, then to the patient right, then returns to center facing camera.',
+        'The patient may blink once naturally during the movement, but the final frame must show both eyes fully open.',
+        'The final frame is strict: patient faces the camera straight on, eyes open, looking directly into the camera, smiling confidently, with the new veneers fully visible.',
+        'The last frame must match the selected front after smile: same person, same veneer design, same bright clean shade, same facial identity, same camera-facing smile.',
+        'End with a steady held portrait, not a turn, not looking away, not eyes closed, not mid-blink, not mouth closed, and not speaking.',
+        'Preserve realistic human anatomy, natural facial motion, soft dental-office presentation lighting, and premium cosmetic dentistry polish.',
+        'Do not change identity, hair, lips, facial proportions, age, gender, or the veneer design. Do not add text, logos, captions, watermarks, extra people, dental tools, or split screens.',
+        'The video must be silent and presentation-ready for a doctor to show on a big screen.',
+        'Patient display name for context only: ' . $patientName . '.',
+    ]);
+    @set_time_limit(600);
+    $result = elite_gemini_generate_video_from_references($imagePaths, $prompt, [
+        'model' => defined('GOOGLE_GEMINI_VIDEO_MODEL') ? GOOGLE_GEMINI_VIDEO_MODEL : 'veo-3.1-generate-preview',
+        'duration_seconds' => 8,
+        'aspect_ratio' => '16:9',
+        'max_wait_seconds' => 480,
+    ]);
+    if (empty($result['ok'])) {
+        smile_design_audit($caseId, 'case_reveal_video_failed', [
+            'message' => (string)($result['message'] ?? 'Video generation failed.'),
+            'model' => (string)($result['model'] ?? ''),
+        ], $userId);
+        return $result;
+    }
+
+    $stored = smile_design_store_case_video_binary(
+        $caseId,
+        (string)$result['video_binary'],
+        (string)($result['mime_type'] ?? 'video/mp4'),
+        [
+            'video_title' => 'Smile Reveal Video',
+            'source_type' => 'ai_reveal',
+            'model' => (string)($result['model'] ?? ''),
+            'prompt' => $prompt,
+            'duration_seconds' => 8,
+            'aspect_ratio' => '16:9',
+            'source_after_ids' => implode(',', array_map('strval', $afterIds)),
+            'approved_for_office_gallery' => 1,
+        ],
+        $userId
+    );
+    if (!empty($stored['ok'])) {
+        $newVideoId = (int)($stored['video_id'] ?? 0);
+        $deleted = $newVideoId > 0 ? smile_design_delete_case_videos($caseId, $userId, [$newVideoId]) : 0;
+        $stored['replaced_video_count'] = $deleted;
+        $stored['replaced_video_ids'] = array_values(array_filter($existingVideoIds, static fn(int $id): bool => $id > 0 && $id !== $newVideoId));
+    }
+
+    return $stored;
 }
 
 function smile_design_recent_cases(int $limit = 12): array
@@ -1532,6 +2133,124 @@ function smile_design_apply_exif_orientation($image, string $sourcePath, string 
         8 => imagerotate($image, 90, 0),
         default => $image,
     };
+}
+
+function smile_design_exif_fraction_to_float(mixed $value): ?float
+{
+    if (is_numeric($value)) {
+        return (float)$value;
+    }
+    if (!is_string($value)) {
+        return null;
+    }
+    $raw = trim($value);
+    if ($raw === '') {
+        return null;
+    }
+    if (str_contains($raw, '/')) {
+        [$num, $den] = array_pad(explode('/', $raw, 2), 2, '0');
+        if (is_numeric($num) && is_numeric($den) && (float)$den != 0.0) {
+            return (float)$num / (float)$den;
+        }
+    }
+    return is_numeric($raw) ? (float)$raw : null;
+}
+
+function smile_design_extract_photo_metadata(string $sourcePath, string $mime, ?int $width = null, ?int $height = null): array
+{
+    $metadata = [
+        'mime_type' => $mime,
+        'width' => $width,
+        'height' => $height,
+    ];
+
+    if ($mime !== 'image/jpeg' || !function_exists('exif_read_data') || !is_file($sourcePath)) {
+        return $metadata;
+    }
+
+    $exif = @exif_read_data($sourcePath, null, true, false);
+    if (!is_array($exif)) {
+        return $metadata;
+    }
+
+    $flatten = [];
+    foreach ($exif as $section) {
+        if (is_array($section)) {
+            foreach ($section as $key => $value) {
+                $flatten[(string)$key] = $value;
+            }
+        }
+    }
+
+    $focalLength = smile_design_exif_fraction_to_float($flatten['FocalLength'] ?? null);
+    $focalLength35 = smile_design_exif_fraction_to_float($flatten['FocalLengthIn35mmFilm'] ?? null);
+    $fNumber = smile_design_exif_fraction_to_float($flatten['FNumber'] ?? null);
+    $exposureTime = $flatten['ExposureTime'] ?? null;
+    $iso = $flatten['ISOSpeedRatings'] ?? $flatten['PhotographicSensitivity'] ?? null;
+    $dateTaken = trim((string)($flatten['DateTimeOriginal'] ?? $flatten['DateTimeDigitized'] ?? $flatten['DateTime'] ?? ''));
+
+    $metadata['orientation'] = isset($flatten['Orientation']) ? (int)$flatten['Orientation'] : null;
+    $metadata['camera_make'] = trim((string)($flatten['Make'] ?? '')) ?: null;
+    $metadata['camera_model'] = trim((string)($flatten['Model'] ?? '')) ?: null;
+    $metadata['lens_model'] = trim((string)($flatten['UndefinedTag:0xA434'] ?? $flatten['LensModel'] ?? '')) ?: null;
+    $metadata['focal_length_mm'] = $focalLength !== null ? round($focalLength, 2) : null;
+    $metadata['focal_length_35mm'] = $focalLength35 !== null ? round($focalLength35, 2) : null;
+    $metadata['aperture_f'] = $fNumber !== null ? round($fNumber, 2) : null;
+    $metadata['exposure_time'] = is_string($exposureTime) ? trim($exposureTime) : (is_numeric($exposureTime) ? (string)$exposureTime : null);
+    $metadata['iso'] = is_array($iso) ? (isset($iso[0]) ? (int)$iso[0] : null) : (is_numeric($iso) ? (int)$iso : null);
+    $metadata['flash'] = isset($flatten['Flash']) ? (int)$flatten['Flash'] : null;
+    $metadata['white_balance'] = isset($flatten['WhiteBalance']) ? (int)$flatten['WhiteBalance'] : null;
+    $metadata['taken_at'] = $dateTaken !== '' ? $dateTaken : null;
+
+    return array_filter($metadata, static fn($value) => $value !== null && $value !== '');
+}
+
+function smile_design_photo_metadata_summary(array $photo): string
+{
+    $metadata = [];
+    if (!empty($photo['metadata_json']) && is_string($photo['metadata_json'])) {
+        $decoded = json_decode((string)$photo['metadata_json'], true);
+        if (is_array($decoded)) {
+            $metadata = $decoded;
+        }
+    }
+
+    $parts = [];
+    $width = (int)($metadata['width'] ?? $photo['width'] ?? 0);
+    $height = (int)($metadata['height'] ?? $photo['height'] ?? 0);
+    if ($width > 0 && $height > 0) {
+        $parts[] = 'source dimensions ' . $width . 'x' . $height;
+    }
+    $cameraModel = trim(implode(' ', array_filter([
+        trim((string)($metadata['camera_make'] ?? '')),
+        trim((string)($metadata['camera_model'] ?? '')),
+    ])));
+    if ($cameraModel !== '') {
+        $parts[] = 'camera ' . $cameraModel;
+    }
+    if (!empty($metadata['lens_model'])) {
+        $parts[] = 'lens ' . (string)$metadata['lens_model'];
+    }
+    if (!empty($metadata['focal_length_35mm'])) {
+        $parts[] = 'approx. ' . rtrim(rtrim(number_format((float)$metadata['focal_length_35mm'], 2, '.', ''), '0'), '.') . 'mm full-frame equivalent';
+    } elseif (!empty($metadata['focal_length_mm'])) {
+        $parts[] = 'focal length ' . rtrim(rtrim(number_format((float)$metadata['focal_length_mm'], 2, '.', ''), '0'), '.') . 'mm';
+    }
+    if (!empty($metadata['aperture_f'])) {
+        $parts[] = 'aperture f/' . rtrim(rtrim(number_format((float)$metadata['aperture_f'], 2, '.', ''), '0'), '.');
+    }
+    if (!empty($metadata['exposure_time'])) {
+        $parts[] = 'exposure ' . (string)$metadata['exposure_time'] . 's';
+    }
+    if (!empty($metadata['iso'])) {
+        $parts[] = 'ISO ' . (int)$metadata['iso'];
+    }
+
+    if ($parts === []) {
+        return '';
+    }
+
+    return 'Source photo camera metadata: ' . implode(', ', $parts) . '. Use this only as technical guidance so framing, lens feel, depth impression, lighting character, and white balance stay consistent with the source photo.';
 }
 
 function smile_design_upload_detect_mime(string $tmp, array $file): string
@@ -1695,6 +2414,7 @@ function smile_design_store_upload(int $caseId, array $file, string $kind = 'bef
     }
 
     $mime = smile_design_upload_detect_mime($tmp, $file);
+    $sourceMetadata = smile_design_extract_photo_metadata($tmp, $mime);
     $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
     $isHeic = smile_design_is_heic_mime($mime);
     if (!isset($allowed[$mime]) && !$isHeic) {
@@ -1775,9 +2495,14 @@ function smile_design_store_upload(int $caseId, array $file, string $kind = 'bef
         $sourceType = 'uploaded';
     }
 
+    $metadata = $sourceMetadata;
+    $metadata['mime_type'] = $mime;
+    $metadata['width'] = $width;
+    $metadata['height'] = $height;
+
     $photoId = db_insert(
-        "INSERT INTO smile_case_photos (case_id, kind, photo_type, source_type, storage_key, original_name, mime_type, file_size, width, height)
-         VALUES (:case_id, :kind, :photo_type, :source_type, :storage_key, :original_name, :mime_type, :file_size, :width, :height)",
+        "INSERT INTO smile_case_photos (case_id, kind, photo_type, source_type, storage_key, original_name, mime_type, file_size, width, height, metadata_json)
+         VALUES (:case_id, :kind, :photo_type, :source_type, :storage_key, :original_name, :mime_type, :file_size, :width, :height, :metadata_json)",
         [
             'case_id' => $caseId,
             'kind' => $kind,
@@ -1789,6 +2514,7 @@ function smile_design_store_upload(int $caseId, array $file, string $kind = 'bef
             'file_size' => (int)filesize($target),
             'width' => $width,
             'height' => $height,
+            'metadata_json' => $metadata !== [] ? json_encode($metadata, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null,
         ]
     );
 
@@ -1900,6 +2626,219 @@ function smile_design_store_generated_image(string $binary, string $mimeType, st
         'width' => isset($info[0]) ? (int) $info[0] : null,
         'height' => isset($info[1]) ? (int) $info[1] : null,
     ];
+}
+
+function smile_design_veneer_patch_regions(string $photoType): array
+{
+    return match (strtolower(trim($photoType))) {
+        'left_45', 'left45' => [
+            'patch' => [0.14, 0.42, 0.72, 0.76],
+            'teeth' => [0.20, 0.48, 0.58, 0.66],
+        ],
+        'right_45', 'right45' => [
+            'patch' => [0.28, 0.42, 0.86, 0.76],
+            'teeth' => [0.42, 0.48, 0.80, 0.66],
+        ],
+        default => [
+            'patch' => [0.22, 0.43, 0.78, 0.73],
+            'teeth' => [0.31, 0.50, 0.69, 0.67],
+        ],
+    };
+}
+
+function smile_design_image_cover_to_size($source, int $targetWidth, int $targetHeight)
+{
+    $sourceWidth = imagesx($source);
+    $sourceHeight = imagesy($source);
+    if ($sourceWidth <= 0 || $sourceHeight <= 0 || $targetWidth <= 0 || $targetHeight <= 0) {
+        return null;
+    }
+
+    $sourceRatio = $sourceWidth / $sourceHeight;
+    $targetRatio = $targetWidth / $targetHeight;
+    if ($sourceRatio > $targetRatio) {
+        $cropHeight = $sourceHeight;
+        $cropWidth = (int)round($sourceHeight * $targetRatio);
+        $cropX = (int)max(0, floor(($sourceWidth - $cropWidth) / 2));
+        $cropY = 0;
+    } else {
+        $cropWidth = $sourceWidth;
+        $cropHeight = (int)round($sourceWidth / $targetRatio);
+        $cropX = 0;
+        $cropY = (int)max(0, floor(($sourceHeight - $cropHeight) / 2));
+    }
+
+    $target = imagecreatetruecolor($targetWidth, $targetHeight);
+    imagealphablending($target, true);
+    imagesavealpha($target, true);
+    imagecopyresampled($target, $source, 0, 0, $cropX, $cropY, $targetWidth, $targetHeight, $cropWidth, $cropHeight);
+    return $target;
+}
+
+function smile_design_rel_box_to_pixels(array $box, int $width, int $height): array
+{
+    return [
+        max(0, min($width, (int)round($width * (float)($box[0] ?? 0)))),
+        max(0, min($height, (int)round($height * (float)($box[1] ?? 0)))),
+        max(0, min($width, (int)round($width * (float)($box[2] ?? 1)))),
+        max(0, min($height, (int)round($height * (float)($box[3] ?? 1)))),
+    ];
+}
+
+function smile_design_is_tooth_like_pixel(int $r, int $g, int $b): bool
+{
+    $lum = (0.2126 * $r) + (0.7152 * $g) + (0.0722 * $b);
+    $isRedLip = ($r > $g + 34) && ($r > $b + 42);
+    $isDarkMouth = $lum < 118;
+    $isSkin = ($r > 150 && $g > 95 && $b > 85 && $r > $g + 28 && $g > $b + 6);
+    return !$isRedLip
+        && !$isDarkMouth
+        && !$isSkin
+        && $r > 125
+        && $g > 115
+        && $b > 100
+        && abs($r - $g) < 72
+        && ($r - $b) < 95;
+}
+
+function smile_design_apply_porcelain_tooth_finish($image, string $photoType, string $shadeGoal): void
+{
+    $width = imagesx($image);
+    $height = imagesy($image);
+    $regions = smile_design_veneer_patch_regions($photoType);
+    [$x1, $y1, $x2, $y2] = smile_design_rel_box_to_pixels($regions['teeth'], $width, $height);
+    $shade = smile_design_normalize_shade_goal($shadeGoal);
+    $target = match ($shade) {
+        '120' => [248, 246, 238],
+        '130' => [246, 243, 233],
+        '140' => [244, 240, 229],
+        default => [252, 250, 242],
+    };
+
+    for ($y = $y1; $y < $y2; $y++) {
+        for ($x = $x1; $x < $x2; $x++) {
+            $rgb = imagecolorat($image, $x, $y);
+            $r = ($rgb >> 16) & 0xFF;
+            $g = ($rgb >> 8) & 0xFF;
+            $b = $rgb & 0xFF;
+            if (!smile_design_is_tooth_like_pixel($r, $g, $b)) {
+                continue;
+            }
+
+            $lum = (0.2126 * $r) + (0.7152 * $g) + (0.0722 * $b);
+            $strength = max(0.52, min(0.82, ($lum - 105) / 135));
+            $nr = (int)round(($r * (1 - $strength)) + ($target[0] * $strength));
+            $ng = (int)round(($g * (1 - $strength)) + ($target[1] * $strength));
+            $nb = (int)round(($b * (1 - $strength)) + ($target[2] * $strength));
+            $yellow = (($nr + $ng) / 2) - $nb;
+            if ($yellow > 10) {
+                $nb = min(255, (int)round($nb + min(28, $yellow * 0.75)));
+            }
+            $color = imagecolorallocate($image, min(255, $nr), min(255, $ng), min(255, $nb));
+            imagesetpixel($image, $x, $y, $color);
+        }
+    }
+}
+
+function smile_design_finalize_veneer_after_result(array $beforePhoto, array $result, array $options = []): array
+{
+    if (!extension_loaded('gd')) {
+        $result['postprocess_warning'] = 'GD is unavailable; veneer patch compositing was skipped.';
+        return $result;
+    }
+
+    $beforePath = smile_design_safe_storage_path((string)($beforePhoto['storage_key'] ?? ''));
+    if (!$beforePath || !is_file($beforePath)) {
+        $result['postprocess_warning'] = 'Before photo was unavailable; veneer patch compositing was skipped.';
+        return $result;
+    }
+
+    $generatedBinary = base64_decode((string)($result['image_base64'] ?? ''), true);
+    if (!is_string($generatedBinary) || $generatedBinary === '') {
+        return $result;
+    }
+
+    $beforeBinary = @file_get_contents($beforePath);
+    $before = is_string($beforeBinary) ? @imagecreatefromstring($beforeBinary) : false;
+    $generated = @imagecreatefromstring($generatedBinary);
+    if (!$before || !$generated) {
+        if ($before) {
+            imagedestroy($before);
+        }
+        if ($generated) {
+            imagedestroy($generated);
+        }
+        $result['postprocess_warning'] = 'Image decode failed; veneer patch compositing was skipped.';
+        return $result;
+    }
+
+    if (function_exists('imagepalettetotruecolor')) {
+        @imagepalettetotruecolor($before);
+        @imagepalettetotruecolor($generated);
+    }
+
+    $width = imagesx($before);
+    $height = imagesy($before);
+    $generatedFit = smile_design_image_cover_to_size($generated, $width, $height);
+    imagedestroy($generated);
+    if (!$generatedFit) {
+        imagedestroy($before);
+        $result['postprocess_warning'] = 'Generated image could not be fitted to source dimensions.';
+        return $result;
+    }
+
+    $photoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? $beforePhoto['photo_type'] ?? 'front'));
+    $regions = smile_design_veneer_patch_regions($photoType);
+    [$x1, $y1, $x2, $y2] = smile_design_rel_box_to_pixels($regions['patch'], $width, $height);
+    $cx = ($x1 + $x2) / 2;
+    $cy = ($y1 + $y2) / 2;
+    $rx = max(1, ($x2 - $x1) / 2);
+    $ry = max(1, ($y2 - $y1) / 2);
+
+    for ($y = $y1; $y < $y2; $y++) {
+        for ($x = $x1; $x < $x2; $x++) {
+            $distance = sqrt((($x - $cx) / $rx) ** 2 + (($y - $cy) / $ry) ** 2);
+            if ($distance >= 1.0) {
+                continue;
+            }
+            $weight = $distance <= 0.72 ? 1.0 : max(0.0, (1.0 - $distance) / 0.28);
+            $baseRgb = imagecolorat($before, $x, $y);
+            $editRgb = imagecolorat($generatedFit, $x, $y);
+            $br = ($baseRgb >> 16) & 0xFF;
+            $bg = ($baseRgb >> 8) & 0xFF;
+            $bb = $baseRgb & 0xFF;
+            $er = ($editRgb >> 16) & 0xFF;
+            $eg = ($editRgb >> 8) & 0xFF;
+            $eb = $editRgb & 0xFF;
+            $color = imagecolorallocate(
+                $before,
+                (int)round(($br * (1 - $weight)) + ($er * $weight)),
+                (int)round(($bg * (1 - $weight)) + ($eg * $weight)),
+                (int)round(($bb * (1 - $weight)) + ($eb * $weight))
+            );
+            imagesetpixel($before, $x, $y, $color);
+        }
+    }
+
+    smile_design_apply_porcelain_tooth_finish($before, $photoType, (string)($options['shade_goal'] ?? '110'));
+
+    ob_start();
+    imagepng($before, null, 6);
+    $finalBinary = ob_get_clean();
+    imagedestroy($before);
+    imagedestroy($generatedFit);
+
+    if (is_string($finalBinary) && $finalBinary !== '') {
+        $result['image_base64'] = base64_encode($finalBinary);
+        $result['mime_type'] = 'image/png';
+        $result['postprocess'] = [
+            'veneer_patch_composited' => true,
+            'source_dimensions' => [$width, $height],
+            'photo_type' => $photoType,
+        ];
+    }
+
+    return $result;
 }
 
 function smile_design_normalize_after_version_to_before_dimensions(int $afterVersionId): array
@@ -2127,6 +3066,7 @@ function smile_design_store_private_image(array $file, string $storagePrefix): a
         return ['ok' => false, 'message' => 'Photo must be smaller than 12 MB.'];
     }
     $mime = smile_design_upload_detect_mime($tmp, $file);
+    $sourceMetadata = smile_design_extract_photo_metadata($tmp, $mime);
     $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
     $isHeic = smile_design_is_heic_mime($mime);
     if (!isset($allowed[$mime]) && !$isHeic) {
@@ -2191,7 +3131,11 @@ function smile_design_store_private_image(array $file, string $storagePrefix): a
     if (!$stored) {
         return ['ok' => false, 'message' => 'Could not save the uploaded photo.'];
     }
-    return ['ok' => true, 'storage_key' => $storageKey, 'mime_type' => $mime, 'file_size' => (int)filesize($target), 'width' => $width, 'height' => $height];
+    $metadata = $sourceMetadata;
+    $metadata['mime_type'] = $mime;
+    $metadata['width'] = $width;
+    $metadata['height'] = $height;
+    return ['ok' => true, 'storage_key' => $storageKey, 'mime_type' => $mime, 'file_size' => (int)filesize($target), 'width' => $width, 'height' => $height, 'metadata_json' => $metadata !== [] ? json_encode($metadata, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null];
 }
 
 function smile_design_insert_before_photo_record(int $caseId, array $stored, array $data, ?int $userId = null): array
@@ -2206,8 +3150,8 @@ function smile_design_insert_before_photo_record(int $caseId, array $stored, arr
     }
 
     $photoId = db_insert(
-        "INSERT INTO smile_case_photos (case_id, kind, photo_type, source_type, storage_key, original_name, mime_type, file_size, width, height)
-         VALUES (:case_id, 'before', :photo_type, :source_type, :storage_key, :original_name, :mime_type, :file_size, :width, :height)",
+        "INSERT INTO smile_case_photos (case_id, kind, photo_type, source_type, storage_key, original_name, mime_type, file_size, width, height, metadata_json)
+         VALUES (:case_id, 'before', :photo_type, :source_type, :storage_key, :original_name, :mime_type, :file_size, :width, :height, :metadata_json)",
         [
             'case_id' => $caseId,
             'photo_type' => $photoType,
@@ -2218,6 +3162,7 @@ function smile_design_insert_before_photo_record(int $caseId, array $stored, arr
             'file_size' => (int)($stored['file_size'] ?? 0),
             'width' => isset($stored['width']) ? (int)$stored['width'] : null,
             'height' => isset($stored['height']) ? (int)$stored['height'] : null,
+            'metadata_json' => trim((string)($stored['metadata_json'] ?? '')) ?: null,
         ]
     );
 
@@ -2528,15 +3473,18 @@ Pass criteria:
 - The original yellowing, stains, cracks, chips, mottling, debris, or enamel defects no longer show through on the veneered tooth surfaces.
 - The shade matches the selected target family closely enough to be recognized on screen.
 - The tooth form follows the selected LVI style closely enough to be recognizable in the centrals, laterals, canines, line angles, and embrasures.
+- The before/after difference is obvious: tooth shape and porcelain brightness are both visibly improved at normal viewing distance.
 - Face, lips, gums, identity, lighting, and camera setup remain essentially the same.
 - The result stays inside veneer scope: no fantasy orthodontics, no implant replacement, no jaw surgery, and no unrelated beauty retouching.
-- The veneers should look bright and polished but still dimensional, with natural incisal translucency and believable porcelain gloss.
+- The veneers should look bright, flawless, and polished but still dimensional, with a clean neutral-white body shade, believable porcelain gloss, and subtle translucency only at the incisal/bottom edge.
 
 Fail criteria:
 - The after still looks like natural teeth with whitening instead of veneers.
 - Before-photo discoloration, cracks, chips, or defects remain visibly present on the veneered teeth.
 - The shade is materially darker, yellower, patchier, flatter, chalkier, or grayer than the selected target.
+- The veneer body shade still looks cream/yellow, stained, mottled, or natural-tooth colored, even if the incisal edge has some translucency.
 - The LVI style is too weak or the tooth anatomy does not reflect the requested style.
+- The teeth barely changed, the result looks like mild whitening, or the after is not clearly brighter and more ideal than the before.
 - The face, gums, lips, or identity changed materially.
 - The result over-treats the case with unrelated procedures or fantasy smile changes.
 
@@ -2548,7 +3496,7 @@ PROMPT;
         'Requested LVI style: ' . (string)($styleDetail['title'] ?? 'Natural') . '.',
         smile_design_style_generation_guidance($styleKey),
         'Selected veneer shade target: ' . (string)$shadeDetail['prompt'],
-        'Reject the preview if the result still looks like natural teeth with whitening or if before-photo defects still show through instead of a full porcelain replacement look.',
+        'Reject the preview if the result still looks like natural teeth with whitening, if the veneer body shade is yellow/cream/mottled instead of clean bright white porcelain, if the before and after teeth look too similar, or if before-photo defects still show through instead of a full porcelain replacement look.',
         'Set score from 0 to 10 where 10 is an excellent veneer simulation.',
     ]);
 
@@ -2579,13 +3527,13 @@ function smile_design_veneer_qa_requires_retry(array $qaResult): bool
     }
 
     $data = $qaResult['data'];
-    foreach (['porcelain_coverage_complete', 'shade_target_met', 'defects_removed', 'face_preserved'] as $field) {
+    foreach (['porcelain_coverage_complete', 'shade_target_met', 'defects_removed', 'style_match_sufficient', 'face_preserved'] as $field) {
         if (array_key_exists($field, $data) && empty($data[$field])) {
             return true;
         }
     }
 
-    return (int)($data['score'] ?? 10) < 7;
+    return (int)($data['score'] ?? 10) < 8;
 }
 
 function smile_design_veneer_qa_feedback(array $qaResult): string
@@ -2710,6 +3658,7 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
     });
 
     $sourcePhotos = $beforePhotos ?: [$beforePhoto];
+    $options['camera_metadata_summary'] = smile_design_photo_metadata_summary($beforePhoto);
     $referenceAfterVersionId = (int)($options['reference_after_version_id'] ?? 0);
     if ($referenceAfterVersionId > 0) {
         $referenceVersion = db_one(
@@ -2745,7 +3694,6 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         smile_design_audit($caseId, 'ai_generation_failed', ['job_id' => $jobId, 'provider' => $providerName], $userId);
         return $result;
     }
-
     if ($isLipRepositionOnlyGeneration && (($options['lip_preview_qa'] ?? true) !== false)) {
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? smile_design_photo_type_options()[(string)($beforePhoto['photo_type'] ?? 'front')] ?? 'Front'));
         $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? $beforePhoto['photo_type'] ?? 'front'));
@@ -2818,7 +3766,7 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
             $retryOptions['custom_request'] = trim(implode("\n", array_values(array_filter([
                 trim((string)($options['custom_request'] ?? '')),
                 smile_design_veneer_qa_feedback($qaResult),
-                'Automatic veneer QA retry emphasis: fully replace the visible anterior tooth surfaces with finished porcelain veneers in the selected shade. Remove all visible yellowing, stains, cracks, mottling, and patchy natural enamel from the veneered teeth. Make the requested LVI anatomy more obvious while preserving the same patient, gums, lips, and facial identity.',
+                'Automatic veneer QA retry emphasis: fully replace the visible anterior tooth surfaces with finished porcelain veneers in the selected shade. Remove all visible yellowing, cream body shade, stains, cracks, mottling, and patchy natural enamel from the veneered teeth. Make the requested LVI anatomy and porcelain brightness unmistakably stronger than the before photo. The veneer body should be clean bright white with only subtle translucency at the incisal/bottom edge, while preserving the same patient, gums, lips, facial identity, framing, and lighting.',
             ], static fn(string $value): bool => trim($value) !== ''))));
             $retryResult = $provider->createPreview($case, $sourcePhotos, $retryOptions);
 
@@ -2870,12 +3818,14 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         return ['ok' => false, 'message' => 'OpenAI returned an unreadable image payload.'];
     }
 
+    $targetWidth = (int)($beforePhoto['width'] ?? 0);
+    $targetHeight = (int)($beforePhoto['height'] ?? 0);
     $stored = smile_design_store_generated_image(
         $binary,
         (string)($result['mime_type'] ?? 'image/png'),
         'cases/' . $caseId . '/after',
         'png',
-        []
+        $targetWidth > 0 && $targetHeight > 0 ? ['target_width' => $targetWidth, 'target_height' => $targetHeight] : []
     );
     if (empty($stored['ok'])) {
         db_execute(
@@ -3493,7 +4443,7 @@ function smile_design_prepare_missing_reference_views(int $caseId, int $frontPho
 
 function smile_design_required_tables(): array
 {
-    return ['smile_cases', 'smile_case_photos', 'smile_after_versions', 'real_result_cases', 'real_result_photo_pairs', 'lvi_style_samples', 'lvi_sample_images', 'smile_sample_cases', 'smile_preview_links', 'smile_notifications', 'ai_generation_jobs', 'ai_generation_versions', 'smile_audit_events', 'smile_pair_alignments'];
+    return ['smile_cases', 'smile_case_photos', 'smile_after_versions', 'smile_case_videos', 'real_result_cases', 'real_result_photo_pairs', 'lvi_style_samples', 'lvi_sample_images', 'smile_sample_cases', 'smile_preview_links', 'smile_notifications', 'ai_generation_jobs', 'ai_generation_versions', 'smile_audit_events', 'smile_pair_alignments'];
 }
 
 function smile_design_health(): array

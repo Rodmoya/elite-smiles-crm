@@ -11,21 +11,12 @@ require_auth();
 require_csrf();
 smile_design_ensure_schema();
 
-$user = auth_user() ?: [];
 $first = trim((string)post('first_name'));
 $last = trim((string)post('last_name'));
 $patientName = trim($first . ' ' . $last);
-
-$leadId = smile_design_match_or_create_lead([
-    'patient_name' => $patientName,
-    'email' => post('email'),
-    'phone' => post('phone'),
-    'procedure_interest' => post('procedure_interest'),
-    'notes' => "Smile Design staff intake submitted.\n" . (string)post('notes'),
-], $user);
+$mobileUploadToken = trim((string)post('mobile_upload_token', ''));
 
 $caseId = smile_design_create_case([
-    'lead_id' => $leadId,
     'first_name' => $first,
     'last_name' => $last,
     'patient_name' => $patientName,
@@ -42,10 +33,16 @@ $caseId = smile_design_create_case([
     'consent_status' => post('consent_status', 'not_recorded'),
 ], auth_user_id());
 
-$frontUpload = smile_design_store_upload($caseId, $_FILES['before_photo_front'] ?? [], 'before', 'front');
-if (empty($frontUpload['ok'])) {
-    flash_set('error', (string)($frontUpload['message'] ?? 'Could not upload front photo.'));
-    redirect(base_url('smile-design/staff-intake'));
+$frontUpload = ['ok' => false, 'photo_id' => 0];
+$localPhotoTypes = [];
+$frontFile = $_FILES['before_photo_front'] ?? null;
+if ($frontFile && (int)($frontFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+    $frontUpload = smile_design_store_upload($caseId, $frontFile, 'before', 'front');
+    if (empty($frontUpload['ok'])) {
+        flash_set('error', (string)($frontUpload['message'] ?? 'Could not upload front photo.'));
+        redirect(base_url('smile-design/staff-intake'));
+    }
+    $localPhotoTypes[] = 'front';
 }
 
 foreach ([
@@ -61,18 +58,34 @@ foreach ([
         flash_set('error', (string)($optionalUpload['message'] ?? 'Could not upload optional photo.'));
         redirect(base_url('smile-design/staff-intake'));
     }
+    $localPhotoTypes[] = $photoType;
 }
 
-smile_design_audit($caseId, 'staff_intake_submitted', ['lead_id' => $leadId], auth_user_id());
-smile_design_audit($caseId, 'staff_photo_uploaded', ['photo_id' => (int)($frontUpload['photo_id'] ?? 0)], auth_user_id());
+$mobileImport = ['ok' => true, 'photo_ids' => []];
+if ($mobileUploadToken !== '') {
+    $mobileImport = smile_design_import_mobile_uploads_to_case($mobileUploadToken, $caseId, auth_user_id(), $localPhotoTypes);
+}
+
+$frontPhotoId = (int)($frontUpload['photo_id'] ?? 0);
+if ($frontPhotoId <= 0 && !empty($mobileImport['photo_ids']['front'])) {
+    $frontPhotoId = (int)$mobileImport['photo_ids']['front'];
+}
+
+if ($frontPhotoId <= 0) {
+    flash_set('error', 'Please upload a front before photo from this computer or scan the QR code and upload it from your phone.');
+    redirect(base_url('smile-design/staff-intake'));
+}
+
+smile_design_audit($caseId, 'staff_intake_submitted', ['lead_id' => null], auth_user_id());
+smile_design_audit($caseId, 'staff_photo_uploaded', ['photo_id' => $frontPhotoId], auth_user_id());
 
 $analysisResult = ['ok' => false, 'message' => 'AI case analysis was not started.'];
 try {
-    $analysisResult = smile_design_run_case_analysis($caseId, (int)($frontUpload['photo_id'] ?? 0), auth_user_id(), true);
+    $analysisResult = smile_design_run_case_analysis($caseId, $frontPhotoId, auth_user_id(), true);
 } catch (Throwable $e) {
     esm_log('smile_design_analysis', 'Initial staff-intake case analysis failed.', [
         'case_id' => $caseId,
-        'before_photo_id' => (int)($frontUpload['photo_id'] ?? 0),
+        'before_photo_id' => $frontPhotoId,
         'message' => $e->getMessage(),
         'trace' => $e->getTraceAsString(),
     ]);

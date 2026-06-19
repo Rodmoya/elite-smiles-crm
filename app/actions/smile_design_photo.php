@@ -11,6 +11,7 @@ smile_design_ensure_schema();
 
 $photoId = (int)get('photo_id', 0);
 $afterId = (int)get('after_id', 0);
+$videoId = (int)get('video_id', 0);
 $lviSampleId = (int)get('lvi_sample_id', 0);
 $realPairId = (int)get('real_pair_id', 0);
 $realSide = (string)get('side', 'before');
@@ -19,7 +20,14 @@ $caseId = 0;
 $storageKey = '';
 $mime = 'image/jpeg';
 
-if ($afterId > 0) {
+if ($videoId > 0) {
+    $photo = db_one('SELECT * FROM smile_case_videos WHERE id = :id LIMIT 1', ['id' => $videoId]);
+    if ($photo) {
+        $caseId = (int)$photo['case_id'];
+        $storageKey = (string)$photo['storage_key'];
+        $mime = (string)$photo['mime_type'];
+    }
+} elseif ($afterId > 0) {
     $photo = db_one('SELECT * FROM smile_after_versions WHERE id = :id LIMIT 1', ['id' => $afterId]);
     if ($photo) {
         $caseId = (int)$photo['case_id'];
@@ -57,8 +65,20 @@ if (!$authorized && $caseId > 0) {
     $token = (string)get('token', '');
     $preview = smile_design_verify_token($token, 'preview');
     $intake = smile_design_verify_token($token, 'intake');
+    $gallery = smile_design_verify_token($token, 'gallery');
     $link = $preview ?: $intake;
     $authorized = $link && (int)$link['case_id'] === $caseId;
+    if (!$authorized && $gallery && (int)$gallery['case_id'] === 0) {
+        $authorized = true;
+    }
+}
+
+if (!$authorized && $caseId === 0) {
+    $token = (string)get('token', '');
+    $gallery = smile_design_verify_token($token, 'gallery');
+    if ($gallery && (int)$gallery['case_id'] === 0) {
+        $authorized = true;
+    }
 }
 
 if (!$authorized) {
@@ -72,9 +92,12 @@ if (!$path || !is_file($path)) {
     exit('Photo file not found.');
 }
 
-smile_design_audit($caseId ?: null, 'photo_viewed', ['photo_id' => $photoId, 'after_id' => $afterId, 'lvi_sample_id' => $lviSampleId, 'real_pair_id' => $realPairId], auth_user_id());
+smile_design_audit($caseId ?: null, $videoId > 0 ? 'video_viewed' : 'photo_viewed', ['photo_id' => $photoId, 'after_id' => $afterId, 'video_id' => $videoId, 'lvi_sample_id' => $lviSampleId, 'real_pair_id' => $realPairId], auth_user_id());
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . filesize($path));
 header('Cache-Control: private, max-age=300');
+if ($videoId > 0) {
+    header('Accept-Ranges: bytes');
+}
 readfile($path);
 exit;

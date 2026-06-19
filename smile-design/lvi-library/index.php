@@ -3,7 +3,8 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 $user = smile_design_internal_boot('LVI Library');
 $samples = db_all('SELECT * FROM lvi_style_samples WHERE is_active = 1 ORDER BY sort_order ASC, id ASC');
-$sampleImages = db_all('SELECT * FROM lvi_sample_images WHERE is_active = 1 ORDER BY style_key ASC, sort_order ASC, id DESC LIMIT 60');
+$catalog = smile_design_lvi_catalog();
+$sampleImages = db_all('SELECT * FROM lvi_sample_images WHERE is_active = 1 ORDER BY style_key ASC, sort_order ASC, id DESC LIMIT 120');
 $sampleImagesByStyle = [];
 foreach ($sampleImages as $image) {
     $sampleImagesByStyle[(string)$image['style_key']][] = $image;
@@ -23,21 +24,46 @@ smile_design_page_header('LVI Standard Library', 'Doctor closing-tool reference 
 </form>
 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
     <?php foreach ($samples as $sample): ?>
+        <?php
+        $styleKey = (string)$sample['style_key'];
+        $detail = $catalog[$styleKey] ?? [];
+        $styleImages = $sampleImagesByStyle[$styleKey] ?? [];
+        $heroImage = $styleImages[0] ?? null;
+        ?>
         <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sample image</div>
-            <?php if (!empty($sampleImagesByStyle[(string)$sample['style_key']])): ?>
+            <?php if ($heroImage): ?>
+                <img class="aspect-[4/3] w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$heroImage['id'])) ?>" alt="<?= e((string)$heroImage['title']) ?>">
+            <?php else: ?>
+                <div class="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sample image</div>
+            <?php endif; ?>
+            <?php if ($styleImages !== []): ?>
                 <div class="mt-3 grid grid-cols-3 gap-2">
-                    <?php foreach (array_slice($sampleImagesByStyle[(string)$sample['style_key']], 0, 3) as $image): ?>
+                    <?php foreach (array_slice($styleImages, 0, 3) as $image): ?>
                         <img class="h-16 w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$image['id'])) ?>" alt="<?= e((string)$image['title']) ?>">
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
-            <p class="mt-4 text-xs uppercase tracking-[0.18em] text-slate-500"><?= e((string)$sample['style_key']) ?></p>
+            <div class="mt-4 flex items-center justify-between gap-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500"><?= e($styleKey) ?></p>
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"><?= e((string)($detail['category'] ?? 'LVI')) ?></span>
+            </div>
             <h2 class="mt-2 text-lg font-semibold"><?= e((string)$sample['title']) ?></h2>
-            <p class="mt-3 min-h-20 text-sm leading-6 text-slate-600"><?= e((string)$sample['description']) ?></p>
-            <div class="mt-4 grid gap-2">
-                <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">View samples placeholder</button>
-                <button class="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white" type="button">Apply to case placeholder</button>
+            <p class="mt-3 text-sm leading-6 text-slate-600"><?= e((string)($detail['description'] ?? $sample['description'])) ?></p>
+            <div class="mt-4 space-y-3 text-sm leading-6 text-slate-600">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Morphology</p>
+                    <p class="mt-1"><?= e((string)($detail['morphology'] ?? $sample['description'])) ?></p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Aesthetic Effect</p>
+                    <p class="mt-1"><?= e((string)($detail['aesthetic_effect'] ?? '')) ?></p>
+                </div>
+            </div>
+            <div class="mt-4 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <span><?= e((string)count($styleImages)) ?> sample<?= count($styleImages) === 1 ? '' : 's' ?></span>
+                <?php if ($heroImage): ?>
+                    <a class="text-slate-700 hover:text-slate-950" href="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$heroImage['id'])) ?>" target="_blank" rel="noreferrer">Open hero image</a>
+                <?php endif; ?>
             </div>
         </div>
     <?php endforeach; ?>

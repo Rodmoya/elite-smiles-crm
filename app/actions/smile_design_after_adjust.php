@@ -20,6 +20,13 @@ if (!$version) {
 
 $caseId = (int)$version['case_id'];
 $case = smile_design_case($caseId);
+$returnUrl = trim((string)post('return_url', ''));
+$defaultReturnUrl = base_url('smile-design/cases/' . $caseId);
+$redirectUrl = $defaultReturnUrl;
+$appBase = rtrim(base_url(''), '/');
+if ($returnUrl !== '' && (str_starts_with($returnUrl, $appBase . '/') || str_starts_with($returnUrl, '/'))) {
+    $redirectUrl = $returnUrl;
+}
 $beforePhotoId = (int)post('before_photo_id', (int)($version['before_photo_id'] ?? 0));
 if ($beforePhotoId <= 0) {
     $primary = smile_design_primary_before_photo($caseId);
@@ -29,7 +36,7 @@ if ($beforePhotoId <= 0) {
 $adjustmentRequest = trim((string)post('adjustment_request', ''));
 if ($adjustmentRequest === '') {
     flash_set('error', 'Please enter the smile adjustment you want before resending.');
-    redirect(base_url('smile-design/cases/' . $caseId));
+    redirect($redirectUrl);
 }
 
 $versionTitle = trim((string)post('version_title', ''));
@@ -49,6 +56,18 @@ $lviStyleKey = (string)post('lvi_style_key', (string)($version['lvi_style_key'] 
 $shadeGoal = (string)post('shade_goal', (string)($case['shade_goal'] ?? '210'));
 $treatmentScope = (string)post('treatment_scope', (string)($case['treatment_scope'] ?? 'upper'));
 $smileWidthGoal = (string)post('smile_width_goal', (string)($case['smile_width_goal'] ?? 'keep_current'));
+$shapeScaleDelta = (string)post('shape_scale_delta', '0');
+$smileLengthDelta = (string)post('smile_length_delta', '0');
+$smileWidthDelta = (string)post('smile_width_delta', '0');
+$shadeBrightnessDelta = (string)post('shade_brightness_delta', '0');
+$anchorPoints = trim((string)post('anchor_points', ''));
+$contourPoints = trim((string)post('contour_points', ''));
+$selectionMode = trim((string)post('selection_mode', 'contour'));
+$brushMaskData = trim((string)post('brush_mask_data', ''));
+$brushOverlayData = trim((string)post('brush_overlay_data', ''));
+$editorMode = trim((string)post('editor_mode', 'automatic'));
+$selectedTeeth = trim((string)post('selected_teeth', ''));
+$precisionMode = trim((string)post('precision_mode', 'balanced'));
 if (smile_design_procedure_mode($procedureLabel) === 'lip_repositioning') {
     $lviStyleKey = '';
 }
@@ -60,6 +79,16 @@ try {
         'shade_goal' => $shadeGoal,
         'treatment_scope' => $treatmentScope,
         'smile_width_goal' => $smileWidthGoal,
+        'shape_scale_delta' => (int)$shapeScaleDelta,
+        'smile_length_delta' => (int)$smileLengthDelta,
+        'smile_width_delta' => (int)$smileWidthDelta,
+        'shade_brightness_delta' => (int)$shadeBrightnessDelta,
+        'anchor_points' => $anchorPoints,
+        'contour_points' => $contourPoints,
+        'selection_mode' => $selectionMode,
+        'editor_mode' => $editorMode,
+        'selected_teeth' => $selectedTeeth,
+        'precision_mode' => $precisionMode,
     ], auth_user_id());
 
     $result = smile_design_create_ai_after_version($caseId, $beforePhotoId, [
@@ -75,6 +104,18 @@ try {
         'photo_type' => post('photo_type', (string)($version['photo_type'] ?? 'front')),
         'notes' => implode("\n", $noteParts),
         'refresh_analysis' => post('refresh_analysis', '') === '1',
+        'anchor_points' => $anchorPoints,
+        'contour_points' => $contourPoints,
+        'selection_mode' => $selectionMode,
+        'brush_mask_data' => $brushMaskData,
+        'brush_overlay_data' => $brushOverlayData,
+        'editor_mode' => $editorMode,
+        'selected_teeth' => $selectedTeeth,
+        'shape_scale_delta' => (int)$shapeScaleDelta,
+        'smile_length_delta' => (int)$smileLengthDelta,
+        'smile_width_delta' => (int)$smileWidthDelta,
+        'shade_brightness_delta' => (int)$shadeBrightnessDelta,
+        'precision_mode' => $precisionMode,
     ], auth_user_id());
 
     if (empty($result['ok'])) {
@@ -93,4 +134,4 @@ try {
     flash_set('error', 'Smile adjustment could not be generated right now. The issue was logged so we can fix it without losing the case.');
 }
 
-redirect(base_url('smile-design/cases/' . $caseId));
+redirect($redirectUrl);

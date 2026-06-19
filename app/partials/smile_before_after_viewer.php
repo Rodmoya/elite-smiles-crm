@@ -9,7 +9,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $modeMap = [
         'slider' => 'ba',
         'side' => 'compare',
-        'zoom' => 'result',
+        'zoom' => 'zoom',
         'before' => 'input',
         'after' => 'result',
         'input' => 'input',
@@ -17,6 +17,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         'compare' => 'compare',
         'ba' => 'ba',
         'opacity' => 'opacity',
+        'video' => 'video',
     ];
     $defaultMode = $modeMap[$requestedMode] ?? 'ba';
     $logoUrl = (string)($options['logo_url'] ?? SMILE_DESIGN_LOGO_URL);
@@ -31,6 +32,12 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     }));
     $beforeUrl = $beforeUrl ?: '';
     $afterUrl = $afterUrl ?: '';
+    $videoUrl = trim((string)($options['video_url'] ?? ''));
+    $videoGenerate = is_array($options['video_generate'] ?? null) ? (array)$options['video_generate'] : [];
+    $videoDelete = is_array($options['video_delete'] ?? null) ? (array)$options['video_delete'] : [];
+    $hasVideo = $videoUrl !== '';
+    $canGenerateVideo = !empty($videoGenerate);
+    $canDeleteVideo = !empty($videoDelete);
     $hasAfter = $afterUrl !== '';
     if ($beforeUrl === '' && !empty($inputGallery[0]['url'])) {
         $beforeUrl = (string)$inputGallery[0]['url'];
@@ -39,12 +46,24 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     if ($inputGallery !== [] && $defaultInputLabel === 'Original photo') {
         $defaultInputLabel = (string)($inputGallery[0]['label'] ?? 'Original photo');
     }
+    $defaultPhotoType = trim((string)($options['photo_type'] ?? ($inputGallery[0]['photo_type'] ?? 'front')));
+    $zoomPresetForPhotoType = static function (string $photoType): array {
+        $normalized = strtolower(trim($photoType));
+        return match ($normalized) {
+            'front' => ['x' => 50, 'y' => 72, 'scale' => 1.08],
+            'left_45', 'left45' => ['x' => 58, 'y' => 54, 'scale' => 1],
+            'right_45', 'right45' => ['x' => 42, 'y' => 54, 'scale' => 1],
+            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 56, 'scale' => 1.03],
+            default => ['x' => 50, 'y' => 70, 'scale' => 1.08],
+        };
+    };
+    $zoomPreset = $zoomPresetForPhotoType($defaultPhotoType);
 
     if (!$assetsPrinted) {
         $assetsPrinted = true;
         ?>
         <style>
-            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; }
+            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 70%; --sd-zoom-scale: 1.08; }
             .sd-viewer-shell { display: grid; gap: 12px; }
             .sd-viewer-shell.has-gallery { grid-template-columns: minmax(148px, 180px) minmax(0, 1fr); align-items: start; }
             .sd-viewer { overflow: hidden; border-radius: 8px; background: #050505; color: #fff; }
@@ -52,7 +71,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             .sd-input-gallery-title { font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.6); }
             .sd-input-gallery-list { margin-top: 10px; display: grid; gap: 10px; }
             .sd-input-option { display: grid; gap: 8px; width: 100%; text-align: left; }
-            .sd-input-option img { width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,.14); background: #111827; }
+            .sd-input-option img { width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,.14); background: #000; }
             .sd-input-option span { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.82); }
             .sd-input-option[aria-pressed="true"] img { border-color: rgba(255,255,255,.8); box-shadow: 0 0 0 1px rgba(255,255,255,.28); }
             .sd-input-option[aria-pressed="true"] span { color: #fff; }
@@ -60,28 +79,45 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             .sd-mode-group { display: flex; flex-wrap: wrap; gap: 8px; }
             .sd-mode-btn { border: 1px solid rgba(255,255,255,.25); border-radius: 6px; padding: 9px 12px; font-size: 12px; font-weight: 700; color: #fff; }
             .sd-mode-btn[aria-pressed="true"] { background: #fff; color: #050505; }
-            .sd-frame { position: relative; aspect-ratio: 4 / 3; min-height: 280px; overflow: hidden; background: #111827; touch-action: none; }
-            .sd-frame img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+            .sd-frame { position: relative; aspect-ratio: var(--sd-frame-aspect); min-height: 280px; overflow: hidden; background: #000; touch-action: none; }
+            .sd-frame img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; user-select: none; }
             .sd-focus-mask { position: absolute; inset: 0; z-index: 7; pointer-events: none; background:
                 radial-gradient(ellipse 54% 62% at 50% 48%, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 56%, rgba(5,5,5,.16) 72%, rgba(5,5,5,.34) 88%, rgba(5,5,5,.58) 100%),
                 linear-gradient(to bottom, rgba(5,5,5,.18), rgba(5,5,5,0) 16%, rgba(5,5,5,0) 82%, rgba(5,5,5,.22)),
                 linear-gradient(to right, rgba(5,5,5,.18), rgba(5,5,5,0) 14%, rgba(5,5,5,0) 86%, rgba(5,5,5,.18));
                 box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
-            .sd-align-before { transform: translate(var(--sd-before-x), var(--sd-before-y)) scale(var(--sd-before-zoom)) rotate(var(--sd-before-rotate)); transform-origin: center; }
-            .sd-align-after { transform: translate(var(--sd-after-x), var(--sd-after-y)) scale(var(--sd-after-zoom)) rotate(var(--sd-after-rotate)); transform-origin: center; }
-            .sd-base, .sd-after-layer { position: absolute; inset: 0; }
+            .sd-align-before { transform: translate(var(--sd-before-x), var(--sd-before-y)) scale(calc(var(--sd-before-zoom) * var(--sd-before-mode-zoom, 1))) rotate(var(--sd-before-rotate)); transform-origin: center; }
+            .sd-align-after { transform: translate(var(--sd-after-x), var(--sd-after-y)) scale(calc(var(--sd-after-zoom) * var(--sd-after-mode-zoom, 1))) rotate(var(--sd-after-rotate)); transform-origin: center; }
+            .sd-base, .sd-after-layer { position: absolute; inset: 0; overflow: hidden; }
             .sd-after-layer { clip-path: inset(0 50% 0 0); }
             .sd-handle { position: absolute; inset-block: 0; left: 50%; width: 2px; background: #fff; transform: translateX(-1px); z-index: 8; }
             .sd-handle::after { content: ""; position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; border-radius: 999px; border: 2px solid #fff; background: rgba(0,0,0,.55); transform: translate(-50%, -50%); }
             .sd-label-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #050505; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.72); }
             .sd-watermark { position: absolute; right: 18px; bottom: 18px; z-index: 9; width: auto !important; height: auto !important; min-width: 0; max-width: 140px; max-height: 52px; border-radius: 6px; background: rgba(255,255,255,.82); padding: 7px; opacity: .9; object-fit: contain; }
             .sd-side { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; height: 100%; }
-            .sd-side-panel { position: relative; background: #111827; }
-            .sd-zoom-img { transform: scale(var(--sd-zoom, 1)); transition: transform .2s ease; }
-            .sd-opacity-shell { position: relative; height: 100%; background: #111827; }
+            .sd-side-panel { position: relative; background: #000; overflow: hidden; }
+            .sd-side-panel img { width: 100%; height: 100%; object-fit: contain; object-position: center; }
+            .sd-zoom-stack { display: grid; gap: 1px; background: rgba(255,255,255,.08); }
+            .sd-zoom-panel { background: #000; }
+            .sd-zoom-panel-header { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #050505; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.72); }
+            .sd-zoom-frame { position: relative; aspect-ratio: 16 / 5.6; min-height: 182px; overflow: hidden; background: #000; }
+            .sd-zoom-frame img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--sd-zoom-x, 50%) var(--sd-zoom-y, 70%); user-select: none; }
+            .sd-zoom-frame .sd-align-before,
+            .sd-zoom-frame .sd-align-after { transform: scale(var(--sd-zoom-scale, 1)); transform-origin: center; }
+            .sd-opacity-shell { position: relative; height: 100%; background: #000; }
             .sd-opacity-shell img { position: absolute; inset: 0; }
             .sd-opacity-base { z-index: 1; }
             .sd-opacity-overlay { z-index: 2; opacity: var(--sd-opacity, .55); }
+            .sd-video-panel { display: grid; min-height: 420px; place-items: center; background: #050505; padding: 18px; }
+            .sd-video-player { width: 100%; max-height: min(68vh, 720px); aspect-ratio: 16 / 9; border-radius: 8px; background: #000; object-fit: contain; }
+            .sd-video-empty { display: grid; max-width: 620px; gap: 16px; justify-items: center; text-align: center; color: rgba(255,255,255,.72); }
+            .sd-video-empty strong { color: #fff; font-size: 18px; }
+            .sd-video-empty button { border-radius: 6px; background: #fff; color: #050505; padding: 10px 16px; font-size: 13px; font-weight: 800; }
+            .sd-video-ready { display: grid; width: 100%; gap: 12px; justify-items: center; }
+            .sd-video-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+            .sd-video-actions form { margin: 0; }
+            .sd-video-actions button { border-radius: 6px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; padding: 9px 13px; font-size: 12px; font-weight: 800; }
+            .sd-video-actions button.sd-danger { border-color: rgba(248,113,113,.42); color: #fecaca; }
             .sd-placeholder { display: flex; height: 100%; min-height: 280px; align-items: center; justify-content: center; border: 1px dashed rgba(255,255,255,.35); color: rgba(255,255,255,.75); text-align: center; padding: 24px; }
             .sd-hidden { display: none !important; }
             .sd-align-tools { margin-top: 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; padding: 14px; }
@@ -100,6 +136,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 .sd-mode-btn[data-sd-mode="compare"] { display: none; }
                 .sd-frame { aspect-ratio: 9 / 16; min-height: 0; touch-action: pan-y; }
                 .sd-side { grid-template-columns: 1fr; }
+                .sd-zoom-frame { aspect-ratio: 4 / 2.6; min-height: 0; }
                 .sd-watermark { right: 12px; bottom: 12px; max-width: 110px; max-height: 44px; }
                 .sd-inline-range { width: 100%; flex-wrap: wrap; }
                 .sd-inline-range input[type="range"] { width: 100%; }
@@ -107,6 +144,38 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         </style>
         <script>
         (function () {
+            function aspectToCss(value) {
+                const raw = String(value || '4:3').trim();
+                const parts = raw.split(':');
+                if (parts.length !== 2) return '4 / 3';
+                const width = parseFloat(parts[0]);
+                const height = parseFloat(parts[1]);
+                if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+                    return '4 / 3';
+                }
+                return width + ' / ' + height;
+            }
+            function zoomPresetForPhotoType(value) {
+                const photoType = String(value || '').trim().toLowerCase();
+                if (photoType === 'front') return { x: 50, y: 72, scale: 1.08 };
+                if (photoType === 'left_45' || photoType === 'left45') {
+                    return { x: 58, y: 54, scale: 1 };
+                }
+                if (photoType === 'right_45' || photoType === 'right45') {
+                    return { x: 42, y: 54, scale: 1 };
+                }
+                if (photoType === 'smile_close_up' || photoType === 'close_up_smile' || photoType === 'closeup' || photoType === 'close_up') {
+                    return { x: 50, y: 56, scale: 1.03 };
+                }
+                return { x: 50, y: 70, scale: 1.08 };
+            }
+            function applyZoomPreset(wrap, photoType) {
+                if (!wrap) return;
+                const preset = zoomPresetForPhotoType(photoType);
+                wrap.style.setProperty('--sd-zoom-x', preset.x + '%');
+                wrap.style.setProperty('--sd-zoom-y', preset.y + '%');
+                wrap.style.setProperty('--sd-zoom-scale', String(preset.scale));
+            }
             function setSlider(viewer, percent) {
                 percent = Math.max(0, Math.min(100, percent));
                 const after = viewer.querySelector('[data-sd-after-layer]');
@@ -153,6 +222,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 wrap.querySelectorAll('[data-sd-before-label]').forEach(function (node) {
                     node.textContent = label;
                 });
+                applyZoomPreset(wrap, option.getAttribute('data-photo-type') || '');
                 wrap.querySelectorAll('[data-sd-after-image]').forEach(function (img) {
                     if (afterUrl) {
                         img.setAttribute('src', afterUrl);
@@ -213,6 +283,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                         const select = form.querySelector('[name="crop_aspect_ratio"]');
                         if (select) select.value = String(nextAlignment.crop_aspect_ratio || '4:3');
                     }
+                    wrap.style.setProperty('--sd-frame-aspect', aspectToCss(nextAlignment.crop_aspect_ratio || '4:3'));
                 }
             });
             document.addEventListener('pointerdown', function (event) {
@@ -253,6 +324,13 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 const output = wrap.querySelector('[data-sd-align-output="' + input.name + '"]');
                 if (output) output.textContent = input.value;
             });
+            document.addEventListener('change', function (event) {
+                const select = event.target.closest('[name="crop_aspect_ratio"]');
+                if (!select) return;
+                const wrap = select.closest('[data-sd-viewer-wrap]');
+                if (!wrap) return;
+                wrap.style.setProperty('--sd-frame-aspect', aspectToCss(select.value || '4:3'));
+            });
             document.addEventListener('input', function (event) {
                 const input = event.target.closest('[data-sd-opacity-input]');
                 if (!input) return;
@@ -261,6 +339,14 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 viewer.style.setProperty('--sd-opacity', (Math.max(0, Math.min(100, parseFloat(input.value || '55'))) / 100).toString());
                 const output = viewer.querySelector('[data-sd-opacity-output]');
                 if (output) output.textContent = input.value + '%';
+            });
+            document.addEventListener('submit', function (event) {
+                const form = event.target.closest('[data-loading-label]');
+                if (!form) return;
+                const button = form.querySelector('button[type="submit"]');
+                if (!button) return;
+                button.disabled = true;
+                button.textContent = form.getAttribute('data-loading-label') || 'Working...';
             });
         })();
         </script>
@@ -273,8 +359,16 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $afterX = (float)($alignment['after_x'] ?? 0);
     $afterY = (float)($alignment['after_y'] ?? 0);
     $rotation = (float)($alignment['rotation'] ?? 0);
+    $aspectRatio = trim((string)($alignment['crop_aspect_ratio'] ?? '4:3'));
+    $aspectParts = explode(':', $aspectRatio, 2);
+    $aspectCss = '4 / 3';
+    if (count($aspectParts) === 2) {
+        $aspectWidth = max(1, (float)$aspectParts[0]);
+        $aspectHeight = max(1, (float)$aspectParts[1]);
+        $aspectCss = rtrim(rtrim(number_format($aspectWidth, 4, '.', ''), '0'), '.') . ' / ' . rtrim(rtrim(number_format($aspectHeight, 4, '.', ''), '0'), '.');
+    }
     $style = sprintf(
-        '--sd-before-zoom:%s;--sd-before-x:%s%%;--sd-before-y:%s%%;--sd-before-rotate:%sdeg;--sd-after-zoom:%s;--sd-after-x:%s%%;--sd-after-y:%s%%;--sd-after-rotate:%sdeg;',
+        '--sd-before-zoom:%s;--sd-before-x:%s%%;--sd-before-y:%s%%;--sd-before-rotate:%sdeg;--sd-after-zoom:%s;--sd-after-x:%s%%;--sd-after-y:%s%%;--sd-after-rotate:%sdeg;--sd-frame-aspect:%s;--sd-zoom-x:%s%%;--sd-zoom-y:%s%%;--sd-zoom-scale:%s;',
         e((string)$beforeZoom),
         e((string)$beforeX),
         e((string)$beforeY),
@@ -282,7 +376,11 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         e((string)$afterZoom),
         e((string)$afterX),
         e((string)$afterY),
-        e((string)$rotation)
+        e((string)$rotation),
+        e($aspectCss),
+        e((string)$zoomPreset['x']),
+        e((string)$zoomPreset['y']),
+        e((string)$zoomPreset['scale'])
     );
     ?>
     <div class="sd-viewer-wrap" data-sd-viewer-wrap style="<?= $style ?>">
@@ -319,6 +417,8 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 <button type="button" class="sd-mode-btn" data-sd-mode="compare" aria-pressed="<?= $defaultMode === 'compare' ? 'true' : 'false' ?>">Compare</button>
                 <button type="button" class="sd-mode-btn" data-sd-mode="ba" aria-pressed="<?= $defaultMode === 'ba' ? 'true' : 'false' ?>">B/A</button>
                 <button type="button" class="sd-mode-btn" data-sd-mode="opacity" aria-pressed="<?= $defaultMode === 'opacity' ? 'true' : 'false' ?>">Opacity</button>
+                <button type="button" class="sd-mode-btn" data-sd-mode="zoom" aria-pressed="<?= $defaultMode === 'zoom' ? 'true' : 'false' ?>">Zoom</button>
+                <?php if ($hasVideo || $canGenerateVideo): ?><button type="button" class="sd-mode-btn" data-sd-mode="video" aria-pressed="<?= $defaultMode === 'video' ? 'true' : 'false' ?>">Video</button><?php endif; ?>
             </div>
         </div>
         <div data-sd-mode-panel="input" class="<?= $defaultMode === 'input' ? '' : 'sd-hidden' ?>">
@@ -381,6 +481,70 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
             </div>
         </div>
+        <div data-sd-mode-panel="zoom" class="<?= $defaultMode === 'zoom' ? '' : 'sd-hidden' ?>">
+            <div class="sd-zoom-stack">
+                <div class="sd-zoom-panel">
+                    <div class="sd-zoom-panel-header"><span>Before Zoom</span><span data-sd-before-label><?= e($defaultInputLabel) ?></span></div>
+                    <div class="sd-zoom-frame">
+                        <?php if ($beforeUrl !== ''): ?><img class="sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before zoom"><?php else: ?><div class="sd-placeholder">Before photo will appear here.</div><?php endif; ?>
+                    </div>
+                </div>
+                <div class="sd-zoom-panel">
+                    <div class="sd-zoom-panel-header"><span>After Zoom</span><span data-sd-after-label><?= $hasAfter ? 'After' : 'After pending' ?></span></div>
+                    <div class="sd-zoom-frame">
+                        <img class="sd-align-after <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After zoom">
+                        <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
+                        <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php if ($hasVideo || $canGenerateVideo): ?>
+            <div data-sd-mode-panel="video" class="<?= $defaultMode === 'video' ? '' : 'sd-hidden' ?>">
+                <div class="sd-label-row"><span>Smile Reveal Video</span><span><?= $hasVideo ? 'Ready' : 'Generate from selected afters' ?></span></div>
+                <div class="sd-video-panel">
+                    <?php if ($hasVideo): ?>
+                        <div class="sd-video-ready">
+                            <video class="sd-video-player" src="<?= e($videoUrl) ?>" controls playsinline preload="metadata"></video>
+                            <?php if ($canGenerateVideo || $canDeleteVideo): ?>
+                                <div class="sd-video-actions">
+                                    <?php if ($canGenerateVideo): ?>
+                                        <form method="POST" action="<?= e((string)($videoGenerate['action'] ?? '')) ?>" data-loading-label="<?= e((string)($videoGenerate['loading_label'] ?? 'Re-generating reveal video...')) ?>">
+                                            <?= csrf_input() ?>
+                                            <?php foreach ((array)($videoGenerate['hidden'] ?? []) as $name => $value): ?>
+                                                <input type="hidden" name="<?= e((string)$name) ?>" value="<?= e((string)$value) ?>">
+                                            <?php endforeach; ?>
+                                            <button type="submit">Re-generate Video</button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($canDeleteVideo): ?>
+                                        <form method="POST" action="<?= e((string)($videoDelete['action'] ?? '')) ?>" onsubmit="return confirm('Delete this reveal video?');">
+                                            <?= csrf_input() ?>
+                                            <?php foreach ((array)($videoDelete['hidden'] ?? []) as $name => $value): ?>
+                                                <input type="hidden" name="<?= e((string)$name) ?>" value="<?= e((string)$value) ?>">
+                                            <?php endforeach; ?>
+                                            <button class="sd-danger" type="submit">Delete Video</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php elseif ($canGenerateVideo): ?>
+                        <form class="sd-video-empty" method="POST" action="<?= e((string)($videoGenerate['action'] ?? '')) ?>" data-loading-label="<?= e((string)($videoGenerate['loading_label'] ?? 'Generating reveal video...')) ?>">
+                            <?= csrf_input() ?>
+                            <?php foreach ((array)($videoGenerate['hidden'] ?? []) as $name => $value): ?>
+                                <input type="hidden" name="<?= e((string)$name) ?>" value="<?= e((string)$value) ?>">
+                            <?php endforeach; ?>
+                            <strong>Generate patient reveal video</strong>
+                            <span>Uses the selected Front, Left 45, and Right 45 after images to create the doctor presentation video.</span>
+                            <button type="submit">Generate Video</button>
+                        </form>
+                    <?php else: ?>
+                        <div class="sd-video-empty"><strong>Video pending</strong><span>Generate all three selected after angles first.</span></div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
     </div>
     <?php if ($canEditAlignment): ?>
         <div class="mt-3">

@@ -385,6 +385,10 @@ if (!function_exists('elite_openai_image_edit')) {
                 return ['ok' => false, 'message' => 'A source image could not be found for OpenAI editing.'];
             }
         }
+        $maskPath = is_string($options['mask_path'] ?? null) ? trim((string)$options['mask_path']) : '';
+        if ($maskPath !== '' && !is_file($maskPath)) {
+            return ['ok' => false, 'message' => 'The OpenAI image edit mask could not be found.'];
+        }
 
         $payload = [
             'model' => (string)($options['model'] ?? 'gpt-image-1'),
@@ -394,6 +398,9 @@ if (!function_exists('elite_openai_image_edit')) {
             'background' => (string)($options['background'] ?? 'auto'),
             'output_format' => (string)($options['output_format'] ?? 'png'),
         ];
+        if (!empty($options['input_fidelity'])) {
+            $payload['input_fidelity'] = (string)$options['input_fidelity'];
+        }
 
         if (!empty($options['n']) && is_numeric($options['n'])) {
             $payload['n'] = max(1, min(4, (int)$options['n']));
@@ -413,6 +420,9 @@ if (!function_exists('elite_openai_image_edit')) {
                     $mimeType = $imageFile['mime_type'] !== '' ? $imageFile['mime_type'] : elite_openai_detect_image_mime_type($imageFile['path']);
                     $payload["image[{$index}]"] = new CURLFile($imageFile['path'], $mimeType, basename($imageFile['path']));
                 }
+            }
+            if ($maskPath !== '') {
+                $payload['mask'] = new CURLFile($maskPath, 'image/png', basename($maskPath));
             }
         }
 
@@ -460,6 +470,12 @@ if (!function_exists('elite_openai_image_edit')) {
                 $body .= 'Content-Disposition: form-data; name="' . $field . '"; filename="' . addslashes($filename) . '"' . $eol;
                 $body .= 'Content-Type: ' . $mimeType . $eol . $eol;
                 $body .= file_get_contents($path) . $eol;
+            }
+            if ($maskPath !== '') {
+                $body .= '--' . $boundary . $eol;
+                $body .= 'Content-Disposition: form-data; name="mask"; filename="' . addslashes(basename($maskPath)) . '"' . $eol;
+                $body .= 'Content-Type: image/png' . $eol . $eol;
+                $body .= file_get_contents($maskPath) . $eol;
             }
 
             $body .= '--' . $boundary . '--' . $eol;
@@ -511,6 +527,7 @@ if (!function_exists('elite_openai_image_edit')) {
                     'mime_type' => $file['mime_type'] !== '' ? $file['mime_type'] : elite_openai_detect_image_mime_type($file['path']),
                     'size' => @filesize($file['path']) ?: 0,
                 ], $imagePaths),
+                'mask' => $maskPath !== '' ? ['path' => $maskPath, 'size' => @filesize($maskPath) ?: 0] : null,
             ]);
             return [
                 'ok' => false,
@@ -546,6 +563,7 @@ if (!function_exists('elite_openai_image_edit')) {
                 'quality' => $payload['quality'],
                 'background' => $payload['background'],
                 'output_format' => $payload['output_format'],
+                'mask' => $maskPath !== '',
             ],
         ];
     }

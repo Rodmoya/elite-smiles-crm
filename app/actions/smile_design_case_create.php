@@ -11,17 +11,7 @@ require_auth();
 require_csrf();
 smile_design_ensure_schema();
 
-$user = auth_user() ?: [];
-$leadId = smile_design_match_or_create_lead([
-    'patient_name' => post('patient_name'),
-    'email' => post('email'),
-    'phone' => post('phone'),
-    'procedure_interest' => post('procedure_interest', 'Smile Design Preview'),
-    'notes' => 'Smile Design case created internally.',
-], $user);
-
 $caseId = smile_design_create_case([
-    'lead_id' => $leadId,
     'patient_name' => post('patient_name'),
     'email' => post('email'),
     'phone' => post('phone'),

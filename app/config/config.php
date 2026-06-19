@@ -45,7 +45,8 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('OPENAI_MODEL_CHAT',       $_ENV['OPENAI_MODEL_CHAT']       ?? 'gpt-4o');
     define('OPENAI_MODEL_TRANSCRIBE', $_ENV['OPENAI_MODEL_TRANSCRIBE'] ?? 'whisper-1');
     define('GOOGLE_GEMINI_API_KEY', $_ENV['GOOGLE_GEMINI_API_KEY'] ?? '');
-    define('GOOGLE_GEMINI_IMAGE_MODEL', $_ENV['GOOGLE_GEMINI_IMAGE_MODEL'] ?? 'gemini-2.5-flash-image');
+    define('GOOGLE_GEMINI_IMAGE_MODEL', $_ENV['GOOGLE_GEMINI_IMAGE_MODEL'] ?? 'gemini-3.1-flash-image');
+    define('GOOGLE_GEMINI_VIDEO_MODEL', $_ENV['GOOGLE_GEMINI_VIDEO_MODEL'] ?? 'veo-3.1-generate-preview');
     define('ELITE_AI_AUTOREPLY_ENABLED', ($_ENV['ELITE_AI_AUTOREPLY_ENABLED'] ?? 'false') === 'true');
     define('ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED', ($_ENV['ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED'] ?? 'false') === 'true');
     define('ELITE_AI_MIN_CONFIDENCE', is_numeric($_ENV['ELITE_AI_MIN_CONFIDENCE'] ?? null) ? (float) $_ENV['ELITE_AI_MIN_CONFIDENCE'] : 0.82);

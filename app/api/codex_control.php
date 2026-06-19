@@ -859,6 +859,9 @@ if (!function_exists('codex_api_move_stage')) {
     function codex_api_move_stage(int $leadId, string $newStage): void
     {
         $lead = codex_api_load_lead($leadId);
+        if (function_exists('lead_pipeline_ensure_schema')) {
+            lead_pipeline_ensure_schema();
+        }
         $allowedStages = lead_stage_labels();
         if (!isset($allowedStages[$newStage])) {
             codex_api_response(['ok' => false, 'message' => 'Stage is not allowed.', 'stages' => $allowedStages], 422);

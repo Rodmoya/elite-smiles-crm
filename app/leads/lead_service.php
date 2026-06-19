@@ -105,6 +105,75 @@ if (!function_exists('lead_pipeline_position_column')) {
     }
 }
 
+if (!function_exists('lead_pipeline_ensure_status_values')) {
+    function lead_pipeline_ensure_status_values(): void
+    {
+        static $done = false;
+
+        if ($done) {
+            return;
+        }
+
+        $done = true;
+
+        if (!leads_table_exists() || !leads_has_column('status')) {
+            return;
+        }
+
+        try {
+            $column = db_one("SHOW COLUMNS FROM leads LIKE 'status'");
+            $type = (string)($column['Type'] ?? $column['type'] ?? '');
+
+            if (!preg_match('/^enum\((.*)\)$/i', $type)) {
+                return;
+            }
+
+            preg_match_all("/'((?:[^'\\\\]|\\\\.)*)'/", $type, $matches);
+            $values = [];
+            foreach (($matches[1] ?? []) as $rawValue) {
+                $values[] = stripcslashes((string)$rawValue);
+            }
+
+            $changed = false;
+            foreach (array_keys(lead_stage_labels()) as $stageKey) {
+                if (!in_array($stageKey, $values, true)) {
+                    $values[] = $stageKey;
+                    $changed = true;
+                }
+            }
+
+            if (!$changed || !$values) {
+                return;
+            }
+
+            $quotedValues = array_map(
+                static fn(string $value): string => "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'",
+                $values
+            );
+
+            $nullable = strtoupper((string)($column['Null'] ?? $column['null'] ?? '')) === 'YES';
+            $nullSql = $nullable ? 'NULL' : 'NOT NULL';
+            $default = $column['Default'] ?? $column['default'] ?? null;
+            $defaultSql = '';
+
+            if ($default !== null) {
+                $defaultSql = " DEFAULT '" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$default) . "'";
+            } elseif ($nullable) {
+                $defaultSql = ' DEFAULT NULL';
+            }
+
+            db_query('ALTER TABLE leads MODIFY COLUMN status ENUM(' . implode(',', $quotedValues) . ') ' . $nullSql . $defaultSql);
+            leads_table_columns(true);
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('lead_pipeline', 'Could not ensure lead status enum values.', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+}
+
 if (!function_exists('lead_pipeline_ensure_schema')) {
     function lead_pipeline_ensure_schema(): void
     {
@@ -141,6 +210,8 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
         } catch (Throwable $e) {
             // Index may already exist.
         }
+
+        lead_pipeline_ensure_status_values();
     }
 }
 

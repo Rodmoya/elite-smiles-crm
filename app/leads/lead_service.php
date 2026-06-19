@@ -638,11 +638,17 @@ if (!function_exists('lead_pipeline_rows')) {
 
         $limit = max(1, min(1000, $limit));
         $orderBy = [];
+        $actionDateFields = [];
+        foreach (['last_inbound_at', 'last_outbound_at', 'last_contacted_at', 'updated_at', 'created_at'] as $actionDateField) {
+            if (leads_has_column($actionDateField)) {
+                $actionDateFields[] = "COALESCE({$actionDateField}, '1970-01-01 00:00:00')";
+            }
+        }
+        if (!empty($actionDateFields)) {
+            $orderBy[] = 'GREATEST(' . implode(', ', $actionDateFields) . ') DESC';
+        }
         if (leads_has_column(lead_pipeline_position_column())) {
             $orderBy[] = lead_pipeline_position_column() . ' DESC';
-        }
-        if (leads_has_column('updated_at')) {
-            $orderBy[] = 'updated_at DESC';
         }
         $orderBy[] = 'id DESC';
 
@@ -1269,6 +1275,65 @@ if (!function_exists('lead_create_minimal')) {
                 }
             }
 
+            if ($leadId > 0) {
+                try {
+                    $workflowEmailStatus = (string)($firstTouchEmail['status_label'] ?? 'Auto first-touch email not attempted.');
+                    $workflowSmsStatus = (string)($firstTouchSms['status_label'] ?? 'Auto new-lead SMS not attempted.');
+                    $workflowBody = 'Automatic new-lead first touch completed. Email: ' . $workflowEmailStatus . ' SMS: ' . $workflowSmsStatus;
+
+                    if (function_exists('lead_comm_insert_activity')) {
+                        lead_comm_insert_activity($leadId, 'new_lead_first_touch_completed', $workflowBody, [
+                            'email_attempted' => !empty($firstTouchEmail['attempted']),
+                            'email_sent' => !empty($firstTouchEmail['sent']),
+                            'sms_attempted' => !empty($firstTouchSms['attempted']),
+                            'sms_sent' => !empty($firstTouchSms['sent']),
+                            'source' => 'lead_create_minimal_auto_workflow',
+                        ], 'System');
+                    }
+
+                    $freshStageLead = db_one('SELECT id, status FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                    $freshStage = trim((string)($freshStageLead['status'] ?? ''));
+                    if ($freshStage === '' || $freshStage === lead_default_stage()) {
+                        $contactedStage = 'contacted';
+                        $pipelinePosition = function_exists('lead_pipeline_next_position')
+                            ? lead_pipeline_next_position($contactedStage)
+                            : 0;
+                        $updateParts = [];
+                        $updateParams = ['id' => $leadId];
+
+                        if (leads_has_column('status')) {
+                            $updateParts[] = 'status = :status';
+                            $updateParams['status'] = $contactedStage;
+                        }
+                        if (leads_has_column('pipeline_position')) {
+                            $updateParts[] = 'pipeline_position = :pipeline_position';
+                            $updateParams['pipeline_position'] = $pipelinePosition;
+                        }
+                        if (leads_has_column('updated_at')) {
+                            $updateParts[] = 'updated_at = :updated_at';
+                            $updateParams['updated_at'] = now();
+                        }
+
+                        if (!empty($updateParts)) {
+                            db_execute('UPDATE leads SET ' . implode(', ', $updateParts) . ' WHERE id = :id LIMIT 1', $updateParams);
+                            if (function_exists('lead_comm_insert_activity')) {
+                                lead_comm_insert_activity($leadId, 'stage_change', 'Automatically moved new lead from New Lead to Contacted after first-touch outreach.', [
+                                    'from' => $freshStage !== '' ? $freshStage : lead_default_stage(),
+                                    'to' => $contactedStage,
+                                    'source' => 'lead_create_minimal_auto_workflow',
+                                ], 'System');
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {
+                    if (function_exists('esm_log')) {
+                        esm_log('lead_workflow', 'Automatic new-lead first-touch workflow failed.', [
+                            'lead_id' => $leadId,
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
             if ($leadId > 0 && function_exists('elite_send_new_lead_autoresponse_summary')) {
                 try {
                     $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);

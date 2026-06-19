@@ -15,10 +15,11 @@ if (!function_exists('lead_stage_labels')) {
         return [
             'new_lead'            => 'New Lead',
             'attempted_contact'   => 'Attempted Contact',
-            'in_contact'          => 'In Contact',
             'contacted'           => 'Contacted',
+            'in_contact'          => 'In Contact',
             'consultation_booked' => 'Consultation Booked',
             'treatment_accepted'  => 'Sale Closed',
+            'no_answer'           => 'No Answer',
             'opted_out'           => 'Opted Out',
 
             'lost_lead'           => 'Lead Lost',
@@ -32,10 +33,11 @@ if (!function_exists('lead_stage_order')) {
         return [
             'new_lead',
             'attempted_contact',
-            'in_contact',
             'contacted',
+            'in_contact',
             'consultation_booked',
             'treatment_accepted',
+            'no_answer',
             'opted_out',
 
             'lost_lead',
@@ -53,6 +55,7 @@ if (!function_exists('lead_stage_badge_class')) {
             'contacted'           => 'border-violet-200 bg-violet-50 text-violet-700',
             'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
             'treatment_accepted'  => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'no_answer'           => 'border-amber-200 bg-amber-50 text-amber-800',
             'opted_out'           => 'border-slate-300 bg-slate-100 text-slate-700',
 
             'lost_lead'           => 'border-rose-200 bg-rose-50 text-rose-700',

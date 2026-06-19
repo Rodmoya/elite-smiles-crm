@@ -999,6 +999,9 @@ if (!function_exists('lead_create_minimal')) {
         $data['campaign'] = trim((string)($data['campaign'] ?? ''));
         $data['external_lead_id'] = trim((string)($data['external_lead_id'] ?? ''));
         $data['status'] = trim((string)($data['status'] ?? lead_default_stage()));
+        if ($data['status'] === '') {
+            $data['status'] = lead_default_stage();
+        }
         $data['assigned_to'] = trim((string)($data['assigned_to'] ?? lead_default_assigned_to($user)));
         $data['financing_needed'] = trim((string)($data['financing_needed'] ?? 'unsure'));
         $data['financing_option'] = trim((string)($data['financing_option'] ?? 'none'));
@@ -1064,7 +1067,7 @@ if (!function_exists('lead_create_minimal')) {
         }
 
         $stageMap = lead_stage_map();
-        if ($data['status'] !== '' && !isset($stageMap[$data['status']])) {
+        if (!isset($stageMap[$data['status']])) {
             $data['status'] = lead_default_stage();
         }
 

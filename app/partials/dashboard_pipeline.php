@@ -1817,6 +1817,14 @@ $consultationOptions = [
 
             stage_change: 'Stage Change',
 
+            operator_follow_up: 'Operator Follow-Up',
+
+            manual_sms_followup_prepared: 'Manual SMS Prepared',
+
+            lead_updated: 'Lead Updated',
+
+            lead_created: 'Lead Created',
+
             follow_up_check: 'Follow-Up Check',
 
             note: 'Note'
@@ -1824,6 +1832,44 @@ $consultationOptions = [
         };
 
         return labels[type] || String(type || 'Activity').replaceAll('_', ' ');
+
+    }
+
+
+    function unifiedTimelineActivityItem(activity) {
+
+        const type = String(activity?.type || '');
+
+        const communicationMarkers = {
+            operator_follow_up: 'Operator Follow-Up',
+            manual_sms_followup_prepared: 'Manual SMS Prepared',
+            attempted_contact_push: 'Attempted Contact Alert',
+            email_failed: 'Email Failed',
+            sms_delivery_issue: 'Delivery Issue',
+            email_unsubscribe: 'Email Opt-Out',
+            sms_opt_out: 'SMS Stop',
+            sms_opt_in: 'SMS Start',
+            sms_help: 'SMS Help',
+        };
+
+        if (!communicationMarkers[type]) {
+            return null;
+        }
+
+        const failed = type.includes('failed') || type.includes('issue');
+        const opted = type.includes('opt') || type.includes('unsubscribe') || type.includes('help');
+
+        return {
+            type: communicationMarkers[type],
+            tone: failed ? 'rose' : (opted ? 'amber' : 'slate'),
+            time: activity.created_at || '',
+            title: communicationMarkers[type],
+            body: '',
+            meta: [
+                activity.created_by ? 'By ' + activity.created_by : '',
+                'Details in Internal Activity',
+            ].filter(Boolean).join(' | '),
+        };
 
     }
 
@@ -2276,14 +2322,10 @@ $consultationOptions = [
         });
 
         (thread?.activities || []).forEach((activity) => {
-            items.push({
-                type: activityLabel(activity.type),
-                tone: String(activity.type || '').includes('failed') || String(activity.type || '').includes('issue') ? 'rose' : 'slate',
-                time: activity.created_at || '',
-                title: activity.created_by ? 'By ' + activity.created_by : 'CRM activity',
-                body: activity.body || '',
-                meta: '',
-            });
+            const item = unifiedTimelineActivityItem(activity);
+            if (item) {
+                items.push(item);
+            }
         });
 
         items.sort((a, b) => {
@@ -2301,6 +2343,7 @@ $consultationOptions = [
         const toneClasses = {
             blue: 'border-blue-100 bg-blue-50 text-blue-950',
             emerald: 'border-emerald-100 bg-emerald-50 text-emerald-950',
+            amber: 'border-amber-100 bg-amber-50 text-amber-950',
             rose: 'border-rose-100 bg-rose-50 text-rose-950',
             slate: 'border-slate-200 bg-slate-50 text-slate-800',
         };
@@ -2312,7 +2355,7 @@ $consultationOptions = [
                     <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
                 </div>
                 <p class="mt-2 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
-                <p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>
+                ${item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : ''}
                 ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
             </div>
         `).join('');

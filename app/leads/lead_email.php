@@ -600,6 +600,31 @@ if (!function_exists('lead_email_record_inbound')) {
 
         if (!$isUnsubscribe) {
             lead_email_send_action_alert($lead, 'inbound_reply', mb_substr($subject, 0, 60));
+            if (function_exists('elite_send_operator_follow_up_pushover')) {
+                try {
+                    $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                    $pushoverSent = elite_send_operator_follow_up_pushover($freshLead ?: $lead, [
+                        'event' => 'communication',
+                        'channel' => 'email',
+                        'summary' => 'New email reply received from patient.',
+                        'note' => mb_substr($subject . ' - ' . lead_email_new_reply_text($subject, $body), 0, 180),
+                        'quick_action_mode' => 'communication',
+                    ]);
+                    if (function_exists('lead_comm_insert_activity')) {
+                        lead_comm_insert_activity($leadId, $pushoverSent ? 'operator_pushover_sent' : 'operator_pushover_failed', $pushoverSent ? 'Pushover notification sent for inbound email.' : 'Tried to send Pushover notification for inbound email, but no delivery was reported.', [
+                            'source' => 'lead_email_record_inbound',
+                            'email_id' => $emailId,
+                            'source_id' => $sourceId,
+                        ], 'System');
+                    }
+                } catch (Throwable $e) {
+                    esm_log('lead_email', 'Inbound email Pushover notification failed.', [
+                        'lead_id' => $leadId,
+                        'email_id' => $emailId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         return ['ok' => true, 'message' => 'Inbound email logged.', 'lead_id' => $leadId, 'email_id' => $emailId];

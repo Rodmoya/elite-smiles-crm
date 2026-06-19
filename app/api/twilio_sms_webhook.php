@@ -125,6 +125,30 @@ if ($command === 'opt_out') {
 
 lead_comm_update_rollup($leadId);
 
+if (function_exists('elite_send_operator_follow_up_pushover')) {
+    try {
+        $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        $pushoverSent = elite_send_operator_follow_up_pushover($freshLead ?: $lead, [
+            'event' => 'communication',
+            'channel' => 'sms',
+            'summary' => 'New SMS reply received from patient.',
+            'note' => mb_substr($body, 0, 180),
+            'quick_action_mode' => 'communication',
+        ]);
+        lead_comm_insert_activity($leadId, $pushoverSent ? 'operator_pushover_sent' : 'operator_pushover_failed', $pushoverSent ? 'Pushover notification sent for inbound SMS.' : 'Tried to send Pushover notification for inbound SMS, but no delivery was reported.', [
+            'source' => 'twilio_sms_webhook',
+            'message_id' => $messageId,
+            'twilio_sid' => $messageSid,
+        ], 'System');
+    } catch (Throwable $e) {
+        esm_log('twilio_inbound', 'Inbound SMS Pushover notification failed.', [
+            'lead_id' => $leadId,
+            'message_id' => $messageId,
+            'error' => $e->getMessage(),
+        ]);
+    }
+}
+
 esm_log('twilio_inbound', 'Inbound SMS saved.', [
     'lead_id' => $leadId,
     'message_id' => $messageId,

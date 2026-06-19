@@ -81,6 +81,33 @@ $consultationOptions = [
             </div>
 
             <div class="flex items-center gap-3">
+                <div class="relative">
+                    <button
+                        type="button"
+                        id="pipeline-notifications-button"
+                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        title="Pipeline notifications"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.27 21a2 2 0 0 0 3.46 0"></path>
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                        </svg>
+                        <span id="pipeline-notifications-count" class="hidden absolute -right-2 -top-2 h-6 min-w-6 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white shadow-sm">0</span>
+                    </button>
+
+                    <div
+                        id="pipeline-notifications-menu"
+                        class="hidden absolute right-0 top-13 z-40 w-80 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15"
+                    >
+                        <div class="border-b border-slate-100 px-4 py-3">
+                            <p class="text-sm font-semibold text-slate-900">Pipeline notifications</p>
+                            <p class="mt-1 text-xs text-slate-500">New communications and new leads.</p>
+                        </div>
+                        <div id="pipeline-notifications-list" class="max-h-96 overflow-y-auto p-2"></div>
+                    </div>
+                </div>
                 <button
                     type="button"
                     id="open-new-lead-modal"
@@ -1301,7 +1328,11 @@ $consultationOptions = [
 <script>
 (function () {
     const board = document.getElementById('lead-pipeline-board');
-    const viewport = document.getElementById('pipeline-board-viewport');
+    const viewport = document.getElementById('pipeline-board-viewport');
+    const pipelineNotificationsButton = document.getElementById('pipeline-notifications-button');
+    const pipelineNotificationsCount = document.getElementById('pipeline-notifications-count');
+    const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
+    const pipelineNotificationsList = document.getElementById('pipeline-notifications-list');
     const modal = document.getElementById('lead-detail-modal');
     const closeTop = document.getElementById('lead-detail-close');
     const closeBottom = document.getElementById('lead-detail-close-bottom');
@@ -1476,6 +1507,122 @@ $consultationOptions = [
         });
     }
 
+    function pipelineNotificationTimestamp(card) {
+        const candidates = [
+            card.dataset.leadLastInboundAt || '',
+            card.dataset.leadLastOutboundAt || '',
+            card.dataset.leadLastContactedAt || '',
+            card.dataset.leadCreated || '',
+        ];
+
+        for (const value of candidates) {
+            const timestamp = Date.parse(String(value).replace(' ', 'T'));
+            if (Number.isFinite(timestamp)) {
+                return timestamp;
+            }
+        }
+
+        return 0;
+    }
+
+    function pipelineNotificationItems() {
+        if (!board) {
+            return [];
+        }
+
+        return Array.from(board.querySelectorAll('.lead-card')).flatMap((card) => {
+            const unreadCount = Number.parseInt(card.dataset.leadUnreadMessageCount || '0', 10) || 0;
+            const isNewLead = (card.dataset.stageKey || '') === 'new_lead';
+            const items = [];
+            const timestamp = pipelineNotificationTimestamp(card);
+            const name = card.dataset.leadName || 'Unnamed Lead';
+            const stage = card.dataset.leadStageLabel || card.dataset.stageKey || 'Pipeline';
+
+            if (unreadCount > 0) {
+                items.push({
+                    card,
+                    type: 'communication',
+                    label: unreadCount === 1 ? 'New communication' : unreadCount + ' new communications',
+                    detail: stage,
+                    count: unreadCount,
+                    name,
+                    timestamp,
+                    tab: 'communications',
+                });
+            }
+
+            if (isNewLead) {
+                items.push({
+                    card,
+                    type: 'new_lead',
+                    label: 'New lead',
+                    detail: stage,
+                    count: 1,
+                    name,
+                    timestamp,
+                    tab: 'details',
+                });
+            }
+
+            return items;
+        }).sort((a, b) => b.timestamp - a.timestamp);
+    }
+
+    function openPipelineNotification(item) {
+        if (!item || !item.card) {
+            return;
+        }
+
+        if (pipelineNotificationsMenu) {
+            pipelineNotificationsMenu.classList.add('hidden');
+        }
+        if (pipelineNotificationsButton) {
+            pipelineNotificationsButton.setAttribute('aria-expanded', 'false');
+        }
+
+        item.card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        item.card.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        window.setTimeout(() => {
+            item.card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+        }, 1800);
+        window.setTimeout(() => openLeadModal(item.card, item.tab || 'communications'), 350);
+    }
+
+    function renderPipelineNotifications() {
+        if (!pipelineNotificationsButton || !pipelineNotificationsCount || !pipelineNotificationsList) {
+            return;
+        }
+
+        const items = pipelineNotificationItems();
+        const total = items.reduce((sum, item) => sum + Math.max(1, item.count || 1), 0);
+        pipelineNotificationsCount.textContent = total > 99 ? '99+' : String(total);
+        pipelineNotificationsCount.classList.toggle('hidden', total === 0);
+        pipelineNotificationsCount.classList.toggle('inline-flex', total > 0);
+
+        pipelineNotificationsList.innerHTML = '';
+
+        if (items.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'px-4 py-6 text-center text-sm text-slate-500';
+            empty.textContent = 'No new communications or new leads right now.';
+            pipelineNotificationsList.appendChild(empty);
+            return;
+        }
+
+        items.slice(0, 20).forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500';
+            button.innerHTML = '<span class="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ' + (item.type === 'communication' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700') + '">' + (item.type === 'communication' ? '?' : '+') + '</span>'
+                + '<span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-900"></span><span class="mt-0.5 block text-xs font-medium text-slate-600"></span><span class="mt-1 block truncate text-xs text-slate-400"></span></span>';
+            const labels = button.querySelectorAll('span span');
+            labels[0].textContent = item.name;
+            labels[1].textContent = item.label;
+            labels[2].textContent = item.detail;
+            button.addEventListener('click', () => openPipelineNotification(item));
+            pipelineNotificationsList.appendChild(button);
+        });
+    }
     function setText(id, value, fallback = '-') {
         const el = document.getElementById(id);
         if (!el) return;
@@ -4257,6 +4404,37 @@ $consultationOptions = [
         retryPendingPipelineRefresh();
     });
 
+    if (pipelineNotificationsButton && pipelineNotificationsMenu) {
+        pipelineNotificationsButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            renderPipelineNotifications();
+            const isHidden = pipelineNotificationsMenu.classList.toggle('hidden');
+            pipelineNotificationsButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+        });
+
+        document.addEventListener('click', (event) => {
+            if (pipelineNotificationsMenu.classList.contains('hidden')) {
+                return;
+            }
+            if (pipelineNotificationsMenu.contains(event.target) || pipelineNotificationsButton.contains(event.target)) {
+                return;
+            }
+            pipelineNotificationsMenu.classList.add('hidden');
+            pipelineNotificationsButton.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    if (board) {
+        const pipelineNotificationObserver = new MutationObserver(() => renderPipelineNotifications());
+        pipelineNotificationObserver.observe(board, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['data-stage-key', 'data-lead-unread-message-count', 'data-lead-last-inbound-at', 'data-lead-last-outbound-at'],
+        });
+    }
+
+    renderPipelineNotifications();
     window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);})();
 </script>
 

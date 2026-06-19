@@ -4143,7 +4143,121 @@ $consultationOptions = [
 
     updateColumnCounts();
     setActiveTab('details');
-})();
+
+    const pipelineAutoRefreshMs = 60000;
+    const pipelineIdleRefreshGraceMs = 15000;
+    const pipelineFocusRefreshAfterMs = 120000;
+    let pipelineLastInteractionAt = Date.now();
+    let pipelineLastHiddenAt = 0;
+    let pipelineRefreshPending = false;
+    let pipelineRefreshNotice = null;
+
+    function markPipelineInteraction() {
+        pipelineLastInteractionAt = Date.now();
+    }
+
+    function isPipelineModalOpen() {
+        return modal && !modal.classList.contains('hidden');
+    }
+
+    function isPipelineBusy() {
+        const busyFlags = [
+            typeof isSaving !== 'undefined' && isSaving,
+            typeof isDeletingLead !== 'undefined' && isDeletingLead,
+            typeof isSendingSms !== 'undefined' && isSendingSms,
+            typeof isSendingEmail !== 'undefined' && isSendingEmail,
+            typeof isDraftingSms !== 'undefined' && isDraftingSms,
+            typeof isDraftingEmail !== 'undefined' && isDraftingEmail,
+            typeof isDraftingBoth !== 'undefined' && isDraftingBoth,
+            typeof draggedCard !== 'undefined' && !!draggedCard,
+        ];
+
+        return busyFlags.some(Boolean);
+    }
+
+    function canRefreshPipelineSafely() {
+        return !document.hidden
+            && !isPipelineModalOpen()
+            && !isPipelineBusy()
+            && Date.now() - pipelineLastInteractionAt > pipelineIdleRefreshGraceMs;
+    }
+
+    function refreshPipelineBoard() {
+        window.location.reload();
+    }
+
+    function hidePipelineRefreshNotice() {
+        if (!pipelineRefreshNotice) {
+            return;
+        }
+
+        pipelineRefreshNotice.remove();
+        pipelineRefreshNotice = null;
+    }
+
+    function showPipelineRefreshNotice() {
+        if (pipelineRefreshNotice) {
+            return;
+        }
+
+        pipelineRefreshNotice = document.createElement('button');
+        pipelineRefreshNotice.type = 'button';
+        pipelineRefreshNotice.className = 'fixed bottom-5 right-5 z-50 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-xl shadow-slate-900/15 transition hover:-translate-y-0.5 hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+        pipelineRefreshNotice.textContent = 'New pipeline updates available - refresh board';
+        pipelineRefreshNotice.addEventListener('click', refreshPipelineBoard);
+        document.body.appendChild(pipelineRefreshNotice);
+    }
+
+    function requestPipelineRefresh() {
+        if (canRefreshPipelineSafely()) {
+            hidePipelineRefreshNotice();
+            refreshPipelineBoard();
+            return;
+        }
+
+        pipelineRefreshPending = true;
+        showPipelineRefreshNotice();
+    }
+
+    function retryPendingPipelineRefresh() {
+        if (!pipelineRefreshPending || !canRefreshPipelineSafely()) {
+            return;
+        }
+
+        pipelineRefreshPending = false;
+        hidePipelineRefreshNotice();
+        refreshPipelineBoard();
+    }
+
+    if (board) {
+        ['mousedown', 'touchstart', 'keydown', 'dragstart', 'drop'].forEach((eventName) => {
+            board.addEventListener(eventName, markPipelineInteraction, { passive: true });
+        });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            pipelineLastHiddenAt = Date.now();
+            return;
+        }
+
+        if (pipelineLastHiddenAt && Date.now() - pipelineLastHiddenAt > pipelineFocusRefreshAfterMs) {
+            requestPipelineRefresh();
+        } else {
+            retryPendingPipelineRefresh();
+        }
+    });
+
+    window.addEventListener('focus', () => {
+        if (pipelineLastHiddenAt && Date.now() - pipelineLastHiddenAt > pipelineFocusRefreshAfterMs) {
+            requestPipelineRefresh();
+            return;
+        }
+
+        retryPendingPipelineRefresh();
+    });
+
+    window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);})();
 </script>
 
 

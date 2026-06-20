@@ -337,7 +337,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 return;
             }
 
-            var endpoint = '<?= e(base_url('assistant-api.php')) ?>';
+            var endpoint = '<?= e((string) (parse_url(base_url('assistant-api.php'), PHP_URL_PATH) ?: '/crm/assistant-api.php')) ?>';
             var baseContext = {
                 page: 'mobile-ai',
                 page_title: 'Elite AI Mobile Portal',
@@ -403,7 +403,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 try {
                     var response = await fetch(endpoint, {
                         method: 'POST',
-                        credentials: 'same-origin',
+                        credentials: 'include',
                         cache: 'no-store',
                         headers: {
                             'Content-Type': 'application/json',

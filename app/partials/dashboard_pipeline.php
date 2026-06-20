@@ -1565,8 +1565,25 @@ $consultationOptions = [
     let isDraftingBoth = false;
     let isSendingEmail = false;
     let composerMode = 'sms';
-    let calendarView = 'day';
+    const calendarStateStorageKey = 'elite-smiles-calendar-panel-state-v1';
+    const calendarStateFromStorage = (() => {
+        try {
+            const raw = window.sessionStorage ? window.sessionStorage.getItem(calendarStateStorageKey) : null;
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return null;
+            return parsed;
+        } catch (error) {
+            return null;
+        }
+    })();
+    let calendarView = ['day', 'week', 'month'].includes(calendarStateFromStorage?.view) ? calendarStateFromStorage.view : 'day';
     let calendarAnchorDate = (() => {
+        const savedDate = calendarStateFromStorage?.anchorDate ? new Date(calendarStateFromStorage.anchorDate) : null;
+        if (savedDate && !Number.isNaN(savedDate.getTime())) {
+            savedDate.setHours(0, 0, 0, 0);
+            return savedDate;
+        }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         return today;
@@ -2040,15 +2057,38 @@ $consultationOptions = [
         `;
     }
 
+    function isCalendarOpen() {
+        return !!(calendarOverlay && !calendarOverlay.classList.contains('hidden'));
+    }
+
+    function persistCalendarState() {
+        if (!window.sessionStorage || !calendarOverlay) {
+            return;
+        }
+
+        try {
+            const state = {
+                isOpen: isCalendarOpen(),
+                view: calendarView,
+                anchorDate: calendarAnchorDate ? calendarAnchorDate.toISOString() : null,
+            };
+            window.sessionStorage.setItem(calendarStateStorageKey, JSON.stringify(state));
+        } catch (error) {
+            return;
+        }
+    }
+
     function openCalendarPanel() {
         if (!calendarOverlay) return;
         calendarOverlay.classList.remove('hidden');
+        persistCalendarState();
         renderCalendarView();
     }
 
     function closeCalendarPanel() {
         if (!calendarOverlay) return;
         calendarOverlay.classList.add('hidden');
+        persistCalendarState();
     }
 
     function shiftCalendarRange(direction) {
@@ -2065,6 +2105,7 @@ $consultationOptions = [
             next.setDate(next.getDate() + direction);
             calendarAnchorDate = calendarDayStart(next);
         }
+        persistCalendarState();
         renderCalendarView();
     }
 
@@ -2081,6 +2122,7 @@ $consultationOptions = [
                 : 'bg-white text-slate-700 hover:bg-slate-100';
             btn.className = `pipeline-calendar-view-btn px-3 py-2 text-xs font-semibold transition ${rounded} ${border} ${state}`;
         });
+        persistCalendarState();
         renderCalendarView();
     }
 
@@ -2094,6 +2136,7 @@ $consultationOptions = [
         const now = new Date();
         now.setHours(0, 0, 0, 0);
         calendarAnchorDate = now;
+        persistCalendarState();
         renderCalendarView();
     }
 
@@ -4616,7 +4659,7 @@ $consultationOptions = [
 
             event.preventDefault();
             closeCalendarPanel();
-            openLeadModal(card, 'communications');
+            openLeadModal(card, 'details');
         });
     }
 
@@ -4781,6 +4824,11 @@ $consultationOptions = [
     updateColumnCounts();
     setActiveTab('details');
     setCalendarView(calendarView);
+    if (calendarStateFromStorage?.isOpen) {
+        openCalendarPanel();
+    } else if (isCalendarOpen()) {
+        persistCalendarState();
+    }
 
     const pipelineAutoRefreshMs = 60000;
     const pipelineIdleRefreshGraceMs = 15000;
@@ -4816,6 +4864,7 @@ $consultationOptions = [
     function canRefreshPipelineSafely() {
         return !document.hidden
             && !isPipelineModalOpen()
+            && !isCalendarOpen()
             && !isPipelineBusy()
             && Date.now() - pipelineLastInteractionAt > pipelineIdleRefreshGraceMs;
     }

@@ -1115,7 +1115,7 @@ if (!function_exists('elite_send_attempted_contact_pushover')) {
         $lines[] = 'Hour: ' . $receivedHour;
         $lines[] = 'Person: ' . $personName;
         $lines[] = '';
-        $lines[] = $cleanMessage;
+        $lines[] = 'Message: ' . $cleanMessage;
 
         $quickActionUrl = elite_quick_action_url($lead, $context);
         $title = 'Attempted Contact - ' . $fullName;
@@ -1192,9 +1192,8 @@ if (!function_exists('elite_send_lead_notification_pushover')) {
         $lines[] = 'Hour: ' . $receivedHour;
         $lines[] = 'Person: ' . $personName;
         $lines[] = '';
-        $lines[] = $cleanLeadMessage;
+        $lines[] = 'Message: ' . $cleanLeadMessage;
         $lines[] = '';
-        $lines[] = 'Tap to open quick actions.';
 
         return elite_send_pushover_notification(
             $title,
@@ -1319,10 +1318,10 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
         $lines[] = 'Hour: ' . $receivedHour;
         $lines[] = 'Person: ' . $personName;
         $lines[] = '';
-        $lines[] = $cleanMessage;
+        $lines[] = 'Message: ' . $cleanMessage;
 
         $lines[] = '';
-        $lines[] = 'Tap to open quick actions.';
+
 
         return elite_send_pushover_notification(
             $title,

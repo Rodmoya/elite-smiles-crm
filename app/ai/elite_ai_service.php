@@ -120,7 +120,6 @@ if (!function_exists('elite_ai_find_leads')) {
         $params = [
             'name' => '%' . $query . '%',
             'email' => '%' . $query . '%',
-            'phone' => '%' . $digits . '%',
         ];
 
         $where = [
@@ -130,6 +129,7 @@ if (!function_exists('elite_ai_find_leads')) {
 
         if ($digits !== '') {
             $where[] = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), '-', ''), ' ', ''), '.', '') LIKE :phone";
+            $params['phone'] = '%' . $digits . '%';
         }
 
         return db_all(
@@ -1068,4 +1068,3 @@ if (!function_exists('elite_ai_handle_request')) {
         ];
     }
 }
-

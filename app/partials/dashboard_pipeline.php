@@ -118,6 +118,15 @@ $consultationOptions = [
 
                 <button
                     type="button"
+                    id="pipeline-calendar-button"
+                    class="inline-flex items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-100"
+                    title="View appointments calendar"
+                >
+                    Calendar
+                </button>
+
+                <button
+                    type="button"
                     id="run-followup-check"
                     class="inline-flex items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -130,7 +139,87 @@ $consultationOptions = [
             </div>
         </div>
 
-        <?php if (empty($stageMap)): ?>
+        <div
+            id="pipeline-calendar-overlay"
+            class="hidden fixed inset-0 z-50 bg-slate-900/50 p-3 backdrop-blur-sm"
+        >
+            <div class="mx-auto mt-12 h-[calc(100vh-5rem)] w-[min(96vw,1100px)] rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Scheduling overview</p>
+                        <h3 class="mt-1 text-lg font-semibold text-slate-900">Appointment Calendar</h3>
+                        <p id="pipeline-calendar-subtitle" class="mt-1 text-sm text-slate-500">Showing appointments by the selected view.</p>
+                    </div>
+                    <button
+                        type="button"
+                        id="pipeline-calendar-close"
+                        class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                    >
+                        Close
+                    </button>
+                </div>
+
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div class="inline-flex rounded-xl border border-slate-200 bg-white">
+                        <button
+                            type="button"
+                            data-calendar-view="day"
+                            class="pipeline-calendar-view-btn rounded-l-xl px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                        >
+                            Day
+                        </button>
+                        <button
+                            type="button"
+                            data-calendar-view="week"
+                            class="pipeline-calendar-view-btn px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 border-x border-slate-200"
+                        >
+                            Week
+                        </button>
+                        <button
+                            type="button"
+                            data-calendar-view="month"
+                            class="pipeline-calendar-view-btn rounded-r-xl px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                        >
+                            Month
+                        </button>
+                    </div>
+
+                    <div class="inline-flex items-center gap-2">
+                        <button
+                            type="button"
+                            id="pipeline-calendar-prev"
+                            class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                        >
+                            ←
+                        </button>
+                        <button
+                            type="button"
+                            id="pipeline-calendar-today"
+                            class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                        >
+                            Today
+                        </button>
+                        <button
+                            type="button"
+                            id="pipeline-calendar-next"
+                            class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                        >
+                            →
+                        </button>
+                    </div>
+                </div>
+
+                <p id="pipeline-calendar-range" class="text-sm font-semibold text-slate-900"></p>
+                <p class="mt-1 text-xs text-slate-500">Open hours shown: 8:00 AM - 7:00 PM. Other times are marked as Emergency slots.</p>
+
+                <div
+                    id="pipeline-calendar-view"
+                    class="mt-3 h-[calc(100%-8rem)] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3"
+                ></div>
+            </div>
+        </div>
+
+        <?php if (empty($stageMap)): ?>
             <div class="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                 <p class="text-lg font-medium text-slate-900">No stages available</p>
                 <p class="mt-2 text-sm text-slate-500">The lead stage map is empty.</p>
@@ -1352,6 +1441,16 @@ $consultationOptions = [
     const loadThreadButton = document.getElementById('modal-lead-load-thread-button');
     const followupCheckButton = document.getElementById('run-followup-check');
     const saveStatus = document.getElementById('modal-save-status-footer');
+    const calendarOpenButton = document.getElementById('pipeline-calendar-button');
+    const calendarOverlay = document.getElementById('pipeline-calendar-overlay');
+    const calendarCloseButton = document.getElementById('pipeline-calendar-close');
+    const calendarRangeLabel = document.getElementById('pipeline-calendar-range');
+    const calendarSubtitle = document.getElementById('pipeline-calendar-subtitle');
+    const calendarViewRoot = document.getElementById('pipeline-calendar-view');
+    const calendarPrevButton = document.getElementById('pipeline-calendar-prev');
+    const calendarNextButton = document.getElementById('pipeline-calendar-next');
+    const calendarTodayButton = document.getElementById('pipeline-calendar-today');
+    const calendarViewButtons = Array.from(document.querySelectorAll('[data-calendar-view]'));
 
     const modalMissingPanel = document.getElementById('modal-missing-panel');
     const modalMissingList = document.getElementById('modal-missing-list');
@@ -1466,6 +1565,15 @@ $consultationOptions = [
     let isDraftingBoth = false;
     let isSendingEmail = false;
     let composerMode = 'sms';
+    let calendarView = 'day';
+    let calendarAnchorDate = (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return today;
+    })();
+    const calendarOpenHour = 8;
+    const calendarCloseHour = 19;
+    const calendarSlotMinutes = 30;
 
     const csrfToken = <?= json_encode(csrf_token()) ?>;
     const saveDetailsUrl = <?= json_encode(base_url('app/actions/lead_update_details.php')) ?>;
@@ -1667,6 +1775,328 @@ $consultationOptions = [
 
     }
 
+    function toDateKey(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function parseConsultationDate(rawDate) {
+        if (!rawDate) return null;
+        const parsed = new Date(String(rawDate).replace(' ', 'T'));
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function calendarSlotMinutesIndex(date, dayStart) {
+        const time = date.getHours() * 60 + date.getMinutes();
+        const start = (dayStart || calendarOpenHour) * 60;
+        const end = (calendarCloseHour || 19) * 60;
+        if (time < start || time >= end) return null;
+        return Math.floor((time - start) / calendarSlotMinutes);
+    }
+
+    function calendarSlots() {
+        const totalSlots = Math.floor(((calendarCloseHour - calendarOpenHour) * 60) / calendarSlotMinutes);
+        return Array.from({ length: totalSlots }).map((_, i) => {
+            const minuteValue = calendarOpenHour * 60 + i * calendarSlotMinutes;
+            const slotDate = new Date(2000, 0, 1, 0, 0, 0, 0);
+            slotDate.setHours(Math.floor(minuteValue / 60), minuteValue % 60, 0, 0);
+            return {
+                index: i,
+                minuteValue,
+                label: slotDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+            };
+        });
+    }
+
+    function calendarDayStart(date) {
+        const start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        return start;
+    }
+
+    function calendarWeekStart(date) {
+        const dayStart = calendarDayStart(date);
+        const day = dayStart.getDay();
+        const mondayOffset = day === 0 ? -6 : 1 - day;
+        dayStart.setDate(dayStart.getDate() + mondayOffset);
+        return dayStart;
+    }
+
+    function safeCardLookupById(leadId) {
+        if (!board || !leadId) return null;
+        const selector = `.lead-card[data-lead-id="${(window.CSS && CSS.escape ? CSS.escape(leadId) : leadId)}"]`;
+        return board.querySelector(selector);
+    }
+
+    function getCalendarAppointments() {
+        const slots = calendarSlots();
+        const byDate = new Map();
+
+        Array.from(board.querySelectorAll('.lead-card')).forEach((card) => {
+            const rawDate = card.dataset.leadConsultationDate || '';
+            const parsed = parseConsultationDate(rawDate);
+            if (!parsed) return;
+
+            const dateKey = toDateKey(calendarDayStart(parsed));
+            const slotIndex = calendarSlotMinutesIndex(parsed);
+
+            if (!byDate.has(dateKey)) {
+                byDate.set(dateKey, []);
+            }
+
+            byDate.get(dateKey).push({
+                leadId: card.dataset.leadId || '',
+                name: card.dataset.leadName || 'Lead',
+                stage: card.dataset.leadStageLabel || 'Lead',
+                preferredContact: card.dataset.leadPreferredContact || '',
+                date: parsed,
+                slotIndex,
+                phone: card.dataset.leadPhone || '',
+                timeLabel: formatAppointmentForCard(rawDate),
+                slotLabel: slots[Math.max(0, Math.min(slots.length - 1, slotIndex || 0))]?.label || '',
+            });
+        });
+
+        byDate.forEach((items) => {
+            items.sort((a, b) => a.date.getTime() - b.date.getTime());
+        });
+
+        return byDate;
+    }
+
+    function setCalendarRangeLabel(start, end, viewMode) {
+        const formatter = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric', year: 'numeric' });
+        if (viewMode === 'month') {
+            calendarRangeLabel.textContent = `${start.toLocaleString([], { month: 'long', year: 'numeric' })}`;
+            return;
+        }
+        if (viewMode === 'week') {
+            if (!end) return;
+            calendarRangeLabel.textContent = `${formatter.format(start)} - ${formatter.format(end)}`;
+            return;
+        }
+        calendarRangeLabel.textContent = formatter.format(start);
+    }
+
+    function renderCalendarView() {
+        if (!calendarViewRoot || !calendarRangeLabel) return;
+        const appointmentsByDate = getCalendarAppointments();
+        const slots = calendarSlots();
+        const now = new Date();
+        const safeNow = toDateKey(calendarDayStart(now));
+        const currentSlot = Math.floor(((now.getHours() * 60 + now.getMinutes()) - (calendarOpenHour * 60)) / calendarSlotMinutes);
+        const isCurrentSlot = (slotIndex, dayDate) => {
+            if (typeof slotIndex !== 'number' || slotIndex < 0) return false;
+            if (toDateKey(dayDate) !== safeNow) return false;
+            if (currentSlot < 0 || currentSlot >= slots.length) return false;
+            return slotIndex === currentSlot;
+        };
+
+        if (calendarView === 'month') {
+            const monthStart = calendarDayStart(calendarAnchorDate);
+            const firstOfMonth = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+            const monthStartDay = calendarWeekStart(firstOfMonth);
+            const totalDays = 42;
+            const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const monthDays = Array.from({ length: totalDays }).map((_, i) => {
+                const dayDate = new Date(monthStartDay);
+                dayDate.setDate(dayDate.getDate() + i);
+                const key = toDateKey(dayDate);
+                return {
+                    date: dayDate,
+                    key,
+                    isCurrentMonth: dayDate.getMonth() === monthStart.getMonth(),
+                    entries: appointmentsByDate.get(key) || [],
+                };
+            });
+
+            setCalendarRangeLabel(firstOfMonth);
+            if (calendarSubtitle) calendarSubtitle.textContent = `Month view | ${monthStart.getMonth() + 1}/${monthStart.getFullYear()}`;
+
+            calendarViewRoot.innerHTML = `
+                <div class="grid grid-cols-7 gap-2">
+                    ${dayHeaders.map((label) => `<div class="text-center text-xs font-semibold text-slate-600 py-2">${label}</div>`).join('')}
+                </div>
+                <div class="mt-2 grid grid-cols-7 gap-2">
+                    ${monthDays.map((dayItem) => {
+                        const isSelectedMonth = dayItem.isCurrentMonth ? '' : 'opacity-40';
+                        const isToday = dayItem.key === safeNow ? 'ring-2 ring-blue-500' : '';
+                        const title = `${dayItem.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+                        const body = dayItem.entries.map((entry) => `
+                            <button
+                                type="button"
+                                class="mb-1 inline-flex w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-[11px]"
+                                data-calendar-lead-id="${entry.leadId}"
+                            >
+                                <span class="truncate">${entry.timeLabel} · ${entry.name}</span>
+                            </button>
+                        `).join('') || '<p class="text-[11px] text-slate-400">No appointments</p>';
+                        return `
+                            <div class="min-h-44 rounded-xl border border-slate-200 bg-white p-2 ${isSelectedMonth} ${isToday}">
+                                <p class="text-xs font-semibold text-slate-700">${title}</p>
+                                <div class="mt-2 space-y-1">${body}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            return;
+        }
+
+        const slotsRows = slots.map((slot) => `
+            <div class="contents">
+                <p class="py-2 pr-2 text-right text-xs font-medium text-slate-500 border-b border-slate-200">${slot.label}</p>
+            </div>
+        `).join('');
+
+        if (calendarView === 'week') {
+            const weekStart = calendarWeekStart(calendarAnchorDate);
+            const weekDays = Array.from({ length: 7 }).map((_, i) => {
+                const dayDate = new Date(weekStart);
+                dayDate.setDate(dayDate.getDate() + i);
+                return {
+                    date: dayDate,
+                    key: toDateKey(dayDate),
+                };
+            });
+            const fromDate = new Date(weekDays[0].date);
+            const toDate = new Date(weekDays[6].date);
+            const weekNow = new Date(safeNow ? `${safeNow}T00:00:00` : now.toISOString());
+            setCalendarRangeLabel(fromDate, toDate, 'week');
+            if (calendarSubtitle) calendarSubtitle.textContent = `Week view | 30-minute blocks (${calendarOpenHour}:00-${calendarCloseHour}:00)`;
+
+            calendarViewRoot.innerHTML = `
+                <div class="overflow-x-auto">
+                    <div class="min-w-[760px]">
+                        <div class="grid auto-cols-fr gap-2" style="grid-template-columns: 88px repeat(7, minmax(0, 1fr));">
+                            <div></div>
+                            ${weekDays.map((dayItem) => {
+                                const dayLabel = `${dayItem.date.toLocaleDateString([], { weekday: 'short' })} ${dayItem.date.getMonth() + 1}/${dayItem.date.getDate()}`;
+                                const isCurrent = toDateKey(dayItem.date) === safeNow ? 'border-blue-500 bg-blue-50' : 'bg-white';
+                                return `<div class="rounded-lg border border-slate-200 p-2 text-center text-xs font-semibold text-slate-700 ${isCurrent}">${dayLabel}</div>`;
+                            }).join('')}
+                        </div>
+                        ${slots.map((slot) => `
+                        <div class="mt-2 grid gap-2" style="grid-template-columns: 88px repeat(7, minmax(0, 1fr));">
+                                <p class="py-2 pr-2 text-right text-[11px] font-medium text-slate-500 ${isCurrentSlot(slot.index, weekNow) ? 'rounded-md bg-blue-50 text-blue-700' : ''}">${slot.label}</p>
+                                ${weekDays.map((dayItem) => {
+                                    const dayEntries = (appointmentsByDate.get(dayItem.key) || []).filter((entry) => entry.slotIndex === slot.index);
+                                    return `<div class="min-h-14 rounded-lg border border-slate-200 bg-white p-2 space-y-1">
+                                        ${dayEntries.map((entry) => `
+                                            <button
+                                                type="button"
+                                                class="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-[11px]"
+                                                data-calendar-lead-id="${entry.leadId}"
+                                            >
+                                                ${entry.name}
+                                            </button>
+                                        `).join('') || '<p class="text-[11px] text-slate-400">--</p>'}
+                                    </div>`;
+                                }).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const todayDate = calendarDayStart(calendarAnchorDate);
+        const todayEntries = appointmentsByDate.get(toDateKey(todayDate)) || [];
+        setCalendarRangeLabel(todayDate, null, 'day');
+        if (calendarSubtitle) calendarSubtitle.textContent = `Day view | ${todayDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} (${calendarOpenHour}:00-${calendarCloseHour}:00)`;
+        calendarViewRoot.innerHTML = `
+            <div class="space-y-2">
+                ${slots.map((slot) => {
+                    const rows = todayEntries.filter((entry) => entry.slotIndex === slot.index);
+                    return `
+                        <div class="rounded-xl border border-slate-200 ${isCurrentSlot(slot.index, todayDate) ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'bg-white'}">
+                            <div class="grid grid-cols-[90px_minmax(0,1fr)]">
+                                <p class="border-r border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">${slot.label}</p>
+                                <div class="px-2 py-2">
+                                    ${rows.length
+                                        ? rows.map((entry) => `
+                                            <button
+                                                type="button"
+                                                class="inline-flex w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-sm"
+                                                data-calendar-lead-id="${entry.leadId}"
+                                            >
+                                                <span class="font-semibold">${entry.timeLabel}</span>
+                                                <span class="ml-2 text-slate-700">${entry.name}</span>
+                                                <span class="ml-2 text-xs text-slate-500">(${entry.preferredContact})</span>
+                                            </button>
+                                        `).join('')
+                                        : '<p class="text-xs text-slate-400">No appointment booked</p>'
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    function openCalendarPanel() {
+        if (!calendarOverlay) return;
+        calendarOverlay.classList.remove('hidden');
+        renderCalendarView();
+    }
+
+    function closeCalendarPanel() {
+        if (!calendarOverlay) return;
+        calendarOverlay.classList.add('hidden');
+    }
+
+    function shiftCalendarRange(direction) {
+        if (calendarView === 'month') {
+            const next = new Date(calendarAnchorDate);
+            next.setMonth(next.getMonth() + direction);
+            calendarAnchorDate = calendarDayStart(next);
+        } else if (calendarView === 'week') {
+            const next = new Date(calendarAnchorDate);
+            next.setDate(next.getDate() + direction * 7);
+            calendarAnchorDate = calendarDayStart(next);
+        } else {
+            const next = new Date(calendarAnchorDate);
+            next.setDate(next.getDate() + direction);
+            calendarAnchorDate = calendarDayStart(next);
+        }
+        renderCalendarView();
+    }
+
+    function setCalendarView(mode) {
+        if (!mode) return;
+        calendarView = mode;
+        calendarViewButtons.forEach((btn) => {
+            const isActive = btn.dataset.calendarView === calendarView;
+            const viewMode = btn.dataset.calendarView;
+            const rounded = viewMode === 'day' ? 'rounded-l-xl' : (viewMode === 'month' ? 'rounded-r-xl' : '');
+            const border = viewMode === 'week' ? 'border-x border-slate-200' : 'border border-slate-200';
+            const state = isActive
+                ? 'bg-slate-900 text-white'
+                : 'bg-white text-slate-700 hover:bg-slate-100';
+            btn.className = `pipeline-calendar-view-btn px-3 py-2 text-xs font-semibold transition ${rounded} ${border} ${state}`;
+        });
+        renderCalendarView();
+    }
+
+    function refreshCalendarForChanges() {
+        if (calendarOverlay && !calendarOverlay.classList.contains('hidden')) {
+            renderCalendarView();
+        }
+    }
+
+    function jumpCalendarToToday() {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        calendarAnchorDate = now;
+        renderCalendarView();
+    }
+
     function formatAppointmentForCard(value) {
 
         const normalized = toDatetimeLocal(value);
@@ -1793,6 +2223,7 @@ $consultationOptions = [
 
             if (preview) preview.remove();
 
+            refreshCalendarForChanges();
             return;
 
         }
@@ -1822,6 +2253,7 @@ $consultationOptions = [
         const valueEl = preview.querySelector('p:last-child');
 
         if (valueEl) valueEl.textContent = label;
+        refreshCalendarForChanges();
 
     }
 
@@ -4129,8 +4561,66 @@ $consultationOptions = [
     }
 
     if (followupCheckButton) followupCheckButton.addEventListener('click', runFollowupCheck);
-
-    if (openNewLeadButton) openNewLeadButton.addEventListener('click', openNewLeadModal);
+
+    if (calendarOpenButton) {
+        calendarOpenButton.addEventListener('click', openCalendarPanel);
+    }
+
+    if (calendarCloseButton) {
+        calendarCloseButton.addEventListener('click', closeCalendarPanel);
+    }
+
+    if (calendarOverlay) {
+        calendarOverlay.addEventListener('click', function (event) {
+            if (event.target === calendarOverlay) {
+                closeCalendarPanel();
+            }
+        });
+    }
+
+    if (calendarPrevButton) {
+        calendarPrevButton.addEventListener('click', function () {
+            shiftCalendarRange(-1);
+        });
+    }
+
+    if (calendarNextButton) {
+        calendarNextButton.addEventListener('click', function () {
+            shiftCalendarRange(1);
+        });
+    }
+
+    if (calendarTodayButton) {
+        calendarTodayButton.addEventListener('click', jumpCalendarToToday);
+    }
+
+    if (calendarViewButtons.length > 0) {
+        calendarViewButtons.forEach((button) => {
+            button.addEventListener('click', function () {
+                setCalendarView(button.dataset.calendarView || 'day');
+            });
+        });
+    }
+
+    if (calendarViewRoot) {
+        calendarViewRoot.addEventListener('click', function (event) {
+            const leadButton = event.target.closest('[data-calendar-lead-id]');
+            if (!leadButton) {
+                return;
+            }
+
+            const card = safeCardLookupById(leadButton.dataset.calendarLeadId || '');
+            if (!card || !modal) {
+                return;
+            }
+
+            event.preventDefault();
+            closeCalendarPanel();
+            openLeadModal(card, 'communications');
+        });
+    }
+
+    if (openNewLeadButton) openNewLeadButton.addEventListener('click', openNewLeadModal);
     if (closeNewLeadButton) closeNewLeadButton.addEventListener('click', closeNewLeadModal);
     if (cancelNewLeadButton) cancelNewLeadButton.addEventListener('click', closeNewLeadModal);
     if (saveNewLeadButton) saveNewLeadButton.addEventListener('click', createLead);
@@ -4288,8 +4778,9 @@ $consultationOptions = [
         }
     });
 
-    updateColumnCounts();
-    setActiveTab('details');
+    updateColumnCounts();
+    setActiveTab('details');
+    setCalendarView(calendarView);
 
     const pipelineAutoRefreshMs = 60000;
     const pipelineIdleRefreshGraceMs = 15000;

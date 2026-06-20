@@ -175,6 +175,8 @@ $leadFinancingOption = lead_card_value($lead, 'financing_option', 'none');
 $leadValue = lead_card_value($lead, 'lead_value');
 $leadLostReason = lead_card_value($lead, 'lost_reason');
 $leadPreferredContact = lead_card_value($lead, 'preferred_contact');
+$leadPreferredContactText = $leadPreferredContact !== '' ? $leadPreferredContact : 'Text';
+$leadConsultText = $leadConsult !== '' ? $leadConsult : 'requested';
 $leadInsuranceStatus = lead_card_value($lead, 'insurance_status');
 $leadIntentType = lead_card_value($lead, 'intent_type');
 $leadSmsOptStatus = lead_card_value($lead, 'sms_opt_status', 'unknown');
@@ -333,6 +335,11 @@ $showAttributionDetails = (
         <div class="grid grid-cols-[70px_minmax(0,1fr)] gap-3">
             <p class="font-semibold text-slate-600">Source:</p>
             <p class="truncate text-slate-600"><?= e($displaySource) ?></p>
+        </div>
+
+        <div class="grid grid-cols-[110px_minmax(0,1fr)] gap-3">
+            <p class="font-semibold text-slate-600">Prefer/Consult:</p>
+            <p class="truncate text-slate-600"><?= e($leadPreferredContactText) ?> / <?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></p>
         </div>
 
         <div class="grid grid-cols-[70px_minmax(0,1fr)] gap-3">

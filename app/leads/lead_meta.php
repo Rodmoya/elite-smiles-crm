@@ -162,23 +162,25 @@ if (!function_exists('lead_default_assigned_to')) {
 if (!function_exists('lead_empty_record')) {
     function lead_empty_record(array $user = []): array
     {
-        return [
-            'full_name'          => '',
-            'phone'              => '',
-            'email'              => '',
-            'procedure_interest' => '',
+        return [
+            'full_name'          => '',
+            'phone'              => '',
+            'email'              => '',
+            'procedure_interest' => '',
             'source'             => 'manual',
             'landing_page'       => '',
             'campaign'           => '',
-            'status'             => lead_default_stage(),
-            'assigned_to'        => lead_default_assigned_to($user),
-            'financing_needed'   => 'unsure',
-            'financing_option'   => 'none',
-            'consultation_date'  => '',
-            'lead_value'         => '',
-            'lost_reason'        => '',
-            'notes'              => '',
-        ];
+            'status'             => lead_default_stage(),
+            'assigned_to'        => lead_default_assigned_to($user),
+            'financing_needed'   => 'unsure',
+            'financing_option'   => 'none',
+            'preferred_contact'  => 'Text',
+            'consultation_status' => 'requested',
+            'consultation_date'  => '',
+            'lead_value'         => '',
+            'lost_reason'        => '',
+            'notes'              => '',
+        ];
     }
 }
 

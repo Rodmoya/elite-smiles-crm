@@ -1082,7 +1082,8 @@ if (!function_exists('lead_create_minimal')) {
         $data['assigned_to'] = trim((string)($data['assigned_to'] ?? lead_default_assigned_to($user)));
         $data['financing_needed'] = trim((string)($data['financing_needed'] ?? 'unsure'));
         $data['financing_option'] = trim((string)($data['financing_option'] ?? 'none'));
-        $data['consultation_status'] = trim((string)($data['consultation_status'] ?? ''));
+        $data['preferred_contact'] = trim((string)($data['preferred_contact'] ?? 'Text'));
+        $data['consultation_status'] = trim((string)($data['consultation_status'] ?? 'requested'));
         $data['consultation_date'] = trim((string)($data['consultation_date'] ?? ''));
         if ($data['consultation_date'] !== '') {
             $consultationTimestamp = strtotime(str_replace('T', ' ', $data['consultation_date']));
@@ -1174,7 +1175,20 @@ if (!function_exists('lead_create_minimal')) {
             ];
 
         if (!array_key_exists($data['consultation_status'], $consultationStatusOptions)) {
-            $data['consultation_status'] = '';
+            $data['consultation_status'] = 'requested';
+        }
+
+        $preferredContact = strtolower((string)$data['preferred_contact']);
+        if (!in_array($preferredContact, ['text', 'sms', 'call', 'phone', 'email'], true)) {
+            $data['preferred_contact'] = 'Text';
+        } else {
+            $data['preferred_contact'] = match ($preferredContact) {
+                'sms', 'text' => 'Text',
+                'phone'       => 'Call',
+                'call'        => 'Call',
+                'email'       => 'Email',
+                default       => 'Text',
+            };
         }
 
         $lostReasons = lead_lost_reason_options();
@@ -1206,6 +1220,7 @@ if (!function_exists('lead_create_minimal')) {
             'assigned_to' => $data['assigned_to'],
             'financing_needed' => $data['financing_needed'],
             'financing_option' => $data['financing_option'],
+            'preferred_contact' => $data['preferred_contact'] !== '' ? $data['preferred_contact'] : null,
             'consultation_status' => $data['consultation_status'] !== '' ? $data['consultation_status'] : null,
             'consultation_date' => $data['consultation_date'] !== '' ? $data['consultation_date'] : null,
             'lead_value' => $leadValue,

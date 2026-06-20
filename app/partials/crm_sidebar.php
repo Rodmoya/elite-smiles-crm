@@ -86,20 +86,6 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 <?php endforeach; ?>
             </nav>
 
-            <div class="crm-sidebar-top-user border-t border-slate-200 px-4 py-3">
-                <div class="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
-                    <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-slate-500"><?= e($role) ?></p>
-                </div>
-                <form method="POST" action="<?= e((string)$logoutAction) ?>">
-                    <?= csrf_input() ?>
-                    <input type="hidden" name="action" value="logout">
-                    <button type="submit" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
-                        Logout
-                    </button>
-                </form>
-            </div>
-
             <div class="border-t border-slate-200 px-4 py-4">
                 <button
                     type="button"
@@ -119,6 +105,20 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                         <span class="block text-xs text-slate-500">Assistant</span>
                     </span>
                 </button>
+            </div>
+
+            <div class="crm-sidebar-top-user border-t border-slate-200 px-4 py-3">
+                <div class="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
+                    <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-slate-500"><?= e($role) ?></p>
+                </div>
+                <form method="POST" action="<?= e((string)$logoutAction) ?>">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="action" value="logout">
+                    <button type="submit" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
+                        Logout
+                    </button>
+                </form>
             </div>
         </div>
     </aside>

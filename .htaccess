@@ -27,7 +27,7 @@ RewriteRule ^smile-design/real-results/([0-9]+)/?$ smile-design/real-results/sho
 RewriteRule ^mobile-ai/manifest\.webmanifest$ public/mobile-ai/manifest.webmanifest [L,QSA,NC]
 RewriteRule ^mobile-ai/sw\.js$ public/mobile-ai/sw.js [L,QSA,NC]
 RewriteRule ^mobile-ai/setup/([A-Za-z0-9_-]+)/?$ mobile-ai-setup.php?token=$1 [L,QSA,NC]
-RewriteRule ^mobile-ai/?$ mobile-ai.php [L,QSA,NC]
+RewriteRule ^mobile-ai$ mobile-ai/ [R=302,L,QSA,NC]
 
 # Dental model builder routes.
 RewriteRule ^dental-models/?$ dental-models/index.php [L,QSA]

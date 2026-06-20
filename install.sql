@@ -162,6 +162,23 @@ CREATE TABLE IF NOT EXISTS `user_push_subscriptions` (
   KEY `idx_push_subscription_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `elite_ai_audit_logs` (
+  `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`           INT UNSIGNED NOT NULL,
+  `surface`           VARCHAR(32)  NOT NULL DEFAULT 'desktop',
+  `prompt`            TEXT         NOT NULL,
+  `tools_used_json`   LONGTEXT              DEFAULT NULL,
+  `response_summary`  TEXT         NOT NULL,
+  `lead_id`           INT UNSIGNED          DEFAULT NULL,
+  `page_context_json` LONGTEXT              DEFAULT NULL,
+  `created_at`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_elite_ai_audit_user` (`user_id`),
+  KEY `idx_elite_ai_audit_surface` (`surface`),
+  KEY `idx_elite_ai_audit_lead` (`lead_id`),
+  KEY `idx_elite_ai_audit_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ------------------------------------------------------------
 -- Seed all 200 landing pages (5 procedures x 8 cities x 5 variants)
 -- All set is_active=0 — activate them from the admin panel

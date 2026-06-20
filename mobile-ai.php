@@ -7,6 +7,7 @@ require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/core/mobile_ai_auth.php';
 require_once __DIR__ . '/app/leads/lead_communications.php';
+require_once __DIR__ . '/app/ai/elite_ai_service.php';
 
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');
@@ -14,6 +15,7 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 
 lead_comm_ensure_schema();
 mobile_ai_ensure_schema();
+elite_ai_ensure_schema();
 
 if (is_post() && post('action') === 'logout_mobile_ai') {
     mobile_ai_logout_current_session();
@@ -26,114 +28,7 @@ if (!in_array($tab, ['assistant', 'notifications'], true)) {
     $tab = 'assistant';
 }
 $showWelcome = get('welcome') === '1';
-
-function mobile_ai_portal_notification_rows(int $limit = 20): array
-{
-    $limit = max(1, min(50, $limit));
-    $items = [];
-
-    try {
-        $messages = db_all(
-            "SELECT
-                lm.id,
-                lm.lead_id,
-                lm.direction,
-                lm.channel,
-                lm.body,
-                lm.is_read,
-                lm.created_at,
-                l.full_name,
-                l.status
-             FROM lead_messages lm
-             INNER JOIN leads l ON l.id = lm.lead_id
-             WHERE lm.direction = 'inbound'
-             ORDER BY lm.created_at DESC, lm.id DESC
-             LIMIT {$limit}"
-        );
-
-        foreach ($messages as $row) {
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            $leadName = trim((string) ($row['full_name'] ?? ''));
-            $items[] = [
-                'id' => 'msg-' . (int) ($row['id'] ?? 0),
-                'type' => 'reply',
-                'title' => ($leadName !== '' ? $leadName : 'Lead reply') . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
-                'message' => trim((string) ($row['body'] ?? '')),
-                'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
-                'is_new' => (int) ($row['is_read'] ?? 0) === 0,
-                'lead_id' => $leadId,
-                'lead_name' => $leadName,
-                'status' => trim((string) ($row['status'] ?? '')),
-                'created_at' => (string) ($row['created_at'] ?? ''),
-                'suggested_action' => 'Review the reply and prepare a draft before sending.',
-                'open_url' => base_url('leads.php?lead_id=' . $leadId),
-            ];
-        }
-    } catch (Throwable $e) {
-        esm_log('mobile_ai', 'Could not load inbound message notifications', ['error' => $e->getMessage()]);
-    }
-
-    try {
-        $activities = db_all(
-            "SELECT
-                la.id,
-                la.lead_id,
-                la.type,
-                la.body,
-                la.created_at,
-                l.full_name,
-                l.status
-             FROM lead_activities la
-             INNER JOIN leads l ON l.id = la.lead_id
-             WHERE la.type IN ('lead_created', 'stage_change', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
-             ORDER BY la.created_at DESC, la.id DESC
-             LIMIT {$limit}"
-        );
-
-        foreach ($activities as $row) {
-            $type = trim((string) ($row['type'] ?? 'activity'));
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            $leadName = trim((string) ($row['full_name'] ?? ''));
-            $label = match ($type) {
-                'lead_created' => 'New lead',
-                'stage_change' => 'Pipeline update',
-                'consultation_scheduled' => 'Consultation alert',
-                'follow_up_due' => 'Follow-up alert',
-                'manual_sms_followup_prepared' => 'Draft ready',
-                default => 'CRM alert',
-            };
-
-            $items[] = [
-                'id' => 'act-' . (int) ($row['id'] ?? 0),
-                'type' => $type,
-                'title' => $label . ': ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
-                'message' => trim((string) ($row['body'] ?? '')),
-                'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
-                'is_new' => false,
-                'lead_id' => $leadId,
-                'lead_name' => $leadName,
-                'status' => trim((string) ($row['status'] ?? '')),
-                'created_at' => (string) ($row['created_at'] ?? ''),
-                'suggested_action' => $type === 'lead_created'
-                    ? 'Review lead details and confirm first-touch draft before sending.'
-                    : 'Open the lead and review the next best step.',
-                'open_url' => base_url('leads.php?lead_id=' . $leadId),
-            ];
-        }
-    } catch (Throwable $e) {
-        esm_log('mobile_ai', 'Could not load activity notifications', ['error' => $e->getMessage()]);
-    }
-
-    usort($items, static function (array $a, array $b): int {
-        $aTime = strtotime((string) ($a['created_at'] ?? '')) ?: 0;
-        $bTime = strtotime((string) ($b['created_at'] ?? '')) ?: 0;
-        return $bTime <=> $aTime;
-    });
-
-    return array_slice($items, 0, $limit);
-}
-
-$notifications = mobile_ai_portal_notification_rows(18);
+$notifications = elite_ai_notification_rows(18);
 $fullName = trim(($mobileUser['first_name'] ?? '') . ' ' . ($mobileUser['last_name'] ?? ''));
 $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'User');
 ?>
@@ -144,21 +39,20 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Elite AI</title>
     <meta name="robots" content="noindex,nofollow">
-    <meta name="theme-color" content="#111111">
+    <meta name="theme-color" content="#0f172a">
     <link rel="manifest" href="<?= e(base_url('mobile-ai/manifest.webmanifest')) ?>">
     <style>
         :root {
-            --bg: #f4efe7;
-            --panel: rgba(255,255,255,0.88);
-            --panel-strong: rgba(255,255,255,0.95);
-            --ink: #17120f;
-            --muted: #6f665d;
-            --line: #e6ddd0;
-            --gold: #bb8e58;
-            --gold-soft: #f7efe2;
-            --black: #111111;
-            --danger: #9d3b30;
-            --shadow: 0 24px 70px rgba(34, 26, 18, 0.12);
+            --bg: #f8fafc;
+            --panel: rgba(255,255,255,0.94);
+            --panel-strong: rgba(255,255,255,0.98);
+            --ink: #0f172a;
+            --muted: #64748b;
+            --line: #dbe3ee;
+            --accent: #0f172a;
+            --accent-soft: #eef2ff;
+            --danger: #b91c1c;
+            --shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
             --radius-xl: 28px;
             --radius-lg: 22px;
             --radius-md: 16px;
@@ -168,9 +62,9 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         body {
             min-height: 100vh;
             background:
-                radial-gradient(circle at top left, rgba(187,142,88,0.22), transparent 26%),
-                radial-gradient(circle at bottom right, rgba(17,17,17,0.06), transparent 26%),
-                linear-gradient(180deg, #fbf8f3 0%, var(--bg) 100%);
+                radial-gradient(circle at top left, rgba(148, 163, 184, 0.18), transparent 26%),
+                radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.05), transparent 26%),
+                linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
             color: var(--ink);
             font-family: Arial, Helvetica, sans-serif;
         }
@@ -180,21 +74,20 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 26px);
         }
         .hero {
-            position: relative;
             overflow: hidden;
             border-radius: var(--radius-xl);
             padding: 22px 20px;
             color: #fff;
             background:
-                radial-gradient(circle at top right, rgba(187,142,88,0.35), transparent 26%),
-                linear-gradient(160deg, #111111 0%, #241a14 100%);
+                radial-gradient(circle at top right, rgba(148, 163, 184, 0.25), transparent 28%),
+                linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
             box-shadow: var(--shadow);
         }
         .hero .eyebrow {
             display: inline-flex;
             padding: 8px 12px;
             border-radius: 999px;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.12);
             font-size: 11px;
             letter-spacing: .18em;
             text-transform: uppercase;
@@ -202,13 +95,13 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         }
         .hero h1 {
             margin: 14px 0 8px;
-            font: 700 clamp(30px, 9vw, 44px)/1 Georgia, "Times New Roman", serif;
+            font: 700 clamp(30px, 9vw, 42px)/1 Georgia, "Times New Roman", serif;
             letter-spacing: -.04em;
         }
         .hero p {
             margin: 0;
             max-width: 36rem;
-            color: rgba(255,255,255,0.82);
+            color: rgba(255,255,255,0.84);
             font-size: 15px;
             line-height: 1.6;
         }
@@ -248,8 +141,8 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             backdrop-filter: blur(12px);
         }
         .tab.active {
-            background: var(--black);
-            border-color: var(--black);
+            background: var(--accent);
+            border-color: var(--accent);
             color: #fff;
         }
         .section {
@@ -283,13 +176,20 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             gap: 16px;
             min-height: 58vh;
         }
+        .welcome-card,
+        .setting,
+        .notification,
+        .bubble,
+        .ai-card {
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.88);
+        }
         .welcome-card {
             display: grid;
             gap: 10px;
             padding: 18px;
             border-radius: 22px;
-            border: 1px solid rgba(187,142,88,0.32);
-            background: linear-gradient(180deg, rgba(255,248,238,0.95), rgba(255,255,255,0.9));
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
         }
         .welcome-card strong {
             font-size: 18px;
@@ -303,17 +203,19 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             max-width: 100%;
             padding: 16px;
             border-radius: 22px;
-            border: 1px solid var(--line);
-            background: rgba(255,255,255,0.78);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
         }
         .bubble.user {
             margin-left: auto;
-            background: #111111;
-            border-color: #111111;
+            background: #0f172a;
+            border-color: #0f172a;
             color: #fff;
         }
-        .bubble.system {
-            background: linear-gradient(180deg, #fff, #f9f4ec);
+        .bubble.assistant {
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
+        }
+        .bubble.loading {
+            color: var(--muted);
         }
         .bubble-label {
             display: block;
@@ -325,13 +227,39 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             color: var(--muted);
         }
         .bubble.user .bubble-label {
-            color: rgba(255,255,255,0.7);
+            color: rgba(255,255,255,0.72);
         }
         .bubble p {
             margin: 0;
             font-size: 14px;
             line-height: 1.65;
             color: inherit;
+            white-space: pre-line;
+        }
+        .assistant-cards {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .ai-card {
+            border-radius: 18px;
+            padding: 12px 14px;
+            background: #f8fafc;
+        }
+        .ai-card-title {
+            margin: 0 0 8px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .ai-card ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--ink);
+            font-size: 13px;
+            line-height: 1.55;
         }
         .assistant-dock {
             position: sticky;
@@ -340,7 +268,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             gap: 12px;
             margin-top: auto;
             padding: 10px 0 calc(env(safe-area-inset-bottom) + 4px);
-            background: linear-gradient(180deg, rgba(244,239,231,0) 0%, rgba(244,239,231,0.92) 18%, rgba(244,239,231,1) 100%);
+            background: linear-gradient(180deg, rgba(248,250,252,0) 0%, rgba(248,250,252,0.94) 18%, rgba(248,250,252,1) 100%);
         }
         .composer {
             display: grid;
@@ -360,9 +288,9 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         .composer input {
             width: 100%;
             min-height: 44px;
-            border: 0;
+            border: 1px solid var(--line);
             outline: 0;
-            background: rgba(255,255,255,0.92);
+            background: #fff;
             color: var(--ink);
             font-size: 15px;
             padding: 0 14px;
@@ -381,22 +309,18 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         .btn {
             min-height: 44px;
             padding: 0 14px;
-            background: var(--black);
+            background: var(--accent);
             color: #fff;
         }
-        .btn.secondary {
+        .btn.secondary,
+        .btn.ghost {
             background: #fff;
             border-color: var(--line);
             color: var(--ink);
         }
-        .btn.ghost {
-            background: rgba(255,255,255,0.92);
-            border-color: var(--line);
-            color: var(--ink);
-        }
         .btn.disabled {
-            background: #dad2c7;
-            color: #7b7369;
+            background: #e2e8f0;
+            color: #64748b;
             cursor: not-allowed;
         }
         .grid {
@@ -409,24 +333,22 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             gap: 10px;
         }
         .quick {
-            min-height: 48px;
+            min-height: 44px;
             padding: 12px 14px;
             border-color: var(--line);
-            background: linear-gradient(180deg, #fff, #f7f1e8);
+            background: #fff;
             color: var(--ink);
             text-align: center;
             line-height: 1.3;
             font-size: 13px;
         }
         .notification {
-            border: 1px solid var(--line);
             border-radius: 20px;
-            background: rgba(255,255,255,0.7);
             padding: 16px;
         }
         .notification.new {
-            border-color: rgba(187,142,88,0.55);
-            background: linear-gradient(180deg, rgba(255,248,238,0.95), rgba(255,255,255,0.85));
+            border-color: #cbd5e1;
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
         }
         .notification-head {
             display: flex;
@@ -446,12 +368,12 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             letter-spacing: .08em;
         }
         .badge.high {
-            background: #f8e7e4;
+            background: #fee2e2;
             color: var(--danger);
         }
         .badge.normal {
-            background: var(--gold-soft);
-            color: #8b6638;
+            background: #e2e8f0;
+            color: #334155;
         }
         .notification-title {
             margin: 0;
@@ -482,14 +404,12 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             gap: 12px;
             padding: 14px 16px;
             border-radius: 18px;
-            border: 1px solid var(--line);
-            background: rgba(255,255,255,0.7);
         }
         .toggle {
             width: 48px;
             height: 28px;
             border-radius: 999px;
-            background: #d9d1c6;
+            background: #cbd5e1;
             position: relative;
         }
         .toggle:after {
@@ -504,7 +424,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }
         .toggle.on {
-            background: #cfa469;
+            background: #0f172a;
         }
         .toggle.on:after {
             left: 23px;
@@ -539,7 +459,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         <section class="hero">
             <div class="eyebrow">Elite AI</div>
             <h1>Lead ops on your phone</h1>
-            <p>Phase 1 is live as a secure mobile shell: trusted QR access, read-only notifications, and the assistant command surface for the next phase.</p>
+            <p>Read-only Elite AI is now connected to real CRM data, shared rules, notifications, and lead context so you can review what matters without risking writes.</p>
             <div class="hero-meta">
                 <span class="pill"><?= e($fullName) ?></span>
                 <span class="pill"><?= e((string) ($mobileUser['role'] ?? 'viewer')) ?></span>
@@ -556,7 +476,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             <section class="section">
                 <div class="section-head">
                     <h2>Assistant</h2>
-                    <p class="section-copy">Elite AI is ready to help with leads, replies, follow-ups, and notifications. Type an instruction below to begin.</p>
+                    <p class="section-copy">Ask Elite AI about leads, replies, follow-ups, No Answer review, notifications, or the next best manual step. This phase stays read-only.</p>
                 </div>
                 <div class="section-body">
                     <div class="assistant-layout">
@@ -569,29 +489,29 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                         <?php endif; ?>
 
                         <div class="assistant-thread" id="assistant-thread" aria-live="polite">
-                            <article class="bubble system">
+                            <article class="bubble assistant">
                                 <span class="bubble-label">Elite AI</span>
-                                <p>This assistant is currently read-only. I can help you think through leads, replies, follow-ups, and notifications without sending messages or changing pipeline stages yet.</p>
+                                <p>Elite AI is ready in read-only mode. Ask me to run a morning sweep, summarize a lead, surface replies, review notifications, or suggest the next manual step.</p>
                             </article>
                         </div>
 
                         <div class="assistant-dock">
                             <div class="quick-grid" aria-label="Assistant quick actions">
-                                <button class="quick" type="button" data-action="morning-sweep">Morning Sweep</button>
-                                <button class="quick" type="button" data-action="new-leads">New Leads</button>
-                                <button class="quick" type="button" data-action="replies">Replies</button>
-                                <button class="quick" type="button" data-action="follow-ups">Follow-ups</button>
-                                <button class="quick" type="button" data-action="no-answer-review">No Answer Review</button>
-                                <button class="quick" type="button" data-action="notifications">Notifications</button>
+                                <button class="quick" type="button" data-action="morning-sweep" data-prompt="Run morning sweep">Morning Sweep</button>
+                                <button class="quick" type="button" data-action="new-leads" data-prompt="Show new leads that need first contact">New Leads</button>
+                                <button class="quick" type="button" data-action="replies" data-prompt="Who replied today?">Replies</button>
+                                <button class="quick" type="button" data-action="follow-ups" data-prompt="Which contacted leads need follow-up?">Follow-ups</button>
+                                <button class="quick" type="button" data-action="no-answer-review" data-prompt="Review No Answer candidates">No Answer Review</button>
+                                <button class="quick" type="button" data-action="notifications" data-prompt="What notifications need attention?">Notifications</button>
                             </div>
 
                             <div class="settings">
                                 <div class="setting">
                                     <div>
-                                        <strong>AI actions</strong>
-                                        <p class="meta-copy">The composer is live for read-only guidance. CRM-safe execution and drafts come in the next phase.</p>
+                                        <strong>Read-only Elite AI</strong>
+                                        <p class="meta-copy">This assistant reads CRM data, locked workflow rules, and notifications. It does not send messages or move stages in this phase.</p>
                                     </div>
-                                    <span class="badge normal">Read Only</span>
+                                    <span class="badge normal">Safe Mode</span>
                                 </div>
                             </div>
 
@@ -610,23 +530,23 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             <section class="section">
                 <div class="section-head">
                     <h2>Notifications</h2>
-                    <p class="section-copy">This feed is built from the current CRM communication and activity tables so we can use real signals now without auto-actions.</p>
+                    <p class="section-copy">This feed is built from the current CRM communication and activity tables so the mobile portal can show live replies, new leads, and follow-up alerts without auto-actions.</p>
                 </div>
                 <div class="section-body">
                     <div class="grid">
                         <?php if (!$notifications): ?>
                             <div class="notification">
                                 <p class="notification-title">No notifications yet</p>
-                                <p class="notification-copy">The adapter is ready. Once new leads, replies, and follow-up events arrive, they will appear here.</p>
+                                <p class="notification-copy">Once new replies, lead events, or follow-up alerts arrive, they will appear here.</p>
                             </div>
                         <?php endif; ?>
 
                         <?php foreach ($notifications as $item): ?>
-                            <article class="notification <?= !empty($item['is_new']) ? 'new' : '' ?>">
+                            <article class="notification <?= !empty($item['priority']) && $item['priority'] === 'high' ? 'new' : '' ?>">
                                 <div class="notification-head">
                                     <p class="notification-title"><?= e((string) ($item['title'] ?? 'CRM alert')) ?></p>
                                     <span class="badge <?= e((string) ($item['priority'] ?? 'normal')) ?>">
-                                        <?= !empty($item['is_new']) ? 'Unread' : 'Review' ?>
+                                        <?= ($item['priority'] ?? 'normal') === 'high' ? 'Priority' : 'Review' ?>
                                     </span>
                                 </div>
                                 <p class="notification-copy"><?= e((string) ($item['message'] ?? '')) ?></p>
@@ -638,9 +558,8 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                                     <?php endif; ?>
                                 </p>
                                 <div class="action-row">
-                                    <a class="btn secondary" href="<?= e((string) ($item['open_url'] ?? base_url('leads.php'))) ?>">Open Lead</a>
+                                    <a class="btn secondary" href="<?= e(base_url('leads.php?lead_id=' . (int) ($item['lead_id'] ?? 0))) ?>">Open Lead</a>
                                     <button class="btn disabled" type="button" disabled>Ask AI</button>
-                                    <button class="btn disabled" type="button" disabled>Mark Reviewed</button>
                                 </div>
                             </article>
                         <?php endforeach; ?>
@@ -650,21 +569,14 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                         <div class="setting">
                             <div>
                                 <strong>Push notifications</strong>
-                                <p class="meta-copy">Browser subscription storage is scaffolded. Sending logic can plug in next.</p>
-                            </div>
-                            <div class="toggle on" aria-hidden="true"></div>
-                        </div>
-                        <div class="setting">
-                            <div>
-                                <strong>Sound alerts</strong>
-                                <p class="meta-copy">Enabled as a placeholder. Test playback will require a user tap in Phase 2.</p>
+                                <p class="meta-copy">Subscription storage is ready. Delivery logic can plug in later without changing the mobile shell.</p>
                             </div>
                             <div class="toggle on" aria-hidden="true"></div>
                         </div>
                         <div class="setting">
                             <div>
                                 <strong>Quiet hours</strong>
-                                <p class="meta-copy">Preference model reserved for future configuration.</p>
+                                <p class="meta-copy">Preference model remains reserved for future configuration.</p>
                             </div>
                             <span class="badge normal">Placeholder</span>
                         </div>
@@ -690,33 +602,6 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         }
 
         (function () {
-            var quickActions = {
-                'morning-sweep': {
-                    prompt: 'Run a morning sweep.',
-                    response: 'Morning Sweep is in read-only mode right now. In the next phase, Elite AI will summarize overnight leads, unread replies, and follow-ups due first so you can start the day fast.'
-                },
-                'new-leads': {
-                    prompt: 'Show me the new leads queue.',
-                    response: 'New Leads is ready as a guidance action. Phase 2 will let me pull the latest lead list into this thread and surface who needs first touch next.'
-                },
-                'replies': {
-                    prompt: 'Show me the latest replies.',
-                    response: 'Replies is connected conceptually to the live notifications feed. For now, tap Notifications to review the newest inbound messages in read-only mode.'
-                },
-                'follow-ups': {
-                    prompt: 'What follow-ups should I review?',
-                    response: 'Follow-ups is staged for read-only coaching first. Phase 2 will let me summarize due follow-ups and suggest the next best manual action.'
-                },
-                'no-answer-review': {
-                    prompt: 'Review no-answer leads.',
-                    response: 'No Answer Review is intentionally held in safe mode. Once connected, this action will identify leads with repeated outreach and no response without moving any stages automatically.'
-                },
-                'notifications': {
-                    prompt: 'Open notifications.',
-                    response: 'Opening the live notifications feed now so you can review replies, new leads, and follow-up alerts with full CRM context.'
-                }
-            };
-
             var thread = document.getElementById('assistant-thread');
             var form = document.getElementById('assistant-composer');
             var input = document.getElementById('assistant-input');
@@ -725,69 +610,126 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                 return;
             }
 
-            function appendBubble(label, text, role) {
+            var endpoint = '<?= e(base_url('assistant-api.php')) ?>';
+            var baseContext = {
+                page: 'mobile-ai',
+                page_title: 'Elite AI Mobile Portal',
+                current_url: window.location.href,
+                lead_id: 0,
+                tab: 'assistant'
+            };
+
+            function createBubble(role, label, text, cards, isLoading) {
                 var article = document.createElement('article');
-                article.className = 'bubble ' + role;
+                article.className = 'bubble ' + role + (isLoading ? ' loading' : '');
 
                 var badge = document.createElement('span');
                 badge.className = 'bubble-label';
                 badge.textContent = label;
+                article.appendChild(badge);
 
                 var paragraph = document.createElement('p');
                 paragraph.textContent = text;
-
-                article.appendChild(badge);
                 article.appendChild(paragraph);
+
+                if (cards && cards.length) {
+                    var cardsWrap = document.createElement('div');
+                    cardsWrap.className = 'assistant-cards';
+                    cards.forEach(function (card) {
+                        var cardEl = document.createElement('div');
+                        cardEl.className = 'ai-card';
+
+                        var title = document.createElement('p');
+                        title.className = 'ai-card-title';
+                        title.textContent = card.title || 'Summary';
+                        cardEl.appendChild(title);
+
+                        var list = document.createElement('ul');
+                        (card.items || []).forEach(function (item) {
+                            var li = document.createElement('li');
+                            li.textContent = item;
+                            list.appendChild(li);
+                        });
+                        cardEl.appendChild(list);
+                        cardsWrap.appendChild(cardEl);
+                    });
+                    article.appendChild(cardsWrap);
+                }
+
                 thread.appendChild(article);
                 article.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                return article;
             }
 
-            function handlePrompt(prompt, actionKey) {
+            function setBusy(isBusy) {
+                input.disabled = isBusy;
+                form.querySelectorAll('button').forEach(function (button) {
+                    button.disabled = isBusy;
+                });
+            }
+
+            async function sendPrompt(prompt, quickAction) {
                 var cleanPrompt = (prompt || '').trim();
-                if (cleanPrompt === '') {
+                if (!cleanPrompt && !quickAction) {
                     return;
                 }
 
-                appendBubble('You', cleanPrompt, 'user');
+                createBubble('user', 'You', cleanPrompt || 'Run quick action');
+                var loading = createBubble('assistant', 'Elite AI', 'Thinking through the CRM context...', [], true);
+                setBusy(true);
 
-                if (actionKey === 'notifications') {
-                    appendBubble('Elite AI', quickActions[actionKey].response, 'system');
-                    window.setTimeout(function () {
-                        window.location.href = '<?= e(base_url('mobile-ai/?tab=notifications')) ?>';
-                    }, 350);
-                    return;
+                try {
+                    var response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            surface: 'mobile',
+                            prompt: cleanPrompt,
+                            quick_action: quickAction || '',
+                            context: baseContext
+                        })
+                    });
+
+                    var data = await response.json();
+                    loading.remove();
+
+                    if (!response.ok || !data.ok) {
+                        createBubble('assistant', 'Elite AI', data.message || 'I could not complete that request right now.');
+                        return;
+                    }
+
+                    createBubble('assistant', 'Elite AI', data.answer || 'Read-only response ready.', data.cards || []);
+                } catch (error) {
+                    loading.remove();
+                    createBubble('assistant', 'Elite AI', 'I hit an assistant error while loading CRM context. Please try again.');
+                } finally {
+                    setBusy(false);
+                    input.focus();
                 }
-
-                if (actionKey && quickActions[actionKey]) {
-                    appendBubble('Elite AI', quickActions[actionKey].response, 'system');
-                    return;
-                }
-
-                appendBubble('Elite AI', 'I heard: "' + cleanPrompt + '". The composer is live in read-only mode, so I can confirm the request and guide the next step, but I am not sending messages or changing lead stages yet.', 'system');
             }
 
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
                 var prompt = input.value;
                 input.value = '';
-                handlePrompt(prompt, '');
+                sendPrompt(prompt, '');
             });
 
             document.querySelectorAll('[data-action]').forEach(function (button) {
                 button.addEventListener('click', function () {
-                    var key = button.getAttribute('data-action') || '';
-                    if (!quickActions[key]) {
-                        return;
-                    }
-                    input.value = quickActions[key].prompt;
-                    handlePrompt(quickActions[key].prompt, key);
+                    var prompt = button.getAttribute('data-prompt') || '';
+                    var action = button.getAttribute('data-action') || '';
                     input.value = '';
+                    sendPrompt(prompt, action);
                 });
             });
 
             if (mic) {
                 mic.addEventListener('click', function () {
-                    appendBubble('Elite AI', 'Voice capture is reserved for a later phase. For now, type a command and I will keep the flow read-only and review-safe.', 'system');
+                    createBubble('assistant', 'Elite AI', 'Voice capture is reserved for a later phase. For now, type a command and I will keep the flow read-only.');
                 });
             }
         }());

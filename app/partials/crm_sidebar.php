@@ -103,11 +103,11 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 <button
                     type="button"
                     id="crm-sidebar-ai-launch"
-                    class="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-100"
+                    class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-slate-100"
                     aria-expanded="false"
                     aria-controls="crm-ai-panel"
                 >
-                    <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"></path>
                             <path d="M5 18l.8 1.9L8 21l-2.2 1.1L5 24l-.8-1.9L2 21l2.2-1.1L5 18z"></path>
@@ -115,7 +115,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     </span>
                     <span class="min-w-0 flex-1 crm-sidebar-ai-copy">
                         <span class="block text-sm font-semibold text-slate-900">Elite AI</span>
-                        <span class="block text-xs text-slate-500">Read-only lead ops assistant</span>
+                        <span class="block text-xs text-slate-500">Assistant</span>
                     </span>
                 </button>
             </div>
@@ -134,45 +134,43 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     >
         <div class="flex h-[min(78vh,720px)] w-full flex-col">
             <div class="border-b border-slate-200 px-5 py-4">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Elite AI</p>
-                        <h2 class="mt-2 text-lg font-semibold tracking-tight text-slate-900">Read-only CRM assistant</h2>
-                        <p class="mt-1 text-sm text-slate-500">Shared assistant for desktop and mobile, using real CRM data with locked safety rules.</p>
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-lg font-semibold tracking-tight text-slate-900">Elite AI</h2>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="crm-ai-notifications" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100" aria-label="Open notifications">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                            </svg>
+                        </button>
+                        <button type="button" id="crm-ai-close" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100" aria-label="Close assistant">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                                <path d="M6 6l12 12M18 6 6 18"></path>
+                            </svg>
+                        </button>
                     </div>
-                    <button type="button" id="crm-ai-close" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100" aria-label="Close assistant">
-                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                            <path d="M6 6l12 12M18 6 6 18"></path>
-                        </svg>
-                    </button>
-                </div>
-                <div class="mt-4 flex flex-wrap gap-2">
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="morning-sweep" data-prompt="Run morning sweep">Morning Sweep</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="new-leads" data-prompt="Show new leads that need first contact">New Leads</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="replies" data-prompt="Who replied today?">Replies</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="follow-ups" data-prompt="Which contacted leads need follow-up?">Follow-ups</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="no-answer-review" data-prompt="Review No Answer candidates">No Answer Review</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="notifications" data-prompt="What notifications need attention?">Notifications</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="summarize-lead" data-prompt="Summarize this lead">Summarize This Lead</button>
-                    <button type="button" class="crm-ai-chip rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-action="what-next" data-prompt="What should I do next?">What Should I Do Next?</button>
                 </div>
             </div>
-
             <div id="crm-ai-thread" class="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-5 py-4">
-                <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Elite AI</p>
-                    <p class="mt-2 text-sm leading-6 text-slate-700">Ask me for a morning sweep, a lead summary, today’s replies, follow-up priorities, No Answer review, or what matters most on this page. I stay read-only in this phase.</p>
+                <article class="max-w-[88%] rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p class="text-sm leading-6 text-slate-700">Good morning, <?= e($firstName !== '' ? $firstName : 'Rodrigo') ?>. What do you want to do?</p>
                 </article>
             </div>
-
             <div class="border-t border-slate-200 bg-white px-5 py-4">
-                <div class="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
-                    Client-facing messages still require human review before send. Elite AI can summarize and recommend next steps, but it will not send or move anything here.
-                </div>
                 <form id="crm-ai-form" class="flex items-center gap-3">
-                    <input id="crm-ai-input" type="text" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
-                    <button type="submit" id="crm-ai-send" class="inline-flex h-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800">
-                        Send
+                    <input id="crm-ai-input" type="text" enterkeyhint="send" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
+                    <button type="button" id="crm-ai-mic" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100" aria-label="Microphone placeholder">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <path d="M12 19v3"></path>
+                        </svg>
+                    </button>
+                    <button type="submit" id="crm-ai-send" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white transition hover:bg-slate-800" aria-label="Send">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M22 2 11 13"></path>
+                            <path d="m22 2-7 20-4-9-9-4 20-7z"></path>
+                        </svg>
                     </button>
                 </form>
             </div>
@@ -242,6 +240,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     const aiForm = document.getElementById('crm-ai-form');
     const aiInput = document.getElementById('crm-ai-input');
     const aiSend = document.getElementById('crm-ai-send');
+    const aiMic = document.getElementById('crm-ai-mic');
+    const aiNotifications = document.getElementById('crm-ai-notifications');
 
     function applyDesktopCollapsed(collapsed) {
         document.body.classList.toggle('crm-sidebar-collapsed', collapsed);
@@ -290,16 +290,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     function assistantBubble(label, text, role, cards, loading) {
         if (!aiThread) return null;
         const article = document.createElement('article');
-        article.className = 'rounded-3xl border border-slate-200 p-4 shadow-sm ' + (role === 'user' ? 'ml-10 bg-slate-900 text-white' : 'bg-white text-slate-700');
+        article.className = 'max-w-[88%] rounded-3xl border border-slate-200 p-4 shadow-sm ' + (role === 'user' ? 'ml-auto bg-slate-900 text-white' : 'bg-white text-slate-700');
         if (loading) article.classList.add('opacity-70');
 
-        const tag = document.createElement('p');
-        tag.className = 'text-[11px] font-semibold uppercase tracking-[0.18em] ' + (role === 'user' ? 'text-slate-300' : 'text-slate-500');
-        tag.textContent = label;
-        article.appendChild(tag);
 
         const body = document.createElement('p');
-        body.className = 'mt-2 text-sm leading-6 whitespace-pre-line';
+        body.className = 'text-sm leading-6 whitespace-pre-line';
         body.textContent = text;
         article.appendChild(body);
 
@@ -343,7 +339,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
         aiInput.disabled = true;
         if (aiSend) aiSend.disabled = true;
-        document.querySelectorAll('.crm-ai-chip').forEach(function (chip) { chip.disabled = true; });
+        if (aiMic) aiMic.disabled = true;
+        if (aiNotifications) aiNotifications.disabled = true;
 
         try {
             const response = await fetch(aiPanel.dataset.endpoint, {
@@ -379,7 +376,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         } finally {
             aiInput.disabled = false;
             if (aiSend) aiSend.disabled = false;
-            document.querySelectorAll('.crm-ai-chip').forEach(function (chip) { chip.disabled = false; });
+            if (aiMic) aiMic.disabled = false;
+            if (aiNotifications) aiNotifications.disabled = false;
             aiInput.focus();
         }
     }
@@ -398,11 +396,6 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (aiPanel.getAttribute('aria-hidden') === 'false') {
                 positionAssistantPanel();
             }
-        });
-        document.querySelectorAll('.crm-ai-chip').forEach(function (button) {
-            button.addEventListener('click', function () {
-                runAssistant(button.dataset.prompt || '', button.dataset.action || '');
-            });
         });
     }
 

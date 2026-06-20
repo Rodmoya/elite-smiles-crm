@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 
@@ -1094,6 +1095,58 @@ if (!function_exists('codex_api_mobile_setup_token')) {
     }
 }
 
+if (!function_exists('codex_api_elite_ai_audit_recent')) {
+    function codex_api_elite_ai_audit_recent(): void
+    {
+        elite_ai_ensure_schema();
+        $limit = max(1, min(50, (int) codex_api_value('limit', 10)));
+        $rows = db_all(
+            "SELECT
+                l.id,
+                l.user_id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                l.surface,
+                l.prompt,
+                l.tools_used_json,
+                l.response_summary,
+                l.lead_id,
+                l.page_context_json,
+                l.created_at
+             FROM elite_ai_audit_logs l
+             LEFT JOIN users u ON u.id = l.user_id
+             ORDER BY l.created_at DESC, l.id DESC
+             LIMIT {$limit}"
+        );
+
+        $logs = [];
+        foreach ($rows as $row) {
+            $tools = json_decode((string) ($row['tools_used_json'] ?? '[]'), true);
+            $context = json_decode((string) ($row['page_context_json'] ?? '{}'), true);
+            $logs[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'user_id' => (int) ($row['user_id'] ?? 0),
+                'user_name' => trim((string) (($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''))),
+                'user_email' => (string) ($row['email'] ?? ''),
+                'surface' => (string) ($row['surface'] ?? ''),
+                'prompt' => (string) ($row['prompt'] ?? ''),
+                'tools_used' => is_array($tools) ? $tools : [],
+                'response_summary' => (string) ($row['response_summary'] ?? ''),
+                'lead_id' => (int) ($row['lead_id'] ?? 0),
+                'page_context' => is_array($context) ? $context : [],
+                'created_at' => (string) ($row['created_at'] ?? ''),
+            ];
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'logs' => $logs,
+            'sanitized' => true,
+        ]);
+    }
+}
+
 if (!function_exists('codex_api_mobile_push_save')) {
     function codex_api_mobile_push_save(): void
     {
@@ -1196,6 +1249,10 @@ try {
 
     if ($action === 'mobile_notifications') {
         codex_api_mobile_notifications();
+    }
+
+    if ($action === 'elite_ai_audit_recent') {
+        codex_api_elite_ai_audit_recent();
     }
 
     if ($method !== 'POST') {

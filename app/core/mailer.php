@@ -1098,24 +1098,24 @@ if (!function_exists('elite_send_attempted_contact_pushover')) {
             $fullName = 'Unknown Lead';
         }
 
-        $phone = elite_string($lead['phone'] ?? '');
-        $fromStage = trim((string) ($context['from_stage'] ?? ''));
-        $toStage = trim((string) ($context['to_stage'] ?? ''));
-        $leadId = trim((string) ($context['lead_id'] ?? $lead['id'] ?? ''));
-        $updatedBy = trim((string) ($context['updated_by_name'] ?? ''));
+        $personName = trim((string) ($context['person_name'] ?? $fullName));
+        $receivedAt = trim((string) ($context['received_at'] ?? $context['created_at'] ?? $context['updated_at'] ?? $lead['updated_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s')));
+        $receivedTs = strtotime($receivedAt);
+        $receivedHour = $receivedTs !== false ? date('g:i A', $receivedTs) : date('g:i A');
+
+        $message = trim((string) ($context['message'] ?? $context['summary'] ?? $context['activity'] ?? 'Attempted contact stage update.'));
+        $cleanMessage = preg_replace('/\s+/', ' ', str_replace(["\r", "\n"], ' ', (string) $message));
+        $cleanMessage = trim((string) $cleanMessage);
+        if (mb_strlen($cleanMessage) > 320) {
+            $cleanMessage = mb_substr($cleanMessage, 0, 320) . '...';
+        }
 
         $lines = [];
-        $lines[] = 'Attempted Contact stage reached for ' . $fullName;
-        $lines[] = 'Lead ID: ' . $leadId;
-        if ($phone !== '') {
-            $lines[] = 'Phone: ' . elite_format_phone_for_reading($phone);
-        }
-        if ($fromStage !== '' || $toStage !== '') {
-            $lines[] = 'Stage: ' . ($fromStage !== '' ? $fromStage : 'unknown') . ' -> ' . ($toStage !== '' ? $toStage : 'attempted_contact');
-        }
-        if ($updatedBy !== '') {
-            $lines[] = 'Updated by: ' . $updatedBy;
-        }
+        $lines[] = 'Lead: ' . $fullName;
+        $lines[] = 'Hour: ' . $receivedHour;
+        $lines[] = 'Person: ' . $personName;
+        $lines[] = '';
+        $lines[] = $cleanMessage;
 
         $quickActionUrl = elite_quick_action_url($lead, $context);
         $title = 'Attempted Contact - ' . $fullName;
@@ -1172,27 +1172,27 @@ if (!function_exists('elite_send_lead_notification_pushover')) {
             $fullName = 'Unknown Lead';
         }
 
-        $phone = elite_string($lead['phone'] ?? '');
-        $procedureInterest = elite_string($lead['procedure_interest'] ?? '');
-        $preferredContact = elite_preferred_contact_label(elite_string($lead['preferred_contact'] ?? ''));
-        $source = elite_string($lead['source'] ?? '');
-        $quickActionUrl = elite_quick_action_url($lead, $context);
-
-        $title = 'New Elite Smiles Lead • ' . $fullName;
-
-        $lines = [];
-        if ($procedureInterest !== '') {
-            $lines[] = 'Procedure: ' . $procedureInterest;
-        }
-        if ($phone !== '') {
-            $lines[] = 'Phone: ' . elite_format_phone_for_reading($phone);
-        }
-        if ($preferredContact !== 'Not specified') {
-            $lines[] = 'Prefers: ' . $preferredContact;
-        }
-        if ($source !== '') {
-            $lines[] = 'Source: ' . $source;
-        }
+        $personName = trim((string) ($context['person_name'] ?? $fullName));
+        $receivedAt = trim((string) ($context['received_at'] ?? $context['created_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s')));
+        $receivedTs = strtotime($receivedAt);
+        $receivedHour = $receivedTs !== false ? date('g:i A', $receivedTs) : date('g:i A');
+        $leadMessage = trim((string) ($context['message'] ?? $context['summary'] ?? $lead['message'] ?? $lead['transcription'] ?? $lead['notes'] ?? 'New lead received.'));
+        $cleanLeadMessage = preg_replace('/\s+/', ' ', str_replace(["\r", "\n"], ' ', (string) $leadMessage));
+        $cleanLeadMessage = trim((string) $cleanLeadMessage);
+        if (mb_strlen($cleanLeadMessage) > 320) {
+            $cleanLeadMessage = mb_substr($cleanLeadMessage, 0, 320) . '...';
+        }
+
+        $quickActionUrl = elite_quick_action_url($lead, $context);
+
+        $title = 'New Elite Smiles Lead • ' . $fullName;
+
+        $lines = [];
+        $lines[] = 'Lead: ' . $fullName;
+        $lines[] = 'Hour: ' . $receivedHour;
+        $lines[] = 'Person: ' . $personName;
+        $lines[] = '';
+        $lines[] = $cleanLeadMessage;
         $lines[] = '';
         $lines[] = 'Tap to open quick actions.';
 
@@ -1252,10 +1252,6 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
 
         }
 
-        $phone = elite_string($lead['phone'] ?? '');
-        $procedureInterest = elite_string($lead['procedure_interest'] ?? '');
-        $preferredContact = elite_preferred_contact_label(elite_string($lead['preferred_contact'] ?? ''));
-        $source = elite_string($lead['source'] ?? '');
         $channel = strtolower(trim((string)($context['channel'] ?? '')));
         $event = strtolower(trim((string)($context['event'] ?? 'follow_up')));
         $deliveryStatus = trim((string)($context['delivery_status'] ?? ''));
@@ -1264,6 +1260,38 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
         $summary = trim((string)($context['summary'] ?? ''));
         $note = trim((string)($context['note'] ?? ''));
         $mode = strtolower(trim((string)($context['quick_action_mode'] ?? $context['mode'] ?? '')));
+        $personName = trim((string) ($context['person_name'] ?? $context['from_name'] ?? $fullName));
+        $receivedAt = trim((string) ($context['received_at'] ?? $context['created_at'] ?? $context['updated_at'] ?? $lead['updated_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s')));
+        $receivedTs = strtotime($receivedAt);
+        $receivedHour = $receivedTs !== false ? date('g:i A', $receivedTs) : date('g:i A');
+
+        $message = $note;
+        if ($message === '' && isset($context['message'])) {
+            $message = trim((string) $context['message']);
+        }
+        if ($message === '' && $summary !== '') {
+            $message = $summary;
+        }
+        if ($message === '' && $deliveryStatus !== '') {
+            $message = 'Delivery status: ' . $deliveryStatus;
+            if ($errorCode !== '') {
+                $message .= ' (' . $errorCode . ')';
+            }
+        }
+        if ($message === '' && $errorMessage !== '') {
+            $message = $errorMessage;
+        }
+        if ($message === '') {
+            $message = match ($event) {
+                'sms_delivery_issue' => 'SMS delivery issue notification.',
+                default => 'Lead communication event.',
+            };
+        }
+        $cleanMessage = preg_replace('/\s+/', ' ', str_replace(["\r", "\n"], ' ', (string) $message));
+        $cleanMessage = trim((string) $cleanMessage);
+        if (mb_strlen($cleanMessage) > 320) {
+            $cleanMessage = mb_substr($cleanMessage, 0, 320) . '...';
+        }
 
         if (!in_array($mode, ['new_lead', 'follow_up', 'reschedule', 'communication'], true)) {
             $leadStatus = strtolower(trim((string)($lead['status'] ?? '')));
@@ -1287,48 +1315,11 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
         $title = $titlePrefix . ' - ' . $fullName;
 
         $lines = [];
-        if ($summary !== '') {
-            $lines[] = $summary;
-        } else {
-            $lines[] = match ($event) {
-                'sms_delivery_issue' => 'Twilio could not deliver the SMS. Open lead actions to text manually.',
-                default => 'Open lead actions for the next patient communication step.',
-            };
-        }
-
-        if ($channel !== '') {
-            $lines[] = 'Channel: ' . strtoupper($channel);
-        }
-
-        if ($deliveryStatus !== '') {
-            $statusLine = 'Delivery: ' . $deliveryStatus;
-            if ($errorCode !== '') {
-                $statusLine .= ' (' . $errorCode . ')';
-            }
-            $lines[] = $statusLine;
-        }
-
-        if ($phone !== '') {
-            $lines[] = 'Phone: ' . elite_format_phone_for_reading($phone);
-        }
-
-        if ($preferredContact !== 'Not specified') {
-            $lines[] = 'Prefers: ' . $preferredContact;
-        }
-
-        if ($procedureInterest !== '') {
-            $lines[] = 'Procedure: ' . $procedureInterest;
-        }
-
-        if ($source !== '') {
-            $lines[] = 'Source: ' . $source;
-        }
-
-        if ($note !== '') {
-            $lines[] = 'Context: ' . mb_substr($note, 0, 180);
-        } elseif ($errorMessage !== '') {
-            $lines[] = 'Context: ' . mb_substr($errorMessage, 0, 180);
-        }
+        $lines[] = 'Lead: ' . $fullName;
+        $lines[] = 'Hour: ' . $receivedHour;
+        $lines[] = 'Person: ' . $personName;
+        $lines[] = '';
+        $lines[] = $cleanMessage;
 
         $lines[] = '';
         $lines[] = 'Tap to open quick actions.';

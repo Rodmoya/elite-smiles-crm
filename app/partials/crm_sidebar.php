@@ -48,19 +48,6 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 <a href="<?= e(base_url('dashboard.php')) ?>" class="crm-sidebar-logo-text shrink-0">
                     <img src="<?= e((string)$logoUrl) ?>" alt="Elite Smiles" class="h-auto w-[170px] max-w-full">
                 </a>
-                <div class="crm-sidebar-top-user ml-auto hidden items-center gap-3 lg:flex">
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-                        <p class="text-xs font-semibold text-slate-900"><?= e($firstName) ?></p>
-                        <p class="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500"><?= e($role) ?></p>
-                    </div>
-                    <form method="POST" action="<?= e((string)$logoutAction) ?>" class="shrink-0">
-                        <?= csrf_input() ?>
-                        <input type="hidden" name="action" value="logout">
-                        <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
-                            Logout
-                        </button>
-                    </form>
-                </div>
                 <button
                     type="button"
                     id="crm-sidebar-toggle"
@@ -98,6 +85,20 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     </a>
                 <?php endforeach; ?>
             </nav>
+
+            <div class="crm-sidebar-top-user border-t border-slate-200 px-4 py-3">
+                <div class="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
+                    <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-slate-500"><?= e($role) ?></p>
+                </div>
+                <form method="POST" action="<?= e((string)$logoutAction) ?>">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="action" value="logout">
+                    <button type="submit" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
+                        Logout
+                    </button>
+                </form>
+            </div>
 
             <div class="border-t border-slate-200 px-4 py-4">
                 <button
@@ -182,18 +183,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             <a href="<?= e(base_url('dashboard.php')) ?>" class="shrink-0">
                 <img src="<?= e((string)$logoUrl) ?>" alt="Elite Smiles" class="h-auto w-[150px] max-w-full">
             </a>
-            <div class="ml-auto flex items-center gap-2 lg:hidden">
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-right">
-                    <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
-                </div>
-                <form method="POST" action="<?= e((string)$logoutAction) ?>" class="shrink-0">
-                    <?= csrf_input() ?>
-                    <input type="hidden" name="action" value="logout">
-                    <button type="submit" class="rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-100">
-                        Logout
-                    </button>
-                </form>
-            </div>
+            <div class="ml-auto lg:hidden"></div>
             <button
                 type="button"
                 id="crm-mobile-nav-toggle"
@@ -222,6 +212,19 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                         <?= e($item['label']) ?>
                     </a>
                 <?php endforeach; ?>
+                <div class="mt-2 border-t border-slate-200 pt-3">
+                    <div class="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
+                        <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-slate-500"><?= e($role) ?></p>
+                    </div>
+                    <form method="POST" action="<?= e((string)$logoutAction) ?>">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="action" value="logout">
+                        <button type="submit" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
+                            Logout
+                        </button>
+                    </form>
+                </div>
             </div>
         </nav>
     </header>

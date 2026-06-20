@@ -22,6 +22,12 @@ RewriteRule ^smile-design/preview/([A-Za-z0-9_-]+)/?$ smile-design/preview.php?t
 RewriteRule ^smile-design/real-results/([0-9]+)/present/?$ smile-design/real-results/show.php?id=$1&present=1 [L,QSA]
 RewriteRule ^smile-design/real-results/([0-9]+)/?$ smile-design/real-results/show.php?id=$1 [L,QSA]
 
+# Mobile AI portal routes.
+RewriteRule ^mobile-ai/setup/([A-Za-z0-9_-]+)/?$ mobile-ai-setup.php?token=$1 [L,QSA]
+RewriteRule ^mobile-ai/?$ mobile-ai.php [L,QSA]
+RewriteRule ^mobile-ai/manifest\.webmanifest$ public/mobile-ai/manifest.webmanifest [L,QSA]
+RewriteRule ^mobile-ai/sw\.js$ public/mobile-ai/sw.js [L,QSA]
+
 # Dental model builder routes.
 RewriteRule ^dental-models/?$ dental-models/index.php [L,QSA]
 RewriteRule ^dental-models/new/?$ dental-models/new.php [L,QSA]

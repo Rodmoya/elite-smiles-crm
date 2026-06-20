@@ -12,6 +12,7 @@ require_once __DIR__ . '/app/config/config.php';
 require_once __DIR__ . '/app/core/helpers.php';
 require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
+require_once __DIR__ . '/app/core/mobile_ai_auth.php';
 
 if (auth_check()) {
     redirect(base_url('dashboard.php'));
@@ -96,6 +97,10 @@ if (is_post()) {
             $errorMessage = 'Passwords do not match.';
         } else {
             $newHash = auth_create_password_hash($password);
+
+            if (function_exists('mobile_ai_revoke_user_access')) {
+                mobile_ai_revoke_user_access((int) ($inviteUser['id'] ?? 0));
+            }
 
             db_execute("
                 UPDATE users

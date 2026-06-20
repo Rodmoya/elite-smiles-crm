@@ -103,6 +103,66 @@ CREATE TABLE IF NOT EXISTS `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
+-- mobile ai access tables
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `user_mobile_access_tokens` (
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`         INT UNSIGNED NOT NULL,
+  `token_hash`      CHAR(64)     NOT NULL,
+  `token_plaintext` TEXT                  DEFAULT NULL,
+  `expires_at`      DATETIME              DEFAULT NULL,
+  `used_at`         DATETIME              DEFAULT NULL,
+  `revoked_at`      DATETIME              DEFAULT NULL,
+  `created_by`      INT UNSIGNED          DEFAULT NULL,
+  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_mobile_access_hash` (`token_hash`),
+  KEY `idx_mobile_access_user` (`user_id`),
+  KEY `idx_mobile_access_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `user_mobile_sessions` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`            INT UNSIGNED NOT NULL,
+  `session_token_hash` CHAR(64)     NOT NULL,
+  `device_label`       VARCHAR(190) NOT NULL DEFAULT 'Mobile Device',
+  `user_agent`         VARCHAR(255) NOT NULL DEFAULT '',
+  `ip_address`         VARCHAR(64)  NOT NULL DEFAULT '',
+  `last_seen_at`       DATETIME              DEFAULT NULL,
+  `expires_at`         DATETIME              DEFAULT NULL,
+  `revoked_at`         DATETIME              DEFAULT NULL,
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_mobile_session_hash` (`session_token_hash`),
+  KEY `idx_mobile_session_user` (`user_id`),
+  KEY `idx_mobile_session_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `user_push_subscriptions` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`            INT UNSIGNED NOT NULL,
+  `endpoint_hash`      CHAR(64)     NOT NULL,
+  `endpoint`           TEXT         NOT NULL,
+  `subscription_json`  LONGTEXT              DEFAULT NULL,
+  `browser`            VARCHAR(150) NOT NULL DEFAULT '',
+  `device_label`       VARCHAR(190) NOT NULL DEFAULT '',
+  `enabled`            TINYINT(1)   NOT NULL DEFAULT 1,
+  `push_enabled`       TINYINT(1)   NOT NULL DEFAULT 1,
+  `sound_enabled`      TINYINT(1)   NOT NULL DEFAULT 1,
+  `quiet_hours_json`   VARCHAR(255) NOT NULL DEFAULT '',
+  `high_priority_only` TINYINT(1)   NOT NULL DEFAULT 0,
+  `last_seen_at`       DATETIME              DEFAULT NULL,
+  `revoked_at`         DATETIME              DEFAULT NULL,
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_push_endpoint_hash` (`endpoint_hash`),
+  KEY `idx_push_subscription_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
 -- Seed all 200 landing pages (5 procedures x 8 cities x 5 variants)
 -- All set is_active=0 — activate them from the admin panel
 -- or by running: UPDATE landing_pages SET is_active=1 WHERE slug='your-slug';

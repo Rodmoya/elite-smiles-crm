@@ -1,0 +1,11 @@
+{
+  "name": "Elite AI",
+  "short_name": "Elite AI",
+  "description": "Elite Smiles Mobile AI operations portal.",
+  "start_url": "/crm/mobile-ai",
+  "scope": "/crm/mobile-ai",
+  "display": "standalone",
+  "background_color": "#f4efe7",
+  "theme_color": "#111111",
+  "icons": []
+}

@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/mobile_ai_auth.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_name(SESSION_NAME);
@@ -134,6 +135,10 @@ if (!function_exists('auth_update_password_hash')) {
                 'password_hash' => $newHash,
             ]
         );
+
+        if (function_exists('mobile_ai_revoke_user_access')) {
+            mobile_ai_revoke_user_access($userId);
+        }
 
         return true;
     }

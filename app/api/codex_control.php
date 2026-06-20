@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
+require_once dirname(__DIR__) . '/core/mobile_ai_auth.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
@@ -980,6 +981,156 @@ if (!function_exists('codex_api_update_lead')) {
     }
 }
 
+if (!function_exists('codex_api_mobile_notifications')) {
+    function codex_api_mobile_notifications(): void
+    {
+        lead_comm_ensure_schema();
+        $limit = max(1, min(50, (int) codex_api_value('limit', 20)));
+        $notifications = [];
+
+        $messages = db_all(
+            "SELECT
+                lm.id,
+                lm.lead_id,
+                lm.body,
+                lm.is_read,
+                lm.created_at,
+                l.full_name,
+                l.status
+             FROM lead_messages lm
+             INNER JOIN leads l ON l.id = lm.lead_id
+             WHERE lm.direction = 'inbound'
+             ORDER BY lm.created_at DESC, lm.id DESC
+             LIMIT {$limit}"
+        );
+
+        foreach ($messages as $row) {
+            $notifications[] = [
+                'id' => 'msg-' . (int) ($row['id'] ?? 0),
+                'type' => 'reply',
+                'title' => 'Reply from ' . (trim((string) ($row['full_name'] ?? 'Lead')) ?: 'Lead'),
+                'message' => trim((string) ($row['body'] ?? '')),
+                'created_at' => (string) ($row['created_at'] ?? ''),
+                'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
+                'is_new' => (int) ($row['is_read'] ?? 0) === 0,
+                'lead_id' => (int) ($row['lead_id'] ?? 0),
+                'lead_name' => trim((string) ($row['full_name'] ?? '')),
+                'status' => trim((string) ($row['status'] ?? '')),
+                'suggested_action' => 'Review context and prepare a draft before sending.',
+            ];
+        }
+
+        $activities = db_all(
+            "SELECT
+                la.id,
+                la.lead_id,
+                la.type,
+                la.body,
+                la.created_at,
+                l.full_name,
+                l.status
+             FROM lead_activities la
+             INNER JOIN leads l ON l.id = la.lead_id
+             WHERE la.type IN ('lead_created', 'stage_change', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+             ORDER BY la.created_at DESC, la.id DESC
+             LIMIT {$limit}"
+        );
+
+        foreach ($activities as $row) {
+            $type = trim((string) ($row['type'] ?? 'activity'));
+            $notifications[] = [
+                'id' => 'act-' . (int) ($row['id'] ?? 0),
+                'type' => $type,
+                'title' => $type === 'lead_created' ? 'New lead' : 'CRM alert',
+                'message' => trim((string) ($row['body'] ?? '')),
+                'created_at' => (string) ($row['created_at'] ?? ''),
+                'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
+                'is_new' => false,
+                'lead_id' => (int) ($row['lead_id'] ?? 0),
+                'lead_name' => trim((string) ($row['full_name'] ?? '')),
+                'status' => trim((string) ($row['status'] ?? '')),
+                'suggested_action' => $type === 'lead_created'
+                    ? 'Open the lead and confirm first-touch drafts.'
+                    : 'Open the lead and review next steps.',
+            ];
+        }
+
+        usort($notifications, static function (array $a, array $b): int {
+            $aTime = strtotime((string) ($a['created_at'] ?? '')) ?: 0;
+            $bTime = strtotime((string) ($b['created_at'] ?? '')) ?: 0;
+            return $bTime <=> $aTime;
+        });
+
+        codex_api_response([
+            'ok' => true,
+            'notifications' => array_slice($notifications, 0, $limit),
+            'adapter' => 'lead_messages + lead_activities',
+            'draft_before_send_rule' => true,
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_mobile_setup_token')) {
+    function codex_api_mobile_setup_token(): void
+    {
+        $userId = (int) codex_api_value('user_id', 0);
+        if ($userId <= 0) {
+            codex_api_response(['ok' => false, 'message' => 'user_id is required.'], 422);
+        }
+
+        $user = auth_find_user_by_id($userId);
+        if (!$user) {
+            codex_api_response(['ok' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $token = mobile_ai_issue_setup_token($userId, null);
+        codex_api_response([
+            'ok' => true,
+            'user_id' => $userId,
+            'setup_url' => mobile_ai_qr_setup_url($token),
+            'qr_url' => mobile_ai_qr_image_url($token),
+            'expires_in_seconds' => MOBILE_AI_SETUP_TTL_SECONDS,
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_mobile_push_save')) {
+    function codex_api_mobile_push_save(): void
+    {
+        $userId = (int) codex_api_value('user_id', 0);
+        $subscription = (array) codex_api_value('subscription', []);
+        $browser = trim((string) codex_api_value('browser', ''));
+        $deviceLabel = trim((string) codex_api_value('device_label', ''));
+
+        if ($userId <= 0 || !$subscription) {
+            codex_api_response(['ok' => false, 'message' => 'user_id and subscription are required.'], 422);
+        }
+
+        $ok = mobile_ai_save_push_subscription($userId, $subscription, $browser, $deviceLabel);
+        codex_api_response([
+            'ok' => $ok,
+            'message' => $ok ? 'Push subscription stored.' : 'Could not store push subscription.',
+        ], $ok ? 200 : 500);
+    }
+}
+
+if (!function_exists('codex_api_mobile_push_remove')) {
+    function codex_api_mobile_push_remove(): void
+    {
+        $userId = (int) codex_api_value('user_id', 0);
+        $endpoint = trim((string) codex_api_value('endpoint', ''));
+        if ($userId <= 0 || $endpoint === '') {
+            codex_api_response(['ok' => false, 'message' => 'user_id and endpoint are required.'], 422);
+        }
+
+        $ok = mobile_ai_remove_push_subscription($userId, $endpoint);
+        codex_api_response([
+            'ok' => $ok,
+            'message' => $ok ? 'Push subscription revoked.' : 'Could not revoke push subscription.',
+        ], $ok ? 200 : 500);
+    }
+}
+
 codex_api_auth();
 
 if (!leads_table_exists()) {
@@ -1043,6 +1194,10 @@ try {
         ]);
     }
 
+    if ($action === 'mobile_notifications') {
+        codex_api_mobile_notifications();
+    }
+
     if ($method !== 'POST') {
         codex_api_response(['ok' => false, 'message' => 'Use POST for write actions.'], 405);
     }
@@ -1091,6 +1246,18 @@ try {
 
     if ($action === 'update_lead') {
         codex_api_update_lead((int) codex_api_value('lead_id', 0), (array) codex_api_value('fields', []));
+    }
+
+    if ($action === 'mobile_setup_token') {
+        codex_api_mobile_setup_token();
+    }
+
+    if ($action === 'mobile_push_subscription_save') {
+        codex_api_mobile_push_save();
+    }
+
+    if ($action === 'mobile_push_subscription_remove') {
+        codex_api_mobile_push_remove();
     }
 
     if ($action === 'merge_leads') {

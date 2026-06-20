@@ -403,6 +403,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 try {
                     var response = await fetch(endpoint, {
                         method: 'POST',
+                        credentials: 'same-origin',
+                        cache: 'no-store',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'

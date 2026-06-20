@@ -348,6 +348,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         try {
             const response = await fetch(aiPanel.dataset.endpoint, {
                 method: 'POST',
+                credentials: 'same-origin',
+                cache: 'no-store',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'

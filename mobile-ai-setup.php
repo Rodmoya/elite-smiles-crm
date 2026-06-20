@@ -27,7 +27,7 @@ if ($token === '') {
         'user_id' => (int) ($user['id'] ?? 0),
         'email' => (string) ($user['email'] ?? ''),
     ]);
-    redirect(base_url('mobile-ai'));
+    redirect(base_url('mobile-ai/?welcome=1'));
 }
 ?>
 <!doctype html>

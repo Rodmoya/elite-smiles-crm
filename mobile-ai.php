@@ -25,6 +25,7 @@ $tab = strtolower(trim((string) get('tab', 'assistant')));
 if (!in_array($tab, ['assistant', 'notifications'], true)) {
     $tab = 'assistant';
 }
+$showWelcome = get('welcome') === '1';
 
 function mobile_ai_portal_notification_rows(int $limit = 20): array
 {
@@ -56,7 +57,7 @@ function mobile_ai_portal_notification_rows(int $limit = 20): array
             $items[] = [
                 'id' => 'msg-' . (int) ($row['id'] ?? 0),
                 'type' => 'reply',
-                'title' => ($leadName !== '' ? $leadName : 'Lead reply') . ($leadId > 0 ? ' · Lead #' . $leadId : ''),
+                'title' => ($leadName !== '' ? $leadName : 'Lead reply') . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
                 'message' => trim((string) ($row['body'] ?? '')),
                 'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
                 'is_new' => (int) ($row['is_read'] ?? 0) === 0,
@@ -105,7 +106,7 @@ function mobile_ai_portal_notification_rows(int $limit = 20): array
             $items[] = [
                 'id' => 'act-' . (int) ($row['id'] ?? 0),
                 'type' => $type,
-                'title' => $label . ': ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' · Lead #' . $leadId : ''),
+                'title' => $label . ': ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
                 'message' => trim((string) ($row['body'] ?? '')),
                 'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
                 'is_new' => false,
@@ -277,27 +278,95 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             font-size: 14px;
             line-height: 1.6;
         }
-        .composer {
+        .assistant-layout {
+            display: grid;
+            gap: 16px;
+            min-height: 58vh;
+        }
+        .welcome-card {
+            display: grid;
+            gap: 10px;
+            padding: 18px;
+            border-radius: 22px;
+            border: 1px solid rgba(187,142,88,0.32);
+            background: linear-gradient(180deg, rgba(255,248,238,0.95), rgba(255,255,255,0.9));
+        }
+        .welcome-card strong {
+            font-size: 18px;
+        }
+        .assistant-thread {
+            display: grid;
+            gap: 12px;
+            align-content: start;
+        }
+        .bubble {
+            max-width: 100%;
+            padding: 16px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.78);
+        }
+        .bubble.user {
+            margin-left: auto;
+            background: #111111;
+            border-color: #111111;
+            color: #fff;
+        }
+        .bubble.system {
+            background: linear-gradient(180deg, #fff, #f9f4ec);
+        }
+        .bubble-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .bubble.user .bubble-label {
+            color: rgba(255,255,255,0.7);
+        }
+        .bubble p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.65;
+            color: inherit;
+        }
+        .assistant-dock {
             position: sticky;
             bottom: 0;
             display: grid;
-            grid-template-columns: 1fr auto;
+            gap: 12px;
+            margin-top: auto;
+            padding: 10px 0 calc(env(safe-area-inset-bottom) + 4px);
+            background: linear-gradient(180deg, rgba(244,239,231,0) 0%, rgba(244,239,231,0.92) 18%, rgba(244,239,231,1) 100%);
+        }
+        .composer {
+            display: grid;
             gap: 10px;
-            margin-top: 18px;
             padding: 12px;
             border-radius: 24px;
             background: var(--panel-strong);
             border: 1px solid var(--line);
             backdrop-filter: blur(14px);
         }
+        .composer-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+        }
         .composer input {
             width: 100%;
+            min-height: 44px;
             border: 0;
             outline: 0;
-            background: transparent;
+            background: rgba(255,255,255,0.92);
             color: var(--ink);
             font-size: 15px;
-            padding: 8px 4px;
+            padding: 0 14px;
+            border-radius: 16px;
         }
         .btn, .quick {
             display: inline-flex;
@@ -320,6 +389,11 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             border-color: var(--line);
             color: var(--ink);
         }
+        .btn.ghost {
+            background: rgba(255,255,255,0.92);
+            border-color: var(--line);
+            color: var(--ink);
+        }
         .btn.disabled {
             background: #dad2c7;
             color: #7b7369;
@@ -330,18 +404,19 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             gap: 12px;
         }
         .quick-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 10px;
         }
         .quick {
-            min-height: 64px;
-            padding: 14px;
+            min-height: 48px;
+            padding: 12px 14px;
             border-color: var(--line);
             background: linear-gradient(180deg, #fff, #f7f1e8);
             color: var(--ink);
             text-align: center;
             line-height: 1.3;
+            font-size: 13px;
         }
         .notification {
             border: 1px solid var(--line);
@@ -440,7 +515,22 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
             justify-content: flex-end;
         }
         @media (max-width: 640px) {
-            .quick-grid { grid-template-columns: 1fr 1fr; }
+            .hero h1 {
+                font-size: 34px;
+            }
+            .quick-grid {
+                gap: 8px;
+            }
+            .quick {
+                flex: 1 1 calc(50% - 8px);
+            }
+            .composer-row {
+                grid-template-columns: 1fr auto;
+            }
+            .composer-row .btn {
+                min-width: 52px;
+                padding: 0 12px;
+            }
         }
     </style>
 </head>
@@ -458,39 +548,61 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         </section>
 
         <nav class="tabs" aria-label="Mobile AI tabs">
-            <a class="tab <?= $tab === 'assistant' ? 'active' : '' ?>" href="<?= e(base_url('mobile-ai?tab=assistant')) ?>">Assistant</a>
-            <a class="tab <?= $tab === 'notifications' ? 'active' : '' ?>" href="<?= e(base_url('mobile-ai?tab=notifications')) ?>">Notifications</a>
+            <a class="tab <?= $tab === 'assistant' ? 'active' : '' ?>" href="<?= e(base_url('mobile-ai/?tab=assistant')) ?>">Assistant</a>
+            <a class="tab <?= $tab === 'notifications' ? 'active' : '' ?>" href="<?= e(base_url('mobile-ai/?tab=notifications')) ?>">Notifications</a>
         </nav>
 
         <?php if ($tab === 'assistant'): ?>
             <section class="section">
                 <div class="section-head">
                     <h2>Assistant</h2>
-                    <p class="section-copy">This shell is intentionally safe in Phase 1. Client-facing communication still requires draft review and approval before sending.</p>
+                    <p class="section-copy">Elite AI is ready to help with leads, replies, follow-ups, and notifications. Type an instruction below to begin.</p>
                 </div>
                 <div class="section-body">
-                    <div class="quick-grid">
-                        <div class="quick">Morning Sweep</div>
-                        <div class="quick">New Leads</div>
-                        <div class="quick">Replies</div>
-                        <div class="quick">Follow-ups</div>
-                        <div class="quick">No Answer Review</div>
-                        <div class="quick">Booked Consults</div>
-                    </div>
-
-                    <div class="settings">
-                        <div class="setting">
-                            <div>
-                                <strong>AI actions</strong>
-                                <p class="meta-copy">Command plumbing is ready. CRM-safe execution comes in the next phase.</p>
+                    <div class="assistant-layout">
+                        <?php if ($showWelcome): ?>
+                            <div class="welcome-card">
+                                <strong>Setup complete</strong>
+                                <p class="meta-copy">You are now in the permanent Elite AI portal. Add this page to your Home Screen for daily use so you are not relying on the one-time setup link.</p>
+                                <p class="meta-copy">Use the Share button in Safari, then choose <em>Add to Home Screen</em>.</p>
                             </div>
-                            <span class="badge normal">Coming Soon</span>
-                        </div>
-                    </div>
+                        <?php endif; ?>
 
-                    <div class="composer" aria-label="Assistant command shell">
-                        <input type="text" placeholder="Ask Elite AI..." disabled>
-                        <button class="btn disabled" type="button" disabled>Mic Soon</button>
+                        <div class="assistant-thread" id="assistant-thread" aria-live="polite">
+                            <article class="bubble system">
+                                <span class="bubble-label">Elite AI</span>
+                                <p>This assistant is currently read-only. I can help you think through leads, replies, follow-ups, and notifications without sending messages or changing pipeline stages yet.</p>
+                            </article>
+                        </div>
+
+                        <div class="assistant-dock">
+                            <div class="quick-grid" aria-label="Assistant quick actions">
+                                <button class="quick" type="button" data-action="morning-sweep">Morning Sweep</button>
+                                <button class="quick" type="button" data-action="new-leads">New Leads</button>
+                                <button class="quick" type="button" data-action="replies">Replies</button>
+                                <button class="quick" type="button" data-action="follow-ups">Follow-ups</button>
+                                <button class="quick" type="button" data-action="no-answer-review">No Answer Review</button>
+                                <button class="quick" type="button" data-action="notifications">Notifications</button>
+                            </div>
+
+                            <div class="settings">
+                                <div class="setting">
+                                    <div>
+                                        <strong>AI actions</strong>
+                                        <p class="meta-copy">The composer is live for read-only guidance. CRM-safe execution and drafts come in the next phase.</p>
+                                    </div>
+                                    <span class="badge normal">Read Only</span>
+                                </div>
+                            </div>
+
+                            <form class="composer" id="assistant-composer" aria-label="Assistant command shell">
+                                <div class="composer-row">
+                                    <input id="assistant-input" type="text" placeholder="Ask Elite AI what to do..." autocomplete="off">
+                                    <button class="btn ghost" id="assistant-mic" type="button" aria-label="Microphone placeholder">Mic</button>
+                                    <button class="btn" type="submit">Send</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -522,7 +634,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                                 <p class="meta-copy" style="margin-top:8px;">
                                     <?= e(format_datetime((string) ($item['created_at'] ?? ''), 'M j, Y g:i A')) ?>
                                     <?php if (!empty($item['lead_name'])): ?>
-                                        · <?= e((string) $item['lead_name']) ?>
+                                        - <?= e((string) $item['lead_name']) ?>
                                     <?php endif; ?>
                                 </p>
                                 <div class="action-row">
@@ -562,7 +674,7 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
         <?php endif; ?>
 
         <div class="logout">
-            <form method="POST" action="<?= e(base_url('mobile-ai')) ?>">
+            <form method="POST" action="<?= e(base_url('mobile-ai/')) ?>">
                 <?= csrf_input() ?>
                 <input type="hidden" name="action" value="logout_mobile_ai">
                 <button class="btn secondary" type="submit">Logout Mobile</button>
@@ -576,6 +688,109 @@ $fullName = $fullName !== '' ? $fullName : (string) ($mobileUser['email'] ?? 'Us
                 navigator.serviceWorker.register('<?= e(base_url('mobile-ai/sw.js')) ?>').catch(function () {});
             });
         }
+
+        (function () {
+            var quickActions = {
+                'morning-sweep': {
+                    prompt: 'Run a morning sweep.',
+                    response: 'Morning Sweep is in read-only mode right now. In the next phase, Elite AI will summarize overnight leads, unread replies, and follow-ups due first so you can start the day fast.'
+                },
+                'new-leads': {
+                    prompt: 'Show me the new leads queue.',
+                    response: 'New Leads is ready as a guidance action. Phase 2 will let me pull the latest lead list into this thread and surface who needs first touch next.'
+                },
+                'replies': {
+                    prompt: 'Show me the latest replies.',
+                    response: 'Replies is connected conceptually to the live notifications feed. For now, tap Notifications to review the newest inbound messages in read-only mode.'
+                },
+                'follow-ups': {
+                    prompt: 'What follow-ups should I review?',
+                    response: 'Follow-ups is staged for read-only coaching first. Phase 2 will let me summarize due follow-ups and suggest the next best manual action.'
+                },
+                'no-answer-review': {
+                    prompt: 'Review no-answer leads.',
+                    response: 'No Answer Review is intentionally held in safe mode. Once connected, this action will identify leads with repeated outreach and no response without moving any stages automatically.'
+                },
+                'notifications': {
+                    prompt: 'Open notifications.',
+                    response: 'Opening the live notifications feed now so you can review replies, new leads, and follow-up alerts with full CRM context.'
+                }
+            };
+
+            var thread = document.getElementById('assistant-thread');
+            var form = document.getElementById('assistant-composer');
+            var input = document.getElementById('assistant-input');
+            var mic = document.getElementById('assistant-mic');
+            if (!thread || !form || !input) {
+                return;
+            }
+
+            function appendBubble(label, text, role) {
+                var article = document.createElement('article');
+                article.className = 'bubble ' + role;
+
+                var badge = document.createElement('span');
+                badge.className = 'bubble-label';
+                badge.textContent = label;
+
+                var paragraph = document.createElement('p');
+                paragraph.textContent = text;
+
+                article.appendChild(badge);
+                article.appendChild(paragraph);
+                thread.appendChild(article);
+                article.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
+
+            function handlePrompt(prompt, actionKey) {
+                var cleanPrompt = (prompt || '').trim();
+                if (cleanPrompt === '') {
+                    return;
+                }
+
+                appendBubble('You', cleanPrompt, 'user');
+
+                if (actionKey === 'notifications') {
+                    appendBubble('Elite AI', quickActions[actionKey].response, 'system');
+                    window.setTimeout(function () {
+                        window.location.href = '<?= e(base_url('mobile-ai/?tab=notifications')) ?>';
+                    }, 350);
+                    return;
+                }
+
+                if (actionKey && quickActions[actionKey]) {
+                    appendBubble('Elite AI', quickActions[actionKey].response, 'system');
+                    return;
+                }
+
+                appendBubble('Elite AI', 'I heard: "' + cleanPrompt + '". The composer is live in read-only mode, so I can confirm the request and guide the next step, but I am not sending messages or changing lead stages yet.', 'system');
+            }
+
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var prompt = input.value;
+                input.value = '';
+                handlePrompt(prompt, '');
+            });
+
+            document.querySelectorAll('[data-action]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var key = button.getAttribute('data-action') || '';
+                    if (!quickActions[key]) {
+                        return;
+                    }
+                    input.value = quickActions[key].prompt;
+                    handlePrompt(quickActions[key].prompt, key);
+                    input.value = '';
+                });
+            });
+
+            if (mic) {
+                mic.addEventListener('click', function () {
+                    appendBubble('Elite AI', 'Voice capture is reserved for a later phase. For now, type a command and I will keep the flow read-only and review-safe.', 'system');
+                });
+            }
+        }());
     </script>
 </body>
 </html>

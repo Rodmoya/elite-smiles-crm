@@ -158,6 +158,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 </article>
             </div>
             <div class="border-t border-slate-200 bg-white px-5 py-4">
+                <div id="crm-ai-quick-actions" class="mb-3 flex flex-wrap gap-2"></div>
                 <form id="crm-ai-form" class="flex items-center gap-3">
                     <input id="crm-ai-input" type="text" enterkeyhint="send" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
                     <button type="button" id="crm-ai-mic" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100" aria-label="Microphone placeholder">
@@ -245,6 +246,23 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     const aiSend = document.getElementById('crm-ai-send');
     const aiMic = document.getElementById('crm-ai-mic');
     const aiNotifications = document.getElementById('crm-ai-notifications');
+    const aiQuickActions = [
+        { label: 'Morning Sweep', quick_action: 'morning-sweep' },
+        { label: 'New Leads', quick_action: 'new-leads' },
+        { label: 'Replies', quick_action: 'replies' },
+        { label: 'Follow-ups', quick_action: 'follow-ups' },
+        { label: 'No Answer Review', quick_action: 'no-answer-review' },
+        { label: 'Notifications', quick_action: 'notifications' },
+    ];
+
+    function aiContext() {
+        return {
+            page: aiPanel && aiPanel.dataset ? aiPanel.dataset.page || '' : '',
+            page_title: aiPanel && aiPanel.dataset ? aiPanel.dataset.pageTitle || '' : '',
+            current_url: aiPanel && aiPanel.dataset ? aiPanel.dataset.currentUrl || window.location.href : window.location.href,
+            lead_id: Number(aiPanel && aiPanel.dataset ? (aiPanel.dataset.leadId || 0) : 0)
+        };
+    }
 
     function applyDesktopCollapsed(collapsed) {
         document.body.classList.toggle('crm-sidebar-collapsed', collapsed);
@@ -286,16 +304,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         aiPanel.classList.toggle('translate-y-2', !open);
         if (open) {
             positionAssistantPanel();
+            buildQuickActions();
             if (aiInput) aiInput.focus();
         }
     }
 
-    function assistantBubble(label, text, role, cards, loading) {
+    function assistantBubble(label, text, role, cards, loading, actions) {
         if (!aiThread) return null;
         const article = document.createElement('article');
         article.className = 'max-w-[88%] rounded-3xl border border-slate-200 p-4 shadow-sm ' + (role === 'user' ? 'ml-auto bg-slate-900 text-white' : 'bg-white text-slate-700');
         if (loading) article.classList.add('opacity-70');
-
 
         const body = document.createElement('p');
         body.className = 'text-sm leading-6 whitespace-pre-line';
@@ -327,9 +345,137 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             article.appendChild(wrap);
         }
 
+        if (actions && actions.length) {
+            const actionWrap = document.createElement('div');
+            actionWrap.className = 'mt-3 flex flex-wrap gap-2';
+            actions.forEach(function (action) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium';
+                button.textContent = action.label || ('Action: ' + String(action.type || ''));
+                button.title = action.help || '';
+                button.addEventListener('click', function () {
+                    runAssistantAction(action);
+                });
+                actionWrap.appendChild(button);
+            });
+            article.appendChild(actionWrap);
+        }
+
         aiThread.appendChild(article);
         aiThread.scrollTop = aiThread.scrollHeight;
         return article;
+    }
+
+    function buildQuickActions() {
+        const quickActionContainer = document.getElementById('crm-ai-quick-actions');
+        if (!quickActionContainer) return;
+
+        quickActionContainer.innerHTML = '';
+        aiQuickActions.forEach(function (entry) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium';
+            button.textContent = entry.label;
+            button.addEventListener('click', function () {
+                runAssistant('', entry.quick_action);
+            });
+            quickActionContainer.appendChild(button);
+        });
+    }
+
+    function setBusy(isBusy) {
+        if (!aiPanel) return;
+        aiInput.disabled = isBusy;
+        aiForm.querySelectorAll('button').forEach(function (btn) {
+            btn.disabled = isBusy;
+        });
+        const quickActionContainer = document.getElementById('crm-ai-quick-actions');
+        if (quickActionContainer) {
+            quickActionContainer.querySelectorAll('button').forEach(function (btn) {
+                btn.disabled = isBusy;
+            });
+        }
+        if (aiNotifications) aiNotifications.disabled = isBusy;
+    }
+
+    function formatDraftPreview(draft, actionType) {
+        if (!draft || typeof draft !== 'object') {
+            return '';
+        }
+
+        const smsText = String(draft.reply || draft.message || draft.text || draft.body || '').trim();
+
+        if (actionType === 'draft_sms') {
+            return smsText ? 'Suggested SMS draft:\n\n' + smsText : '';
+        }
+
+        if (actionType === 'draft_email') {
+            const subject = String(draft.subject || '').trim();
+            const body = String(draft.body || '').trim();
+            return 'Suggested Email draft:\n\nSubject: ' + (subject || '(no subject)') + '\n\n' + (body || '(no body)');
+        }
+
+        return '';
+    }
+
+    async function runAssistantAction(action) {
+        if (!aiPanel || !aiThread || !action || !action.type || !action.lead_id) return;
+
+        assistantBubble('You', 'Prepare ' + (action.label || 'draft') + ' for lead #' + Number(action.lead_id), 'user');
+        const loading = assistantBubble('Elite AI', 'Preparing draft for approval...', 'assistant', [], true);
+        setBusy(true);
+
+        try {
+            const response = await fetch(aiPanel.dataset.endpoint, {
+                method: 'POST',
+                credentials: 'include',
+                cache: 'no-store',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    surface: 'desktop',
+                    assistant_action: action.type,
+                    lead_id: Number(action.lead_id || 0),
+                    prompt: action.help || '',
+                    instruction: action.help || '',
+                    quick_action: '',
+                    context: {
+                        page: aiPanel.dataset.page || '',
+                        page_title: aiPanel.dataset.pageTitle || '',
+                        current_url: aiPanel.dataset.currentUrl || window.location.href,
+                        lead_id: Number(action.lead_id || 0)
+                    }
+                })
+            });
+            const data = await response.json();
+            if (loading) loading.remove();
+
+            if (!response.ok || !data.ok) {
+                assistantBubble('Elite AI', data.message || 'Draft action failed.', 'assistant');
+                return;
+            }
+
+                    const draftPayload = (data.draft && typeof data.draft === 'object') ? data.draft : (data.payload && typeof data.payload === 'object' ? data.payload : {});
+                    const preview = formatDraftPreview(draftPayload, action.type || '');
+                    if (preview) {
+                        assistantBubble('Elite AI', preview + '\n\nDraft ready. Pending approval before send.', 'assistant');
+                        assistantBubble('Elite AI', 'Action queued: #' + String(data.action_id || 0), 'assistant');
+                        if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                            assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
+                        }
+                    } else {
+                        assistantBubble('Elite AI', data.message || 'Draft prepared.', 'assistant');
+                    }
+        } catch (error) {
+            if (loading) loading.remove();
+            assistantBubble('Elite AI', 'I hit an assistant error while preparing the draft.', 'assistant');
+        } finally {
+            setBusy(false);
+            aiInput.focus();
+        }
     }
 
     async function runAssistant(prompt, quickAction) {
@@ -339,11 +485,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
         assistantBubble('You', text || 'Run quick action', 'user');
         const loading = assistantBubble('Elite AI', 'Reviewing CRM context...', 'assistant', [], true);
-
-        aiInput.disabled = true;
-        if (aiSend) aiSend.disabled = true;
-        if (aiMic) aiMic.disabled = true;
-        if (aiNotifications) aiNotifications.disabled = true;
+        setBusy(true);
 
         try {
             const response = await fetch(aiPanel.dataset.endpoint, {
@@ -370,19 +512,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (loading) loading.remove();
 
             if (!response.ok || !data.ok) {
-                assistantBubble('Elite AI', data.message || 'I could not load a read-only answer right now.', 'assistant');
+                assistantBubble('Elite AI', data.message || 'I could not load an assistant answer right now.', 'assistant');
                 return;
             }
 
-            assistantBubble('Elite AI', data.answer || 'Read-only response ready.', 'assistant', data.cards || []);
+            assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, data.actions || []);
         } catch (error) {
             if (loading) loading.remove();
             assistantBubble('Elite AI', 'I hit an assistant error while loading CRM context. Please try again.', 'assistant');
         } finally {
-            aiInput.disabled = false;
-            if (aiSend) aiSend.disabled = false;
-            if (aiMic) aiMic.disabled = false;
-            if (aiNotifications) aiNotifications.disabled = false;
+            setBusy(false);
             aiInput.focus();
         }
     }

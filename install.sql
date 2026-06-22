@@ -179,6 +179,27 @@ CREATE TABLE IF NOT EXISTS `elite_ai_audit_logs` (
   KEY `idx_elite_ai_audit_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `elite_ai_action_queue` (
+  `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`           INT UNSIGNED NOT NULL,
+  `surface`           VARCHAR(32)  NOT NULL DEFAULT 'desktop',
+  `action_type`       VARCHAR(60)  NOT NULL,
+  `lead_id`           INT UNSIGNED NOT NULL,
+  `status`            VARCHAR(20)  NOT NULL DEFAULT 'pending_review',
+  `request_prompt`    TEXT              DEFAULT NULL,
+  `request_context_json` LONGTEXT       DEFAULT NULL,
+  `request_payload_json` LONGTEXT       DEFAULT NULL,
+  `draft_payload_json` LONGTEXT        DEFAULT NULL,
+  `created_at`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completed_at`      DATETIME             DEFAULT NULL,
+  `updated_at`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_elite_ai_action_queue_user` (`user_id`),
+  KEY `idx_elite_ai_action_queue_status` (`status`),
+  KEY `idx_elite_ai_action_queue_lead` (`lead_id`),
+  KEY `idx_elite_ai_action_queue_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ------------------------------------------------------------
 -- Seed all 200 landing pages (5 procedures x 8 cities x 5 variants)
 -- All set is_active=0 — activate them from the admin panel

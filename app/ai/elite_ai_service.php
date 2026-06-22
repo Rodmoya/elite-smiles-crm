@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/elite_ai_knowledge.php';
+require_once __DIR__ . '/../leads/lead_ai.php';
 
 if (!function_exists('elite_ai_ensure_schema')) {
     function elite_ai_ensure_schema(): void
@@ -28,6 +29,29 @@ if (!function_exists('elite_ai_ensure_schema')) {
                     KEY idx_elite_ai_audit_surface (surface),
                     KEY idx_elite_ai_audit_lead (lead_id),
                     KEY idx_elite_ai_audit_created (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+
+            db_query(
+                "CREATE TABLE IF NOT EXISTS elite_ai_action_queue (
+                    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    user_id INT UNSIGNED NOT NULL,
+                    surface VARCHAR(32) NOT NULL DEFAULT 'desktop',
+                    action_type VARCHAR(60) NOT NULL,
+                    lead_id INT UNSIGNED NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending_review',
+                    request_prompt TEXT DEFAULT NULL,
+                    request_context_json LONGTEXT DEFAULT NULL,
+                    request_payload_json LONGTEXT DEFAULT NULL,
+                    draft_payload_json LONGTEXT DEFAULT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at DATETIME DEFAULT NULL,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    KEY idx_elite_ai_action_queue_user (user_id),
+                    KEY idx_elite_ai_action_queue_status (status),
+                    KEY idx_elite_ai_action_queue_lead (lead_id),
+                    KEY idx_elite_ai_action_queue_created (created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
         } catch (Throwable $e) {
@@ -737,6 +761,281 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
             'cards' => $cards,
             'tools_used' => ['lead_summary', 'lead_thread', 'knowledge_rules'],
             'lead_id' => $leadId,
+            'actions' => elite_ai_build_assistant_actions($lead),
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_build_assistant_actions')) {
+    function elite_ai_build_assistant_actions(array $lead): array
+    {
+        $actions = [];
+        $leadId = (int) ($lead['id'] ?? 0);
+        if ($leadId <= 0) {
+            return $actions;
+        }
+
+        if (trim((string) ($lead['phone'] ?? '')) !== '' && trim((string) ($lead['sms_opt_status'] ?? 'unknown')) !== 'opted_out') {
+            $actions[] = [
+                'type' => 'draft_sms',
+                'label' => 'Prepare SMS draft',
+                'lead_id' => $leadId,
+                'help' => 'Generate a SMS draft for human review.',
+                'channel' => 'sms',
+            ];
+        }
+
+        if (trim((string) ($lead['email'] ?? '')) !== '') {
+            $actions[] = [
+                'type' => 'draft_email',
+                'label' => 'Prepare Email draft',
+                'lead_id' => $leadId,
+                'help' => 'Generate an email draft for human review.',
+                'channel' => 'email',
+            ];
+        }
+
+        return $actions;
+    }
+}
+
+if (!function_exists('elite_ai_create_action_item')) {
+    function elite_ai_create_action_item(array $user, string $surface, array $lead, string $actionType, array $request, array $draft): int
+    {
+        $actionType = trim($actionType);
+        if ($actionType === '') {
+            return 0;
+        }
+
+        $leadId = (int) ($lead['id'] ?? 0);
+        if ($leadId <= 0) {
+            return 0;
+        }
+
+        $context = elite_ai_normalize_context($request);
+        $requestPrompt = trim((string) ($request['prompt'] ?? ''));
+
+        try {
+            $recent = db_one(
+                "SELECT id, draft_payload_json
+                 FROM elite_ai_action_queue
+                 WHERE user_id = :user_id
+                   AND action_type = :action_type
+                   AND lead_id = :lead_id
+                   AND status = :status
+                   AND request_prompt = :request_prompt
+                   AND draft_payload_json IS NOT NULL
+                   AND TRIM(draft_payload_json) <> ''
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+                 ORDER BY id DESC
+                 LIMIT 1",
+                [
+                    'user_id' => (int) ($user['id'] ?? 0),
+                    'action_type' => $actionType,
+                    'lead_id' => $leadId,
+                    'status' => 'pending_review',
+                    'request_prompt' => $requestPrompt,
+                ]
+            );
+
+            if (!empty($recent['id'])) {
+                return (int) $recent['id'];
+            }
+        } catch (Throwable $e) {
+            // Proceed with creating a new row on lookup failure.
+        }
+
+        try {
+            return (int) db_insert(
+                'INSERT INTO elite_ai_action_queue
+                    (user_id, surface, action_type, lead_id, status, request_prompt, request_context_json, request_payload_json, draft_payload_json, updated_at, completed_at)
+                 VALUES (:user_id, :surface, :action_type, :lead_id, :status, :request_prompt, :request_context_json, :request_payload_json, :draft_payload_json, :updated_at, :completed_at)',
+                [
+                    'user_id' => (int) ($user['id'] ?? 0),
+                    'surface' => $surface,
+                    'action_type' => $actionType,
+                    'lead_id' => $leadId,
+                    'status' => 'pending_review',
+                    'request_prompt' => $requestPrompt,
+                    'request_context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'request_payload_json' => json_encode($request, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'draft_payload_json' => json_encode($draft, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                    'completed_at' => null,
+                ]
+            );
+        } catch (Throwable $e) {
+            esm_log('elite_ai', 'Could not create action queue item.', [
+                'error' => $e->getMessage(),
+                'user_id' => (int) ($user['id'] ?? 0),
+                'lead_id' => $leadId,
+                'action_type' => $actionType,
+            ]);
+            return 0;
+        }
+    }
+}
+
+if (!function_exists('elite_ai_fallback_sms_draft')) {
+    function elite_ai_fallback_sms_draft(array $lead, string $instruction): array
+    {
+        $firstName = trim((string) ($lead['first_name'] ?? ''));
+        if ($firstName === '') {
+            $firstName = trim((string) (($parts = preg_split('/\s+/', trim((string) ($lead['full_name'] ?? '')))) ? ($parts[0] ?? 'there') : 'there'));
+            if ($firstName === '') {
+                $firstName = 'there';
+            }
+        }
+
+        $baseNote = 'Need manual review before sending.';
+        if ($instruction === '') {
+            $baseNote = 'Suggested follow-up draft ready for review.';
+        }
+
+        return [
+            'classification' => 'needs_human_review',
+            'reply' => 'Hi ' . $firstName . ', thanks for reaching out about your smile needs. We received your message and will follow up shortly to schedule a free consultation at your convenience.',
+            'note' => $baseNote . ' ' . $instruction,
+            'recommended_stage' => 'contacted',
+            'needs_human_review' => true,
+            'should_send' => false,
+            'confidence' => 0.0,
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_fallback_email_draft')) {
+    function elite_ai_fallback_email_draft(array $lead, string $instruction): array
+    {
+        $firstName = trim((string) ($lead['first_name'] ?? ''));
+        if ($firstName === '') {
+            $firstName = trim((string) (($parts = preg_split('/\s+/', trim((string) ($lead['full_name'] ?? '')))) ? ($parts[0] ?? 'there') : 'there'));
+            if ($firstName === '') {
+                $firstName = 'there';
+            }
+        }
+
+        $baseNote = 'Need manual review before sending.';
+        if ($instruction === '') {
+            $baseNote = 'Suggested email draft ready for review.';
+        }
+
+        return [
+            'classification' => 'needs_human_review',
+            'subject' => 'Re: Free Consultation Follow-up',
+            'body' => "Hi {$firstName},\n\nThank you for reaching out about your smile.\n\nWe received your message and a team member will follow up to help schedule your free consultation.\n\nThe Elite Smiles Team",
+            'note' => $baseNote . ' ' . $instruction,
+            'recommended_stage' => 'contacted',
+            'next_follow_up_at' => '',
+            'needs_human_review' => true,
+            'should_send' => false,
+            'confidence' => 0.0,
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_prepare_action_draft')) {
+    function elite_ai_prepare_action_draft(array $user, array $request, string $surface): array
+    {
+        $actionType = strtolower(trim((string) ($request['assistant_action'] ?? '')));
+        if (!in_array($actionType, ['draft_sms', 'draft_email'], true)) {
+            return ['ok' => false, 'message' => 'Unsupported assistant action.'];
+        }
+
+        $leadId = (int) ($request['lead_id'] ?? 0);
+        if ($leadId <= 0) {
+            return ['ok' => false, 'message' => 'Missing lead id for assistant action.'];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return ['ok' => false, 'message' => 'Lead not found.'];
+        }
+
+        $instruction = trim((string) ($request['instruction'] ?? ''));
+        if ($instruction === '') {
+            $instruction = 'Prepare a warm, human-reviewed follow-up draft based on the lead context and recent communication.';
+        }
+
+        if ($actionType === 'draft_sms') {
+            if (trim((string) ($lead['phone'] ?? '')) === '') {
+                return ['ok' => false, 'message' => 'Add a lead phone number before drafting SMS.'];
+            }
+            if (trim((string) ($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
+                return ['ok' => false, 'message' => 'This lead has opted out of SMS.'];
+            }
+
+            $result = lead_ai_generate_reply($lead, $instruction, 'sms_draft');
+            if (empty($result['ok'])) {
+                $result['data'] = elite_ai_fallback_sms_draft($lead, $instruction);
+            }
+
+            $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_sms', $request, (array) ($result['data'] ?? []));
+            return [
+                'ok' => true,
+                'surface' => $surface,
+                'action' => 'draft_sms',
+                'lead_id' => $leadId,
+                'action_id' => $actionId,
+                'draft' => $result['data'],
+                'status' => 'pending_review',
+                'message' => 'SMS draft created and queued for approval.',
+                'warning' => $result['ok'] ?? false ? null : (string) ($result['message'] ?? 'AI draft fallback used.'),
+            ];
+        }
+
+        if (trim((string) ($lead['email'] ?? '')) === '') {
+            return ['ok' => false, 'message' => 'Add a lead email address before drafting email.'];
+        }
+
+        $result = lead_ai_generate_email($lead, $instruction, 'email_draft');
+        if (empty($result['ok'])) {
+            $result['data'] = elite_ai_fallback_email_draft($lead, $instruction);
+        }
+
+            $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_email', $request, (array) ($result['data'] ?? []));
+            return [
+            'ok' => true,
+            'surface' => $surface,
+            'action' => 'draft_email',
+                'lead_id' => $leadId,
+                'action_id' => $actionId,
+                'draft' => $result['data'],
+                'status' => 'pending_review',
+                'message' => 'Email draft created and queued for approval.',
+                'warning' => $result['ok'] ?? false ? null : (string) ($result['message'] ?? 'AI draft fallback used.'),
+            ];
+    }
+}
+
+if (!function_exists('elite_ai_handle_action_request')) {
+    function elite_ai_handle_action_request(array $user, array $request): array
+    {
+        $surface = elite_ai_surface($request);
+        $result = elite_ai_prepare_action_draft($user, $request, $surface);
+        if (!empty($result['ok'])) {
+            $context = elite_ai_normalize_context($request);
+            elite_ai_log_interaction(
+                $user,
+                $surface,
+                (string) ($request['prompt'] ?? ''),
+                ['draft_' . (string) ($result['action'] ?? 'prepared')],
+                trim((string) ($result['message'] ?? 'Draft action prepared for review.')),
+                (int) ($result['lead_id'] ?? 0),
+                $context
+            );
+
+            return $result + [
+                'ok' => true,
+                'context' => $context,
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'surface' => $surface,
+            'message' => (string) ($result['message'] ?? 'Unable to prepare the requested action.'),
+            'context' => elite_ai_normalize_context($request),
         ];
     }
 }
@@ -944,7 +1243,7 @@ if (!function_exists('elite_ai_help_payload')) {
             : 'You can also ask me to summarize a specific lead by name.';
 
         return [
-            'answer' => 'Elite AI is in read-only mode. I can summarize leads, notifications, pipeline priorities, replies, follow-ups, No Answer review candidates, and morning sweep actions. ' . $pageHint,
+            'answer' => 'Elite AI is in assistant mode with draft-first safety: I can summarize leads, notifications, pipeline priorities, replies, follow-ups, No Answer review candidates, and morning sweep actions, and generate SMS/email drafts for approval without sending. ' . $pageHint,
             'cards' => [[
                 'title' => 'Try one of these prompts',
                 'items' => [
@@ -1061,6 +1360,7 @@ if (!function_exists('elite_ai_handle_request')) {
             'surface' => $surface,
             'answer' => $summary,
             'cards' => array_values((array) ($payload['cards'] ?? [])),
+            'actions' => array_values((array) ($payload['actions'] ?? [])),
             'tools_used' => array_values((array) ($payload['tools_used'] ?? [])),
             'lead_id' => $leadId,
             'context' => $context,

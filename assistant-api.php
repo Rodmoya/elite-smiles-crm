@@ -45,9 +45,13 @@ if (!$user || (int) ($user['id'] ?? 0) <= 0) {
 $request['surface'] = strtolower(trim((string) ($request['surface'] ?? $surface))) === 'mobile' ? 'mobile' : 'desktop';
 
 try {
+    $assistantAction = trim((string) ($request['assistant_action'] ?? ''));
+    if ($assistantAction !== '') {
+        elite_ai_api_response(elite_ai_handle_action_request((array) $user, (array) $request));
+    }
+
     elite_ai_api_response(elite_ai_handle_request((array) $user, (array) $request));
 } catch (Throwable $e) {
     esm_log('elite_ai', 'Assistant API request failed.', ['error' => $e->getMessage()]);
     elite_ai_api_response(['ok' => false, 'message' => 'Assistant request failed.'], 500);
 }
-

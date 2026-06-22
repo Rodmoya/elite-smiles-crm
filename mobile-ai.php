@@ -150,6 +150,35 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             gap: 8px;
             margin-top: 10px;
         }
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .quick-action-btn {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: #ffffff;
+            border-radius: 999px;
+            color: var(--ink);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 12px;
+            line-height: 1;
+        }
+        .action-btn {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: #f9fafb;
+            color: var(--ink);
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 7px 10px;
+            margin-right: 6px;
+            margin-top: 6px;
+        }
         .result-card {
             border: 1px solid var(--line);
             border-radius: 12px;
@@ -284,6 +313,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             </section>
 
             <section class="composer-wrap" aria-label="Assistant composer">
+                <div class="quick-actions" id="assistant-quick-actions" aria-label="Quick actions"></div>
                 <form class="composer" id="assistant-composer">
                     <input id="assistant-input" type="text" placeholder="Ask Elite AI what to do..." autocomplete="off" enterkeyhint="send">
                     <button id="assistant-mic" type="button" aria-label="Microphone placeholder">
@@ -333,6 +363,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var form = document.getElementById('assistant-composer');
             var input = document.getElementById('assistant-input');
             var mic = document.getElementById('assistant-mic');
+            var quickActions = document.getElementById('assistant-quick-actions');
             if (!thread || !form || !input) {
                 return;
             }
@@ -346,7 +377,16 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 tab: 'assistant'
             };
 
-            function createMessage(role, text, cards, isLoading) {
+            var quickActionItems = [
+                { label: 'Morning Sweep', quick_action: 'morning-sweep' },
+                { label: 'New Leads', quick_action: 'new-leads' },
+                { label: 'Replies', quick_action: 'replies' },
+                { label: 'Follow-ups', quick_action: 'follow-ups' },
+                { label: 'No Answer Review', quick_action: 'no-answer-review' },
+                { label: 'Notifications', quick_action: 'notifications' },
+            ];
+
+            function createMessage(role, text, cards, actions, isLoading) {
                 var article = document.createElement('article');
                 article.className = 'message ' + role + (isLoading ? ' loading' : '');
 
@@ -377,6 +417,20 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     });
                     article.appendChild(cardsWrap);
                 }
+                if (actions && actions.length) {
+                    var actionWrap = document.createElement('div');
+                    actions.forEach(function (action) {
+                        var actionButton = document.createElement('button');
+                        actionButton.type = 'button';
+                        actionButton.className = 'action-btn';
+                        actionButton.textContent = action.label || ('Action: ' + String(action.type || ''));
+                        actionButton.addEventListener('click', function () {
+                            runAssistantAction(action);
+                        });
+                        actionWrap.appendChild(actionButton);
+                    });
+                    article.appendChild(actionWrap);
+                }
 
                 thread.appendChild(article);
                 article.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -388,11 +442,109 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 form.querySelectorAll('button').forEach(function (button) {
                     button.disabled = isBusy;
                 });
+                if (quickActions) {
+                    quickActions.querySelectorAll('button').forEach(function (button) {
+                        button.disabled = isBusy;
+                    });
+                }
             }
 
-            async function sendPrompt(prompt) {
+            function formatDraftPreview(draft, actionType) {
+                if (!draft || typeof draft !== 'object') {
+                    return '';
+                }
+                var smsText = String(draft.reply || draft.message || draft.text || draft.body || '').trim();
+                if (actionType === 'draft_sms') {
+                    return smsText ? 'Suggested SMS draft:\n\n' + smsText : '';
+                }
+                if (actionType === 'draft_email') {
+                    var subject = String(draft.subject || '').trim();
+                    var body = String(draft.body || '').trim();
+                    return 'Suggested Email draft:\n\nSubject: ' + (subject || '(no subject)') + '\n\n' + (body || '(no body)');
+                }
+                return '';
+            }
+
+            function buildQuickActions() {
+                if (!quickActions) {
+                    return;
+                }
+                quickActions.innerHTML = '';
+                quickActionItems.forEach(function (entry) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'quick-action-btn';
+                    button.textContent = entry.label;
+                    button.addEventListener('click', function () {
+                        sendPrompt('', entry.quick_action);
+                    });
+                    quickActions.appendChild(button);
+                });
+            }
+
+            async function runAssistantAction(action) {
+                if (!action || !action.type || !action.lead_id) {
+                    return;
+                }
+
+                createMessage('user', 'Prepare ' + String(action.label || 'draft') + ' for lead #' + Number(action.lead_id));
+                var loading = createMessage('assistant', 'Preparing draft for approval...', [], null, true);
+                setBusy(true);
+
+                try {
+                    var response = await fetch(endpoint, {
+                        method: 'POST',
+                        credentials: 'include',
+                        cache: 'no-store',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            surface: 'mobile',
+                            assistant_action: action.type,
+                            lead_id: Number(action.lead_id || 0),
+                            prompt: action.help || '',
+                            instruction: action.help || '',
+                            quick_action: '',
+                            context: {
+                                page: baseContext.page,
+                                page_title: baseContext.page_title,
+                                current_url: baseContext.current_url,
+                                lead_id: Number(action.lead_id || 0)
+                            }
+                        })
+                    });
+                    var data = await response.json();
+                    loading.remove();
+
+                    if (!response.ok || !data.ok) {
+                        createMessage('assistant', data.message || 'Draft action failed.');
+                        return;
+                    }
+
+                    var draftPayload = data.draft || (data.payload && typeof data.payload === 'object' ? data.payload : {});
+                    var preview = formatDraftPreview(draftPayload, action.type || '');
+                    if (preview) {
+                        createMessage('assistant', preview + '\n\nDraft ready. Pending approval before send.');
+                        if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                            createMessage('assistant', 'Note: ' + String(data.warning));
+                        }
+                    } else {
+                        createMessage('assistant', data.message || 'Draft prepared.');
+                    }
+                } catch (error) {
+                    loading.remove();
+                    createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
+                } finally {
+                    setBusy(false);
+                    input.focus();
+                }
+            }
+
+            async function sendPrompt(prompt, quickAction) {
                 var cleanPrompt = (prompt || '').trim();
-                if (!cleanPrompt) {
+                if (!cleanPrompt && !quickAction) {
                     return;
                 }
 
@@ -412,7 +564,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         body: JSON.stringify({
                             surface: 'mobile',
                             prompt: cleanPrompt,
-                            quick_action: '',
+                            quick_action: quickAction || '',
                             context: baseContext
                         })
                     });
@@ -425,7 +577,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
-                    createMessage('assistant', data.answer || 'Ready.', data.cards || []);
+                    var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], data.actions || []);
                 } catch (error) {
                     loading.remove();
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
@@ -454,6 +606,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     createMessage('assistant', 'Voice is not connected yet. Type the request for now.');
                 });
             }
+
+            buildQuickActions();
         }());
     </script>
 </body>

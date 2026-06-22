@@ -876,6 +876,45 @@ if (!function_exists('elite_ai_create_action_item')) {
     }
 }
 
+if (!function_exists('elite_ai_sms_draft_has_text')) {
+    function elite_ai_sms_draft_has_text(array $draft): bool
+    {
+        $reply = trim((string) ($draft['reply'] ?? $draft['message'] ?? $draft['text'] ?? $draft['body'] ?? ''));
+        return $reply !== '';
+    }
+}
+
+if (!function_exists('elite_ai_email_draft_has_text')) {
+    function elite_ai_email_draft_has_text(array $draft): bool
+    {
+        $subject = trim((string) ($draft['subject'] ?? ''));
+        $body = trim((string) ($draft['body'] ?? ''));
+        return $subject !== '' && $body !== '';
+    }
+}
+
+if (!function_exists('elite_ai_ensure_sms_draft_payload')) {
+    function elite_ai_ensure_sms_draft_payload(array $draft, array $lead, string $instruction): array
+    {
+        if (elite_ai_sms_draft_has_text($draft)) {
+            return $draft;
+        }
+
+        return elite_ai_fallback_sms_draft($lead, $instruction);
+    }
+}
+
+if (!function_exists('elite_ai_ensure_email_draft_payload')) {
+    function elite_ai_ensure_email_draft_payload(array $draft, array $lead, string $instruction): array
+    {
+        if (elite_ai_email_draft_has_text($draft)) {
+            return $draft;
+        }
+
+        return elite_ai_fallback_email_draft($lead, $instruction);
+    }
+}
+
 if (!function_exists('elite_ai_fallback_sms_draft')) {
     function elite_ai_fallback_sms_draft(array $lead, string $instruction): array
     {
@@ -966,8 +1005,16 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
             }
 
             $result = lead_ai_generate_reply($lead, $instruction, 'sms_draft');
+            $usedFallback = false;
             if (empty($result['ok'])) {
                 $result['data'] = elite_ai_fallback_sms_draft($lead, $instruction);
+                $usedFallback = true;
+            }
+
+            $result['data'] = elite_ai_ensure_sms_draft_payload((array) ($result['data'] ?? []), $lead, $instruction);
+            if (!$usedFallback && !elite_ai_sms_draft_has_text((array) ($result['data'] ?? []))) {
+                $result['data'] = elite_ai_fallback_sms_draft($lead, $instruction);
+                $usedFallback = true;
             }
 
             $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_sms', $request, (array) ($result['data'] ?? []));
@@ -980,7 +1027,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'draft' => $result['data'],
                 'status' => 'pending_review',
                 'message' => 'SMS draft created and queued for approval.',
-                'warning' => $result['ok'] ?? false ? null : (string) ($result['message'] ?? 'AI draft fallback used.'),
+                'warning' => $usedFallback ? 'AI draft fallback used.' : null,
             ];
         }
 
@@ -989,22 +1036,30 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
         }
 
         $result = lead_ai_generate_email($lead, $instruction, 'email_draft');
+        $usedFallback = false;
         if (empty($result['ok'])) {
             $result['data'] = elite_ai_fallback_email_draft($lead, $instruction);
+            $usedFallback = true;
         }
 
-            $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_email', $request, (array) ($result['data'] ?? []));
-            return [
+        $result['data'] = elite_ai_ensure_email_draft_payload((array) ($result['data'] ?? []), $lead, $instruction);
+        if (!$usedFallback && !elite_ai_email_draft_has_text((array) ($result['data'] ?? []))) {
+            $result['data'] = elite_ai_fallback_email_draft($lead, $instruction);
+            $usedFallback = true;
+        }
+
+        $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_email', $request, (array) ($result['data'] ?? []));
+        return [
             'ok' => true,
             'surface' => $surface,
             'action' => 'draft_email',
-                'lead_id' => $leadId,
-                'action_id' => $actionId,
-                'draft' => $result['data'],
-                'status' => 'pending_review',
-                'message' => 'Email draft created and queued for approval.',
-                'warning' => $result['ok'] ?? false ? null : (string) ($result['message'] ?? 'AI draft fallback used.'),
-            ];
+            'lead_id' => $leadId,
+            'action_id' => $actionId,
+            'draft' => $result['data'],
+            'status' => 'pending_review',
+            'message' => 'Email draft created and queued for approval.',
+            'warning' => $usedFallback ? 'AI draft fallback used.' : null,
+        ];
     }
 }
 

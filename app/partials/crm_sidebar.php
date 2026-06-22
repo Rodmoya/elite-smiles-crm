@@ -419,6 +419,48 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         return '';
     }
 
+    function resolveDraftPayload(data) {
+        if (!data) {
+            return {};
+        }
+
+        if (data && typeof data === 'object' && typeof data.draft === 'object') {
+            return data.draft;
+        }
+
+        if (typeof data.payload === 'string') {
+            try {
+                const decoded = JSON.parse(data.payload);
+                if (decoded && typeof decoded === 'object') {
+                    return decoded;
+                }
+            } catch (error) {
+                // Keep fallback payload path.
+            }
+        }
+
+        if (typeof data.draft === 'string') {
+            try {
+                const decoded = JSON.parse(data.draft);
+                if (decoded && typeof decoded === 'object') {
+                    return decoded;
+                }
+            } catch (error) {
+                // Keep fallback payload path.
+            }
+        }
+
+        if (typeof data.payload === 'object') {
+            return data.payload;
+        }
+
+        if (typeof data.draft_preview === 'string' && data.draft_preview.trim() !== '') {
+            return { reply: String(data.draft_preview) };
+        }
+
+        return {};
+    }
+
     async function runAssistantAction(action) {
         if (!aiPanel || !aiThread || !action || !action.type || !action.lead_id) return;
 
@@ -458,12 +500,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
-                    const draftPayload = (data.draft && typeof data.draft === 'object') ? data.draft : (data.payload && typeof data.payload === 'object' ? data.payload : {});
-                    const preview = formatDraftPreview(draftPayload, action.type || '');
-                    if (preview) {
-                        assistantBubble('Elite AI', preview + '\n\nDraft ready. Pending approval before send.', 'assistant');
-                        assistantBubble('Elite AI', 'Action queued: #' + String(data.action_id || 0), 'assistant');
-                        if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+            const draftPayload = resolveDraftPayload(data);
+            const preview = formatDraftPreview(draftPayload, action.type || '');
+            if (preview) {
+                assistantBubble('Elite AI', preview + '\n\nDraft ready. Pending approval before send.', 'assistant');
+                assistantBubble('Elite AI', 'Action queued: #' + String(data.action_id || 0), 'assistant');
+                if (typeof data.warning === 'string' && data.warning.trim() !== '') {
                             assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
                         }
                     } else {

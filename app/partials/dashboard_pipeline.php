@@ -2100,7 +2100,7 @@ $consultationOptions = [
                                             Collapse
                                         </button>
                                     </div>
-                                    <p id="modal-composer-send-cue" class="w-full text-[11px] text-slate-500">SMS compose is manual. Review message carefully before send.</p>
+                                    <p id="modal-composer-send-cue" class="hidden w-full text-[11px] text-slate-500">SMS compose is manual. Review message carefully before send.</p>
 
                             </div>
 
@@ -2144,7 +2144,7 @@ $consultationOptions = [
                                 <div class="flex h-full min-h-0 w-full flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                                     <select
                                         id="modal-sms-template-select"
-                                        class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none"
+                                        class="hidden w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none"
                                     >
                                         <option value="">Write custom message</option>
                                         <?php foreach ($smsTemplateOptions as $templateKey => $template): ?>

@@ -2083,7 +2083,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 flex-col rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -2105,7 +2105,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-body" class="min-h-0 flex-1 overflow-y-auto">
+                            <div id="modal-composer-body" class="min-h-0 flex-1 overflow-hidden">
                             <div id="modal-ai-assistant-panel" class="hidden mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-3">
                                     <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
@@ -2140,9 +2140,9 @@ $consultationOptions = [
                                     </div>
                                 </div>
                             </div>
-                            <div id="modal-composer-panel-sms" data-composer-panel="sms">
+                            <div id="modal-composer-panel-sms" data-composer-panel="sms" class="h-full min-h-0">
                                 <label for="modal-sms-template-select" class="sr-only">Answer Template</label>
-                                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex h-full min-h-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                                     <select
                                         id="modal-sms-template-select"
                                         class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none"
@@ -2157,7 +2157,7 @@ $consultationOptions = [
                                         rows="4"
                                         aria-label="Text message"
                                         id="modal-lead-sms-input"
-                                        class="min-h-[150px] w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                        class="min-h-0 flex-1 resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                         placeholder="Type a message..."
                                     ></textarea>
 
@@ -2218,7 +2218,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-panel-email" data-composer-panel="email" class="mt-4 hidden rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                            <div id="modal-composer-panel-email" data-composer-panel="email" class="hidden h-full min-h-0 rounded-[1.5rem] border border-slate-200 bg-white p-4">
 
                                 <div class="hidden">
 
@@ -2243,7 +2243,7 @@ $consultationOptions = [
                                         rows="7"
                                         aria-label="Patient email"
                                     id="modal-lead-email-body-input"
-                                    class="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                    class="mt-2 max-h-[118px] w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Draft a polished patient email..."
                                 ></textarea>
 
@@ -2279,7 +2279,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-panel-note" data-composer-panel="note" class="mt-4 hidden rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                            <div id="modal-composer-panel-note" data-composer-panel="note" class="hidden h-full min-h-0 rounded-[1.5rem] border border-slate-200 bg-white p-4">
 
                                 <div class="hidden">
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Internal Note</p>
@@ -2289,7 +2289,7 @@ $consultationOptions = [
                                     <textarea
                                         rows="6"
                                         id="modal-communication-note-input"
-                                    class="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                    class="max-h-[150px] w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Add a clear internal note..."
                                 ></textarea>
 

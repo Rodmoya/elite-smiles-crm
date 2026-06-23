@@ -1952,7 +1952,7 @@ $consultationOptions = [
                                     </div>
                                 </div>
 
-                                <div class="min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1 xl:row-span-2">
+                                <div class="min-h-0 overflow-visible rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1 xl:row-span-2">
 
                                     <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
 
@@ -2082,7 +2082,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 w-full self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 

@@ -32,6 +32,7 @@ if (!function_exists('elite_money')) {
     }
 }
 if ($statsVariant === 'compact') {
+    $statsInline = !empty($statsInline);
     $compactStats = [
         ['label' => 'Total', 'value' => (string)($stats['total_leads'] ?? 0)],
         ['label' => 'Today', 'value' => (string)($stats['leads_today'] ?? 0)],
@@ -42,7 +43,7 @@ if ($statsVariant === 'compact') {
     ];
     ?>
 
-<section class="mb-4 overflow-x-auto rounded-[1.25rem] border border-slate-200 bg-white px-3 py-2 shadow-sm">
+<section class="<?= $statsInline ? 'overflow-x-auto rounded-[1.25rem] border border-slate-200 bg-white px-3 py-2 shadow-sm' : 'mb-4 overflow-x-auto rounded-[1.25rem] border border-slate-200 bg-white px-3 py-2 shadow-sm' ?>">
     <div class="grid min-w-[720px] grid-cols-6 divide-x divide-slate-100">
         <?php foreach ($compactStats as $item): ?>
             <div class="px-3 py-2">

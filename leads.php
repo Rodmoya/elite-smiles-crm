@@ -65,32 +65,21 @@ $pipelineRows = lead_pipeline_rows(250);
             </div>
         <?php endif; ?>
 
-        <section class="mb-6">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <section class="mb-4">
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] xl:items-end">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Lead Flow</p>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900 lg:text-4xl">Pipeline Board</h1>
-                    <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-                        Work leads from first touch to booked consultation and closed treatment. Open a card to text, note, update details, and move the lead.
-                    </p>
+                    <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900 lg:text-4xl">Pipeline Board</h1>
                 </div>
 
-                <div class="flex flex-wrap gap-3">
-                    <a href="<?= e(base_url('dashboard.php')) ?>" class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
-                        Home
-                    </a>
-                    <a href="<?= e(base_url('landing_pages.php')) ?>" class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
-                        Landing Pages
-                    </a>
-                </div>
+                <?php
+                    $statsVariant = 'compact';
+                    $statsInline = true;
+                    require __DIR__ . '/app/partials/dashboard_stats.php';
+                    unset($statsVariant, $statsInline);
+                ?>
             </div>
         </section>
-
-        <?php
-            $statsVariant = 'compact';
-            require __DIR__ . '/app/partials/dashboard_stats.php';
-            unset($statsVariant);
-        ?>
 
         <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
     </main>

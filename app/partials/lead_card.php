@@ -342,12 +342,15 @@ $showAttributionDetails = (
             <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-emerald-100 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200">
                 <?= e($leadInitials) ?>
             </span>
-            <div class="min-w-0">
-                <p class="text-[14px] font-semibold leading-5 text-slate-950"><?= e($leadName) ?></p>
+            <div class="min-w-0 flex-1">
+                <p class="truncate text-[14px] font-semibold leading-5 text-slate-950" title="<?= e($leadName) ?>"><?= e($leadName) ?></p>
                 <?php if ($contactLine !== ''): ?>
                     <p class="mt-0.5 truncate text-[11px] text-slate-500"><?= e($contactLine) ?></p>
                 <?php endif; ?>
             </div>
+            <span class="lead-card-value-preview shrink-0 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                <span data-role="lead-card-value-text"><?= e($displayValue) ?></span>
+            </span>
         </div>
     </div>
 
@@ -373,9 +376,6 @@ $showAttributionDetails = (
         <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
             <span class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"><?= e($leadPreferredContactText) ?></span>
             <span class="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700"><?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></span>
-            <span class="lead-card-value-preview ml-auto rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                <span data-role="lead-card-value-text"><?= e($displayValue) ?></span>
-            </span>
         </div>
     </div>
 

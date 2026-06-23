@@ -2009,16 +2009,6 @@ $consultationOptions = [
                                             <p class="mt-2 text-[11px] leading-5 text-slate-500">This saves to the real appointment field.</p>
                                         </div>
 
-                                        <div class="rounded-2xl bg-white px-4 py-4">
-                                            <label for="modal-lead-preferred-day-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Preferred Day</label>
-                                            <input type="text" id="modal-lead-preferred-day-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none" placeholder="Example: Thursday">
-                                        </div>
-
-                                        <div class="rounded-2xl bg-white px-4 py-4">
-                                            <label for="modal-lead-preferred-time-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Preferred Time</label>
-                                            <input type="text" id="modal-lead-preferred-time-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none" placeholder="Morning or afternoon">
-                                        </div>
-
                                     </div>
 
                                 </div>

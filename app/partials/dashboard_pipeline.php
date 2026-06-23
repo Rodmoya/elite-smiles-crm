@@ -2190,7 +2190,7 @@ $consultationOptions = [
                                     </div>
                                 </div>
 
-                                <div class="mt-3 flex flex-wrap gap-2">
+                                <div class="mt-3 hidden flex-wrap gap-2">
                                     <button
                                         type="button"
                                         id="modal-lead-load-thread-button"

@@ -1010,6 +1010,32 @@ $consultationOptions = [
 
                         type="button"
 
+                        id="workspace-save-main"
+
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+
+                        aria-label="Save changes"
+
+                        title="Save changes"
+
+                    >
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"></path>
+
+                            <path d="M17 21v-8H7v8"></path>
+
+                            <path d="M7 3v5h8"></path>
+
+                        </svg>
+
+                    </button>
+
+                    <button
+
+                        type="button"
+
                         id="lead-delete-button"
 
                         class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2285,7 +2311,7 @@ $consultationOptions = [
 
 
 
-            <div id="lead-detail-footer" class="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
+            <div id="lead-detail-footer" class="hidden shrink-0 border-t border-slate-200 bg-white px-6 py-4">
 
                 <div class="flex flex-wrap items-center gap-3">
 
@@ -2293,7 +2319,7 @@ $consultationOptions = [
 
                         type="button"
 
-                        id="workspace-save-main"
+                        id="workspace-save-main-legacy"
 
                         class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
 

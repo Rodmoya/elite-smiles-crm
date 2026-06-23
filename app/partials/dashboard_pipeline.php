@@ -1131,7 +1131,7 @@ $consultationOptions = [
 
 
 
-                <div class="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
+                <div class="hidden mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
@@ -1879,7 +1879,7 @@ $consultationOptions = [
 
 
                 <div id="workspace-tab-communications" class="workspace-tab-panel hidden">
-                    <div id="lead-communications-grid" class="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)_320px] xl:items-start">
+                    <div id="lead-communications-grid" class="grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px] xl:items-start">
 
                         <div class="contents">
 
@@ -1892,7 +1892,7 @@ $consultationOptions = [
 
                             <div class="contents">
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:col-span-2 xl:row-start-1">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-2 xl:row-start-1">
 
                                     <div class="flex items-center justify-between gap-3">
 
@@ -1908,7 +1908,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-unified-timeline" class="mt-3 max-h-[clamp(150px,30vh,250px)] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-unified-timeline" class="mt-3 max-h-[clamp(260px,44vh,420px)] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1918,7 +1918,7 @@ $consultationOptions = [
                                     </div>
                                 </div>
 
-                                <div class="hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-2">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1">
 
                                     <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
 
@@ -1963,7 +1963,7 @@ $consultationOptions = [
                                 </div>
 
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:row-start-3">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:row-start-2">
 
                                     <div class="flex items-center justify-between gap-3">
 
@@ -2001,7 +2001,7 @@ $consultationOptions = [
 
 
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3 xl:row-start-1">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3 xl:row-start-1 xl:row-span-2">
 
                                     <div class="flex items-center justify-between gap-3">
 
@@ -2011,7 +2011,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-activity-feed" class="mt-3 max-h-[clamp(160px,36vh,280px)] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-activity-feed" class="mt-3 max-h-[clamp(260px,60vh,560px)] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -2049,7 +2049,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="xl:col-start-2 xl:row-start-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sticky top-3 z-20 bg-white max-h-[520px] overflow-y-auto">
+                        <div id="lead-communication-composer-panel" class="xl:col-start-2 xl:row-start-2 rounded-2xl border border-blue-200 bg-white p-3 shadow-sm max-h-[380px] overflow-y-auto">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -3723,6 +3723,21 @@ $consultationOptions = [
 
         }
 
+        const legacySmsOptStatus = document.getElementById('legacy-modal-sms-opt-status');
+        if (legacySmsOptStatus) {
+            legacySmsOptStatus.className = 'mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-semibold';
+            if (safeStatus === 'opted_out') {
+                legacySmsOptStatus.textContent = 'SMS opted out';
+                legacySmsOptStatus.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
+            } else if (safeStatus === 'opted_in') {
+                legacySmsOptStatus.textContent = 'SMS opted in';
+                legacySmsOptStatus.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-700');
+            } else {
+                legacySmsOptStatus.textContent = 'SMS status unknown';
+                legacySmsOptStatus.classList.add('border-slate-200', 'bg-slate-50', 'text-slate-600');
+            }
+        }
+
         if (sendSmsButton) {
 
             sendSmsButton.disabled = safeStatus === 'opted_out' || isSendingSms || isSaving || isDeletingLead;
@@ -3749,6 +3764,13 @@ $consultationOptions = [
             } else {
                 smsDndSummary.textContent = 'Unknown';
             }
+        }
+
+        const legacySmsDndSummary = document.getElementById('legacy-modal-sms-dnd-summary');
+        if (legacySmsDndSummary) {
+            legacySmsDndSummary.textContent = safeStatus === 'opted_out'
+                ? 'Do Not Text'
+                : (safeStatus === 'opted_in' ? 'Can text' : 'Unknown');
         }
 
         refreshAiDraftUi();
@@ -4403,15 +4425,44 @@ $consultationOptions = [
             slate: 'border-slate-200 bg-slate-50 text-slate-800',
         };
 
+        const iconClasses = {
+            blue: 'border-blue-200 bg-blue-100 text-blue-700',
+            emerald: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+            amber: 'border-amber-200 bg-amber-100 text-amber-700',
+            rose: 'border-rose-200 bg-rose-100 text-rose-700',
+            slate: 'border-slate-200 bg-white text-slate-500',
+        };
+
+        function timelineIcon(type) {
+            const value = String(type || '').toLowerCase();
+            if (value.includes('sms') || value.includes('text')) {
+                return '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path>';
+            }
+            if (value.includes('email')) {
+                return '<path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path><rect x="2" y="4" width="20" height="16" rx="2"></rect>';
+            }
+            if (value.includes('note') || value.includes('follow-up') || value.includes('prepared')) {
+                return '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path>';
+            }
+            return '<path d="M12 8v4l3 3"></path><circle cx="12" cy="12" r="10"></circle>';
+        }
+
         unifiedTimeline.innerHTML = items.map((item) => `
             <div class="rounded-2xl border px-4 py-3 ${toneClasses[item.tone] || toneClasses.slate}">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
-                    <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
+                <div class="flex items-start gap-3">
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${iconClasses[item.tone] || iconClasses.slate}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${timelineIcon(item.type)}</svg>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
+                            <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
+                        </div>
+                        <p class="mt-2 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
+                        ${item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : ''}
+                        ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
+                    </div>
                 </div>
-                <p class="mt-2 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
-                ${item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : ''}
-                ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
             </div>
         `).join('');
 
@@ -5167,6 +5218,10 @@ function applyCommunicationViewportFit() {
         if (smsLeadName) smsLeadName.textContent = card.dataset.leadName || 'Lead';
 
         if (smsLeadPhone) smsLeadPhone.textContent = formatPhoneForDisplay(card.dataset.leadPhone || '') || 'No phone selected';
+
+        setText('legacy-modal-sms-lead-name', card.dataset.leadName || 'Lead', 'Lead');
+
+        setText('legacy-modal-sms-lead-phone', formatPhoneForDisplay(card.dataset.leadPhone || '') || 'No phone selected', 'No phone selected');
 
         if (smsInput) smsInput.value = defaultSmsMessage(card);
 
@@ -6719,6 +6774,17 @@ function applyCommunicationViewportFit() {
         });
     }
 
+    const legacySmsDndToggle = document.getElementById('legacy-modal-sms-dnd-toggle');
+    const legacySmsDndBody = document.getElementById('legacy-modal-sms-dnd-body');
+    if (legacySmsDndToggle && legacySmsDndBody) {
+        legacySmsDndToggle.addEventListener('click', function () {
+            const isExpanded = !legacySmsDndBody.classList.contains('hidden');
+            const nextExpanded = !isExpanded;
+            legacySmsDndBody.classList.toggle('hidden', !nextExpanded);
+            legacySmsDndToggle.setAttribute('aria-expanded', nextExpanded ? 'true' : 'false');
+        });
+    }
+
     if (aiCollapseToggle) {
         aiCollapseToggle.addEventListener('click', function () {
             setAiInstructionCollapsed(aiCollapseToggle.getAttribute('aria-expanded') === 'true');
@@ -7210,4 +7276,3 @@ function applyCommunicationViewportFit() {
     window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);})();
 
 </script>
-

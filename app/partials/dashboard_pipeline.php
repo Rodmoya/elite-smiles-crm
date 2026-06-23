@@ -1119,18 +1119,18 @@ $consultationOptions = [
                 <div id="workspace-tab-details" class="workspace-tab-panel">
 
                     <div class="mb-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <a href="#lead-detail-contact-section" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Contact</a>
-                        <a href="#lead-detail-opportunity-section" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Opportunity</a>
-                        <a href="#wrap-modal-lead-consultation-date-input" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Appointment</a>
-                        <a href="#lead-detail-tasks-section" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Tasks</a>
-                        <a href="#lead-detail-source-section" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Source</a>
-                        <a href="#lead-detail-workflow-section" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Workflow</a>
+                        <a href="#lead-detail-contact-section" data-detail-window-target="contact" class="lead-detail-window-button rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Contact</a>
+                        <a href="#lead-detail-opportunity-section" data-detail-window-target="opportunity" class="lead-detail-window-button rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Opportunity</a>
+                        <a href="#lead-detail-appointment-section" data-detail-window-target="appointment" class="lead-detail-window-button rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Appointment</a>
+                        <a href="#lead-detail-tasks-section" data-detail-window-target="tasks" class="lead-detail-window-button rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Tasks</a>
+                        <a href="#lead-detail-source-section" data-detail-window-target="source" class="lead-detail-window-button rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Source</a>
+                        <a href="#lead-detail-workflow-section" data-detail-window-target="workflow" class="lead-detail-window-button rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Workflow</a>
                     </div>
                     <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
 
                         <div class="space-y-5">
 
-                            <div id="lead-detail-contact-section" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                            <div id="lead-detail-contact-section" data-detail-window="contact" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
                                 <div class="mb-3">
 
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Identity</p>
@@ -1233,7 +1233,7 @@ $consultationOptions = [
 
 
 
-                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div data-detail-window="contact" class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div class="rounded-2xl bg-white px-4 py-4">
                                             <label for="modal-lead-dob-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Date of Birth</label>
                                             <input type="date" id="modal-lead-dob-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none">
@@ -1250,7 +1250,7 @@ $consultationOptions = [
                                         </div>
                                     </div>
 
-                            <div id="lead-detail-opportunity-section" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                            <div id="lead-detail-opportunity-section" data-detail-window="opportunity" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
                                 <div class="mb-3">
 
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Treatment & Qualification</p>
@@ -1371,17 +1371,12 @@ $consultationOptions = [
 
                         <div class="space-y-5">
 
-                            <div id="lead-detail-source-section" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                            <div id="lead-detail-appointment-section" data-detail-window="appointment" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
                                 <div class="mb-3">
-
-                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Source & Attribution</p>
-
+                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Appointment</p>
                                 </div>
 
-
-
                                 <div class="space-y-4">
-
                                     <div id="wrap-modal-lead-consultation-date-input" class="rounded-2xl bg-white px-4 py-4">
                                         <label for="modal-lead-consultation-date-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduled Consultation</label>
 
@@ -1396,8 +1391,19 @@ $consultationOptions = [
                                         >
 
                                     </div>
+                                </div>
+                            </div>
+
+                            <div id="lead-detail-source-section" data-detail-window="source" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
+                                <div class="mb-3">
+
+                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Source & Attribution</p>
+
+                                </div>
 
 
+
+                                <div class="space-y-4">
 
                                     <div id="wrap-modal-lead-source-input" class="rounded-2xl bg-white px-4 py-4">
 
@@ -1592,7 +1598,7 @@ $consultationOptions = [
 
 
 
-                            <div id="lead-detail-workflow-section" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                            <div id="lead-detail-workflow-section" data-detail-window="workflow" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
                                 <div class="mb-3">
 
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Workflow</p>
@@ -1678,7 +1684,7 @@ $consultationOptions = [
                                 </div>
 
                             </div>
-                            <div id="lead-detail-tasks-section" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                            <div id="lead-detail-tasks-section" data-detail-window="tasks" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
                                 <div class="mb-3">
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Tasks & Reminders</p>
                                 </div>
@@ -1936,7 +1942,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-activity-feed" class="mt-3 max-h-[340px] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-activity-feed" class="mt-3 max-h-[520px] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1948,17 +1954,17 @@ $consultationOptions = [
 
                                 </div>
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3">
+                                <details class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3">
 
-                                    <div class="flex items-center justify-between gap-3">
+                                    <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
 
-                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Email History</p>
+                                        <span class="text-xs uppercase tracking-[0.18em] text-slate-400">Email History</span>
 
-                                        <span class="text-[11px] font-medium text-slate-400">Patient email</span>
+                                        <span class="text-[11px] font-medium text-slate-400">Click to expand</span>
 
-                                    </div>
+                                    </summary>
 
-                                    <div id="modal-email-history" class="mt-3 max-h-[340px] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-email-history" class="mt-3 max-h-[280px] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1968,7 +1974,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                </div>
+                                </details>
                             </div>
                         </div>
 
@@ -2432,6 +2438,8 @@ $consultationOptions = [
 
 
     const tabButtons = Array.from(document.querySelectorAll('.workspace-tab-button'));
+    const detailWindowButtons = Array.from(document.querySelectorAll('[data-detail-window-target]'));
+    const detailWindowPanels = Array.from(document.querySelectorAll('[data-detail-window]'));
 
     const tabPanels = {
 
@@ -2442,6 +2450,48 @@ $consultationOptions = [
         communications: document.getElementById('workspace-tab-communications')
 
     };
+
+    function setActiveDetailWindow(windowName = 'contact') {
+        const safeWindowName = ['contact', 'opportunity', 'appointment', 'tasks', 'source', 'workflow'].includes(String(windowName))
+            ? String(windowName)
+            : 'contact';
+
+        detailWindowPanels.forEach((panel) => {
+            panel.classList.toggle('hidden', panel.dataset.detailWindow !== safeWindowName);
+        });
+
+        detailWindowButtons.forEach((button) => {
+            const active = button.dataset.detailWindowTarget === safeWindowName;
+            button.classList.toggle('border-slate-900', active);
+            button.classList.toggle('bg-slate-900', active);
+            button.classList.toggle('text-white', active);
+            button.classList.toggle('border-slate-200', !active);
+            button.classList.toggle('bg-white', !active);
+            button.classList.toggle('text-slate-700', !active);
+        });
+    }
+
+    function detailWindowForElement(targetId) {
+        const target = document.getElementById(targetId);
+        const panel = target ? target.closest('[data-detail-window]') : null;
+        return panel?.dataset?.detailWindow || 'contact';
+    }
+
+    detailWindowButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            const windowName = button.dataset.detailWindowTarget || 'contact';
+            setActiveDetailWindow(windowName);
+
+            const targetSelector = button.getAttribute('href') || '';
+            const target = targetSelector.startsWith('#') ? document.getElementById(targetSelector.slice(1)) : null;
+            if (target) {
+                window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 20);
+            }
+        });
+    });
+
+    setActiveDetailWindow('contact');
 
 
 
@@ -4395,6 +4445,9 @@ $consultationOptions = [
         if (!target) return;
 
         setActiveTab(tabName || 'details');
+        if ((tabName || 'details') === 'details') {
+            setActiveDetailWindow(detailWindowForElement(targetId));
+        }
 
         window.setTimeout(() => {
 

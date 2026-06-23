@@ -1979,7 +1979,6 @@ $consultationOptions = [
                                         </label>
                                     </div>
                                 </div>
-                                </div>
 
 
                                 <div class="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
@@ -2021,6 +2020,8 @@ $consultationOptions = [
                                         </div>
 
                                     </div>
+
+                                </div>
 
                                 </div>
 

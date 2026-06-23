@@ -179,6 +179,14 @@ $leadPreferredContactText = $leadPreferredContact !== '' ? $leadPreferredContact
 $leadConsultText = $leadConsult !== '' ? $leadConsult : 'requested';
 $leadInsuranceStatus = lead_card_value($lead, 'insurance_status');
 $leadIntentType = lead_card_value($lead, 'intent_type');
+$leadIntentionDisplay = $leadIntentType;
+if ($leadIntentionDisplay === '' && $leadNotes !== '') {
+    if (preg_match('/Intention:\s*([^\r\n;]+)/i', $leadNotes, $intentMatch)) {
+        $leadIntentionDisplay = trim((string)($intentMatch[1] ?? ''));
+    }
+}
+$leadIntentionDisplay = trim(str_replace('_', ' ', $leadIntentionDisplay));
+$leadIntentionDisplay = preg_replace('/\s+/', ' ', $leadIntentionDisplay);
 $leadSmsOptStatus = lead_card_value($lead, 'sms_opt_status', 'unknown');
 $leadLastContactedAt = lead_card_value($lead, 'last_contacted_at');
 $leadLastInboundAt = lead_card_value($lead, 'last_inbound_at');
@@ -336,6 +344,13 @@ $showAttributionDetails = (
             <p class="font-semibold text-slate-600">Source:</p>
             <p class="truncate text-slate-600"><?= e($displaySource) ?></p>
         </div>
+
+        <?php if ($leadIntentionDisplay !== ''): ?>
+            <div class="grid grid-cols-[70px_minmax(0,1fr)] gap-3">
+                <p class="font-semibold text-slate-600">Intention:</p>
+                <p class="truncate text-slate-600"><?= e(ucwords(strtolower($leadIntentionDisplay))) ?></p>
+            </div>
+        <?php endif; ?>
 
         <div class="grid grid-cols-[110px_minmax(0,1fr)] gap-3">
             <p class="font-semibold text-slate-600">Prefer/Consult:</p>

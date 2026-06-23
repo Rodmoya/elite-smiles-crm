@@ -623,6 +623,7 @@ if (!function_exists('lead_pipeline_rows')) {
             'unread_message_count',
             'next_follow_up_at',
             'date_of_birth',
+            'intent_type',
             'scheduling_preferred_day',
             'scheduling_preferred_time',
             'follow_up_status',
@@ -725,6 +726,7 @@ if (!function_exists('lead_recent_rows')) {
             'unread_message_count',
             'next_follow_up_at',
             'date_of_birth',
+            'intent_type',
             'scheduling_preferred_day',
             'scheduling_preferred_time',
             'follow_up_status',
@@ -889,6 +891,8 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
             'landing_page',
             'campaign',
             'external_lead_id',
+            'date_of_birth',
+            'intent_type',
             'financing_needed',
             'financing_option',
             'consultation_status',
@@ -1089,6 +1093,25 @@ if (!function_exists('lead_create_minimal')) {
             $consultationTimestamp = strtotime(str_replace('T', ' ', $data['consultation_date']));
             $data['consultation_date'] = $consultationTimestamp !== false ? date('Y-m-d H:i:s', $consultationTimestamp) : '';
         }
+        $data['date_of_birth'] = trim((string)($data['date_of_birth'] ?? ''));
+        if ($data['date_of_birth'] !== '') {
+            $dateOfBirthTimestamp = null;
+            foreach (['Y-m-d', 'm/d/Y', 'm-d-Y', 'Y/m/d'] as $format) {
+                $dateOfBirth = DateTime::createFromFormat($format, $data['date_of_birth']);
+                if ($dateOfBirth instanceof DateTime) {
+                    $dateOfBirthTimestamp = $dateOfBirth->getTimestamp();
+                    break;
+                }
+            }
+            if ($dateOfBirthTimestamp === null) {
+                $dateOfBirthTimestamp = strtotime($data['date_of_birth']);
+            }
+            $data['date_of_birth'] = $dateOfBirthTimestamp !== false ? date('Y-m-d', (int)$dateOfBirthTimestamp) : '';
+        }
+        $data['intent_type'] = trim((string)($data['intent_type'] ?? ''));
+        if ($data['intent_type'] !== '') {
+            $data['intent_type'] = mb_substr($data['intent_type'], 0, 120);
+        }
         $data['lead_value'] = trim((string)($data['lead_value'] ?? ''));
         $data['lost_reason'] = trim((string)($data['lost_reason'] ?? ''));
         $data['notes'] = trim((string)($data['notes'] ?? ''));
@@ -1223,6 +1246,8 @@ if (!function_exists('lead_create_minimal')) {
             'preferred_contact' => $data['preferred_contact'] !== '' ? $data['preferred_contact'] : null,
             'consultation_status' => $data['consultation_status'] !== '' ? $data['consultation_status'] : null,
             'consultation_date' => $data['consultation_date'] !== '' ? $data['consultation_date'] : null,
+            'date_of_birth' => $data['date_of_birth'] !== '' ? $data['date_of_birth'] : null,
+            'intent_type' => $data['intent_type'] !== '' ? $data['intent_type'] : null,
             'lead_value' => $leadValue,
             'lost_reason' => $data['lost_reason'] !== '' ? $data['lost_reason'] : null,
             'notes' => $data['notes'],

@@ -210,6 +210,7 @@ $lostReason = trim((string) post('lost_reason'));
 $smsOptStatus = trim((string) post('sms_opt_status'));
 
 $dateOfBirthRaw = trim((string) post('date_of_birth'));
+$intentType = trim((string) post('intent_type'));
 
 $schedulingPreferredDay = trim((string) post('scheduling_preferred_day'));
 
@@ -487,6 +488,11 @@ if (function_exists('leads_has_column') && leads_has_column('date_of_birth')) {
 
 }
 
+if (function_exists('leads_has_column') && leads_has_column('intent_type')) {
+    $setParts[] = "intent_type = :intent_type";
+    $params['intent_type'] = ($intentType !== '' ? mb_substr($intentType, 0, 120) : null);
+}
+
 if (function_exists('leads_has_column') && leads_has_column('scheduling_preferred_day')) {
 
     $setParts[] = "scheduling_preferred_day = :scheduling_preferred_day";
@@ -561,12 +567,13 @@ try {
         );
     }
     lead_update_json_response(200, [
-        'ok' => true,
-        'message' => 'Lead details saved.',
-        'lead_id' => $leadId,
-        'consultation_status' => $consultationStatus,
-        'consultation_date' => $consultationDate,
+        'ok' => true,
+        'message' => 'Lead details saved.',
+        'lead_id' => $leadId,
+        'consultation_status' => $consultationStatus,
+        'consultation_date' => $consultationDate,
         'date_of_birth' => $dateOfBirth,
+        'intent_type' => ($intentType !== '' ? mb_substr($intentType, 0, 120) : ''),
 
         'scheduling_preferred_day' => $schedulingPreferredDay,
 

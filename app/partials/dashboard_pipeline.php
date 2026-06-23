@@ -431,14 +431,6 @@ $consultationOptions = [
 
             </div>
 
-
-
-            <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-
-                Board is fixed-height, columns scroll vertically, and dragging near the left/right edge auto-scrolls horizontally.
-
-            </div>
-
         <?php endif; ?>
 
     </div>

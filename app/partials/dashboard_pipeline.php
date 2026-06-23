@@ -1968,17 +1968,11 @@ $consultationOptions = [
 
                                 <p id="legacy-modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
                                 <div id="modal-sms-dnd-control" class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                    <button
-                                        type="button"
-                                        id="modal-sms-dnd-toggle"
-                                        class="inline-flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
-                                        aria-expanded="false"
-                                        aria-controls="modal-sms-dnd-body"
-                                    >
+                                    <div class="mb-3 inline-flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                                         <span>SMS Permission</span>
                                         <span id="modal-sms-dnd-summary">Status</span>
-                                    </button>
-                                    <div id="modal-sms-dnd-body" class="mt-3 hidden grid gap-2">
+                                    </div>
+                                    <div id="modal-sms-dnd-body" class="grid gap-2">
                                         <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300">
                                             <input type="radio" name="modal_sms_opt_status" value="unknown" class="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-900">
                                             Unknown
@@ -1992,7 +1986,6 @@ $consultationOptions = [
                                             DND / Do Not Text
                                         </label>
                                     </div>
-                                    <p class="mt-3 text-[11px] leading-5 text-slate-500">DND controls are compact by default. Expand to change SMS permission.</p>
                                 </div>
                                 </div>
 
@@ -2018,6 +2011,12 @@ $consultationOptions = [
                                     </div>
 
                                     <div class="grid grid-cols-1 gap-4">
+
+                                        <div class="rounded-2xl bg-white px-4 py-4">
+                                            <label for="modal-communication-consultation-date-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduled Consultation</label>
+                                            <input type="datetime-local" id="modal-communication-consultation-date-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none">
+                                            <p class="mt-2 text-[11px] leading-5 text-slate-500">This saves to the real appointment field.</p>
+                                        </div>
 
                                         <div class="rounded-2xl bg-white px-4 py-4">
                                             <label for="modal-lead-preferred-day-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Preferred Day</label>
@@ -2083,7 +2082,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 w-full self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -2105,7 +2104,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-body" class="min-h-0 flex-1 overflow-hidden">
+                            <div id="modal-composer-body" class="min-h-0 w-full flex-1 overflow-hidden">
                             <div id="modal-ai-assistant-panel" class="hidden mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-3">
                                     <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
@@ -2140,9 +2139,9 @@ $consultationOptions = [
                                     </div>
                                 </div>
                             </div>
-                            <div id="modal-composer-panel-sms" data-composer-panel="sms" class="h-full min-h-0">
+                            <div id="modal-composer-panel-sms" data-composer-panel="sms" class="h-full min-h-0 w-full">
                                 <label for="modal-sms-template-select" class="sr-only">Answer Template</label>
-                                <div class="flex h-full min-h-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex h-full min-h-0 w-full flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                                     <select
                                         id="modal-sms-template-select"
                                         class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none"
@@ -2443,6 +2442,7 @@ $consultationOptions = [
     const modalLeadConsultInput = document.getElementById('modal-lead-consult-input');
 
     const modalLeadConsultationDateInput = document.getElementById('modal-lead-consultation-date-input');
+    const modalCommunicationConsultationDateInput = document.getElementById('modal-communication-consultation-date-input');
 
     const modalLeadDobInput = document.getElementById('modal-lead-dob-input');
     const modalLeadIntentTypeInput = document.getElementById('modal-lead-intent-type-input');
@@ -5164,15 +5164,15 @@ function applyCommunicationViewportFit() {
         leadDetailBody.style.overflowY = 'hidden';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerBudget = isComposerCollapsed ? 58 : 300;
-        const listBudget = Math.max(160, viewportBudget - composerBudget - 16);
+        const composerBudget = isComposerCollapsed ? 58 : Math.max(240, Math.floor(viewportBudget / 3));
+        const listBudget = Math.max(180, viewportBudget - composerBudget - 16);
 
         leadDetailBody.style.maxHeight = `${viewportBudget}px`;
         leadDetailBody.style.height = `${viewportBudget}px`;
 
         if (leadCommunicationGrid) {
             leadCommunicationGrid.style.height = `${viewportBudget}px`;
-            leadCommunicationGrid.style.gridTemplateRows = `minmax(0, 1fr) ${composerBudget}px`;
+            leadCommunicationGrid.style.gridTemplateRows = `minmax(0, ${listBudget}px) ${composerBudget}px`;
         }
 
         if (leadCommunicationComposerPanel) {
@@ -5260,6 +5260,7 @@ function applyCommunicationViewportFit() {
         if (modalLeadConsultInput) modalLeadConsultInput.value = card.dataset.leadConsult || '';
 
         if (modalLeadConsultationDateInput) modalLeadConsultationDateInput.value = toDatetimeLocal(card.dataset.leadConsultationDate || '');
+        if (modalCommunicationConsultationDateInput) modalCommunicationConsultationDateInput.value = toDatetimeLocal(card.dataset.leadConsultationDate || '');
 
         if (modalLeadDobInput) modalLeadDobInput.value = card.dataset.leadDateOfBirth || '';
         if (modalLeadIntentTypeInput) modalLeadIntentTypeInput.value = card.dataset.leadIntentType || '';
@@ -6812,6 +6813,26 @@ function applyCommunicationViewportFit() {
             }
         });
     });
+
+    if (modalCommunicationConsultationDateInput) {
+        modalCommunicationConsultationDateInput.addEventListener('input', function () {
+            if (modalLeadConsultationDateInput) {
+                modalLeadConsultationDateInput.value = modalCommunicationConsultationDateInput.value;
+            }
+            if (modalLeadConsultInput && modalCommunicationConsultationDateInput.value) {
+                modalLeadConsultInput.value = 'scheduled';
+            }
+            if (saveStatus && activeCard) {
+                saveStatus.textContent = 'Consultation time changed. Save changes to keep it.';
+            }
+        });
+    }
+
+    if (modalLeadConsultationDateInput && modalCommunicationConsultationDateInput) {
+        modalLeadConsultationDateInput.addEventListener('input', function () {
+            modalCommunicationConsultationDateInput.value = modalLeadConsultationDateInput.value;
+        });
+    }
 
     if (smsTemplateSelect) smsTemplateSelect.addEventListener('change', applySelectedSmsTemplate);
     composerModeButtons.forEach((button) => {

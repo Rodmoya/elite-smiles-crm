@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 declare(strict_types=1);
 
@@ -289,7 +289,7 @@ $consultationOptions = [
                             id="pipeline-calendar-prev"
                             class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
                         >
-                            ←
+                            â†
                         </button>
                         <button
                             type="button"
@@ -303,7 +303,7 @@ $consultationOptions = [
                             id="pipeline-calendar-next"
                             class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
                         >
-                            →
+                            â†’
                         </button>
                     </div>
                 </div>
@@ -1086,7 +1086,7 @@ $consultationOptions = [
 
 
 
-                <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+                <div class="lead-workspace-tab-bar mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
 
                     <button
 
@@ -1131,23 +1131,6 @@ $consultationOptions = [
 
 
 
-                <div class="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
-                            <p id="modal-sms-lead-name" class="mt-1 text-lg font-semibold text-slate-900">Lead</p>
-                            <p id="modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
-                        </div>
-
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
-                            <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
-                            <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
-                        </div>
-                    </div>
-
-                    <p id="modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
-                </div>
 
                 <div id="workspace-tab-details" class="workspace-tab-panel">
 
@@ -1895,178 +1878,53 @@ $consultationOptions = [
                                 <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:col-span-2 xl:row-start-1">
 
                                     <div class="flex items-center justify-between gap-3">
+                <div id="workspace-tab-communications" class="workspace-tab-panel hidden">
+                    <div id="lead-communications-grid" class="grid min-h-[calc(100dvh-2.5rem)] grid-cols-1 gap-4 xl:grid-cols-[15%_minmax(0,70%)_15%] xl:items-stretch">
 
-                                        <div>
-
-                                            <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Unified Timeline</p>
-
-                                            <p class="mt-1 text-sm text-slate-500">Latest patient touchpoints and CRM notes.</p>
-
-                                        </div>
-
-                                        <span class="text-[11px] font-medium text-slate-400">Latest first</span>
-
-                                    </div>
-
-                                    <div id="modal-unified-timeline" class="mt-3 max-h-[clamp(150px,30vh,250px)] space-y-3 overflow-y-auto pr-2">
-
-                                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-
-                                            Open a lead to load the timeline.
-
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-2">
-
-                                    <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
-
-                                    <p id="legacy-modal-sms-lead-name" class="mt-2 font-semibold text-slate-900">Lead</p>
-
-                                    <p id="legacy-modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
-
-                                    <div class="mt-3 flex flex-wrap gap-2">
-                                        <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
-                                        <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
-                                        <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
-                                    </div>
-
-                                <p id="legacy-modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
-                                <div id="legacy-modal-sms-dnd-control" class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                    <button
-                                        type="button"
-                                        id="legacy-modal-sms-dnd-toggle"
-                                        class="inline-flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
-                                        aria-expanded="false"
-                                        aria-controls="modal-sms-dnd-body"
-                                    >
-                                        <span>SMS Permission</span>
-                                        <span id="legacy-modal-sms-dnd-summary">Status</span>
-                                    </button>
-                                    <div id="legacy-modal-sms-dnd-body" class="mt-3 hidden grid gap-2">
-                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300">
-                                            <input type="radio" name="modal_sms_opt_status" value="unknown" class="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-900">
-                                            Unknown
-                                        </label>
-                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300">
-                                            <input type="radio" name="modal_sms_opt_status" value="opted_in" class="h-4 w-4 border-emerald-300 text-emerald-600 focus:ring-emerald-600">
-                                            OK to Text
-                                        </label>
-                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300">
-                                            <input type="radio" name="modal_sms_opt_status" value="opted_out" class="h-4 w-4 border-rose-300 text-rose-600 focus:ring-rose-600">
-                                            DND / Do Not Text
-                                        </label>
-                                    </div>
-                                    <p class="mt-3 text-[11px] leading-5 text-slate-500">DND controls are compact by default. Expand to change SMS permission.</p>
-                                </div>
-                                </div>
-
-
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:row-start-3">
-
-                                    <div class="flex items-center justify-between gap-3">
-
-                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduling Details</p>
-
-                                        <span class="text-[11px] font-medium text-slate-400">Appointment prep</span>
-
-                                    </div>
-
-                                    <div id="modal-message-thread" class="hidden mt-3 space-y-3 pr-1 max-h-[clamp(120px,24vh,200px)] overflow-y-auto">
-
-                                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-
-                                            Open a lead to load SMS history.
-
-                                        </div>
-
-                                    </div>
-
-                                    <div class="grid grid-cols-1 gap-4">
-
-                                        <div class="rounded-2xl bg-white px-4 py-4">
-                                            <label for="modal-lead-preferred-day-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Preferred Day</label>
-                                            <input type="text" id="modal-lead-preferred-day-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none" placeholder="Example: Thursday">
-                                        </div>
-
-                                        <div class="rounded-2xl bg-white px-4 py-4">
-                                            <label for="modal-lead-preferred-time-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Preferred Time</label>
-                                            <input type="text" id="modal-lead-preferred-time-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none" placeholder="Morning or afternoon">
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-
-
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3 xl:row-start-1">
-
-                                    <div class="flex items-center justify-between gap-3">
-
-                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Activity <span class="tracking-normal text-slate-400">(MST)</span></p>
-
-                                        <span class="text-[11px] font-medium text-slate-400">Issues, stages, audit</span>
-
-                                    </div>
-
-                                    <div id="modal-activity-feed" class="mt-3 max-h-[clamp(160px,36vh,280px)] space-y-3 overflow-y-auto pr-2">
-
-                                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-
-                                            Activity will appear after calls, texts, delivery issues, and stage moves.
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                                <details class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3 xl:row-start-2">
-
-                                    <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
-
-                                        <span class="text-xs uppercase tracking-[0.18em] text-slate-400">Email History</span>
-
-                                        <span class="text-[11px] font-medium text-slate-400">Click to expand</span>
-
-                                    </summary>
-
-                                    <div id="modal-email-history" class="mt-3 max-h-[clamp(120px,24vh,220px)] space-y-3 overflow-y-auto pr-2">
-
-                                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-
-                                            Sent patient emails will appear here.
-
-                                        </div>
-
-                                    </div>
-
-                                </details>
+                        <aside class="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:min-w-[220px]">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Lead Workspace</p>
+                                <h3 id="communication-lead-name" class="mt-1 text-lg font-semibold leading-6 text-slate-950">Lead</h3>
+                                <p id="communication-lead-stage" class="mt-0.5 text-xs text-slate-500">Stage</p>
                             </div>
-                        </div>
-
-
-
-                        <div id="lead-communication-composer-panel" class="xl:col-start-2 xl:row-start-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sticky top-3 z-20 bg-white max-h-[520px] overflow-y-auto">
-
-                                <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
-
-                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conversation Composer</p>
-                                    <p id="modal-composer-send-cue" class="w-full text-[11px] text-slate-500">SMS compose is primary. Review message before send.</p>
-
+                            <div class="grid gap-2 pt-2">
+                                <button type="button" class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-tab-target="details">Contact Details</button>
+                                <button type="button" class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white" data-tab-target="communications">Communication</button>
+                                <button type="button" class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" data-tab-target="notes">Notes</button>
                             </div>
-
-                            <div id="modal-composer-body">
-                            <div id="modal-ai-assistant-panel" class="mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                    <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
-                                    <button
-                                        type="button"
-                                        id="modal-ai-collapse-toggle"
-                                        class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                                        aria-expanded="false"
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <p class="text-[11px] uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
+                                <p id="modal-sms-lead-name" class="mt-2 font-semibold text-slate-900">Lead</p>
+                                <p id="modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
+                                <p id="modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
+                            </div>
+                            <div id="modal-sms-dnd-control" class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <button type="button" id="modal-sms-dnd-toggle" class="inline-flex w-full items-center justify-between gap-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500" aria-expanded="false" aria-controls="modal-sms-dnd-body">
+                                    <span>DND Status</span>
+                                    <span id="modal-sms-dnd-summary" class="rounded-full border border-slate-200 bg-white px-2 py-1 normal-case tracking-normal text-slate-600">Status</span>
+                                </button>
+                                <div id="modal-sms-dnd-body" class="mt-3 hidden grid gap-2">
+                                    <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300"><input type="radio" name="modal_sms_opt_status" value="unknown" class="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-900">Unknown</label>
+                                    <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300"><input type="radio" name="modal_sms_opt_status" value="opted_in" class="h-4 w-4 border-emerald-300 text-emerald-600 focus:ring-emerald-600">OK to Text</label>
+                                    <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300"><input type="radio" name="modal_sms_opt_status" value="opted_out" class="h-4 w-4 border-rose-300 text-rose-600 focus:ring-rose-600">DND / Do Not Text</label>
+                                </div>
+                                <p class="mt-3 text-[11px] leading-5 text-slate-500">Keep SMS permission visible without taking over the workspace.</p>
+                            </div>
+                        </aside>
+                        <section class="flex min-h-0 flex-col gap-4">
+                            <div class="min-h-0 flex-[1_1_42%] rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Unified Timeline</p>
+                                        <p class="mt-1 text-sm text-slate-500">Latest patient touchpoints and CRM notes.</p>
+                                    </div>
+                                    <span class="text-[11px] font-medium text-slate-400">Latest first</span>
+                                </div>
+                                <div id="modal-unified-timeline" class="mt-3 max-h-none space-y-3 overflow-y-auto pr-2">
+                                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">Open a lead to load the timeline.</div>
+                                </div>
+                            </div>
+                            <div id="lead-communication-composer-panel" class="min-h-0 flex-[1_1_58%] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm overflow-y-auto">
                                     >
                                         Show
                                     </button>
@@ -2260,14 +2118,31 @@ $consultationOptions = [
 
                             </div>
 
-
-
                         </div>
-
+                        </section>
+                        <aside class="flex min-h-0 flex-col gap-4 xl:min-w-[220px]">
+                            <div class="min-h-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                                <div class="flex items-center justify-between gap-3">
+                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Activity <span class="tracking-normal text-slate-400">(MST)</span></p>
+                                    <span class="text-[11px] font-medium text-slate-400">Issues, stages, audit</span>
+                                </div>
+                                <div id="modal-activity-feed" class="mt-3 max-h-none space-y-3 overflow-y-auto pr-2">
+                                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">Activity will appear after calls, texts, delivery issues, and stage moves.</div>
+                                </div>
+                            </div>
+                            <details class="shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                                <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
+                                    <span class="text-xs uppercase tracking-[0.18em] text-slate-400">Email History</span>
+                                    <span class="text-[11px] font-medium text-slate-400">Click to expand</span>
+                                </summary>
+                                <div id="modal-email-history" class="mt-3 max-h-[220px] space-y-3 overflow-y-auto pr-2">
+                                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">Sent patient emails will appear here.</div>
+                                </div>
+                            </details>
+                        </aside>
                     </div>
 
                 </div>
-
             </div>
 
 
@@ -2453,6 +2328,9 @@ $consultationOptions = [
     const leadDetailHeader = document.getElementById('lead-detail-header');
     const leadDetailBody = document.getElementById('lead-detail-body');
     const leadDetailFooter = document.getElementById('lead-detail-footer');
+    const leadWorkspaceTabBar = document.querySelector('.lead-workspace-tab-bar');
+    const communicationLeadName = document.getElementById('communication-lead-name');
+    const communicationLeadStage = document.getElementById('communication-lead-stage');
     const leadCommunicationGrid = document.getElementById('lead-communications-grid');
     const leadCommunicationComposerPanel = document.getElementById('lead-communication-composer-panel');
 
@@ -3032,7 +2910,7 @@ $consultationOptions = [
                                 class="mb-1 inline-flex w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-[11px]"
                                 data-calendar-lead-id="${entry.leadId}"
                             >
-                                <span class="truncate">${entry.timeLabel} · ${entry.name}</span>
+                                <span class="truncate">${entry.timeLabel} Â· ${entry.name}</span>
                             </button>
                         `).join('') || '<p class="text-[11px] text-slate-400">No appointments</p>';
                         return `
@@ -3838,7 +3716,7 @@ $consultationOptions = [
         if (!dob) missing.push('Date of birth');
 
         if (leadIntelSummaryText) {
-            leadIntelSummaryText.textContent = `${fullName} • ${stage}`;
+            leadIntelSummaryText.textContent = `${fullName} â€¢ ${stage}`;
         }
 
         if (leadIntelMissingList) {
@@ -4566,6 +4444,26 @@ $consultationOptions = [
 
 
     function setActiveTab(tabName) {
+        const isCommunicationTab = tabName === 'communications';
+
+        if (leadDetailHeader) {
+            leadDetailHeader.classList.toggle('hidden', isCommunicationTab);
+        }
+
+        if (leadWorkspaceTabBar) {
+            leadWorkspaceTabBar.classList.toggle('hidden', isCommunicationTab);
+        }
+
+        if (leadDetailFooter) {
+            leadDetailFooter.classList.toggle('hidden', isCommunicationTab);
+        }
+
+        if (leadDetailBody) {
+            leadDetailBody.className = isCommunicationTab
+                ? 'min-h-0 flex-1 overflow-hidden px-3 py-3'
+                : 'min-h-0 flex-1 overflow-y-auto px-6 py-5';
+        }
+
         tabButtons.forEach((btn) => {
 
             const isActive = btn.dataset.tabTarget === tabName;
@@ -5096,6 +4994,10 @@ function applyCommunicationViewportFit() {
         setText('modal-lead-name', card.dataset.leadName || 'Lead', 'Lead');
 
         setText('modal-lead-stage', card.dataset.leadStageLabel || '', '-');
+
+        if (communicationLeadName) communicationLeadName.textContent = card.dataset.leadName || 'Lead';
+
+        if (communicationLeadStage) communicationLeadStage.textContent = card.dataset.leadStageLabel || '';
 
         setText('modal-lead-assigned', card.dataset.leadAssigned || '');
 
@@ -7210,5 +7112,6 @@ function applyCommunicationViewportFit() {
     window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);})();
 
 </script>
+
 
 

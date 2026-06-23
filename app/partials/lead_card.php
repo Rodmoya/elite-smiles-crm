@@ -185,6 +185,21 @@ if ($leadIntentionDisplay === '' && $leadNotes !== '') {
         $leadIntentionDisplay = trim((string)($intentMatch[1] ?? ''));
     }
 }
+
+if (!function_exists('lead_card_initials')) {
+    function lead_card_initials(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        if ($name === '') return 'LD';
+
+        $parts = explode(' ', $name);
+        $first = mb_substr((string)($parts[0] ?? 'L'), 0, 1);
+        $last = count($parts) > 1 ? mb_substr((string)($parts[count($parts) - 1] ?? ''), 0, 1) : '';
+        $initials = strtoupper($first . $last);
+
+        return $initials !== '' ? $initials : 'LD';
+    }
+}
 $leadIntentionDisplay = trim(str_replace('_', ' ', $leadIntentionDisplay));
 $leadIntentionDisplay = preg_replace('/\s+/', ' ', $leadIntentionDisplay);
 $leadSmsOptStatus = lead_card_value($lead, 'sms_opt_status', 'unknown');
@@ -209,6 +224,7 @@ $stageLabel = $stageLabels[$stageKey] ?? ucwords(str_replace('_', ' ', $stageKey
 $displaySource = lead_card_source_label($leadSource, $leadLandingPage);
 $displaySourceType = lead_card_source_type_label($leadSourceType);
 $displayValue = lead_card_money($leadValue);
+$leadInitials = lead_card_initials($leadName);
 $lastTouchLabel = $leadLastInboundAt !== ''
     ? 'Reply ' . lead_card_short_datetime($leadLastInboundAt)
     : ($leadLastOutboundAt !== '' ? 'Texted ' . lead_card_short_datetime($leadLastOutboundAt) : '');
@@ -322,7 +338,17 @@ $showAttributionDetails = (
     data-lead-last-follow-up-check-at="<?= e($leadLastFollowUpCheckAt) ?>"
 >
     <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-        <p class="min-w-0 truncate text-[14px] font-semibold leading-5 text-slate-950"><?= e($leadName) ?></p>
+        <div class="flex min-w-0 items-center gap-2">
+            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-emerald-100 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200">
+                <?= e($leadInitials) ?>
+            </span>
+            <div class="min-w-0">
+                <p class="truncate text-[14px] font-semibold leading-5 text-slate-950"><?= e($leadName) ?></p>
+                <?php if ($contactLine !== ''): ?>
+                    <p class="mt-0.5 truncate text-[11px] text-slate-500"><?= e($contactLine) ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
 
         <div class="flex shrink-0 items-center gap-1 text-slate-500">
             <button type="button" class="lead-open-modal relative inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Messages" aria-label="Open messages">
@@ -361,29 +387,31 @@ $showAttributionDetails = (
         </div>
     </div>
 
-    <div class="mt-2.5 space-y-2 text-[12.5px]">
-        <div class="grid grid-cols-[78px_minmax(0,1fr)] gap-2">
-            <p class="font-semibold text-slate-600">Source:</p>
-            <p class="truncate text-slate-600"><?= e($displaySource) ?></p>
+    <div class="mt-2.5 space-y-2 text-[12px]">
+        <div class="flex items-center gap-2 text-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-[14px] w-[14px] shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.59 11l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83Z"></path>
+                <path d="M7 7h.01"></path>
+            </svg>
+            <span class="truncate"><?= e($displaySource) ?></span>
         </div>
 
         <?php if ($leadIntentionDisplay !== ''): ?>
-            <div class="grid grid-cols-[78px_minmax(0,1fr)] gap-2">
-                <p class="font-semibold text-slate-600">Intention:</p>
-                <p class="truncate text-slate-600"><?= e(ucwords(strtolower($leadIntentionDisplay))) ?></p>
+            <div class="flex items-center gap-2 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-[14px] w-[14px] shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20"></path>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+                <span class="truncate"><?= e(ucwords(strtolower($leadIntentionDisplay))) ?></span>
             </div>
         <?php endif; ?>
 
-        <div class="grid grid-cols-[78px_minmax(0,1fr)] gap-2">
-            <p class="font-semibold text-slate-600">Prefer/Consult:</p>
-            <p class="truncate text-slate-600"><?= e($leadPreferredContactText) ?> / <?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></p>
-        </div>
-
-        <div class="grid grid-cols-[78px_minmax(0,1fr)] gap-2">
-            <p class="font-semibold text-slate-600">Value:</p>
-            <p class="lead-card-value-preview truncate text-slate-600">
+        <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"><?= e($leadPreferredContactText) ?></span>
+            <span class="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700"><?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></span>
+            <span class="lead-card-value-preview ml-auto rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                 <span data-role="lead-card-value-text"><?= e($displayValue) ?></span>
-            </p>
+            </span>
         </div>
     </div>
 

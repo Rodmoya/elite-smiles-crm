@@ -29,6 +29,7 @@ $stageMap = $stageMap ?? [];
 $pipelineCounts = $pipelineCounts ?? [];
 
 $pipelineRows = $pipelineRows ?? [];
+$defaultMobileStageFilter = key($stageMap) ?: 'new_lead';
 
 $lostReasonOptions = function_exists('lead_lost_reason_options') ? lead_lost_reason_options() : [];
 
@@ -210,6 +211,20 @@ $consultationOptions = [
                     Check Follow-Ups
                 </button>
 
+                <div class="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:hidden">
+                    <label for="pipeline-mobile-stage-filter" class="mr-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Mobile stage list</label>
+                    <select
+                        id="pipeline-mobile-stage-filter"
+                        class="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 outline-none"
+                    >
+                        <option value="__all__">All stages</option>
+                        <?php foreach ($stageMap as $stageFilterKey => $stageFilterLabel): ?>
+                            <option value="<?= e((string)$stageFilterKey) ?>" <?= ((string)$stageFilterKey === (string)$defaultMobileStageFilter) ? 'selected' : '' ?>>
+                                <?= e((string)$stageFilterLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
                 <div class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
 
@@ -318,7 +333,7 @@ $consultationOptions = [
 
                 id="pipeline-board-viewport"
 
-                class="overflow-x-auto overflow-y-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/50 pb-3"
+                class="overflow-x-hidden overflow-y-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/50 pb-3 md:overflow-x-auto"
 
             >
 
@@ -326,7 +341,7 @@ $consultationOptions = [
 
                     id="lead-pipeline-board"
 
-                    class="flex min-w-[1500px] items-start gap-4 p-4"
+                    class="pipeline-board-layout flex min-w-0 flex-wrap items-start gap-4 p-4 md:min-w-[1500px] md:flex-nowrap"
 
                 >
 
@@ -338,7 +353,7 @@ $consultationOptions = [
 
                         <div
 
-                            class="pipeline-column flex h-[560px] w-[300px] shrink-0 flex-col rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-3 transition"
+                            class="pipeline-column flex h-[560px] w-full shrink-0 flex-col rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-3 transition md:w-[300px]"
 
                             data-stage-key="<?= e($stageKey) ?>"
 
@@ -967,15 +982,15 @@ $consultationOptions = [
 
     <div class="h-screen overflow-y-auto">
         <div class="min-h-screen w-full bg-white">
-            <div class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
+            <div id="lead-detail-header" class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
 
                 <div>
 
-                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Lead Workspace</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Lead Workspace</p>
 
-                    <h3 id="modal-lead-name" class="mt-2 text-2xl font-semibold text-slate-900">Lead</h3>
+                    <h3 id="modal-lead-name" class="mt-1 text-xl font-semibold text-slate-900">Lead</h3>
 
-                    <p id="modal-lead-stage" class="mt-1 text-sm text-slate-500">Stage</p>
+                    <p id="modal-lead-stage" class="mt-0.5 text-xs text-slate-500">Stage</p>
 
                 </div>
 
@@ -989,7 +1004,7 @@ $consultationOptions = [
 
                         id="lead-delete-button"
 
-                        class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
 
                         aria-label="Delete lead"
 
@@ -1021,7 +1036,7 @@ $consultationOptions = [
 
                         id="lead-detail-close"
 
-                        class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100"
 
                         aria-label="Close"
 
@@ -1037,7 +1052,7 @@ $consultationOptions = [
 
 
 
-            <div class="min-h-0 flex-1 overflow-y-scroll px-6 py-5 pb-24">
+            <div id="lead-detail-body" class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <div
 
                     id="modal-missing-panel"
@@ -1071,13 +1086,13 @@ $consultationOptions = [
 
 
 
-                <div class="mb-5 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
+                <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
 
                     <button
 
                         type="button"
 
-                        class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                        class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-3.5 py-1.5 text-sm font-medium text-white"
 
                         data-tab-target="details"
 
@@ -1092,7 +1107,7 @@ $consultationOptions = [
 
                         type="button"
 
-                        class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600"
+                        class="workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600"
                         data-tab-target="communications"
                     >
 
@@ -1115,6 +1130,24 @@ $consultationOptions = [
                 </div>
 
 
+
+                <div class="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
+                            <p id="modal-sms-lead-name" class="mt-1 text-lg font-semibold text-slate-900">Lead</p>
+                            <p id="modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
+                            <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
+                            <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
+                        </div>
+                    </div>
+
+                    <p id="modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
+                </div>
 
                 <div id="workspace-tab-details" class="workspace-tab-panel">
 
@@ -1370,6 +1403,28 @@ $consultationOptions = [
 
 
                         <div class="space-y-5">
+
+                            <div id="lead-intel-panel" class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                                <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Lead intelligence</p>
+                                <div class="mt-3 space-y-3 text-sm">
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Summary</p>
+                                        <p id="lead-intel-summary-text" class="mt-1 text-slate-800">Open a lead to load summary.</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Missing info</p>
+                                        <ul id="lead-intel-missing-list" class="mt-1 list-disc space-y-1 pl-4 text-slate-700"></ul>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Next recommended action</p>
+                                        <p id="lead-intel-next-action" class="mt-1 text-slate-800">None</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Last touchpoint</p>
+                                        <p id="lead-intel-last-touchpoint" class="mt-1 text-slate-800">No contact log yet.</p>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div id="lead-detail-appointment-section" data-detail-window="appointment" class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 hidden">
                                 <div class="mb-3">
@@ -1824,7 +1879,7 @@ $consultationOptions = [
 
 
                 <div id="workspace-tab-communications" class="workspace-tab-panel hidden">
-                    <div class="grid grid-cols-1 gap-5 xl:grid-cols-[320px_minmax(460px,1fr)_340px]">
+                    <div id="lead-communications-grid" class="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)_320px] xl:items-start">
 
                         <div class="contents">
 
@@ -1837,7 +1892,7 @@ $consultationOptions = [
 
                             <div class="contents">
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-2">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:col-span-2 xl:row-start-1">
 
                                     <div class="flex items-center justify-between gap-3">
 
@@ -1853,7 +1908,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-unified-timeline" class="mt-3 max-h-[340px] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-unified-timeline" class="mt-3 max-h-[clamp(150px,30vh,250px)] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1863,38 +1918,52 @@ $consultationOptions = [
                                     </div>
                                 </div>
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1">
+                                <div class="hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-2">
 
                                     <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
 
-                                    <p id="modal-sms-lead-name" class="mt-2 font-semibold text-slate-900">Lead</p>
+                                    <p id="legacy-modal-sms-lead-name" class="mt-2 font-semibold text-slate-900">Lead</p>
 
-                                    <p id="modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
+                                    <p id="legacy-modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
 
-                                    <p id="modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
-
-                                    <div id="modal-sms-dnd-control" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                        <p class="text-xs uppercase tracking-[0.16em] text-slate-400">DND Status</p>
-                                        <div class="mt-3 grid gap-2">
-                                            <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300">
-                                                <input type="radio" name="modal_sms_opt_status" value="unknown" class="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-900">
-                                                Unknown
-                                            </label>
-                                            <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300">
-                                                <input type="radio" name="modal_sms_opt_status" value="opted_in" class="h-4 w-4 border-emerald-300 text-emerald-600 focus:ring-emerald-600">
-                                                OK to Text
-                                            </label>
-                                            <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300">
-                                                <input type="radio" name="modal_sms_opt_status" value="opted_out" class="h-4 w-4 border-rose-300 text-rose-600 focus:ring-rose-600">
-                                                DND / Do Not Text
-                                            </label>
-                                        </div>
-                                        <p class="mt-3 text-[11px] leading-5 text-slate-500">DND disables the SMS composer until the patient opts back in.</p>
+                                    <div class="mt-3 flex flex-wrap gap-2">
+                                        <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
+                                        <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
+                                        <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
                                     </div>
+
+                                <p id="legacy-modal-sms-opt-status" class="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">SMS status unknown</p>
+                                <div id="legacy-modal-sms-dnd-control" class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                    <button
+                                        type="button"
+                                        id="legacy-modal-sms-dnd-toggle"
+                                        class="inline-flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+                                        aria-expanded="false"
+                                        aria-controls="modal-sms-dnd-body"
+                                    >
+                                        <span>SMS Permission</span>
+                                        <span id="legacy-modal-sms-dnd-summary">Status</span>
+                                    </button>
+                                    <div id="legacy-modal-sms-dnd-body" class="mt-3 hidden grid gap-2">
+                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300">
+                                            <input type="radio" name="modal_sms_opt_status" value="unknown" class="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-900">
+                                            Unknown
+                                        </label>
+                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300">
+                                            <input type="radio" name="modal_sms_opt_status" value="opted_in" class="h-4 w-4 border-emerald-300 text-emerald-600 focus:ring-emerald-600">
+                                            OK to Text
+                                        </label>
+                                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300">
+                                            <input type="radio" name="modal_sms_opt_status" value="opted_out" class="h-4 w-4 border-rose-300 text-rose-600 focus:ring-rose-600">
+                                            DND / Do Not Text
+                                        </label>
+                                    </div>
+                                    <p class="mt-3 text-[11px] leading-5 text-slate-500">DND controls are compact by default. Expand to change SMS permission.</p>
+                                </div>
                                 </div>
 
 
-                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-1 xl:row-start-3">
 
                                     <div class="flex items-center justify-between gap-3">
 
@@ -1904,7 +1973,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-message-thread" class="hidden mt-3 space-y-3 pr-1">
+                                    <div id="modal-message-thread" class="hidden mt-3 space-y-3 pr-1 max-h-[clamp(120px,24vh,200px)] overflow-y-auto">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1942,7 +2011,7 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div id="modal-activity-feed" class="mt-3 max-h-[520px] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-activity-feed" class="mt-3 max-h-[clamp(160px,36vh,280px)] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1954,7 +2023,7 @@ $consultationOptions = [
 
                                 </div>
 
-                                <details class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3">
+                                <details class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-3 xl:row-start-2">
 
                                     <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
 
@@ -1964,7 +2033,7 @@ $consultationOptions = [
 
                                     </summary>
 
-                                    <div id="modal-email-history" class="mt-3 max-h-[280px] space-y-3 overflow-y-auto pr-2">
+                                    <div id="modal-email-history" class="mt-3 max-h-[clamp(120px,24vh,220px)] space-y-3 overflow-y-auto pr-2">
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
@@ -1980,17 +2049,13 @@ $consultationOptions = [
 
 
 
-                        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="xl:col-start-2 xl:row-start-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sticky top-3 z-20 bg-white max-h-[520px] overflow-y-auto">
 
-                            <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+                                <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
-                                <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conversation Composer</p>
+                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conversation Composer</p>
+                                    <p id="modal-composer-send-cue" class="w-full text-[11px] text-slate-500">SMS compose is primary. Review message before send.</p>
 
-                                <div class="ml-auto flex flex-wrap gap-2" id="modal-composer-mode-controls">
-                                    <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
-                                    <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
-                                    <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
-                                </div>
                             </div>
 
                             <div id="modal-composer-body">
@@ -2042,7 +2107,7 @@ $consultationOptions = [
                                     </select>
 
                                     <textarea
-                                        rows="5"
+                                        rows="4"
                                         aria-label="Text message"
                                         id="modal-lead-sms-input"
                                         class="min-h-[150px] w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
@@ -2127,9 +2192,9 @@ $consultationOptions = [
 
                                 <label for="modal-lead-email-body-input" class="mt-4 block text-xs uppercase tracking-[0.18em] text-slate-400">Body</label>
 
-                                <textarea
-                                    rows="9"
-                                    aria-label="Patient email"
+                                    <textarea
+                                        rows="7"
+                                        aria-label="Patient email"
                                     id="modal-lead-email-body-input"
                                     class="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Draft a polished patient email..."
@@ -2174,9 +2239,9 @@ $consultationOptions = [
                                     <p class="mt-1 text-sm text-slate-500">Log a call, decision, objection, or next step.</p>
                                 </div>
 
-                                <textarea
-                                    rows="7"
-                                    id="modal-communication-note-input"
+                                    <textarea
+                                        rows="6"
+                                        id="modal-communication-note-input"
                                     class="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Add a clear internal note..."
                                 ></textarea>
@@ -2207,7 +2272,7 @@ $consultationOptions = [
 
 
 
-            <div class="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
+            <div id="lead-detail-footer" class="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
 
                 <div class="flex flex-wrap items-center gap-3">
 
@@ -2268,6 +2333,7 @@ $consultationOptions = [
     const pipelineNotificationsCount = document.getElementById('pipeline-notifications-count');
     const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
     const pipelineNotificationsList = document.getElementById('pipeline-notifications-list');
+    const pipelineMobileStageFilter = document.getElementById('pipeline-mobile-stage-filter');
 
     const modal = document.getElementById('lead-detail-modal');
 
@@ -2384,13 +2450,27 @@ $consultationOptions = [
 
     const smsOptStatus = document.getElementById('modal-sms-opt-status');
     const smsOptStatusInputs = Array.from(document.querySelectorAll('input[name="modal_sms_opt_status"]'));
+    const leadDetailHeader = document.getElementById('lead-detail-header');
+    const leadDetailBody = document.getElementById('lead-detail-body');
+    const leadDetailFooter = document.getElementById('lead-detail-footer');
+    const leadCommunicationGrid = document.getElementById('lead-communications-grid');
+    const leadCommunicationComposerPanel = document.getElementById('lead-communication-composer-panel');
 
     const messageThread = document.getElementById('modal-message-thread');
 
     const activityFeed = document.getElementById('modal-activity-feed');
     const unifiedTimeline = document.getElementById('modal-unified-timeline');
     const emailHistory = document.getElementById('modal-email-history');
+    const leadIntelSummaryText = document.getElementById('lead-intel-summary-text');
+    const leadIntelMissingList = document.getElementById('lead-intel-missing-list');
+    const leadIntelNextAction = document.getElementById('lead-intel-next-action');
+    const leadIntelLastTouchpoint = document.getElementById('lead-intel-last-touchpoint');
 
+    const composerSafetyCue = document.getElementById('modal-composer-send-cue');
+
+    const smsDndToggle = document.getElementById('modal-sms-dnd-toggle');
+    const smsDndBody = document.getElementById('modal-sms-dnd-body');
+    const smsDndSummary = document.getElementById('modal-sms-dnd-summary');
 
     const newLeadModal = document.getElementById('new-lead-modal');
 
@@ -2521,6 +2601,11 @@ $consultationOptions = [
     let isDraftingBoth = false;
     let isSendingEmail = false;
     let composerMode = 'sms';
+    let composerDraftSources = {
+        sms: 'manual',
+        email: 'manual',
+        note: 'manual',
+    };
     const calendarStateStorageKey = 'elite-smiles-calendar-panel-state-v1';
     const calendarStateFromStorage = (() => {
         try {
@@ -3225,6 +3310,8 @@ $consultationOptions = [
             emailBodyInput.value = defaultEmailBody(activeCard);
         }
 
+        refreshComposerSafetyCue();
+
     }
 
 
@@ -3654,8 +3741,126 @@ $consultationOptions = [
 
         }
 
+        if (smsDndSummary) {
+            if (safeStatus === 'opted_out') {
+                smsDndSummary.textContent = 'Do Not Text';
+            } else if (safeStatus === 'opted_in') {
+                smsDndSummary.textContent = 'Can text';
+            } else {
+                smsDndSummary.textContent = 'Unknown';
+            }
+        }
+
         refreshAiDraftUi();
 
+    }
+
+    function refreshComposerSafetyCue() {
+        if (!composerSafetyCue) return;
+
+        if (composerMode === 'note') {
+            composerSafetyCue.textContent = 'Internal notes are not sent to the lead. Save notes for CRM context.';
+            return;
+        }
+
+        const modeLabel = composerMode === 'email' ? 'Email' : 'SMS';
+        const source = composerDraftSources[composerMode] || 'manual';
+        const phoneSafe = String(activeCard?.dataset?.leadSmsOptStatus || 'unknown').toLowerCase();
+
+        if (composerMode === 'sms' && phoneSafe === 'opted_out') {
+            composerSafetyCue.textContent = 'This lead is opted out of SMS. Do not send a text without permission.';
+            return;
+        }
+
+        if (source === 'ai') {
+            composerSafetyCue.textContent = `${modeLabel} draft is from AI. Please review and send only after confirming details.`;
+            return;
+        }
+
+        composerSafetyCue.textContent = `${modeLabel} compose is manual. Review message carefully before send.`;
+    }
+
+    function setComposerDraftSource(mode, source) {
+        if (!composerDraftSources[mode]) return;
+        composerDraftSources[mode] = source === 'ai' ? 'ai' : 'manual';
+        refreshComposerSafetyCue();
+    }
+
+    function applyPipelineBoardMobileMode() {
+
+        if (!board || !pipelineMobileStageFilter) return;
+
+        const isMobile = window.matchMedia('(max-width: 640px)').matches;
+        const columns = Array.from(board.querySelectorAll('.pipeline-column[data-stage-key]'));
+
+        if (!isMobile) {
+            columns.forEach((column) => column.classList.remove('hidden'));
+            return;
+        }
+
+        const selected = pipelineMobileStageFilter.value || '__all__';
+        columns.forEach((column) => {
+            const stageKey = column.dataset.stageKey || '';
+            const visible = selected === '__all__' || stageKey === selected;
+            column.classList.toggle('hidden', !visible);
+        });
+    }
+
+    function updateLeadIntelligencePanel() {
+
+        if (!activeCard) {
+            if (leadIntelSummaryText) leadIntelSummaryText.textContent = 'Open a lead to load summary.';
+            if (leadIntelMissingList) leadIntelMissingList.innerHTML = '<li class="text-slate-500">No lead loaded.</li>';
+            if (leadIntelNextAction) leadIntelNextAction.textContent = 'Open a lead.';
+            if (leadIntelLastTouchpoint) leadIntelLastTouchpoint.textContent = 'No contact log yet.';
+            return;
+        }
+
+        const data = activeCard.dataset || {};
+
+        const fullName = (modalLeadNameInput?.value || data.leadName || 'Lead').trim();
+        const stage = data.leadStageLabel || data.stageKey || 'Unmapped stage';
+        const preferredContact = (modalLeadPreferredContactInput?.value || data.leadPreferredContact || '').trim();
+        const email = (modalLeadEmailInput?.value || data.leadEmail || '').trim();
+        const phone = (modalLeadPhoneInput?.value || data.leadPhone || '').trim();
+        const procedure = (modalLeadProcedureInput?.value || data.leadProcedure || '').trim();
+        const consult = (modalLeadConsultInput?.value || data.leadConsult || '').trim();
+        const intentType = (modalLeadIntentTypeInput?.value || data.leadIntentType || '').trim();
+        const dob = (modalLeadDobInput?.value || data.leadDateOfBirth || '').trim();
+
+        const missing = [];
+        if (!fullName) missing.push('Name');
+        if (!phone) missing.push('Phone');
+        if (!email) missing.push('Email');
+        if (!procedure) missing.push('Service needed');
+        if (!consult) missing.push('Consult status');
+        if (!intentType) missing.push('Intention');
+        if (!dob) missing.push('Date of birth');
+
+        if (leadIntelSummaryText) {
+            leadIntelSummaryText.textContent = `${fullName} • ${stage}`;
+        }
+
+        if (leadIntelMissingList) {
+            leadIntelMissingList.innerHTML = missing.length
+                ? missing.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+                : '<li>No required item missing.</li>';
+        }
+
+        if (leadIntelNextAction) {
+            if (!preferredContact && !modalLeadPreferredContactInput?.value) {
+                leadIntelNextAction.textContent = 'Collect preferred contact method in Contact details.';
+            } else if (!phone || !dob) {
+                leadIntelNextAction.textContent = 'Collect contact detail fields before scheduling.';
+            } else {
+                leadIntelNextAction.textContent = preferredContact ? `Follow up by ${preferredContact}.` : 'Follow up and confirm consultation window.';
+            }
+        }
+
+        if (leadIntelLastTouchpoint) {
+            const lastTouchpoint = data.leadLastInboundAt || data.leadLastOutboundAt || data.leadLastContactedAt || '';
+            leadIntelLastTouchpoint.textContent = lastTouchpoint ? formatThreadTime(lastTouchpoint) : 'No contact log yet.';
+        }
     }
 
     function refreshAiDraftUi() {
@@ -4383,6 +4588,10 @@ $consultationOptions = [
 
         });
 
+        window.setTimeout(function () {
+            applyCommunicationViewportFit();
+        }, 0);
+
     }
 
 
@@ -4518,6 +4727,7 @@ $consultationOptions = [
             modalMissingList.textContent = '';
 
             updateCardMetaBadges(activeCard, 0);
+            updateLeadIntelligencePanel();
 
             return;
 
@@ -4538,6 +4748,7 @@ $consultationOptions = [
         `).join('');
 
         updateCardMetaBadges(activeCard, missing.length);
+        updateLeadIntelligencePanel();
 
     }
 
@@ -4785,12 +4996,13 @@ $consultationOptions = [
 
         if (header) {
             header.className = isScreen
-                ? 'flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 shadow-sm'
+                ? 'flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-3 shadow-sm'
                 : 'flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5';
         }
 
         if (body) {
-            body.className = 'px-6 py-5 pb-24';
+            body.className = 'px-6 py-4 pb-20';
+            body.style.maxHeight = '';
         }
 
         if (footer) {
@@ -4798,12 +5010,82 @@ $consultationOptions = [
                 ? 'shrink-0 border-t border-slate-200 bg-white px-6 py-4'
                 : 'border-t border-slate-200 bg-white px-6 py-5';
         }
+
+        applyCommunicationViewportFit();
+    }
+
+function applyCommunicationViewportFit() {
+        if (!leadDetailBody || !leadDetailHeader || !leadDetailFooter) return;
+
+        const communicationPanel = tabPanels ? tabPanels.communications : null;
+        if (!communicationPanel || communicationPanel.classList.contains('hidden')) {
+            leadDetailBody.style.maxHeight = '';
+            leadDetailBody.style.overflowY = '';
+
+            if (leadCommunicationComposerPanel) {
+                leadCommunicationComposerPanel.style.maxHeight = '';
+                leadCommunicationComposerPanel.style.overflowY = '';
+            }
+
+            if (unifiedTimeline) unifiedTimeline.style.maxHeight = '';
+            if (activityFeed) activityFeed.style.maxHeight = '';
+            if (emailHistory) emailHistory.style.maxHeight = '';
+            if (messageThread) {
+                messageThread.style.maxHeight = '';
+                messageThread.style.overflowY = '';
+            }
+
+            return;
+        }
+
+        const viewportBudget = Math.max(
+            380,
+            window.innerHeight - (leadDetailHeader.offsetHeight || 76) - (leadDetailFooter.offsetHeight || 80) - 24
+        );
+
+        leadDetailBody.style.overflowY = 'hidden';
+
+        const composerBudget = Math.max(220, Math.min(Math.round(viewportBudget * 0.52), 420));
+        const listBudget = Math.max(108, Math.floor((viewportBudget - composerBudget - 24) / 2));
+
+        leadDetailBody.style.maxHeight = `${viewportBudget}px`;
+
+        if (leadCommunicationGrid) {
+            leadCommunicationGrid.style.gridAutoRows = 'min-content';
+        }
+
+        if (leadCommunicationComposerPanel) {
+            leadCommunicationComposerPanel.style.maxHeight = `${composerBudget}px`;
+            leadCommunicationComposerPanel.style.overflowY = 'auto';
+        }
+
+        const unifiedPanelHeight = `${Math.max(150, Math.min(330, listBudget))}px`;
+        const activityPanelHeight = `${Math.max(150, Math.min(300, listBudget))}px`;
+        const emailPanelHeight = `${Math.max(110, Math.min(220, Math.max(110, Math.floor(listBudget * 0.72))))}px`;
+        const messageThreadHeight = `${Math.max(110, Math.min(220, Math.floor(listBudget * 0.72)))}px`;
+
+        if (unifiedTimeline) {
+            unifiedTimeline.style.maxHeight = unifiedPanelHeight;
+        }
+
+        if (activityFeed) {
+            activityFeed.style.maxHeight = activityPanelHeight;
+        }
+
+        if (emailHistory) {
+            emailHistory.style.maxHeight = emailPanelHeight;
+        }
+
+        if (messageThread) {
+            messageThread.style.maxHeight = messageThreadHeight;
+            messageThread.style.overflowY = 'auto';
+        }
     }
 
     function openLeadModal(card, preferredTab = 'communications', openAction = '') {
         if (!modal || !card) return;
 
-        const requestedTab = ['communications', 'details', 'notes'].includes(preferredTab) ? preferredTab : 'details';
+        const requestedTab = ['communications', 'details', 'notes'].includes(preferredTab) ? preferredTab : 'communications';
 
         setWorkspacePresentation('screen');
 
@@ -4900,10 +5182,13 @@ $consultationOptions = [
         if (communicationNoteInput) communicationNoteInput.value = '';
         if (communicationNoteStatus) communicationNoteStatus.textContent = '';
         setComposerMode('sms');
+        setComposerDraftSource('sms', 'manual');
+        setComposerDraftSource('email', 'manual');
         setComposerCollapsed(false);
 
         setSmsOptUi(card.dataset.leadSmsOptStatus || 'unknown');
         refreshAiDraftUi();
+        refreshComposerSafetyCue();
 
         renderThreadSnapshot({ messages: [], activities: [], emails: [] });
 
@@ -4913,6 +5198,7 @@ $consultationOptions = [
 
         buildNotesHistory(card.dataset.leadNotes || '');
         updateMissingPanel();
+        updateLeadIntelligencePanel();
 
         setActiveTab(requestedTab);
 
@@ -5644,8 +5930,10 @@ $consultationOptions = [
             const data = await requestSmsDraft(prepared.leadId, instruction);
 
             if (smsInput) smsInput.value = data.draft?.reply || '';
+            setComposerDraftSource('sms', 'ai');
             if (smsStatus) smsStatus.textContent = 'SMS drafted. Review before sending.';
             setAiStatusMessage('SMS drafted.');
+            refreshComposerSafetyCue();
 
             await loadLeadThread();
             return true;
@@ -5681,9 +5969,11 @@ $consultationOptions = [
 
             if (emailSubjectInput) emailSubjectInput.value = data.draft?.subject || '';
             if (emailBodyInput) emailBodyInput.value = data.draft?.body || '';
+            setComposerDraftSource('email', 'ai');
             applyDraftedFollowUp(data.draft?.next_follow_up_at || '');
             if (emailStatus) emailStatus.textContent = 'Email drafted. Review before sending.';
             setAiStatusMessage('Email drafted.');
+            refreshComposerSafetyCue();
 
             await loadLeadThread();
             return true;
@@ -5781,10 +6071,13 @@ $consultationOptions = [
             if (emailSubjectInput) emailSubjectInput.value = emailData.draft?.subject || '';
             if (emailBodyInput) emailBodyInput.value = emailData.draft?.body || '';
             if (smsInput) smsInput.value = smsData.draft?.reply || '';
+            setComposerDraftSource('email', 'ai');
+            setComposerDraftSource('sms', 'ai');
             applyDraftedFollowUp(emailData.draft?.next_follow_up_at || '');
 
             if (emailStatus) emailStatus.textContent = 'Email drafted. Review before sending.';
             if (smsStatus) smsStatus.textContent = 'SMS drafted. Review before sending.';
+            refreshComposerSafetyCue();
             setAiStatusMessage('SMS and email drafted. Review and send when ready.');
 
             await loadLeadThread();
@@ -5929,6 +6222,8 @@ $consultationOptions = [
         if (!key || !smsTemplates[key]) return;
 
         smsInput.value = applyTemplateTokens(smsTemplates[key].body || '', activeCard);
+        setComposerDraftSource('sms', 'manual');
+        refreshComposerSafetyCue();
 
         if (smsStatus) smsStatus.textContent = 'Template loaded. Review before sending.';
 
@@ -6302,7 +6597,12 @@ $consultationOptions = [
 
         modalLeadLandingPageInput,
 
-        modalLeadCampaignInput
+        modalLeadCampaignInput,
+        modalLeadDobInput,
+        modalLeadIntentTypeInput,
+        modalLeadPreferredDayInput,
+        modalLeadPreferredTimeInput,
+        modalLeadNextFollowUpInput,
 
     ].forEach((el) => {
 
@@ -6332,6 +6632,8 @@ $consultationOptions = [
 
     refreshAiDraftUi();
     setAiInstructionCollapsed(true);
+    refreshComposerSafetyCue();
+    applyPipelineBoardMobileMode();
 
     if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
     if (saveButtonNotesSmall) saveButtonNotesSmall.addEventListener('click', saveLeadDetails);
@@ -6349,6 +6651,33 @@ $consultationOptions = [
 
     if (loadThreadButton) loadThreadButton.addEventListener('click', loadLeadThread);
 
+    if (smsInput) {
+        smsInput.addEventListener('input', function () {
+            setComposerDraftSource('sms', 'manual');
+            if (composerMode === 'sms') {
+                refreshComposerSafetyCue();
+            }
+        });
+    }
+
+    if (emailBodyInput) {
+        emailBodyInput.addEventListener('input', function () {
+            setComposerDraftSource('email', 'manual');
+            if (composerMode === 'email') {
+                refreshComposerSafetyCue();
+            }
+        });
+    }
+
+    if (emailSubjectInput) {
+        emailSubjectInput.addEventListener('input', function () {
+            setComposerDraftSource('email', 'manual');
+            if (composerMode === 'email') {
+                refreshComposerSafetyCue();
+            }
+        });
+    }
+
     smsOptStatusInputs.forEach((input) => {
         input.addEventListener('change', function () {
             setSmsOptUi(input.value || 'unknown');
@@ -6365,6 +6694,30 @@ $consultationOptions = [
             setComposerMode(button.dataset.composerMode || 'sms');
         });
     });
+
+    if (pipelineMobileStageFilter) {
+        pipelineMobileStageFilter.addEventListener('change', applyPipelineBoardMobileMode);
+        window.addEventListener('resize', () => {
+            if (!pipelineMobileStageFilter) return;
+            applyPipelineBoardMobileMode();
+        });
+        window.addEventListener('resize', () => {
+            applyCommunicationViewportFit();
+        });
+    }
+
+    window.addEventListener('resize', function () {
+        applyCommunicationViewportFit();
+    });
+
+    if (smsDndToggle && smsDndBody) {
+        smsDndToggle.addEventListener('click', function () {
+            const isExpanded = !smsDndBody.classList.contains('hidden');
+            const nextExpanded = !isExpanded;
+            smsDndBody.classList.toggle('hidden', !nextExpanded);
+            smsDndToggle.setAttribute('aria-expanded', nextExpanded ? 'true' : 'false');
+        });
+    }
 
     if (aiCollapseToggle) {
         aiCollapseToggle.addEventListener('click', function () {
@@ -6441,7 +6794,7 @@ $consultationOptions = [
 
             event.preventDefault();
             closeCalendarPanel();
-            openLeadModal(card, 'details');
+            openLeadModal(card, 'communications');
         });
     }
 
@@ -6701,7 +7054,7 @@ $consultationOptions = [
 
 
     updateColumnCounts();
-    setActiveTab('details');
+    setActiveTab('communications');
     setCalendarView(calendarView);
     if (calendarStateFromStorage?.isOpen) {
         openCalendarPanel();

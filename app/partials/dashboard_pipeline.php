@@ -984,13 +984,21 @@ $consultationOptions = [
         <div class="min-h-screen w-full bg-white">
             <div id="lead-detail-header" class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
 
-                <div>
+                <div class="flex flex-wrap items-end gap-x-6 gap-y-2">
+                    <div>
 
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Lead Workspace</p>
+                        <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Lead Workspace</p>
 
-                    <h3 id="modal-lead-name" class="mt-1 text-xl font-semibold text-slate-900">Lead</h3>
+                        <h3 id="modal-lead-name" class="mt-1 text-xl font-semibold text-slate-900">Lead</h3>
 
-                    <p id="modal-lead-stage" class="mt-0.5 text-xs text-slate-500">Stage</p>
+                        <p id="modal-lead-stage" class="mt-0.5 text-xs text-slate-500">Stage</p>
+                    </div>
+
+                    <nav class="flex items-center gap-4 pb-0.5" aria-label="Lead workspace sections">
+                        <button type="button" class="workspace-tab-button text-sm font-semibold text-slate-900" data-tab-target="details">Contact Details</button>
+                        <button type="button" class="workspace-tab-button text-sm font-semibold text-slate-500" data-tab-target="communications">Communication</button>
+                        <button type="button" class="workspace-tab-button text-sm font-semibold text-slate-500" data-tab-target="notes">Notes</button>
+                    </nav>
 
                 </div>
 
@@ -1086,7 +1094,7 @@ $consultationOptions = [
 
 
 
-                <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+                <div class="mb-3 hidden flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
 
                     <button
 
@@ -1926,7 +1934,7 @@ $consultationOptions = [
 
                                     <p id="legacy-modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
 
-                                    <div class="mt-3 flex flex-wrap gap-2">
+                                    <div class="mt-3 hidden flex-wrap gap-2">
                                         <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
                                         <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
                                         <button type="button" data-composer-mode="note" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Note</button>
@@ -2054,12 +2062,17 @@ $consultationOptions = [
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conversation Composer</p>
-                                    <p id="modal-composer-send-cue" class="w-full text-[11px] text-slate-500">SMS compose is primary. Review message before send.</p>
+                                    <div class="flex items-center gap-3 text-xs font-semibold">
+                                        <button type="button" data-composer-mode="sms" class="composer-mode-button text-slate-900">SMS</button>
+                                        <button type="button" data-composer-mode="email" class="composer-mode-button text-slate-500">Email</button>
+                                        <button type="button" data-composer-mode="note" class="composer-mode-button text-slate-500">Note</button>
+                                    </div>
+                                    <p id="modal-composer-send-cue" class="w-full text-[11px] text-slate-500">SMS compose is manual. Review message carefully before send.</p>
 
                             </div>
 
                             <div id="modal-composer-body">
-                            <div id="modal-ai-assistant-panel" class="mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                            <div id="modal-ai-assistant-panel" class="hidden mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-3">
                                     <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
                                     <button
@@ -3302,8 +3315,15 @@ $consultationOptions = [
             panel.classList.toggle('hidden', panel.dataset.composerPanel !== composerMode);
         });
 
+        composerModeButtons.forEach((button) => {
+            const isActive = button.dataset.composerMode === composerMode;
+            button.className = isActive
+                ? 'composer-mode-button text-xs font-semibold text-slate-950 underline decoration-blue-500 decoration-2 underline-offset-4'
+                : 'composer-mode-button text-xs font-semibold text-slate-500 transition hover:text-slate-900';
+        });
+
         if (aiInstructionPanel) {
-            aiInstructionPanel.classList.toggle('hidden', composerMode === 'note');
+            aiInstructionPanel.classList.add('hidden');
         }
 
         if (composerMode === 'email' && activeCard && emailBodyInput && emailBodyInput.value.trim() === '') {
@@ -4623,9 +4643,9 @@ $consultationOptions = [
 
             btn.className = isActive
 
-                ? 'workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-medium text-white'
+                ? 'workspace-tab-button text-sm font-semibold text-slate-950 underline decoration-blue-500 decoration-2 underline-offset-4'
 
-                : 'workspace-tab-button inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600';
+                : 'workspace-tab-button text-sm font-semibold text-slate-500 transition hover:text-slate-900';
 
         });
 

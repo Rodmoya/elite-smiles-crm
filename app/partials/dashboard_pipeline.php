@@ -1930,9 +1930,9 @@ $consultationOptions = [
 
                                     <div class="flex items-center justify-between gap-3">
 
-                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Internal Activity</p>
+                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Activity <span class="tracking-normal text-slate-400">(MST)</span></p>
 
-                                        <span class="text-[11px] font-medium text-slate-400">Calls, texts, stages</span>
+                                        <span class="text-[11px] font-medium text-slate-400">Issues, stages, audit</span>
 
                                     </div>
 
@@ -1940,7 +1940,7 @@ $consultationOptions = [
 
                                         <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
 
-                                            Activity will appear after calls, texts, replies, and stage moves.
+                                            Activity will appear after calls, texts, delivery issues, and stage moves.
 
                                         </div>
 
@@ -3940,27 +3940,116 @@ $consultationOptions = [
 
         }
 
-        const orderedActivities = sortThreadChronologically(activities);
+        const orderedActivities = sortThreadChronologically(activities).reverse();
+        const collapsedEmailTypes = new Set(['email_outbound', 'email_inbound', 'ai_email_draft', 'email_opened']);
+        const isCollapsedEmailActivity = (activity) => collapsedEmailTypes.has(String(activity?.type || ''));
+        const primaryActivities = orderedActivities.filter((activity) => !isCollapsedEmailActivity(activity));
+        const emailActivities = orderedActivities.filter(isCollapsedEmailActivity);
 
-        activityFeed.innerHTML = orderedActivities.map((activity) => `
+        const activityTone = (type) => {
+            const normalized = String(type || '');
+            if (normalized.includes('failed') || normalized.includes('issue') || normalized.includes('undelivered')) {
+                return {
+                    marker: 'border-rose-200 bg-rose-50 text-rose-700',
+                    card: 'border-rose-100 bg-rose-50/70',
+                    title: 'text-rose-800',
+                    pill: 'border-rose-200 bg-white text-rose-700',
+                    dot: 'bg-rose-500',
+                };
+            }
+            if (normalized.includes('survey') || normalized.includes('form') || normalized.includes('created')) {
+                return {
+                    marker: 'border-blue-200 bg-blue-50 text-blue-700',
+                    card: 'border-blue-100 bg-white',
+                    title: 'text-slate-900',
+                    pill: 'border-blue-100 bg-blue-50 text-blue-700',
+                    dot: 'bg-blue-500',
+                };
+            }
+            if (normalized.includes('note') || normalized.includes('follow') || normalized.includes('manual')) {
+                return {
+                    marker: 'border-amber-200 bg-amber-50 text-amber-700',
+                    card: 'border-amber-100 bg-amber-50/60',
+                    title: 'text-amber-900',
+                    pill: 'border-amber-200 bg-white text-amber-700',
+                    dot: 'bg-amber-500',
+                };
+            }
+            if (normalized.includes('stage') || normalized.includes('move')) {
+                return {
+                    marker: 'border-violet-200 bg-violet-50 text-violet-700',
+                    card: 'border-violet-100 bg-white',
+                    title: 'text-slate-900',
+                    pill: 'border-violet-100 bg-violet-50 text-violet-700',
+                    dot: 'bg-violet-500',
+                };
+            }
+            return {
+                marker: 'border-slate-200 bg-slate-50 text-slate-600',
+                card: 'border-slate-200 bg-white',
+                title: 'text-slate-900',
+                pill: 'border-slate-200 bg-slate-50 text-slate-600',
+                dot: 'bg-slate-400',
+            };
+        };
 
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+        const activityBody = (activity) => {
+            const type = String(activity?.type || '');
+            const body = String(activity?.body || '');
+            if (type === 'sms_delivery_issue') {
+                const recovery = body.includes('30003')
+                    ? 'Carrier reported undelivered. The phone may be unreachable, blocked, or unable to receive SMS right now.'
+                    : 'SMS did not complete delivery. Review the phone number and consider email or manual follow-up.';
+                return `${body}\n${recovery}`;
+            }
+            return body;
+        };
 
-                <div class="flex flex-wrap items-center justify-between gap-2">
+        const renderActivityItem = (activity, compact = false) => {
+            const type = String(activity?.type || '');
+            const tone = activityTone(type);
+            const label = activityLabel(type);
+            const time = formatThreadTime(activity.created_at || '');
+            const byline = activity.created_by ? 'By ' + activity.created_by : '';
+            const body = activityBody(activity);
+            const urgent = type.includes('failed') || type.includes('issue');
 
-                    <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">${escapeHtml(activityLabel(activity.type))}</p>
-
-                    <p class="text-[11px] text-slate-400">${escapeHtml(formatThreadTime(activity.created_at || ''))}</p>
-
+            return `
+                <div class="relative pl-2">
+                    <span class="absolute -left-[29px] top-1.5 flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold shadow-sm ${tone.marker}" aria-hidden="true">
+                        <span class="h-2 w-2 rounded-full ${tone.dot}"></span>
+                    </span>
+                    <div class="rounded-2xl border px-3 py-3 shadow-sm ${tone.card}">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <p class="text-sm font-semibold ${tone.title}">${escapeHtml(label)}</p>
+                                ${urgent ? '<p class="mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ' + tone.pill + '">Needs attention</p>' : ''}
+                            </div>
+                            <p class="text-[11px] font-medium text-slate-400">${escapeHtml(time)}</p>
+                        </div>
+                        ${body ? `<p class="mt-2 whitespace-pre-wrap text-${compact ? '[12px]' : 'sm'} leading-6 text-slate-700">${escapeHtml(body)}</p>` : ''}
+                        ${byline ? `<p class="mt-2 text-[11px] font-medium text-slate-400">${escapeHtml(byline)}</p>` : ''}
+                    </div>
                 </div>
+            `;
+        };
 
-                <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">${escapeHtml(activity.body || '')}</p>
+        const primaryHtml = primaryActivities.length
+            ? `<div class="relative ml-3 space-y-4 border-l border-slate-200 pl-5">${primaryActivities.map((activity) => renderActivityItem(activity)).join('')}</div>`
+            : '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">No non-email activity logged yet.</div>';
 
-                ${activity.created_by ? '<p class="mt-2 text-[11px] font-medium text-slate-400">By ' + escapeHtml(activity.created_by) + '</p>' : ''}
+        const emailHtml = emailActivities.length
+            ? `
+                <details class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <summary class="cursor-pointer text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Email activity (${emailActivities.length})</summary>
+                    <div class="mt-4 ml-3 space-y-3 border-l border-slate-200 pl-5">
+                        ${emailActivities.map((activity) => renderActivityItem(activity, true)).join('')}
+                    </div>
+                </details>
+            `
+            : '';
 
-            </div>
-
-        `).join('');
+        activityFeed.innerHTML = primaryHtml + emailHtml;
 
         scrollThreadPaneToBottom(activityFeed);
 

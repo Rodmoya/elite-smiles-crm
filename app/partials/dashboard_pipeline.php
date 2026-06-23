@@ -2501,6 +2501,8 @@ $consultationOptions = [
     const leadDetailBody = document.getElementById('lead-detail-body');
     const leadDetailFooter = document.getElementById('lead-detail-footer');
     const leadCommunicationGrid = document.getElementById('lead-communications-grid');
+    const leadUnifiedTimelinePanel = document.getElementById('lead-unified-timeline-panel');
+    const leadActivityPanel = document.getElementById('lead-activity-panel');
     const leadCommunicationComposerPanel = document.getElementById('lead-communication-composer-panel');
 
     const messageThread = document.getElementById('modal-message-thread');
@@ -5172,13 +5174,35 @@ function applyCommunicationViewportFit() {
 
         if (leadCommunicationGrid) {
             leadCommunicationGrid.style.height = `${viewportBudget}px`;
-            leadCommunicationGrid.style.gridTemplateRows = `minmax(0, ${listBudget}px) ${composerBudget}px`;
+            leadCommunicationGrid.style.gridTemplateColumns = 'minmax(220px, 15%) minmax(0, 1fr) minmax(260px, 15%)';
+            leadCommunicationGrid.style.gridTemplateRows = `${listBudget}px ${composerBudget}px`;
+            leadCommunicationGrid.style.alignItems = 'stretch';
+            leadCommunicationGrid.style.columnGap = '16px';
+            leadCommunicationGrid.style.rowGap = '16px';
+        }
+
+        if (leadUnifiedTimelinePanel) {
+            leadUnifiedTimelinePanel.style.gridColumn = '2 / 3';
+            leadUnifiedTimelinePanel.style.gridRow = '1 / 2';
+            leadUnifiedTimelinePanel.style.height = `${listBudget}px`;
+            leadUnifiedTimelinePanel.style.minHeight = '0';
+        }
+
+        if (leadActivityPanel) {
+            leadActivityPanel.style.gridColumn = '3 / 4';
+            leadActivityPanel.style.gridRow = '1 / 2';
+            leadActivityPanel.style.height = `${listBudget}px`;
+            leadActivityPanel.style.minHeight = '0';
         }
 
         if (leadCommunicationComposerPanel) {
+            leadCommunicationComposerPanel.style.gridColumn = '2 / 3';
+            leadCommunicationComposerPanel.style.gridRow = '2 / 3';
             leadCommunicationComposerPanel.style.height = `${composerBudget}px`;
             leadCommunicationComposerPanel.style.maxHeight = `${composerBudget}px`;
             leadCommunicationComposerPanel.style.overflowY = 'hidden';
+            leadCommunicationComposerPanel.style.width = '100%';
+            leadCommunicationComposerPanel.style.alignSelf = 'end';
         }
 
         const unifiedPanelHeight = `${Math.max(200, listBudget - 36)}px`;

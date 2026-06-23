@@ -373,9 +373,44 @@ $showAttributionDetails = (
             </div>
         <?php endif; ?>
 
-        <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+        <div class="lead-card-bottom-row flex flex-wrap items-center gap-1.5 pt-0.5">
             <span class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"><?= e($leadPreferredContactText) ?></span>
             <span class="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700"><?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></span>
+            <div class="ml-auto flex justify-end gap-1 text-slate-500">
+                <button type="button" class="lead-open-modal relative inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Messages" aria-label="Open messages">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path>
+                    </svg>
+                    <?php if ($leadUnreadMessageCount > 0): ?>
+                        <span class="lead-unread-badge absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white"><?= e((string)$leadUnreadMessageCount) ?></span>
+                    <?php endif; ?>
+                </button>
+
+                <button type="button" class="lead-open-modal inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Text or call" aria-label="Open text or call">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.91.32 1.8.59 2.65a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.43-1.16a2 2 0 0 1 2.11-.45c.85.27 1.74.47 2.65.59A2 2 0 0 1 22 16.92Z"></path>
+                    </svg>
+                </button>
+
+                <button type="button" class="lead-open-modal relative inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="details" title="Details" aria-label="Open details">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.59 11l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83Z"></path>
+                        <path d="M7 7h.01"></path>
+                    </svg>
+                    <?php if ($isIncomplete): ?>
+                        <span class="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white"><?= e((string)$missingCount) ?></span>
+                    <?php endif; ?>
+                </button>
+
+                <button type="button" class="lead-open-modal inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="notes" title="Notes" aria-label="Open notes">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path>
+                        <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
+                        <path d="M16 13H8"></path>
+                        <path d="M16 17H8"></path>
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -401,7 +436,7 @@ $showAttributionDetails = (
         </div>
     <?php endif; ?>
 
-    <div class="mt-2 flex justify-end gap-1 text-slate-500">
+    <div class="mt-2 hidden justify-end gap-1 text-slate-500">
         <button type="button" class="lead-open-modal relative inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Messages" aria-label="Open messages">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path>

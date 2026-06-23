@@ -391,6 +391,9 @@ if (!function_exists('lead_conversion_next_action')) {
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
             return ['key' => 'dnd', 'label' => 'Do not text', 'tone' => 'slate'];
         }
+        if ($status === 'consultation_booked' && lead_conversion_needs_dob($lead)) {
+            return ['key' => 'ask_dob', 'label' => 'Ask DOB', 'tone' => 'amber'];
+        }
         if (lead_conversion_reply_needed($lead)) {
             return ['key' => 'reply_needed', 'label' => 'Reply needed', 'tone' => 'blue'];
         }

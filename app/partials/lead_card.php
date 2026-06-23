@@ -285,6 +285,19 @@ $showAttributionDetails = (
     || strtolower($leadSourceMedium) === 'paid'
     || strtolower($leadSourceMedium) === 'social'
 );
+
+$leadConversion = function_exists('lead_conversion_summary') ? lead_conversion_summary($lead) : [
+    'stage_key' => $stageKey,
+    'stage_label' => $stageLabel,
+    'next_action' => ['key' => 'review_next_step', 'label' => 'Review next step', 'tone' => 'slate'],
+    'badges' => [],
+];
+$leadConversionStageKey = (string)($leadConversion['stage_key'] ?? $stageKey);
+$leadConversionStageLabel = (string)($leadConversion['stage_label'] ?? $stageLabel);
+$leadNextAction = (array)($leadConversion['next_action'] ?? []);
+$leadConversionBadges = array_slice((array)($leadConversion['badges'] ?? []), 0, 3);
+$leadNextActionLabel = trim((string)($leadNextAction['label'] ?? 'Review next step'));
+$leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
 ?>
 
 <div
@@ -317,6 +330,9 @@ $showAttributionDetails = (
     data-lead-financing-option="<?= e($leadFinancingOption) ?>"
     data-lead-financing-option-label="<?= e($leadFinancingOptionLabel) ?>"
     data-lead-stage-label="<?= e($stageLabel) ?>"
+    data-lead-conversion-stage="<?= e($leadConversionStageKey) ?>"
+    data-lead-conversion-stage-label="<?= e($leadConversionStageLabel) ?>"
+    data-lead-next-action="<?= e($leadNextActionLabel) ?>"
     data-lead-value="<?= e($leadValue) ?>"
     data-lead-lost-reason="<?= e($leadLostReason) ?>"
     data-lead-preferred-contact="<?= e($leadPreferredContact) ?>"
@@ -372,6 +388,17 @@ $showAttributionDetails = (
                 <span class="truncate"><?= e(ucwords(strtolower($leadIntentionDisplay))) ?></span>
             </div>
         <?php endif; ?>
+
+        <div class="flex flex-wrap items-center gap-1.5">
+            <span class="rounded-md border <?= e(function_exists('lead_conversion_badge_class') ? lead_conversion_badge_class($leadNextActionTone) : 'border-slate-200 bg-slate-50 text-slate-600') ?> px-2 py-0.5 text-[10px] font-semibold">
+                Next: <?= e($leadNextActionLabel) ?>
+            </span>
+            <?php foreach ($leadConversionBadges as $badge): ?>
+                <span class="rounded-md border <?= e(function_exists('lead_conversion_badge_class') ? lead_conversion_badge_class((string)($badge['tone'] ?? 'slate')) : 'border-slate-200 bg-slate-50 text-slate-600') ?> px-2 py-0.5 text-[10px] font-semibold">
+                    <?= e((string)($badge['label'] ?? 'Flag')) ?>
+                </span>
+            <?php endforeach; ?>
+        </div>
 
         <div class="lead-card-bottom-row flex flex-wrap items-center gap-1.5 pt-0.5">
             <span class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"><?= e($leadPreferredContactText) ?></span>

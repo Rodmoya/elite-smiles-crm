@@ -40,7 +40,13 @@ if (!function_exists('elite_ai_knowledge_base')) {
                 'sale_closed' => 'Closed sales are not active follow-up candidates.',
                 'no_answer' => 'No Answer is a protected review stage and should never be auto-set by the assistant.',
             ],
+            'conversion_stage_rules' => [
+                'compatibility' => 'Derived conversion stages are read-only compatibility labels layered over legacy lead.status values until the final migration pass.',
+                'first_touch_sent' => 'First Touch Sent means the lead has received outreach but has not clearly replied yet.',
+                'scheduling' => 'Scheduling means the lead appears engaged and the next goal is to collect requirements or offer appointment dates.',
+                'consult_completed' => 'Consult Completed is derived from past consultation dates and should be treated as a manual-review signal, not an automatic stage move.',
+                'nurture_lost' => 'Nurture / Lost collects no-answer, lost, opted-out, and bad-data records while preserving the underlying legacy status.',
+            ],
         ];
     }
 }
-

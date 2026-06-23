@@ -120,6 +120,22 @@ if (!function_exists('elite_ai_lead_select_fields')) {
     }
 }
 
+if (!function_exists('elite_ai_enrich_conversion_layer')) {
+    function elite_ai_enrich_conversion_layer(array $lead): array
+    {
+        if (!function_exists('lead_conversion_summary')) {
+            return $lead;
+        }
+
+        $summary = lead_conversion_summary($lead);
+        $lead['conversion_stage_key'] = (string)($summary['stage_key'] ?? '');
+        $lead['conversion_stage_label'] = (string)($summary['stage_label'] ?? '');
+        $lead['conversion_next_action'] = (array)($summary['next_action'] ?? []);
+        $lead['conversion_badges'] = (array)($summary['badges'] ?? []);
+        return $lead;
+    }
+}
+
 if (!function_exists('elite_ai_load_lead')) {
     function elite_ai_load_lead(int $leadId): ?array
     {
@@ -127,7 +143,8 @@ if (!function_exists('elite_ai_load_lead')) {
             return null;
         }
 
-        return db_one('SELECT ' . elite_ai_lead_select_fields() . ' FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        $lead = db_one('SELECT ' . elite_ai_lead_select_fields() . ' FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        return $lead ? elite_ai_enrich_conversion_layer($lead) : null;
     }
 }
 
@@ -156,7 +173,7 @@ if (!function_exists('elite_ai_find_leads')) {
             $params['phone'] = '%' . $digits . '%';
         }
 
-        return db_all(
+        $rows = db_all(
             'SELECT ' . elite_ai_lead_select_fields() . '
              FROM leads
              WHERE ' . implode(' OR ', $where) . '
@@ -164,6 +181,8 @@ if (!function_exists('elite_ai_find_leads')) {
              LIMIT ' . $limit,
             $params
         );
+
+        return array_map('elite_ai_enrich_conversion_layer', $rows);
     }
 }
 
@@ -284,6 +303,8 @@ if (!function_exists('elite_ai_missing_items')) {
         $missing = [];
         if (trim((string) ($lead['phone'] ?? '')) === '') {
             $missing[] = 'Phone number is missing.';
+        } elseif (function_exists('lead_conversion_bad_phone') && lead_conversion_bad_phone($lead)) {
+            $missing[] = 'Phone number looks invalid or placeholder.';
         }
         if (trim((string) ($lead['email'] ?? '')) === '') {
             $missing[] = 'Email is missing.';
@@ -713,9 +734,14 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         $latestActivity = elite_ai_latest_activity_item($thread);
         $missingItems = elite_ai_missing_items($lead);
         $recommendation = elite_ai_recommended_next_step($lead, $thread, $attempts);
+        $conversionSummary = function_exists('lead_conversion_summary') ? lead_conversion_summary($lead) : null;
+        $conversionStageLabel = (string)($conversionSummary['stage_label'] ?? ($lead['conversion_stage_label'] ?? ''));
+        $conversionNextAction = (array)($conversionSummary['next_action'] ?? ($lead['conversion_next_action'] ?? []));
+        $conversionBadges = (array)($conversionSummary['badges'] ?? ($lead['conversion_badges'] ?? []));
 
         $overview = [
             'Stage: ' . elite_ai_stage_label(trim((string) ($lead['status'] ?? ''))),
+            'Conversion meaning: ' . ($conversionStageLabel !== '' ? $conversionStageLabel : 'Not available'),
             'Source: ' . (trim((string) ($lead['source'] ?? '')) !== '' ? trim((string) ($lead['source'] ?? '')) : 'Unknown'),
             'Preferred contact: ' . (trim((string) ($lead['preferred_contact'] ?? '')) !== '' ? trim((string) ($lead['preferred_contact'] ?? '')) : 'Not set'),
         ];
@@ -751,13 +777,33 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
             ];
         }
 
+        $conversionItems = [];
+        if ($conversionStageLabel !== '') {
+            $conversionItems[] = 'Derived conversion stage: ' . $conversionStageLabel . ' (legacy status remains ' . trim((string)($lead['status'] ?? 'unknown')) . ').';
+        }
+        if (trim((string)($conversionNextAction['label'] ?? '')) !== '') {
+            $conversionItems[] = 'Next Action: ' . trim((string)$conversionNextAction['label']);
+        }
+        foreach ($conversionBadges as $badge) {
+            $label = trim((string)($badge['label'] ?? ''));
+            if ($label !== '') {
+                $conversionItems[] = 'Flag: ' . $label;
+            }
+        }
+        if ($conversionItems) {
+            $cards[] = [
+                'title' => 'Conversion layer',
+                'items' => $conversionItems,
+            ];
+        }
+
         $cards[] = [
             'title' => 'Recommended next step',
             'items' => [$recommendation],
         ];
 
         return [
-            'answer' => trim((string) ($lead['full_name'] ?? 'Lead')) . ' is currently in ' . elite_ai_stage_label(trim((string) ($lead['status'] ?? ''))) . '. I reviewed the most recent communication, the latest activity, and the obvious missing items so you can decide the next manual step.',
+            'answer' => trim((string) ($lead['full_name'] ?? 'Lead')) . ' is currently in ' . elite_ai_stage_label(trim((string) ($lead['status'] ?? ''))) . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel . ' conversion meaning' : '') . '. I reviewed the most recent communication, the latest activity, and the obvious missing items so you can decide the next manual step.',
             'cards' => $cards,
             'tools_used' => ['lead_summary', 'lead_thread', 'knowledge_rules'],
             'lead_id' => $leadId,

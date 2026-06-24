@@ -1358,6 +1358,12 @@ if (!function_exists('lead_create_minimal')) {
             }
 
             $firstTouchSms = ['attempted' => false, 'sent' => false];
+            if ($leadId > 0 && !function_exists('lead_ai_maybe_send_new_lead_sms')) {
+                $leadAiPath = __DIR__ . '/lead_ai.php';
+                if (is_file($leadAiPath)) {
+                    require_once $leadAiPath;
+                }
+            }
             if ($leadId > 0 && function_exists('lead_ai_maybe_send_new_lead_sms')) {
                 try {
                     $firstTouchSms = lead_ai_maybe_send_new_lead_sms($leadId);
@@ -1369,6 +1375,13 @@ if (!function_exists('lead_create_minimal')) {
                         ]);
                     }
                 }
+            } elseif ($leadId > 0) {
+                $firstTouchSms = [
+                    'attempted' => false,
+                    'sent' => false,
+                    'body' => '',
+                    'status_label' => 'Auto new-lead SMS hook unavailable.',
+                ];
             }
 
             if ($leadId > 0) {

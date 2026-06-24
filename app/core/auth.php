@@ -379,7 +379,13 @@ if (!function_exists('auth_verify_assistant_api_token')) {
             return null;
         }
 
-        $decoded = base64_decode(strtr($token, '-_', '+/'), true);
+        $encoded = strtr($token, '-_', '+/');
+        $padding = strlen($encoded) % 4;
+        if ($padding > 0) {
+            $encoded .= str_repeat('=', 4 - $padding);
+        }
+
+        $decoded = base64_decode($encoded, true);
         if (!is_string($decoded) || $decoded === '') {
             return null;
         }

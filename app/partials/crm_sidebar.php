@@ -408,11 +408,15 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         };
-        const token = String(aiPanel ? (aiPanel.dataset.authToken || '') : '').trim();
+        const token = assistantToken();
         if (token) {
             headers['X-Elite-AI-Token'] = token;
         }
         return headers;
+    }
+
+    function assistantToken() {
+        return String(aiPanel ? (aiPanel.dataset.authToken || '') : '').trim();
     }
 
     function parseDraftCandidate(candidate) {
@@ -501,6 +505,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 headers: assistantHeaders(),
                 body: JSON.stringify({
                     surface: 'desktop',
+                    assistant_token: assistantToken(),
                     assistant_action: action.type,
                     lead_id: Number(action.lead_id || 0),
                     prompt: action.help || '',
@@ -559,6 +564,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 headers: assistantHeaders(),
                 body: JSON.stringify({
                     surface: 'desktop',
+                    assistant_token: assistantToken(),
                     prompt: text,
                     quick_action: quickAction || '',
                     context: {

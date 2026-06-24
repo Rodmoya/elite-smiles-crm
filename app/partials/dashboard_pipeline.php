@@ -6033,6 +6033,12 @@ function applyCommunicationViewportFit() {
 
             clearUnreadBadge(activeCard);
 
+            if (smsInput) {
+                smsInput.value = '';
+            }
+            setComposerDraftSource('sms', 'manual');
+            refreshComposerSafetyCue();
+
             if (smsStatus) smsStatus.textContent = data.message || 'SMS sent.';
 
             return true;
@@ -6302,6 +6308,21 @@ function applyCommunicationViewportFit() {
 
             const data = await parseJsonResponse(response);
             if (!response.ok || !data.ok) throw new Error(data.message || 'Failed to send email.');
+
+            if (data.notes !== undefined) {
+                activeCard.dataset.leadNotes = data.notes || '';
+                if (notesInput) notesInput.value = data.notes || '';
+                buildNotesHistory(data.notes || '');
+            }
+
+            if (emailSubjectInput) {
+                emailSubjectInput.value = '';
+            }
+            if (emailBodyInput) {
+                emailBodyInput.value = '';
+            }
+            setComposerDraftSource('email', 'manual');
+            refreshComposerSafetyCue();
 
             if (emailStatus) emailStatus.textContent = data.message || 'Email sent.';
             await loadLeadThread();

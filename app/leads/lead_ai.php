@@ -68,6 +68,24 @@ if (!function_exists('lead_ai_email_schema')) {
     }
 }
 
+if (!function_exists('lead_ai_outbound_note_schema')) {
+    function lead_ai_outbound_note_schema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'summary' => ['type' => 'string'],
+                'intent' => ['type' => 'string'],
+                'next_step' => ['type' => 'string'],
+                'note' => ['type' => 'string'],
+                'confidence' => ['type' => 'number'],
+            ],
+            'required' => ['summary', 'intent', 'next_step', 'note', 'confidence'],
+            'additionalProperties' => false,
+        ];
+    }
+}
+
 if (!function_exists('lead_ai_system_prompt')) {
     function lead_ai_system_prompt(): string
     {
@@ -105,6 +123,22 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
+            'Return only JSON matching the schema.',
+        ]);
+    }
+}
+
+if (!function_exists('lead_ai_outbound_note_system_prompt')) {
+    function lead_ai_outbound_note_system_prompt(): string
+    {
+        return implode("\n", [
+            'You create concise internal CRM notes for Elite Smiles after outbound patient communications are sent.',
+            'The note is for operators only. It must not sound like a patient-facing message.',
+            'Use the outbound SMS/email, lead details, timestamp, recent conversation context, and appointment fields.',
+            'Capture what was communicated, why it matters, and the best next operational step.',
+            'Do not invent patient replies, appointments, financing approval, diagnosis, or facts not present in the context.',
+            'Do not include secrets, API details, tokens, or implementation notes.',
+            'Keep note under 450 characters. Use plain English and be specific.',
             'Return only JSON matching the schema.',
         ]);
     }
@@ -250,6 +284,176 @@ if (!function_exists('lead_ai_email_context')) {
     }
 }
 
+if (!function_exists('lead_ai_outbound_note_fallback')) {
+    function lead_ai_outbound_note_fallback(array $lead, string $channel, string $subject, string $body, string $sentAt): array
+    {
+        $channelLabel = strtoupper($channel) === 'EMAIL' ? 'email' : 'SMS';
+        $subjectPart = trim($subject) !== '' ? ' Subject: ' . trim($subject) . '.' : '';
+        $snippet = trim(preg_replace('/\s+/', ' ', $body) ?? '');
+        $snippet = mb_substr($snippet, 0, 180);
+        $name = trim((string)($lead['full_name'] ?? 'lead'));
+        if ($name === '') {
+            $name = 'lead';
+        }
+
+        $summary = 'Sent outbound ' . $channelLabel . ' to ' . $name . '.' . $subjectPart;
+        $nextStep = 'Watch for reply and continue follow-up based on response.';
+        $note = $summary . ' Message context: ' . $snippet . '. Next step: ' . $nextStep;
+
+        return [
+            'summary' => $summary,
+            'intent' => 'Outbound follow-up',
+            'next_step' => $nextStep,
+            'note' => mb_substr($note, 0, 450),
+            'confidence' => 0.35,
+            'fallback' => true,
+            'sent_at' => $sentAt,
+        ];
+    }
+}
+
+if (!function_exists('lead_ai_append_internal_note')) {
+    function lead_ai_append_internal_note(int $leadId, string $note): string
+    {
+        $note = trim($note);
+        if ($leadId <= 0 || $note === '' || !function_exists('leads_has_column') || !leads_has_column('notes')) {
+            return '';
+        }
+
+        try {
+            $lead = db_one('SELECT notes FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+            $existingNotes = (string)($lead['notes'] ?? '');
+            $line = '[' . date('Y-m-d H:i') . '] ' . $note;
+            $updatedNotes = trim($existingNotes) !== '' ? rtrim($existingNotes) . "\n\n" . $line : $line;
+
+            $setParts = ['notes = :notes'];
+            $params = ['notes' => $updatedNotes, 'id' => $leadId];
+            if (leads_has_column('updated_at')) {
+                $setParts[] = 'updated_at = :updated_at';
+                $params['updated_at'] = date('Y-m-d H:i:s');
+            }
+
+            db_execute('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
+            return $updatedNotes;
+        } catch (Throwable $e) {
+            esm_log('openai', 'AI outbound note append failed.', [
+                'lead_id' => $leadId,
+                'error' => $e->getMessage(),
+            ]);
+            return '';
+        }
+    }
+}
+
+if (!function_exists('lead_ai_create_outbound_note')) {
+    function lead_ai_create_outbound_note(int $leadId, string $channel, string $subject, string $body, array $meta = []): array
+    {
+        $leadId = max(0, $leadId);
+        $channel = strtolower(trim($channel));
+        $subject = trim($subject);
+        $body = trim($body);
+        $sentAt = (string)($meta['sent_at'] ?? date('Y-m-d H:i:s'));
+
+        if ($leadId <= 0 || $body === '') {
+            return ['ok' => false, 'message' => 'Missing lead or message body for outbound AI note.'];
+        }
+
+        try {
+            $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+            if (!$lead) {
+                return ['ok' => false, 'message' => 'Lead not found for outbound AI note.'];
+            }
+
+            $context = [
+                'mode' => 'outbound_' . ($channel === 'email' ? 'email' : 'sms') . '_note',
+                'current_datetime' => date('Y-m-d H:i:s'),
+                'sent_at' => $sentAt,
+                'channel' => $channel === 'email' ? 'email' : 'sms',
+                'operator' => (string)($meta['created_by'] ?? (function_exists('lead_comm_user_label') ? lead_comm_user_label() : 'System')),
+                'lead' => [
+                    'id' => $leadId,
+                    'full_name' => (string)($lead['full_name'] ?? ''),
+                    'phone' => (string)($lead['phone'] ?? ''),
+                    'email' => (string)($lead['email'] ?? ''),
+                    'procedure_interest' => (string)($lead['procedure_interest'] ?? ''),
+                    'status' => (string)($lead['status'] ?? ''),
+                    'consultation_status' => (string)($lead['consultation_status'] ?? ''),
+                    'consultation_date' => (string)($lead['consultation_date'] ?? ''),
+                    'date_of_birth' => (string)($lead['date_of_birth'] ?? ''),
+                    'next_follow_up_at' => (string)($lead['next_follow_up_at'] ?? ''),
+                    'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 900),
+                ],
+                'outbound_message' => [
+                    'subject' => mb_substr($subject, 0, 255),
+                    'body' => mb_substr($body, 0, 1800),
+                ],
+                'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
+                'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
+                'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
+            ];
+
+            $result = elite_openai_json_response(
+                lead_ai_outbound_note_system_prompt(),
+                'Create the internal CRM note for this outbound communication: ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                lead_ai_outbound_note_schema(),
+                'elite_smiles_outbound_note'
+            );
+
+            $data = [];
+            $usedFallback = true;
+            if (!empty($result['ok']) && is_array($result['data'] ?? null)) {
+                $data = $result['data'];
+                $data['note'] = trim((string)($data['note'] ?? ''));
+                $data['summary'] = trim((string)($data['summary'] ?? ''));
+                $data['intent'] = trim((string)($data['intent'] ?? ''));
+                $data['next_step'] = trim((string)($data['next_step'] ?? ''));
+                $data['confidence'] = max(0.0, min(1.0, (float)($data['confidence'] ?? 0)));
+                $usedFallback = $data['note'] === '';
+            }
+
+            if ($usedFallback) {
+                $data = lead_ai_outbound_note_fallback($lead, $channel, $subject, $body, $sentAt);
+            }
+
+            $note = mb_substr(trim((string)($data['note'] ?? '')), 0, 700);
+            if ($note === '') {
+                return ['ok' => false, 'message' => 'Outbound AI note was empty.'];
+            }
+
+            $activityId = lead_comm_insert_activity($leadId, 'ai_outbound_note', $note, [
+                'channel' => $channel === 'email' ? 'email' : 'sms',
+                'subject' => $subject,
+                'summary' => (string)($data['summary'] ?? ''),
+                'intent' => (string)($data['intent'] ?? ''),
+                'next_step' => (string)($data['next_step'] ?? ''),
+                'confidence' => (float)($data['confidence'] ?? 0),
+                'fallback' => !empty($data['fallback']) || $usedFallback,
+                'message_id' => (int)($meta['message_id'] ?? 0),
+                'email_id' => (int)($meta['email_id'] ?? 0),
+                'sent_at' => $sentAt,
+            ], 'OpenAI');
+
+            $updatedNotes = lead_ai_append_internal_note($leadId, $note);
+
+            return [
+                'ok' => true,
+                'note' => $note,
+                'notes' => $updatedNotes,
+                'activity_id' => $activityId,
+                'fallback' => !empty($data['fallback']) || $usedFallback,
+            ];
+        } catch (Throwable $e) {
+            esm_log('openai', 'AI outbound note creation failed.', [
+                'lead_id' => $leadId,
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['ok' => false, 'message' => 'AI outbound note failed.'];
+        }
+    }
+}
+
 if (!function_exists('lead_ai_generate_reply')) {
     function lead_ai_generate_reply(array $lead, string $latestMessage = '', string $mode = 'inbound_sms'): array
     {
@@ -377,6 +581,12 @@ if (!function_exists('lead_ai_send_reply_if_safe')) {
             'twilio_sid' => $sendResult['twilio_sid'] ?? '',
         ], 'OpenAI');
         lead_comm_update_rollup($leadId);
+
+        lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [
+            'message_id' => $messageId,
+            'sent_at' => date('Y-m-d H:i:s'),
+            'created_by' => 'OpenAI',
+        ]);
 
         return [
             'ok' => true,

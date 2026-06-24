@@ -68,6 +68,7 @@ require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/leads/lead_ai.php';
 
 if (!function_exists('auth_check')) {
     lead_sms_json_response(500, ['ok' => false, 'message' => 'Auth helper not available.']);
@@ -166,11 +167,20 @@ lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult
 ]);
 lead_comm_update_rollup($leadId);
 
-$notes = (string) ($lead['notes'] ?? '');
-$auditLine = '[' . date('Y-m-d H:i') . '] SMS sent via Twilio to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr($sentBody, 0, 240);
-$updatedNotes = trim($notes) !== '' ? rtrim($notes) . "\n\n" . $auditLine : $auditLine;
+$aiNoteResult = function_exists('lead_ai_create_outbound_note')
+    ? lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [
+        'message_id' => $messageRecordId,
+        'sent_at' => date('Y-m-d H:i:s'),
+        'created_by' => function_exists('lead_comm_user_label') ? lead_comm_user_label() : 'System',
+    ])
+    : ['ok' => false];
+$updatedNotes = (string)($aiNoteResult['notes'] ?? '');
 
-if (function_exists('leads_has_column') && leads_has_column('notes')) {
+if (empty($aiNoteResult['ok']) && function_exists('leads_has_column') && leads_has_column('notes')) {
+    $notes = (string) ($lead['notes'] ?? '');
+    $auditLine = '[' . date('Y-m-d H:i') . '] SMS sent via Twilio to ' . ($sendResult['to'] ?? '') . ': ' . mb_substr($sentBody, 0, 240);
+    $updatedNotes = trim($notes) !== '' ? rtrim($notes) . "\n\n" . $auditLine : $auditLine;
+
     try {
         $setParts = ['notes = :notes'];
         $params = ['notes' => $updatedNotes, 'id' => $leadId];
@@ -199,4 +209,5 @@ lead_sms_json_response(200, [
     'twilio_status' => $sendResult['twilio_status'] ?? '',
     'thread' => lead_comm_snapshot($leadId),
     'notes' => $updatedNotes,
+    'ai_note' => (string)($aiNoteResult['note'] ?? ''),
 ]);

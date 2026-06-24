@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
+require_once dirname(__DIR__) . '/leads/lead_ai.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -50,10 +51,20 @@ if (empty($result['ok'])) {
     ], 502);
 }
 
+$aiNoteResult = function_exists('lead_ai_create_outbound_note')
+    ? lead_ai_create_outbound_note($leadId, 'email', $subject, $body, [
+        'email_id' => (int)($result['email_id'] ?? 0),
+        'sent_at' => date('Y-m-d H:i:s'),
+        'created_by' => function_exists('lead_comm_user_label') ? lead_comm_user_label() : 'System',
+    ])
+    : ['ok' => false];
+
 json_response([
     'ok' => true,
     'message' => 'Email sent and logged.',
     'lead_id' => $leadId,
     'email_id' => (int)($result['email_id'] ?? 0),
     'to' => (string)($result['to'] ?? ''),
+    'ai_note' => (string)($aiNoteResult['note'] ?? ''),
+    'notes' => (string)($aiNoteResult['notes'] ?? ''),
 ], 200);

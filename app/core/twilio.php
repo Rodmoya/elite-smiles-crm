@@ -113,6 +113,26 @@ if (!function_exists('elite_twilio_message_has_opt_out_language')) {
     }
 }
 
+if (!function_exists('elite_twilio_strip_phone_numbers_from_sms_body')) {
+    function elite_twilio_strip_phone_numbers_from_sms_body(string $body): string
+    {
+        $body = trim($body);
+        if ($body === '') {
+            return '';
+        }
+
+        $phonePattern = '/(?<![A-Za-z0-9])(?:\+?1[\s.\-()]*)?(?:\(?\d{3}\)?[\s.\-]*)\d{3}[\s.\-]*\d{4}(?![A-Za-z0-9])/';
+        $body = (string) preg_replace($phonePattern, '', $body);
+        $body = (string) preg_replace('/\s+([,.;:!?])/', '$1', $body);
+        $body = (string) preg_replace('/(?:\s*,\s*){2,}/', ', ', $body);
+        $body = (string) preg_replace('/\s{2,}/', ' ', $body);
+        $body = (string) preg_replace('/\b(?:at|call|text|phone)\s*([.?!])/', '$1', $body);
+        $body = (string) preg_replace('/\s+([.?!])/', '$1', $body);
+
+        return trim($body);
+    }
+}
+
 if (!function_exists('elite_twilio_outbound_sms_count')) {
     function elite_twilio_outbound_sms_count(int $leadId): int
     {
@@ -156,6 +176,11 @@ if (!function_exists('elite_twilio_prepare_sms_body')) {
     function elite_twilio_prepare_sms_body(string $body, array $context = []): string
     {
         $body = trim($body);
+        if ($body === '') {
+            return '';
+        }
+
+        $body = elite_twilio_strip_phone_numbers_from_sms_body($body);
         if ($body === '') {
             return '';
         }

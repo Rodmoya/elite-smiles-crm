@@ -44,10 +44,14 @@ if (!function_exists('lead_card_badge_class')) {
     function lead_card_badge_class(string $tone): string
     {
         return match ($tone) {
+            'rose'    => 'border-rose-200 bg-rose-50 text-rose-700',
             'amber'   => 'border-amber-200 bg-amber-50 text-amber-700',
             'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
             'blue'    => 'border-blue-200 bg-blue-50 text-blue-700',
+            'sky'     => 'border-sky-200 bg-sky-50 text-sky-700',
+            'teal'    => 'border-teal-200 bg-teal-50 text-teal-700',
             'violet'  => 'border-violet-200 bg-violet-50 text-violet-700',
+            'purple'  => 'border-purple-200 bg-purple-50 text-purple-700',
             'slate'   => 'border-slate-200 bg-slate-50 text-slate-600',
             default   => 'border-slate-200 bg-slate-50 text-slate-600',
         };
@@ -218,8 +222,10 @@ $financingOptionLabels = function_exists('lead_financing_option_labels') ? lead_
 $leadFinancingOptionLabel = $financingOptionLabels[$leadFinancingOption]
     ?? ucfirst(str_replace('_', ' ', $leadFinancingOption));
 
+$boardStageKey = $stageKey;
+$legacyStageKey = lead_card_value($lead, 'status', $boardStageKey);
 $stageLabels = function_exists('lead_stage_labels') ? lead_stage_labels() : [];
-$stageLabel = $stageLabels[$stageKey] ?? ucwords(str_replace('_', ' ', $stageKey));
+$stageLabel = $stageLabels[$legacyStageKey] ?? ucwords(str_replace('_', ' ', $legacyStageKey));
 
 $displaySource = lead_card_source_label($leadSource, $leadLandingPage);
 $displaySourceType = lead_card_source_type_label($leadSourceType);
@@ -296,17 +302,41 @@ $leadConversionStageKey = (string)($leadConversion['stage_key'] ?? $stageKey);
 $leadConversionStageLabel = (string)($leadConversion['stage_label'] ?? $stageLabel);
 $leadNextAction = (array)($leadConversion['next_action'] ?? []);
 $leadConversionBadges = array_slice((array)($leadConversion['badges'] ?? []), 0, 3);
+$leadUrgency = (array)($leadConversion['urgency'] ?? []);
 $leadNextActionLabel = trim((string)($leadNextAction['label'] ?? 'Review next step'));
 $leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
+$leadUrgencyKey = trim((string)($leadUrgency['key'] ?? 'normal'));
+$leadUrgencyLabel = trim((string)($leadUrgency['label'] ?? 'On track'));
+$leadUrgencyTone = trim((string)($leadUrgency['tone'] ?? 'slate'));
+$leadHasBadPhone = false;
+foreach ((array)($leadConversion['badges'] ?? []) as $conversionBadge) {
+    if ((string)($conversionBadge['key'] ?? '') === 'bad_phone') {
+        $leadHasBadPhone = true;
+        break;
+    }
+}
+$cardStateClass = 'border-slate-200 bg-white';
+if ($leadHasBadPhone) {
+    $cardStateClass = 'border-rose-200 bg-rose-50/40';
+} elseif ($leadUrgencyKey === 'reply_now') {
+    $cardStateClass = 'border-blue-200 bg-blue-50/30';
+} elseif (str_starts_with($leadUrgencyKey, 'overdue')) {
+    $cardStateClass = 'border-rose-200 bg-white';
+} elseif (str_starts_with($leadUrgencyKey, 'due_')) {
+    $cardStateClass = 'border-amber-200 bg-amber-50/30';
+} elseif ($leadUrgencyKey === 'recent') {
+    $cardStateClass = 'border-emerald-100 bg-white';
+}
 ?>
 
 <div
-    class="lead-card rounded-lg border <?= $isIncomplete ? 'border-amber-200' : 'border-slate-200' ?> bg-white p-2.5 shadow-sm transition hover:-translate-y-[1px] hover:border-blue-200 hover:shadow-md cursor-pointer"
+    class="lead-card rounded-lg border <?= e($isIncomplete && !$leadHasBadPhone ? 'border-amber-200 bg-white' : $cardStateClass) ?> p-2.5 shadow-sm transition hover:-translate-y-[1px] hover:border-blue-200 hover:shadow-md cursor-pointer"
     draggable="true"
     data-open-lead-modal="1"
     data-open-tab="communications"
     data-lead-id="<?= e((string)$leadId) ?>"
-    data-stage-key="<?= e($stageKey) ?>"
+    data-stage-key="<?= e($legacyStageKey) ?>"
+    data-board-stage-key="<?= e($boardStageKey) ?>"
     data-lead-name="<?= e($leadName) ?>"
     data-lead-phone="<?= e($leadPhone) ?>"
     data-lead-email="<?= e($leadEmail) ?>"
@@ -333,6 +363,8 @@ $leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
     data-lead-conversion-stage="<?= e($leadConversionStageKey) ?>"
     data-lead-conversion-stage-label="<?= e($leadConversionStageLabel) ?>"
     data-lead-next-action="<?= e($leadNextActionLabel) ?>"
+    data-lead-urgency="<?= e($leadUrgencyKey) ?>"
+    data-lead-urgency-label="<?= e($leadUrgencyLabel) ?>"
     data-lead-value="<?= e($leadValue) ?>"
     data-lead-lost-reason="<?= e($leadLostReason) ?>"
     data-lead-preferred-contact="<?= e($leadPreferredContact) ?>"
@@ -393,6 +425,11 @@ $leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
             <span class="rounded-md border <?= e(function_exists('lead_conversion_badge_class') ? lead_conversion_badge_class($leadNextActionTone) : 'border-slate-200 bg-slate-50 text-slate-600') ?> px-2 py-0.5 text-[10px] font-semibold">
                 Next: <?= e($leadNextActionLabel) ?>
             </span>
+            <?php if ($leadUrgencyKey !== 'normal'): ?>
+                <span class="rounded-md border <?= e(function_exists('lead_conversion_badge_class') ? lead_conversion_badge_class($leadUrgencyTone) : lead_card_badge_class($leadUrgencyTone)) ?> px-2 py-0.5 text-[10px] font-semibold">
+                    <?= e($leadUrgencyLabel) ?>
+                </span>
+            <?php endif; ?>
             <?php foreach ($leadConversionBadges as $badge): ?>
                 <span class="rounded-md border <?= e(function_exists('lead_conversion_badge_class') ? lead_conversion_badge_class((string)($badge['tone'] ?? 'slate')) : 'border-slate-200 bg-slate-50 text-slate-600') ?> px-2 py-0.5 text-[10px] font-semibold">
                     <?= e((string)($badge['label'] ?? 'Flag')) ?>
@@ -449,6 +486,13 @@ $leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
     <?php if ($appointmentLabel !== ''): ?>
         <div class="lead-card-appointment-preview mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
             <p class="truncate text-[11px] font-semibold text-emerald-800">Appt: <?= e($appointmentLabel) ?></p>
+            <?php if ($leadConversionStageKey === 'consultation_booked' || $leadConversionStageKey === 'consult_completed'): ?>
+                <p class="mt-0.5 truncate text-[10px] font-medium text-emerald-700">
+                    <?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?>
+                    <?php if ($leadDateOfBirth === ''): ?> - Needs DOB<?php endif; ?>
+                    <?php if ($leadEmail === ''): ?> - Missing email<?php endif; ?>
+                </p>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 

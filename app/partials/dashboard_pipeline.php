@@ -26,6 +26,8 @@ declare(strict_types=1);
 
 $stageMap = $stageMap ?? [];
 
+$legacyStageMap = function_exists('lead_stage_map_ordered') ? lead_stage_map_ordered() : $stageMap;
+
 $pipelineCounts = $pipelineCounts ?? [];
 
 $pipelineRows = $pipelineRows ?? [];
@@ -348,6 +350,16 @@ $consultationOptions = [
                     <?php foreach ($stageMap as $stageKey => $stageLabel): ?>
 
                         <?php $rows = $pipelineRows[$stageKey] ?? []; ?>
+                        <?php
+                            $legacyDropStageKey = function_exists('lead_conversion_stage_legacy_target')
+                                ? lead_conversion_stage_legacy_target((string)$stageKey)
+                                : (string)$stageKey;
+                            $legacyDropStageLabel = $legacyStageMap[$legacyDropStageKey]
+                                ?? ucwords(str_replace('_', ' ', $legacyDropStageKey));
+                            $stageBadgeClass = function_exists('lead_conversion_stage_badge_class')
+                                ? lead_conversion_stage_badge_class((string)$stageKey)
+                                : lead_stage_badge_class($legacyDropStageKey);
+                        ?>
 
 
 
@@ -355,9 +367,11 @@ $consultationOptions = [
 
                             class="pipeline-column flex h-[560px] w-full shrink-0 flex-col rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-3 transition md:w-[300px]"
 
-                            data-stage-key="<?= e($stageKey) ?>"
+                            data-stage-key="<?= e($legacyDropStageKey) ?>"
 
-                            data-stage-label="<?= e($stageLabel) ?>"
+                            data-stage-label="<?= e($legacyDropStageLabel) ?>"
+                            data-display-stage-key="<?= e($stageKey) ?>"
+                            data-display-stage-label="<?= e($stageLabel) ?>"
 
                         >
 
@@ -383,7 +397,7 @@ $consultationOptions = [
 
 
 
-                                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-medium <?= e(lead_stage_badge_class($stageKey)) ?>">
+                                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-medium <?= e($stageBadgeClass) ?>" title="Display stage. Drag/drop still saves as <?= e($legacyDropStageLabel) ?>.">
 
                                     <?= e($stageLabel) ?>
 
@@ -852,7 +866,7 @@ $consultationOptions = [
 
                                     >
 
-                                        <?php foreach ($stageMap as $stageKey => $stageLabel): ?>
+                                        <?php foreach ($legacyStageMap as $stageKey => $stageLabel): ?>
 
                                             <option value="<?= e($stageKey) ?>" <?= $stageKey === 'new_lead' ? 'selected' : '' ?>><?= e($stageLabel) ?></option>
 
@@ -1704,7 +1718,7 @@ $consultationOptions = [
 
                                             >
 
-                                                <?php foreach ($stageMap as $stageKey => $stageLabel): ?>
+                                                <?php foreach ($legacyStageMap as $stageKey => $stageLabel): ?>
 
                                                     <option value="<?= e($stageKey) ?>"><?= e($stageLabel) ?></option>
 
@@ -2683,7 +2697,7 @@ $consultationOptions = [
     const threadUrl = <?= json_encode(base_url('app/actions/lead_get_thread.php')) ?>;
     const followupCheckUrl = <?= json_encode(base_url('app/actions/lead_followup_check.php')) ?>;
     const smsTemplates = <?= json_encode($smsTemplateOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
-    const stageLabelMap = <?= json_encode($stageMap) ?>;
+    const stageLabelMap = <?= json_encode($legacyStageMap) ?>;
 
 
     function updateColumnCounts() {
@@ -3865,7 +3879,7 @@ $consultationOptions = [
         if (!board || !pipelineMobileStageFilter) return;
 
         const isMobile = window.matchMedia('(max-width: 640px)').matches;
-        const columns = Array.from(board.querySelectorAll('.pipeline-column[data-stage-key]'));
+        const columns = Array.from(board.querySelectorAll('.pipeline-column[data-display-stage-key]'));
 
         if (!isMobile) {
             columns.forEach((column) => column.classList.remove('hidden'));
@@ -3874,7 +3888,7 @@ $consultationOptions = [
 
         const selected = pipelineMobileStageFilter.value || '__all__';
         columns.forEach((column) => {
-            const stageKey = column.dataset.stageKey || '';
+            const stageKey = column.dataset.displayStageKey || column.dataset.stageKey || '';
             const visible = selected === '__all__' || stageKey === selected;
             column.classList.toggle('hidden', !visible);
         });

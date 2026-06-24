@@ -385,6 +385,21 @@ if (!function_exists('lead_stage_map_ordered')) {
     }
 }
 
+if (!function_exists('lead_pipeline_display_stage_map')) {
+    function lead_pipeline_display_stage_map(): array
+    {
+        $labels = function_exists('lead_conversion_stage_labels') ? lead_conversion_stage_labels() : lead_stage_labels();
+        $order = function_exists('lead_conversion_stage_order') ? lead_conversion_stage_order() : lead_stage_order();
+        $map = [];
+
+        foreach ($order as $key) {
+            $map[$key] = $labels[$key] ?? ucwords(str_replace('_', ' ', $key));
+        }
+
+        return $map;
+    }
+}
+
 if (!function_exists('lead_dashboard_stats')) {
     function lead_dashboard_stats(): array
     {
@@ -496,7 +511,7 @@ if (!function_exists('lead_pipeline_counts')) {
     function lead_pipeline_counts(): array
     {
         $counts = [];
-        $stageMap = lead_stage_map_ordered();
+        $stageMap = lead_pipeline_display_stage_map();
 
         foreach ($stageMap as $stageKey => $label) {
             $counts[$stageKey] = 0;
@@ -507,19 +522,38 @@ if (!function_exists('lead_pipeline_counts')) {
         }
 
         try {
+            $selectFields = ['id', 'status'];
+            foreach ([
+                'phone',
+                'sms_opt_status',
+                'last_contacted_at',
+                'last_inbound_at',
+                'last_outbound_at',
+                'unread_message_count',
+                'next_follow_up_at',
+                'consultation_date',
+                'date_of_birth',
+                'created_at',
+                'updated_at',
+            ] as $field) {
+                if (leads_has_column($field)) {
+                    $selectFields[] = $field;
+                }
+            }
+
             $rows = db_all("
-                SELECT status AS stage_key, COUNT(*) AS total
+                SELECT " . implode(', ', $selectFields) . "
                 FROM leads
                 WHERE status IS NOT NULL AND status <> ''" . lead_pipeline_visibility_sql('AND') . "
-                GROUP BY status
             ");
 
             foreach ($rows as $row) {
-                $stageKey = trim((string)($row['stage_key'] ?? ''));
-                $total = (int)($row['total'] ?? 0);
+                $stageKey = function_exists('lead_conversion_stage_key')
+                    ? lead_conversion_stage_key($row)
+                    : trim((string)($row['status'] ?? ''));
 
                 if (isset($counts[$stageKey])) {
-                    $counts[$stageKey] = $total;
+                    $counts[$stageKey]++;
                 }
             }
         } catch (Throwable $e) {
@@ -534,7 +568,7 @@ if (!function_exists('lead_pipeline_stage_values')) {
     function lead_pipeline_stage_values(): array
     {
         $values = [];
-        $stageMap = lead_stage_map_ordered();
+        $stageMap = lead_pipeline_display_stage_map();
 
         foreach ($stageMap as $stageKey => $label) {
             $values[$stageKey] = 0.00;
@@ -549,17 +583,37 @@ if (!function_exists('lead_pipeline_stage_values')) {
             : (string) lead_default_opportunity_value();
 
         try {
+            $selectFields = ['id', 'status', "{$valueExpr} AS lead_value"];
+            foreach ([
+                'phone',
+                'sms_opt_status',
+                'last_contacted_at',
+                'last_inbound_at',
+                'last_outbound_at',
+                'unread_message_count',
+                'next_follow_up_at',
+                'consultation_date',
+                'date_of_birth',
+                'created_at',
+                'updated_at',
+            ] as $field) {
+                if (leads_has_column($field)) {
+                    $selectFields[] = $field;
+                }
+            }
+
             $rows = db_all("
-                SELECT status AS stage_key, SUM({$valueExpr}) AS total_value
+                SELECT " . implode(', ', $selectFields) . "
                 FROM leads
                 WHERE status IS NOT NULL AND status <> ''" . lead_pipeline_visibility_sql('AND') . "
-                GROUP BY status
             ");
 
             foreach ($rows as $row) {
-                $stageKey = trim((string)($row['stage_key'] ?? ''));
+                $stageKey = function_exists('lead_conversion_stage_key')
+                    ? lead_conversion_stage_key($row)
+                    : trim((string)($row['status'] ?? ''));
                 if (isset($values[$stageKey])) {
-                    $values[$stageKey] = round((float)($row['total_value'] ?? 0), 2);
+                    $values[$stageKey] = round($values[$stageKey] + lead_db_value($row), 2);
                 }
             }
         } catch (Throwable $e) {
@@ -576,7 +630,7 @@ if (!function_exists('lead_pipeline_rows')) {
         lead_pipeline_ensure_schema();
 
         $grouped = [];
-        $stageMap = lead_stage_map_ordered();
+        $stageMap = lead_pipeline_display_stage_map();
 
         foreach ($stageMap as $stageKey => $label) {
             $grouped[$stageKey] = [];
@@ -662,7 +716,9 @@ if (!function_exists('lead_pipeline_rows')) {
             ");
 
             foreach ($rows as $lead) {
-                $stageKey = lead_db_status_value($lead);
+                $stageKey = function_exists('lead_conversion_stage_key')
+                    ? lead_conversion_stage_key($lead)
+                    : lead_db_status_value($lead);
 
                 if ($stageKey === '' || !isset($grouped[$stageKey])) {
                     continue;

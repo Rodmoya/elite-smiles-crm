@@ -208,6 +208,7 @@ if (!function_exists('lead_conversion_stage_labels')) {
         return [
             'new_lead' => 'New Lead',
             'first_touch_sent' => 'First Touch Sent',
+            'follow_up_needed' => 'Follow-Up Needed',
             'scheduling' => 'Scheduling',
             'consultation_booked' => 'Consultation Booked',
             'consult_completed' => 'Consult Completed',
@@ -223,12 +224,45 @@ if (!function_exists('lead_conversion_stage_order')) {
         return [
             'new_lead',
             'first_touch_sent',
+            'follow_up_needed',
             'scheduling',
             'consultation_booked',
             'consult_completed',
             'treatment_accepted',
             'nurture_lost',
         ];
+    }
+}
+
+if (!function_exists('lead_conversion_stage_legacy_target')) {
+    function lead_conversion_stage_legacy_target(string $conversionStageKey): string
+    {
+        return match ($conversionStageKey) {
+            'new_lead' => 'new_lead',
+            'first_touch_sent', 'follow_up_needed' => 'contacted',
+            'scheduling' => 'in_contact',
+            'consultation_booked', 'consult_completed' => 'consultation_booked',
+            'treatment_accepted' => 'treatment_accepted',
+            'nurture_lost' => 'no_answer',
+            default => $conversionStageKey,
+        };
+    }
+}
+
+if (!function_exists('lead_conversion_stage_badge_class')) {
+    function lead_conversion_stage_badge_class(string $conversionStageKey): string
+    {
+        return match ($conversionStageKey) {
+            'new_lead' => 'border-sky-200 bg-sky-50 text-sky-700',
+            'first_touch_sent' => 'border-cyan-200 bg-cyan-50 text-cyan-700',
+            'follow_up_needed' => 'border-amber-200 bg-amber-50 text-amber-800',
+            'scheduling' => 'border-teal-200 bg-teal-50 text-teal-700',
+            'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
+            'consult_completed' => 'border-indigo-200 bg-indigo-50 text-indigo-700',
+            'treatment_accepted' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'nurture_lost' => 'border-rose-200 bg-rose-50 text-rose-700',
+            default => 'border-slate-200 bg-slate-50 text-slate-600',
+        };
     }
 }
 
@@ -287,6 +321,97 @@ if (!function_exists('lead_conversion_reply_needed')) {
         $lastInbound = lead_conversion_datetime($lead['last_inbound_at'] ?? '');
         $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
         return $lastInbound !== null && ($lastOutbound === null || $lastInbound > $lastOutbound);
+    }
+}
+
+if (!function_exists('lead_conversion_follow_up_needed')) {
+    function lead_conversion_follow_up_needed(array $lead): bool
+    {
+        $status = trim((string)($lead['status'] ?? ''));
+        if (!in_array($status, ['contacted', 'attempted_contact'], true)) {
+            return false;
+        }
+        if (lead_conversion_bad_phone($lead) || trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
+            return false;
+        }
+        if (lead_conversion_reply_needed($lead) || lead_conversion_has_future_consult($lead)) {
+            return false;
+        }
+
+        $now = new DateTimeImmutable('now');
+        $nextFollowUp = lead_conversion_datetime($lead['next_follow_up_at'] ?? '');
+        if ($nextFollowUp !== null && $nextFollowUp <= $now) {
+            return true;
+        }
+
+        $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
+        if ($lastOutbound === null) {
+            $lastOutbound = lead_conversion_datetime($lead['last_contacted_at'] ?? '');
+        }
+        if ($lastOutbound === null) {
+            return false;
+        }
+
+        return $lastOutbound <= $now->modify('-24 hours');
+    }
+}
+
+if (!function_exists('lead_conversion_last_touch_datetime')) {
+    function lead_conversion_last_touch_datetime(array $lead): ?DateTimeImmutable
+    {
+        $latest = null;
+        foreach (['last_inbound_at', 'last_outbound_at', 'last_contacted_at', 'updated_at', 'created_at'] as $field) {
+            $value = lead_conversion_datetime($lead[$field] ?? '');
+            if ($value !== null) {
+                $latest = $latest === null || $value > $latest ? $value : $latest;
+            }
+        }
+        return $latest;
+    }
+}
+
+if (!function_exists('lead_conversion_age_hours')) {
+    function lead_conversion_age_hours(?DateTimeImmutable $dateTime): ?int
+    {
+        if ($dateTime === null) {
+            return null;
+        }
+        $seconds = (new DateTimeImmutable('now'))->getTimestamp() - $dateTime->getTimestamp();
+        return max(0, (int)floor($seconds / 3600));
+    }
+}
+
+if (!function_exists('lead_conversion_urgency')) {
+    function lead_conversion_urgency(array $lead): array
+    {
+        if (lead_conversion_bad_phone($lead)) {
+            return ['key' => 'cleanup', 'label' => 'Cleanup', 'tone' => 'rose'];
+        }
+        if (lead_conversion_reply_needed($lead)) {
+            return ['key' => 'reply_now', 'label' => 'Reply now', 'tone' => 'blue'];
+        }
+        if (lead_conversion_appointment_tomorrow($lead)) {
+            return ['key' => 'tomorrow', 'label' => 'Tomorrow', 'tone' => 'emerald'];
+        }
+        if (lead_conversion_follow_up_needed($lead)) {
+            $lastTouch = lead_conversion_datetime($lead['last_outbound_at'] ?? '') ?? lead_conversion_datetime($lead['last_contacted_at'] ?? '');
+            $hours = lead_conversion_age_hours($lastTouch);
+            if ($hours !== null && $hours >= 72) {
+                return ['key' => 'overdue_3d', 'label' => '3d+ overdue', 'tone' => 'rose'];
+            }
+            if ($hours !== null && $hours >= 48) {
+                return ['key' => 'due_48h', 'label' => '48h due', 'tone' => 'amber'];
+            }
+            return ['key' => 'due_24h', 'label' => '24h due', 'tone' => 'amber'];
+        }
+
+        $lastTouch = lead_conversion_last_touch_datetime($lead);
+        $hours = lead_conversion_age_hours($lastTouch);
+        if ($hours !== null && $hours < 24) {
+            return ['key' => 'recent', 'label' => 'Recent', 'tone' => 'emerald'];
+        }
+
+        return ['key' => 'normal', 'label' => 'On track', 'tone' => 'slate'];
     }
 }
 
@@ -360,6 +485,9 @@ if (!function_exists('lead_conversion_stage_key')) {
         if ($status === 'in_contact' || lead_conversion_reply_needed($lead)) {
             return 'scheduling';
         }
+        if (lead_conversion_follow_up_needed($lead)) {
+            return 'follow_up_needed';
+        }
         if (in_array($status, ['contacted', 'attempted_contact'], true)) {
             return 'first_touch_sent';
         }
@@ -406,6 +534,13 @@ if (!function_exists('lead_conversion_next_action')) {
         if ($status === 'new_lead') {
             return ['key' => 'first_touch', 'label' => 'Send first touch', 'tone' => 'sky'];
         }
+        if (lead_conversion_follow_up_needed($lead)) {
+            $lastTouch = lead_conversion_datetime($lead['last_outbound_at'] ?? '') ?? lead_conversion_datetime($lead['last_contacted_at'] ?? '');
+            $hours = lead_conversion_age_hours($lastTouch);
+            return ($hours !== null && $hours >= 72)
+                ? ['key' => 'overdue_follow_up', 'label' => 'Send overdue follow-up', 'tone' => 'rose']
+                : ['key' => 'second_follow_up', 'label' => 'Send 2nd follow-up', 'tone' => 'amber'];
+        }
         if ($status === 'in_contact') {
             if (lead_conversion_missing_email($lead)) {
                 return ['key' => 'ask_email', 'label' => 'Ask email', 'tone' => 'amber'];
@@ -414,7 +549,7 @@ if (!function_exists('lead_conversion_next_action')) {
         }
         if (in_array($status, ['contacted', 'attempted_contact'], true)) {
             return trim((string)($lead['last_outbound_at'] ?? '')) !== ''
-                ? ['key' => 'send_follow_up', 'label' => 'Send follow-up', 'tone' => 'violet']
+                ? ['key' => 'wait_for_reply', 'label' => 'Wait for reply', 'tone' => 'emerald']
                 : ['key' => 'first_touch', 'label' => 'Send first touch', 'tone' => 'sky'];
         }
         if ($status === 'consultation_booked') {
@@ -464,6 +599,9 @@ if (!function_exists('lead_conversion_badges')) {
         if (lead_conversion_reply_needed($lead)) {
             $badges[] = ['key' => 'replied', 'label' => 'Replied', 'tone' => 'blue'];
         }
+        if (lead_conversion_follow_up_needed($lead)) {
+            $badges[] = ['key' => 'follow_up_due', 'label' => 'Follow-Up Due', 'tone' => 'amber'];
+        }
         if (lead_conversion_appointment_tomorrow($lead)) {
             $badges[] = ['key' => 'appointment_tomorrow', 'label' => 'Appt Tomorrow', 'tone' => 'emerald'];
         }
@@ -488,6 +626,7 @@ if (!function_exists('lead_conversion_summary')) {
             'stage_label' => (string)($stageLabels[$stageKey] ?? $stageKey),
             'next_action' => $nextAction,
             'badges' => lead_conversion_badges($lead),
+            'urgency' => lead_conversion_urgency($lead),
         ];
     }
 }

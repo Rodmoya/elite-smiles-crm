@@ -616,6 +616,16 @@ if (!function_exists('lead_ai_maybe_autoreply_inbound')) {
     }
 }
 
+if (!function_exists('lead_ai_default_new_lead_sms')) {
+    function lead_ai_default_new_lead_sms(array $lead): string
+    {
+        $firstName = function_exists('lead_email_first_name') ? lead_email_first_name($lead) : '';
+        $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
+
+        return $greeting . ' this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. We offer a complimentary consultation with Dr. Meden to review options and financing. What day/time works best for you? Reply STOP to opt out.';
+    }
+}
+
 if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
     function lead_ai_maybe_send_new_lead_sms(int $leadId): array
     {
@@ -628,21 +638,98 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
             ];
         }
 
-        $result = lead_ai_send_reply_if_safe($leadId, 'New landing page lead submitted. Send the first friendly follow-up text.', 'new_lead');
-        if (empty($result['ok'])) {
-            esm_log('openai', 'New lead AI text failed.', [
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead not found.',
+            ];
+        }
+
+        if (trim((string)($lead['phone'] ?? '')) === '') {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead has no phone number.',
+            ];
+        }
+
+        if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out' || trim((string)($lead['status'] ?? '')) === 'opted_out') {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead opted out of SMS.',
+            ];
+        }
+
+        $body = lead_ai_default_new_lead_sms($lead);
+        $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), $body, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the automatic first-touch SMS. Open lead actions to retry manually.',
+            'original_body' => $body,
+        ]);
+
+        if (empty($sendResult['ok'])) {
+            if (function_exists('esm_log')) {
+                esm_log('openai', 'New lead first-touch SMS failed.', [
+                    'lead_id' => $leadId,
+                    'message' => $sendResult['message'] ?? '',
+                ]);
+            }
+
+            return [
+                'attempted' => true,
+                'sent' => false,
+                'body' => $body,
+                'status_label' => (string)($sendResult['message'] ?? 'Auto SMS failed.'),
+            ];
+        }
+
+        $sentBody = (string)($sendResult['body'] ?? $body);
+        $messageId = lead_comm_insert_message([
+            'lead_id' => $leadId,
+            'direction' => 'outbound',
+            'channel' => 'sms',
+            'from_number' => (string)($sendResult['from'] ?? ''),
+            'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
+            'body' => $sentBody,
+            'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
+            'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
+            'is_read' => 1,
+        ]);
+
+        lead_comm_insert_activity($leadId, 'sms_outbound', 'Auto first-touch SMS sent through new-lead workflow.', [
+            'message_id' => $messageId,
+            'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+            'source' => 'new_lead_auto_first_touch',
+        ], 'System');
+        lead_comm_update_rollup($leadId);
+
+        lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [
+            'message_id' => $messageId,
+            'sent_at' => date('Y-m-d H:i:s'),
+            'created_by' => 'System',
+            'source' => 'new_lead_auto_first_touch',
+        ]);
+
+        if (function_exists('esm_log')) {
+            esm_log('openai', 'New lead first-touch SMS sent.', [
                 'lead_id' => $leadId,
-                'message' => $result['message'] ?? '',
+                'message_id' => $messageId,
             ]);
         }
 
         return [
             'attempted' => true,
-            'sent' => !empty($result['sent']),
-            'body' => (string)($result['body'] ?? $result['data']['reply'] ?? ''),
-            'status_label' => !empty($result['sent'])
-                ? 'Auto SMS sent.'
-                : ((string)($result['message'] ?? 'Auto SMS not sent.')),
+            'sent' => true,
+            'body' => $sentBody,
+            'status_label' => 'Auto SMS sent.',
         ];
     }
 }

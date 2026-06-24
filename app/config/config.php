@@ -48,7 +48,7 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('GOOGLE_GEMINI_IMAGE_MODEL', $_ENV['GOOGLE_GEMINI_IMAGE_MODEL'] ?? 'gemini-3.1-flash-image');
     define('GOOGLE_GEMINI_VIDEO_MODEL', $_ENV['GOOGLE_GEMINI_VIDEO_MODEL'] ?? 'veo-3.1-generate-preview');
     define('ELITE_AI_AUTOREPLY_ENABLED', ($_ENV['ELITE_AI_AUTOREPLY_ENABLED'] ?? 'false') === 'true');
-    define('ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED', ($_ENV['ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED'] ?? 'false') === 'true');
+    define('ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED', ($_ENV['ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED'] ?? 'true') === 'true');
     define('ELITE_AI_MIN_CONFIDENCE', is_numeric($_ENV['ELITE_AI_MIN_CONFIDENCE'] ?? null) ? (float) $_ENV['ELITE_AI_MIN_CONFIDENCE'] : 0.82);
 
     define('ELITE_PUSHOVER_APP_TOKEN', $_ENV['ELITE_PUSHOVER_APP_TOKEN'] ?? '');
@@ -86,7 +86,7 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('SMTP_PASS', $_ENV['SMTP_PASS'] ?? '');
     define('SMTP_FROM_EMAIL', $_ENV['SMTP_FROM_EMAIL'] ?? 'hello@hi.elitesmilesutah.com');
     define('SMTP_FROM_NAME', $_ENV['SMTP_FROM_NAME'] ?? 'Elite Smiles');
-    define('ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED', ($_ENV['ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED'] ?? 'false') === 'true');
+    define('ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED', ($_ENV['ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED'] ?? 'true') === 'true');
     define('ELITE_EMAIL_AUTOFOLLOWUP_ENABLED', ($_ENV['ELITE_EMAIL_AUTOFOLLOWUP_ENABLED'] ?? 'false') === 'true');
     define('ELITE_EMAIL_FOLLOWUP_CRON_SECRET', $_ENV['ELITE_EMAIL_FOLLOWUP_CRON_SECRET'] ?? '');
     define('ELITE_EMAIL_INBOUND_CRON_SECRET', $_ENV['ELITE_EMAIL_INBOUND_CRON_SECRET'] ?? '');

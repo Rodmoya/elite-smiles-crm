@@ -31,12 +31,22 @@ lead_email_ensure_schema();
 mobile_ai_ensure_schema();
 elite_ai_ensure_schema();
 
-$user = auth_user();
+$assistantToken = trim((string) ($_SERVER['HTTP_X_ELITE_AI_TOKEN'] ?? $request['assistant_token'] ?? ''));
+$user = null;
 $surface = 'desktop';
+
+if ($assistantToken !== '' && function_exists('auth_verify_assistant_api_token')) {
+    $user = auth_verify_assistant_api_token($assistantToken);
+}
+
 if (!$user) {
-    $assistantToken = trim((string) ($_SERVER['HTTP_X_ELITE_AI_TOKEN'] ?? $request['assistant_token'] ?? ''));
-    if ($assistantToken !== '' && function_exists('auth_verify_assistant_api_token')) {
-        $user = auth_verify_assistant_api_token($assistantToken);
+    $user = auth_user();
+}
+
+if ($user && (int) ($user['id'] ?? 0) <= 0 && function_exists('auth_user_id')) {
+    $sessionUserId = auth_user_id();
+    if ($sessionUserId && $sessionUserId > 0) {
+        $user['id'] = $sessionUserId;
     }
 }
 

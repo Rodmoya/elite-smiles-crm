@@ -59,7 +59,7 @@ $recentLeads = lead_recent_rows(8);
     <meta name="robots" content="noindex,nofollow">
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
-    <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
+    <?php require __DIR__ . '/app/partials/crm_sidebar_live.php'; ?>
 
     <main class="px-4 py-6 sm:px-6 lg:pl-80 lg:pr-8 lg:py-8">
         <?php if ($successMessage !== ''): ?>
@@ -184,3 +184,4 @@ $recentLeads = lead_recent_rows(8);
     </main>
 </body>
 </html>
+

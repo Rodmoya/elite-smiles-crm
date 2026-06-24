@@ -355,11 +355,17 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             actions.forEach(function (action) {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium';
+                button.className = 'crm-ai-action-button rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium';
                 button.textContent = action.label || ('Action: ' + String(action.type || ''));
                 button.title = action.help || '';
-                button.addEventListener('click', function () {
-                    runAssistantAction(action);
+                button.dataset.actionType = String(action.type || '');
+                button.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
+                button.dataset.actionLabel = String(action.label || '');
+                button.dataset.actionHelp = String(action.help || '');
+                button.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    runAssistantAction(buttonAssistantAction(button, action));
                 });
                 actionWrap.appendChild(button);
             });
@@ -417,6 +423,30 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     function assistantToken() {
         return String(aiPanel ? (aiPanel.dataset.authToken || '') : '').trim();
+    }
+
+    function normalizeAssistantActions(actions, fallbackLeadId) {
+        const leadId = Number(fallbackLeadId || 0);
+        return (Array.isArray(actions) ? actions : []).map(function (action) {
+            const normalized = Object.assign({}, action || {});
+            normalized.type = String(normalized.type || '');
+            normalized.label = String(normalized.label || '');
+            normalized.help = String(normalized.help || '');
+            normalized.lead_id = Number(normalized.lead_id || normalized.leadId || leadId || 0);
+            return normalized;
+        }).filter(function (action) {
+            return action.type && action.lead_id;
+        });
+    }
+
+    function buttonAssistantAction(button, fallbackAction) {
+        const fallback = fallbackAction || {};
+        return {
+            type: String(button.dataset.actionType || fallback.type || ''),
+            label: String(button.dataset.actionLabel || fallback.label || ''),
+            help: String(button.dataset.actionHelp || fallback.help || ''),
+            lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0)
+        };
     }
 
     function parseDraftCandidate(candidate) {
@@ -583,7 +613,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
-            assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, data.actions || []);
+            const assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
+            assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, assistantActions);
         } catch (error) {
             if (loading) loading.remove();
             assistantBubble('Elite AI', 'I hit an assistant error while loading CRM context. Please try again.', 'assistant');
@@ -616,6 +647,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             const prompt = aiInput.value;
             aiInput.value = '';
             runAssistant(prompt, '');
+        });
+    }
+
+    if (aiThread) {
+        aiThread.addEventListener('click', function (event) {
+            const target = event.target;
+            const button = target && target.closest ? target.closest('.crm-ai-action-button') : null;
+            if (!button || !aiThread.contains(button)) return;
+            event.preventDefault();
+            runAssistantAction(buttonAssistantAction(button, {}));
         });
     }
 

@@ -422,10 +422,16 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     actions.forEach(function (action) {
                         var actionButton = document.createElement('button');
                         actionButton.type = 'button';
-                        actionButton.className = 'action-btn';
+                        actionButton.className = 'action-btn mobile-ai-action-button';
                         actionButton.textContent = action.label || ('Action: ' + String(action.type || ''));
-                        actionButton.addEventListener('click', function () {
-                            runAssistantAction(action);
+                        actionButton.dataset.actionType = String(action.type || '');
+                        actionButton.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
+                        actionButton.dataset.actionLabel = String(action.label || '');
+                        actionButton.dataset.actionHelp = String(action.help || '');
+                        actionButton.addEventListener('click', function (event) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            runAssistantAction(buttonAssistantAction(actionButton, action));
                         });
                         actionWrap.appendChild(actionButton);
                     });
@@ -447,6 +453,30 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         button.disabled = isBusy;
                     });
                 }
+            }
+
+            function normalizeAssistantActions(actions, fallbackLeadId) {
+                var leadId = Number(fallbackLeadId || 0);
+                return (Array.isArray(actions) ? actions : []).map(function (action) {
+                    var normalized = Object.assign({}, action || {});
+                    normalized.type = String(normalized.type || '');
+                    normalized.label = String(normalized.label || '');
+                    normalized.help = String(normalized.help || '');
+                    normalized.lead_id = Number(normalized.lead_id || normalized.leadId || leadId || 0);
+                    return normalized;
+                }).filter(function (action) {
+                    return action.type && action.lead_id;
+                });
+            }
+
+            function buttonAssistantAction(button, fallbackAction) {
+                var fallback = fallbackAction || {};
+                return {
+                    type: String(button.dataset.actionType || fallback.type || ''),
+                    label: String(button.dataset.actionLabel || fallback.label || ''),
+                    help: String(button.dataset.actionHelp || fallback.help || ''),
+                    lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0)
+                };
             }
 
             function parseDraftCandidate(candidate) {
@@ -627,7 +657,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
-                    var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], data.actions || []);
+                    var assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
+                    var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], assistantActions);
                 } catch (error) {
                     loading.remove();
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
@@ -642,6 +673,16 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 var prompt = input.value;
                 input.value = '';
                 sendPrompt(prompt);
+            });
+
+            thread.addEventListener('click', function (event) {
+                var target = event.target;
+                var button = target && target.closest ? target.closest('.mobile-ai-action-button') : null;
+                if (!button || !thread.contains(button)) {
+                    return;
+                }
+                event.preventDefault();
+                runAssistantAction(buttonAssistantAction(button, {}));
             });
 
             input.addEventListener('keydown', function (event) {

@@ -129,7 +129,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     <aside
         id="crm-ai-panel"
         class="pointer-events-none fixed top-4 z-50 hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
-        data-endpoint="<?= e((string) (parse_url(base_url('assistant-api.php'), PHP_URL_PATH) ?: '/crm/assistant-api.php')) ?>"
+        data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
         data-page-title="<?= e((string) $pageTitle) ?>"

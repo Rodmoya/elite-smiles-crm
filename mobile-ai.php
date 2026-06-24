@@ -368,7 +368,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 return;
             }
 
-            var endpoint = '<?= e((string) (parse_url(base_url('assistant-api.php'), PHP_URL_PATH) ?: '/crm/assistant-api.php')) ?>';
+            var endpoint = '<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>';
             var baseContext = {
                 page: 'mobile-ai',
                 page_title: 'Elite AI Mobile Portal',

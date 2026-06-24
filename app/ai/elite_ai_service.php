@@ -54,6 +54,36 @@ if (!function_exists('elite_ai_ensure_schema')) {
                     KEY idx_elite_ai_action_queue_created (created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
+
+            $queueColumns = [
+                'surface' => "ALTER TABLE elite_ai_action_queue ADD COLUMN surface VARCHAR(32) NOT NULL DEFAULT 'desktop' AFTER user_id",
+                'action_type' => "ALTER TABLE elite_ai_action_queue ADD COLUMN action_type VARCHAR(60) NOT NULL AFTER surface",
+                'lead_id' => "ALTER TABLE elite_ai_action_queue ADD COLUMN lead_id INT UNSIGNED NOT NULL AFTER action_type",
+                'status' => "ALTER TABLE elite_ai_action_queue ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pending_review' AFTER lead_id",
+                'request_prompt' => "ALTER TABLE elite_ai_action_queue ADD COLUMN request_prompt TEXT DEFAULT NULL AFTER status",
+                'request_context_json' => "ALTER TABLE elite_ai_action_queue ADD COLUMN request_context_json LONGTEXT DEFAULT NULL AFTER request_prompt",
+                'request_payload_json' => "ALTER TABLE elite_ai_action_queue ADD COLUMN request_payload_json LONGTEXT DEFAULT NULL AFTER request_context_json",
+                'draft_payload_json' => "ALTER TABLE elite_ai_action_queue ADD COLUMN draft_payload_json LONGTEXT DEFAULT NULL AFTER request_payload_json",
+                'completed_at' => "ALTER TABLE elite_ai_action_queue ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER created_at",
+                'updated_at' => "ALTER TABLE elite_ai_action_queue ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER completed_at",
+            ];
+
+            foreach ($queueColumns as $column => $sql) {
+                try {
+                    $exists = (int) db_value(
+                        'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column',
+                        ['table' => 'elite_ai_action_queue', 'column' => $column]
+                    );
+                    if ($exists === 0) {
+                        db_query($sql);
+                    }
+                } catch (Throwable $e) {
+                    esm_log('elite_ai', 'Could not ensure Elite AI action queue column.', [
+                        'column' => $column,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         } catch (Throwable $e) {
             esm_log('elite_ai', 'Could not ensure Elite AI audit schema.', ['error' => $e->getMessage()]);
         }
@@ -939,6 +969,27 @@ if (!function_exists('elite_ai_email_draft_has_text')) {
     }
 }
 
+if (!function_exists('elite_ai_draft_preview_text')) {
+    function elite_ai_draft_preview_text(string $actionType, array $draft): string
+    {
+        if ($actionType === 'draft_sms') {
+            return trim((string) ($draft['reply'] ?? $draft['message'] ?? $draft['text'] ?? $draft['body'] ?? ''));
+        }
+
+        if ($actionType === 'draft_email') {
+            $subject = trim((string) ($draft['subject'] ?? ''));
+            $body = trim((string) ($draft['body'] ?? ''));
+            if ($subject === '' && $body === '') {
+                return '';
+            }
+
+            return 'Subject: ' . ($subject !== '' ? $subject : '(no subject)') . "\n\n" . ($body !== '' ? $body : '(no body)');
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('elite_ai_ensure_sms_draft_payload')) {
     function elite_ai_ensure_sms_draft_payload(array $draft, array $lead, string $instruction): array
     {
@@ -1064,13 +1115,20 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
             }
 
             $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_sms', $request, (array) ($result['data'] ?? []));
+            if ($actionId <= 0) {
+                return ['ok' => false, 'message' => 'SMS draft was generated, but the approval queue could not save it. Please try again before using this draft.'];
+            }
+
+            $draftPayload = (array) ($result['data'] ?? []);
             return [
                 'ok' => true,
                 'surface' => $surface,
                 'action' => 'draft_sms',
                 'lead_id' => $leadId,
                 'action_id' => $actionId,
-                'draft' => $result['data'],
+                'draft' => $draftPayload,
+                'payload' => $draftPayload,
+                'draft_preview' => elite_ai_draft_preview_text('draft_sms', $draftPayload),
                 'status' => 'pending_review',
                 'message' => 'SMS draft created and queued for approval.',
                 'warning' => $usedFallback ? 'AI draft fallback used.' : null,
@@ -1095,13 +1153,20 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
         }
 
         $actionId = elite_ai_create_action_item($user, $surface, $lead, 'draft_email', $request, (array) ($result['data'] ?? []));
+        if ($actionId <= 0) {
+            return ['ok' => false, 'message' => 'Email draft was generated, but the approval queue could not save it. Please try again before using this draft.'];
+        }
+
+        $draftPayload = (array) ($result['data'] ?? []);
         return [
             'ok' => true,
             'surface' => $surface,
             'action' => 'draft_email',
             'lead_id' => $leadId,
             'action_id' => $actionId,
-            'draft' => $result['data'],
+            'draft' => $draftPayload,
+            'payload' => $draftPayload,
+            'draft_preview' => elite_ai_draft_preview_text('draft_email', $draftPayload),
             'status' => 'pending_review',
             'message' => 'Email draft created and queued for approval.',
             'warning' => $usedFallback ? 'AI draft fallback used.' : null,

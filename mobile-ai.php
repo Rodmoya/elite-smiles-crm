@@ -449,17 +449,39 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 }
             }
 
+            function parseDraftCandidate(candidate) {
+                if (!candidate) {
+                    return {};
+                }
+
+                if (typeof candidate === 'string') {
+                    try {
+                        var decoded = JSON.parse(candidate);
+                        return decoded && typeof decoded === 'object' ? decoded : {};
+                    } catch (error) {
+                        return candidate.trim() !== '' ? { __preview: candidate } : {};
+                    }
+                }
+
+                return typeof candidate === 'object' ? candidate : {};
+            }
+
             function formatDraftPreview(draft, actionType) {
                 if (!draft || typeof draft !== 'object') {
                     return '';
                 }
-                var smsText = String(draft.reply || draft.message || draft.text || draft.body || '').trim();
+                if (typeof draft.__preview === 'string' && draft.__preview.trim() !== '') {
+                    return draft.__preview.trim();
+                }
+                var nestedSms = draft.sms && typeof draft.sms === 'object' ? draft.sms : {};
+                var nestedEmail = draft.email && typeof draft.email === 'object' ? draft.email : {};
+                var smsText = String(draft.reply || draft.message || draft.text || draft.draft_text || draft.body || nestedSms.reply || nestedSms.message || nestedSms.text || nestedSms.body || '').trim();
                 if (actionType === 'draft_sms') {
                     return smsText ? 'Suggested SMS draft:\n\n' + smsText : '';
                 }
                 if (actionType === 'draft_email') {
-                    var subject = String(draft.subject || '').trim();
-                    var body = String(draft.body || '').trim();
+                    var subject = String(draft.subject || nestedEmail.subject || '').trim();
+                    var body = String(draft.body || draft.message || draft.text || nestedEmail.body || nestedEmail.message || nestedEmail.text || '').trim();
                     return 'Suggested Email draft:\n\nSubject: ' + (subject || '(no subject)') + '\n\n' + (body || '(no body)');
                 }
                 return '';
@@ -470,38 +492,24 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     return {};
                 }
 
-                if (data && typeof data === 'object' && typeof data.draft === 'object') {
-                    return data.draft;
-                }
+                var candidates = [
+                    data.draft,
+                    data.draft_payload,
+                    data.draft_payload_json,
+                    data.payload,
+                    data.item && data.item.draft_payload_json,
+                    data.queue_item && data.queue_item.draft_payload_json,
+                    data.action_item && data.action_item.draft_payload_json,
+                    data.data && data.data.draft,
+                    data.data && data.data.payload,
+                    data.draft_preview
+                ];
 
-                if (typeof data.payload === 'string') {
-                    try {
-                        const decoded = JSON.parse(data.payload);
-                        if (decoded && typeof decoded === 'object') {
-                            return decoded;
-                        }
-                    } catch (error) {
-                        // Keep fallback payload path.
+                for (var i = 0; i < candidates.length; i += 1) {
+                    var resolved = parseDraftCandidate(candidates[i]);
+                    if (resolved && typeof resolved === 'object' && Object.keys(resolved).length > 0) {
+                        return resolved;
                     }
-                }
-
-                if (typeof data.draft === 'string') {
-                    try {
-                        const decoded = JSON.parse(data.draft);
-                        if (decoded && typeof decoded === 'object') {
-                            return decoded;
-                        }
-                    } catch (error) {
-                        // Keep fallback payload path.
-                    }
-                }
-
-                if (typeof data.payload === 'object') {
-                    return data.payload;
-                }
-
-                if (typeof data.draft_preview === 'string' && data.draft_preview.trim() !== '') {
-                    return { reply: String(data.draft_preview) };
                 }
 
                 return {};
@@ -573,7 +581,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             createMessage('assistant', 'Note: ' + String(data.warning));
                         }
                     } else {
-                        createMessage('assistant', data.message || 'Draft prepared.');
+                        createMessage('assistant', 'The draft action completed, but no usable preview text came back. Nothing was sent. Please try again or open the lead directly. Queue item: #' + String(data.action_id || 0));
                     }
                 } catch (error) {
                     loading.remove();

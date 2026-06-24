@@ -330,6 +330,94 @@ if (!function_exists('auth_user_id')) {
     }
 }
 
+if (!function_exists('auth_assistant_token_key')) {
+    function auth_assistant_token_key(): string
+    {
+        if (defined('APP_KEY') && APP_KEY !== '') {
+            return APP_KEY;
+        }
+
+        if (defined('DB_PASS') && DB_PASS !== '') {
+            return DB_PASS;
+        }
+
+        return SESSION_NAME;
+    }
+}
+
+if (!function_exists('auth_assistant_token_signature')) {
+    function auth_assistant_token_signature(int $userId, int $expiresAt): string
+    {
+        return hash_hmac('sha256', $userId . '|' . $expiresAt, auth_assistant_token_key());
+    }
+}
+
+if (!function_exists('auth_issue_assistant_api_token')) {
+    function auth_issue_assistant_api_token(?int $userId = null, int $ttlSeconds = 900): string
+    {
+        $userId = $userId !== null && $userId > 0 ? $userId : auth_user_id();
+        if (!$userId) {
+            return '';
+        }
+
+        $expiresAt = time() + max(60, min(3600, $ttlSeconds));
+        $payload = [
+            'uid' => (int)$userId,
+            'exp' => $expiresAt,
+            'sig' => auth_assistant_token_signature((int)$userId, $expiresAt),
+        ];
+
+        return rtrim(strtr(base64_encode(json_encode($payload, JSON_UNESCAPED_SLASHES)), '+/', '-_'), '=');
+    }
+}
+
+if (!function_exists('auth_verify_assistant_api_token')) {
+    function auth_verify_assistant_api_token(string $token): ?array
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        $decoded = base64_decode(strtr($token, '-_', '+/'), true);
+        if (!is_string($decoded) || $decoded === '') {
+            return null;
+        }
+
+        $payload = json_decode($decoded, true);
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $userId = (int)($payload['uid'] ?? 0);
+        $expiresAt = (int)($payload['exp'] ?? 0);
+        $signature = (string)($payload['sig'] ?? '');
+
+        if ($userId <= 0 || $expiresAt < time() || $signature === '') {
+            return null;
+        }
+
+        $expected = auth_assistant_token_signature($userId, $expiresAt);
+        if (!hash_equals($expected, $signature)) {
+            return null;
+        }
+
+        $user = auth_find_user_by_id($userId);
+        if (!$user || (int)($user['is_active'] ?? 0) !== 1) {
+            return null;
+        }
+
+        return [
+            'id' => (int)$user['id'],
+            'first_name' => (string)$user['first_name'],
+            'last_name' => (string)$user['last_name'],
+            'full_name' => trim(((string)$user['first_name']) . ' ' . ((string)$user['last_name'])),
+            'email' => (string)$user['email'],
+            'role' => (string)$user['role'],
+        ];
+    }
+}
+
 if (!function_exists('auth_role')) {
     function auth_role(): ?string
     {

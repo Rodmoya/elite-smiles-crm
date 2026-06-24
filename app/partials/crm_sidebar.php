@@ -15,6 +15,9 @@ if (isset($_GET['lead_id']) && ctype_digit((string) $_GET['lead_id'])) {
     $assistantLeadId = (int) $_GET['id'];
 }
 $assistantCurrentUrl = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+$assistantAuthToken = function_exists('auth_issue_assistant_api_token')
+    ? auth_issue_assistant_api_token((int)($user['id'] ?? 0))
+    : '';
 
 $crmNavItems = [
     ['key' => 'dashboard', 'label' => 'Home', 'href' => base_url('dashboard.php'), 'icon' => 'M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10.5z', 'show' => true],
@@ -127,6 +130,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         id="crm-ai-panel"
         class="pointer-events-none fixed top-4 z-50 hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api.php'), PHP_URL_PATH) ?: '/crm/assistant-api.php')) ?>"
+        data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
         data-page-title="<?= e((string) $pageTitle) ?>"
         data-current-url="<?= e($assistantCurrentUrl) ?>"
@@ -399,6 +403,18 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         if (aiNotifications) aiNotifications.disabled = isBusy;
     }
 
+    function assistantHeaders() {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        const token = String(aiPanel ? (aiPanel.dataset.authToken || '') : '').trim();
+        if (token) {
+            headers['X-Elite-AI-Token'] = token;
+        }
+        return headers;
+    }
+
     function parseDraftCandidate(candidate) {
         if (!candidate) {
             return {};
@@ -482,10 +498,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 method: 'POST',
                 credentials: 'include',
                 cache: 'no-store',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: assistantHeaders(),
                 body: JSON.stringify({
                     surface: 'desktop',
                     assistant_action: action.type,
@@ -543,10 +556,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 method: 'POST',
                 credentials: 'include',
                 cache: 'no-store',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: assistantHeaders(),
                 body: JSON.stringify({
                     surface: 'desktop',
                     prompt: text,

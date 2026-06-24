@@ -34,6 +34,13 @@ elite_ai_ensure_schema();
 $user = auth_user();
 $surface = 'desktop';
 if (!$user) {
+    $assistantToken = trim((string) ($_SERVER['HTTP_X_ELITE_AI_TOKEN'] ?? $request['assistant_token'] ?? ''));
+    if ($assistantToken !== '' && function_exists('auth_verify_assistant_api_token')) {
+        $user = auth_verify_assistant_api_token($assistantToken);
+    }
+}
+
+if (!$user) {
     $user = mobile_ai_auth_user();
     $surface = 'mobile';
 }

@@ -100,7 +100,7 @@ if (!function_exists('elite_ai_surface')) {
 }
 
 if (!function_exists('elite_ai_normalize_context')) {
-    function elite_ai_normalize_context(array $request): array
+function elite_ai_normalize_context(array $request): array
     {
         $context = is_array($request['context'] ?? null) ? $request['context'] : [];
         $page = preg_replace('/[^a-z0-9_\-]/i', '', (string) ($context['page'] ?? ''));
@@ -109,13 +109,79 @@ if (!function_exists('elite_ai_normalize_context')) {
         $leadId = (int) ($context['lead_id'] ?? 0);
         $tab = preg_replace('/[^a-z0-9_\-]/i', '', (string) ($context['tab'] ?? ''));
 
-        return [
-            'page' => $page !== '' ? $page : 'unknown',
-            'page_title' => $pageTitle,
-            'current_url' => $currentUrl,
-            'lead_id' => $leadId > 0 ? $leadId : 0,
-            'tab' => $tab,
-        ];
+    return [
+        'page' => $page !== '' ? $page : 'unknown',
+        'page_title' => $pageTitle,
+        'current_url' => $currentUrl,
+        'lead_id' => $leadId > 0 ? $leadId : 0,
+        'tab' => $tab,
+    ];
+    }
+}
+
+if (!function_exists('elite_ai_request_has_explicit_send_permission')) {
+    function elite_ai_request_has_explicit_send_permission(array $request): bool
+    {
+        if (filter_var($request['send_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['send_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['send_now'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
+        if (in_array($executionMode, ['send', 'send_now', 'send_approved', 'send-confirmed', 'approved_send'], true)) {
+            return true;
+        }
+
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        if ($instruction === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:send|dispatch|deliver)\b(?:\s+(?:all|the|these|these|approved)\s*)?(?:sms|text|email)\b/i'
+            . '|\b(?:send|dispatch)\s+the\s+(?:approved\s+)?drafts?\b'
+            . '|\bsend\s+(?:all|the)\s+(?:approved\s+)?(?:sms|email)\b/i',
+            $instruction
+        );
+    }
+}
+
+if (!function_exists('elite_ai_request_has_explicit_stage_approval')) {
+    function elite_ai_request_has_explicit_stage_approval(array $request): bool
+    {
+        if (filter_var($request['stage_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['stage_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
+        if (in_array($executionMode, ['stage', 'stage_approved', 'stage_approval', 'move_stage'], true)) {
+            return true;
+        }
+
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        if ($instruction === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b/i'
+            . '|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b'
+            . '|\b(?:change|set)\s+lead\s+status\b',
+            $instruction
+        );
+    }
+}
+
+if (!function_exists('elite_ai_execution_policy_tag')) {
+    function elite_ai_execution_policy_tag(array $request): string
+    {
+        return elite_ai_request_has_explicit_send_permission($request) ? 'send-approved' : 'internal-only';
     }
 }
 
@@ -1719,8 +1785,8 @@ if (!function_exists('elite_ai_log_interaction')) {
 }
 
 if (!function_exists('elite_ai_handle_request')) {
-    function elite_ai_handle_request(array $user, array $request): array
-    {
+function elite_ai_handle_request(array $user, array $request): array
+{
         $surface = elite_ai_surface($request);
         $prompt = trim((string) ($request['prompt'] ?? ''));
         $quickAction = trim((string) ($request['quick_action'] ?? ''));
@@ -1787,10 +1853,16 @@ if (!function_exists('elite_ai_handle_request')) {
         $summary = trim((string) ($payload['answer'] ?? 'Elite AI completed a read-only response.'));
         elite_ai_log_interaction($user, $surface, $prompt !== '' ? $prompt : $quickAction, (array) ($payload['tools_used'] ?? []), $summary, $leadId, $context);
 
+        $executionPolicy = elite_ai_execution_policy_tag($request);
+        $responseSummary = $summary . ' Operation lock: ' . ($executionPolicy === 'send-approved'
+            ? 'Explicit communication send approval detected.'
+            : 'Internal actions only. Drafts require explicit send approval before any outbound SMS/email/WhatsApp send.');
+
         return [
             'ok' => true,
             'surface' => $surface,
-            'answer' => $summary,
+            'answer' => $responseSummary,
+            'execution_policy' => $executionPolicy,
             'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             'cards' => array_values((array) ($payload['cards'] ?? [])),
             'actions' => array_values((array) ($payload['actions'] ?? [])),

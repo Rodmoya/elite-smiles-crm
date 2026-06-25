@@ -68,6 +68,67 @@ if (!function_exists('codex_api_value')) {
     }
 }
 
+if (!function_exists('codex_api_has_explicit_send_approval')) {
+    function codex_api_has_explicit_send_approval(array $request): bool
+    {
+        if (filter_var($request['send_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['send_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['send_now'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['approve_send'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
+        if (in_array($executionMode, ['send', 'send_now', 'send_approved', 'send_approval', 'send-approved'], true)) {
+            return true;
+        }
+
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        if ($instruction === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:send|dispatch|deliver)\b(?:\s+(?:all|the|these|approved)\s*)?(?:sms|text|email)\b/i'
+            . '|\b(?:send|dispatch)\s+the\s+(?:approved\s+)?drafts?\b'
+            . '|\bsend\s+(?:all|the)\s+(?:approved\s+)?(?:sms|email)\b/i',
+            $instruction
+        );
+    }
+}
+
+if (!function_exists('codex_api_has_explicit_stage_approval')) {
+    function codex_api_has_explicit_stage_approval(array $request): bool
+    {
+        if (filter_var($request['stage_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['stage_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
+        if (in_array($executionMode, ['stage', 'stage_approved', 'stage_approval', 'move_stage'], true)) {
+            return true;
+        }
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        if ($instruction === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b/i'
+            . '|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b'
+            . '|\b(?:change|set)\s+lead\s+status\b',
+            $instruction
+        );
+    }
+}
+
 if (!function_exists('codex_api_token_from_request')) {
     function codex_api_token_from_request(): string
     {
@@ -567,6 +628,12 @@ if (!function_exists('codex_api_follow_up_lead')) {
     {
         $lead = codex_api_resolve_lead_for_operator();
         $leadId = (int)($lead['id'] ?? 0);
+        $request = (array) codex_api_body();
+        $sendApproved = codex_api_has_explicit_send_approval($request);
+        $stageApproved = codex_api_has_explicit_stage_approval($request);
+        $requestedStatus = '';
+        $blockedSend = false;
+        $blockedStatus = false;
         $channel = strtolower(trim((string) codex_api_value('channel', 'auto')));
         $createdBy = trim((string) codex_api_value('created_by', 'Codex'));
         $instruction = trim((string) codex_api_value('instruction', ''));
@@ -584,17 +651,31 @@ if (!function_exists('codex_api_follow_up_lead')) {
             codex_api_response(['ok' => false, 'message' => 'Channel must be auto, email, sms, or note.'], 422);
         }
 
+        if ($channel !== 'note' && !$sendApproved) {
+            $blockedSend = true;
+            $channel = 'note';
+        }
+
         if ($channel === 'auto') {
             $channel = trim((string)($lead['email'] ?? '')) !== '' ? 'email' : 'sms';
+            if (!$sendApproved && $channel !== 'note') {
+                $blockedSend = true;
+                $channel = 'note';
+            }
         }
 
         $updates = [];
         if ($status !== '') {
-            $allowedStages = lead_stage_labels();
-            if (!isset($allowedStages[$status])) {
-                codex_api_response(['ok' => false, 'message' => 'Stage is not allowed.', 'stages' => $allowedStages], 422);
+            $requestedStatus = $status;
+            if (!$stageApproved) {
+                $blockedStatus = true;
+            } else {
+                $allowedStages = lead_stage_labels();
+                if (!isset($allowedStages[$status])) {
+                    codex_api_response(['ok' => false, 'message' => 'Stage is not allowed.', 'stages' => $allowedStages], 422);
+                }
+                $updates['status'] = $status;
             }
-            $updates['status'] = $status;
         }
         if ($nextFollowUpAt !== '' && leads_has_column('next_follow_up_at')) {
             $timestamp = strtotime(str_replace('T', ' ', $nextFollowUpAt));
@@ -638,6 +719,13 @@ if (!function_exists('codex_api_follow_up_lead')) {
         }
 
         if ($dryRun) {
+            $dryRunNotes = [];
+            if ($blockedSend) {
+                $dryRunNotes[] = 'Communication send blocked until explicit send approval is provided.';
+            }
+            if ($blockedStatus) {
+                $dryRunNotes[] = 'Stage change blocked until explicit stage approval is provided.';
+            }
             codex_api_response([
                 'ok' => true,
                 'dry_run' => true,
@@ -646,6 +734,14 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 'subject' => $subject,
                 'message_body' => $message,
                 'note' => $note,
+                'execution_mode' => [
+                    'send_approved' => $sendApproved,
+                    'stage_approved' => $stageApproved,
+                    'blocked_send' => $blockedSend,
+                    'blocked_status' => $blockedStatus,
+                    'requested_status' => $requestedStatus ?: null,
+                    'messages' => $dryRunNotes,
+                ],
                 'planned_updates' => $updates,
                 'thread' => codex_api_timeline($leadId),
             ]);
@@ -745,6 +841,14 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 $operatorNotificationSent = elite_send_operator_follow_up_pushover($updatedLead ?: $lead, $notificationContext);
             }
 
+            $executionNotes = [];
+            if ($blockedSend) {
+                $executionNotes[] = 'Communication send was blocked by default safety policy; explicit send approval required.';
+            }
+            if ($blockedStatus) {
+                $executionNotes[] = 'Stage change was blocked by default safety policy; explicit stage approval required.';
+            }
+
             codex_api_response([
                 'ok' => true,
                 'message' => 'Follow-up completed.',
@@ -752,6 +856,14 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 'channel' => $channel,
                 'delivery' => $sent,
                 'lead' => $updatedLead,
+                'execution_mode' => [
+                    'send_approved' => $sendApproved,
+                    'stage_approved' => $stageApproved,
+                    'blocked_send' => $blockedSend,
+                    'blocked_status' => $blockedStatus,
+                    'requested_status' => $requestedStatus ?: null,
+                    'messages' => $executionNotes,
+                ],
                 'operator_notification_sent' => $operatorNotificationSent,
                 'thread' => codex_api_timeline($leadId),
             ]);
@@ -860,6 +972,17 @@ if (!function_exists('codex_api_prepare_sms_followup')) {
 if (!function_exists('codex_api_move_stage')) {
     function codex_api_move_stage(int $leadId, string $newStage): void
     {
+        $request = (array) codex_api_body();
+        $stageApproved = codex_api_has_explicit_stage_approval($request);
+        if (!$stageApproved) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Stage changes require explicit stage approval.',
+                'approval_required' => 'stage_approved',
+                'lead_id' => $leadId,
+            ], 409);
+        }
+
         $lead = codex_api_load_lead($leadId);
         if (function_exists('lead_pipeline_ensure_schema')) {
             lead_pipeline_ensure_schema();

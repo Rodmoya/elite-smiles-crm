@@ -875,6 +875,189 @@ if (!function_exists('elite_ai_build_assistant_actions')) {
     }
 }
 
+if (!function_exists('elite_ai_draft_channel_label')) {
+    function elite_ai_draft_channel_label(string $actionType): string
+    {
+        return $actionType === 'draft_sms' ? 'SMS' : 'Email';
+    }
+}
+
+if (!function_exists('elite_ai_parse_draft_payload')) {
+    function elite_ai_parse_draft_payload($payload): array
+    {
+        if (is_array($payload)) {
+            return $payload;
+        }
+
+        if (!is_string($payload)) {
+            return [];
+        }
+
+        $payload = trim($payload);
+        if ($payload === '') {
+            return [];
+        }
+
+        $decoded = json_decode($payload, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+}
+
+if (!function_exists('elite_ai_normalize_draft_payload_for_response')) {
+    function elite_ai_normalize_draft_payload_for_response(array $draft, string $actionType): array
+    {
+        $draft = $draft ?: [];
+        $result = [];
+        $normalized = array_merge([
+            'channel' => elite_ai_draft_channel_label($actionType),
+            'status' => 'Draft only - not sent',
+            'type' => $actionType,
+        ], $draft);
+
+        if (!empty($normalized['reply']) && is_string($normalized['reply'])) {
+            $result['reply'] = trim($normalized['reply']);
+        }
+        if (!empty($normalized['message']) && is_string($normalized['message'])) {
+            $result['reply'] = trim($normalized['message']);
+        }
+        if (!empty($normalized['text']) && is_string($normalized['text'])) {
+            $result['reply'] = trim($normalized['text']);
+        }
+        if (!empty($normalized['body']) && is_string($normalized['body'])) {
+            $result['body'] = trim($normalized['body']);
+        }
+        if (!empty($normalized['subject']) && is_string($normalized['subject'])) {
+            $result['subject'] = trim($normalized['subject']);
+        }
+
+        $result['status'] = $normalized['status'];
+        $result['channel'] = $normalized['channel'];
+        $result['type'] = $normalized['type'];
+        return $result;
+    }
+}
+
+if (!function_exists('elite_ai_build_draft_preview_actions')) {
+    function elite_ai_build_draft_preview_actions(int $leadId, int $actionId): array
+    {
+        $base = [
+            ['type' => 'use_draft', 'label' => 'Use Draft', 'lead_id' => $leadId, 'action_id' => $actionId],
+            ['type' => 'edit_draft', 'label' => 'Edit Draft', 'lead_id' => $leadId, 'action_id' => $actionId],
+            ['type' => 'cancel_draft', 'label' => 'Cancel', 'lead_id' => $leadId, 'action_id' => $actionId],
+        ];
+
+        return array_map(
+            static fn(array $action): array => [
+                'type' => $action['type'],
+                'label' => $action['label'],
+                'lead_id' => $action['lead_id'],
+                'action_id' => $action['action_id'],
+            ],
+            $base
+        );
+    }
+}
+
+if (!function_exists('elite_ai_pending_action_row')) {
+    function elite_ai_pending_action_row(array $row): array
+    {
+        $actionType = (string) ($row['action_type'] ?? '');
+        $leadId = (int) ($row['lead_id'] ?? 0);
+        $draft = elite_ai_parse_draft_payload($row['draft_payload_json'] ?? null);
+        $payload = elite_ai_normalize_draft_payload_for_response($draft, $actionType);
+        $preview = elite_ai_draft_preview_text($actionType, $payload);
+
+        return [
+            'action_id' => (int) ($row['id'] ?? 0),
+            'lead_id' => $leadId,
+            'lead_name' => trim((string) ($row['full_name'] ?? '')),
+            'action_type' => $actionType,
+            'channel' => elite_ai_draft_channel_label($actionType),
+            'status' => 'Pending review',
+            'draft_preview' => $preview,
+            'draft' => $payload,
+            'created_at' => (string) ($row['updated_at'] ?? ''),
+            'actions' => elite_ai_build_draft_preview_actions($leadId, (int) ($row['id'] ?? 0)),
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_pending_drafts_for_user')) {
+    function elite_ai_pending_drafts_for_user(array $user, int $limit = 6): array
+    {
+        $limit = max(1, min(12, $limit));
+        if ((int) ($user['id'] ?? 0) <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = db_all(
+                "SELECT q.id, q.action_type, q.lead_id, q.created_at, q.updated_at, q.draft_payload_json, l.full_name
+                 FROM elite_ai_action_queue q
+                 LEFT JOIN leads l ON l.id = q.lead_id
+                 WHERE q.user_id = :user_id AND q.status = :status
+                 ORDER BY q.updated_at DESC, q.id DESC
+                 LIMIT {$limit}",
+                [
+                    'user_id' => (int) ($user['id'] ?? 0),
+                    'status' => 'pending_review',
+                ]
+            );
+
+            return array_map('elite_ai_pending_action_row', $rows ?: []);
+        } catch (Throwable $e) {
+            esm_log('elite_ai', 'Could not load pending draft queue.', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+}
+
+if (!function_exists('elite_ai_load_action_item')) {
+    function elite_ai_load_action_item(array $user, int $actionId): ?array
+    {
+        if ((int) ($user['id'] ?? 0) <= 0 || $actionId <= 0) {
+            return null;
+        }
+
+        try {
+            $item = db_one(
+                'SELECT id, user_id, action_type, lead_id, status, draft_payload_json, request_prompt, request_context_json, created_at
+                 FROM elite_ai_action_queue
+                 WHERE id = :id AND user_id = :user_id
+                 LIMIT 1',
+                [
+                    'id' => $actionId,
+                    'user_id' => (int) ($user['id'] ?? 0),
+                ]
+            );
+            return $item ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('elite_ai_mark_action_status')) {
+    function elite_ai_mark_action_status(int $actionId, string $status): bool
+    {
+        try {
+            db_query(
+                "UPDATE elite_ai_action_queue
+                 SET status = :status, updated_at = :updated_at
+                 WHERE id = :id",
+                [
+                    'id' => $actionId,
+                    'status' => $status,
+                    'updated_at' => now(),
+                ]
+            );
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
 if (!function_exists('elite_ai_create_action_item')) {
     function elite_ai_create_action_item(array $user, string $surface, array $lead, string $actionType, array $request, array $draft): int
     {
@@ -1074,6 +1257,61 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
     function elite_ai_prepare_action_draft(array $user, array $request, string $surface): array
     {
         $actionType = strtolower(trim((string) ($request['assistant_action'] ?? '')));
+        $actionId = (int) ($request['action_id'] ?? 0);
+        if (in_array($actionType, ['use_draft', 'edit_draft', 'cancel_draft'], true)) {
+            if ($actionId <= 0) {
+                return ['ok' => false, 'message' => 'Missing draft action id.'];
+            }
+
+            $item = elite_ai_load_action_item($user, $actionId);
+            if (!$item) {
+                return ['ok' => false, 'message' => 'Draft action not found.'];
+            }
+
+            if (trim((string) ($item['status'] ?? '')) !== 'pending_review') {
+                return ['ok' => false, 'message' => 'This draft is no longer available for review.'];
+            }
+
+            $draftType = (string) ($item['action_type'] ?? '');
+            $draftPayload = elite_ai_normalize_draft_payload_for_response(elite_ai_parse_draft_payload($item['draft_payload_json'] ?? null), $draftType);
+            $leadId = (int) ($item['lead_id'] ?? 0);
+
+            if ($actionType === 'cancel_draft') {
+                elite_ai_mark_action_status($actionId, 'cancelled');
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'action' => 'cancel_draft',
+                    'action_id' => $actionId,
+                    'lead_id' => $leadId,
+                    'status' => 'cancelled',
+                    'message' => 'Draft cancelled.',
+                    'draft_badge' => 'Draft only - not sent',
+                    'draft_actions' => [],
+                ];
+            }
+
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'action' => $actionType,
+                    'action_id' => $actionId,
+                    'lead_id' => $leadId,
+                    'action_type' => $draftType,
+                    'draft' => $draftPayload,
+                    'payload' => $draftPayload,
+                    'draft_preview' => elite_ai_draft_preview_text($draftType, $draftPayload),
+                    'draft_badge' => 'Draft only - not sent',
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                'status' => 'pending_review',
+                'message' => $actionType === 'edit_draft'
+                    ? 'Draft ready in edit mode.'
+                    : 'Draft ready in composer for review.',
+                'channel' => elite_ai_draft_channel_label($draftType),
+                'warning' => null,
+            ];
+        }
+
         if (!in_array($actionType, ['draft_sms', 'draft_email'], true)) {
             return ['ok' => false, 'message' => 'Unsupported assistant action.'];
         }
@@ -1124,11 +1362,15 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'ok' => true,
                 'surface' => $surface,
                 'action' => 'draft_sms',
+                'action_type' => 'draft_sms',
                 'lead_id' => $leadId,
                 'action_id' => $actionId,
+                'channel' => 'SMS',
                 'draft' => $draftPayload,
                 'payload' => $draftPayload,
                 'draft_preview' => elite_ai_draft_preview_text('draft_sms', $draftPayload),
+                'draft_badge' => 'Draft only - not sent',
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
                 'status' => 'pending_review',
                 'message' => 'SMS draft created and queued for approval.',
                 'warning' => $usedFallback ? 'AI draft fallback used.' : null,
@@ -1157,21 +1399,25 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
             return ['ok' => false, 'message' => 'Email draft was generated, but the approval queue could not save it. Please try again before using this draft.'];
         }
 
-        $draftPayload = (array) ($result['data'] ?? []);
-        return [
-            'ok' => true,
-            'surface' => $surface,
-            'action' => 'draft_email',
-            'lead_id' => $leadId,
-            'action_id' => $actionId,
-            'draft' => $draftPayload,
-            'payload' => $draftPayload,
-            'draft_preview' => elite_ai_draft_preview_text('draft_email', $draftPayload),
-            'status' => 'pending_review',
-            'message' => 'Email draft created and queued for approval.',
-            'warning' => $usedFallback ? 'AI draft fallback used.' : null,
-        ];
-    }
+            $draftPayload = (array) ($result['data'] ?? []);
+            return [
+                'ok' => true,
+                'surface' => $surface,
+                'action' => 'draft_email',
+                'action_type' => 'draft_email',
+                'lead_id' => $leadId,
+                'action_id' => $actionId,
+                'channel' => 'Email',
+                'draft' => $draftPayload,
+                'payload' => $draftPayload,
+                'draft_preview' => elite_ai_draft_preview_text('draft_email', $draftPayload),
+                'draft_badge' => 'Draft only - not sent',
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                'status' => 'pending_review',
+                'message' => 'Email draft created and queued for approval.',
+                'warning' => $usedFallback ? 'AI draft fallback used.' : null,
+            ];
+        }
 }
 
 if (!function_exists('elite_ai_handle_action_request')) {
@@ -1194,6 +1440,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             return $result + [
                 'ok' => true,
                 'context' => $context,
+                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
         }
 
@@ -1202,6 +1449,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             'surface' => $surface,
             'message' => (string) ($result['message'] ?? 'Unable to prepare the requested action.'),
             'context' => elite_ai_normalize_context($request),
+            'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
         ];
     }
 }
@@ -1525,6 +1773,7 @@ if (!function_exists('elite_ai_handle_request')) {
             'ok' => true,
             'surface' => $surface,
             'answer' => $summary,
+            'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             'cards' => array_values((array) ($payload['cards'] ?? [])),
             'actions' => array_values((array) ($payload['actions'] ?? [])),
             'tools_used' => array_values((array) ($payload['tools_used'] ?? [])),

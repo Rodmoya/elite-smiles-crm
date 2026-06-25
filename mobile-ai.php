@@ -114,6 +114,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             padding: 12px 0 18px;
             overflow: visible;
         }
+        .hidden {
+            display: none !important;
+        }
         .message {
             max-width: 88%;
             border: 1px solid var(--line);
@@ -155,6 +158,79 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 10px;
+        }
+        .pending-drafts {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+            padding: 8px 10px 10px;
+            margin-top: 8px;
+        }
+        .pending-drafts-title {
+            margin: 0 2px 8px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .pending-drafts-list {
+            display: grid;
+            gap: 8px;
+        }
+        .draft-status {
+            margin: 6px 0 0;
+            border: 1px solid #a7f3d0;
+            border-radius: 12px;
+            padding: 6px 10px;
+            font-size: 11px;
+            color: #065f46;
+            background: #ecfdf5;
+        }
+        .draft-card {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: #f9fafb;
+            padding: 10px;
+            margin-top: 8px;
+        }
+        .draft-card-title {
+            margin: 0 0 6px;
+            color: var(--ink);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .draft-card-body {
+            margin: 0;
+            color: var(--ink);
+            font-size: 13px;
+            line-height: 1.45;
+            white-space: pre-line;
+        }
+        .draft-card-meta {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+        .draft-card-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .draft-action-btn {
+            appearance: none;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #fff;
+            color: var(--ink);
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
         }
         .quick-action-btn {
             appearance: none;
@@ -301,7 +377,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
         </header>
 
         <?php if ($tab === 'assistant'): ?>
-            <section class="thread" id="assistant-thread" aria-live="polite">
+        <section class="thread" id="assistant-thread" aria-live="polite">
                 <?php if ($showWelcome): ?>
                     <article class="message assistant welcome">
                         <p>Setup complete. Add this page to your Home Screen for daily use.</p>
@@ -310,6 +386,11 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 <article class="message assistant">
                     <p>Good morning, <?= e($displayName) ?>. What do you want to do?</p>
                 </article>
+            </section>
+
+            <section class="pending-drafts" id="assistant-pending-drafts" aria-label="Pending Elite AI drafts">
+                <p class="pending-drafts-title" id="assistant-pending-drafts-title">Pending drafts</p>
+                <div class="pending-drafts-list" id="assistant-pending-drafts-list"></div>
             </section>
 
             <section class="composer-wrap" aria-label="Assistant composer">
@@ -364,6 +445,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var input = document.getElementById('assistant-input');
             var mic = document.getElementById('assistant-mic');
             var quickActions = document.getElementById('assistant-quick-actions');
+            var pendingDraftsSection = document.getElementById('assistant-pending-drafts');
+            var pendingDraftsTitle = document.getElementById('assistant-pending-drafts-title');
+            var pendingDraftsList = document.getElementById('assistant-pending-drafts-list');
             if (!thread || !form || !input) {
                 return;
             }
@@ -376,6 +460,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 lead_id: 0,
                 tab: 'assistant'
             };
+
+            var assistantSpeech = null;
+            var isListening = false;
 
             var quickActionItems = [
                 { label: 'Morning Sweep', quick_action: 'morning-sweep' },
@@ -426,6 +513,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         actionButton.textContent = action.label || ('Action: ' + String(action.type || ''));
                         actionButton.dataset.actionType = String(action.type || '');
                         actionButton.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
+                        actionButton.dataset.actionId = String(Number(action.action_id || action.actionId || 0));
                         actionButton.dataset.actionLabel = String(action.label || '');
                         actionButton.dataset.actionHelp = String(action.help || '');
                         actionButton.addEventListener('click', function (event) {
@@ -455,6 +543,106 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 }
             }
 
+            function getSpeechRecognition() {
+                if (window.__eliteAIRecognition) {
+                    return window.__eliteAIRecognition;
+                }
+                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+                if (!SpeechRecognition) {
+                    return null;
+                }
+                var recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.maxAlternatives = 1;
+                recognition.lang = 'en-US';
+                window.__eliteAIRecognition = recognition;
+                return recognition;
+            }
+
+            function setDraftStatus(text) {
+                var statusBar = input.parentElement && input.parentElement.querySelector('.draft-status');
+                if (!statusBar) {
+                    return;
+                }
+                if (!text) {
+                    statusBar.classList.add('hidden');
+                    statusBar.textContent = '';
+                    return;
+                }
+                statusBar.textContent = text;
+                statusBar.classList.remove('hidden');
+            }
+
+            function stopAssistantListening() {
+                isListening = false;
+                if (assistantSpeech && assistantSpeech.stop) {
+                    try {
+                        assistantSpeech.stop();
+                    } catch (error) {
+                        // no-op.
+                    }
+                }
+                if (mic) {
+                    mic.classList.remove('bg-slate-900', 'text-white');
+                }
+            }
+
+            function startAssistantListening() {
+                var recognition = getSpeechRecognition();
+                if (!recognition) {
+                    createMessage('assistant', 'Voice input is not supported on this browser.');
+                    return;
+                }
+
+                assistantSpeech = recognition;
+                isListening = true;
+                assistantSpeech.onstart = function () {
+                    mic.classList.add('bg-slate-900', 'text-white');
+                    setDraftStatus('Listening...');
+                };
+                assistantSpeech.onresult = function (event) {
+                    var finalText = '';
+                    for (var i = 0; i < event.results.length; i += 1) {
+                        if (event.results[i].isFinal) {
+                            finalText += event.results[i][0].transcript + ' ';
+                        }
+                    }
+                    if (finalText.trim() === '') {
+                        return;
+                    }
+                    input.value = (input.value + ' ' + finalText).trim();
+                    setDraftStatus('Ready to send transcript.');
+                };
+                assistantSpeech.onerror = function () {
+                    setDraftStatus('Voice input failed. You can still type your request.');
+                    stopAssistantListening();
+                };
+                assistantSpeech.onend = function () {
+                    stopAssistantListening();
+                    if (input.value.trim() !== '') {
+                        setDraftStatus('You can edit transcript and press Send.');
+                    }
+                };
+                try {
+                    assistantSpeech.start();
+                } catch (error) {
+                    stopAssistantListening();
+                    setDraftStatus('Could not start voice input. You can still type.');
+                }
+            }
+
+            function ensureStatusNode() {
+                var statusNode = input.parentElement && input.parentElement.querySelector('.draft-status');
+                if (statusNode) {
+                    return statusNode;
+                }
+                var node = document.createElement('p');
+                node.className = 'draft-status hidden';
+                input.parentElement.appendChild(node);
+                return node;
+            }
+
             function normalizeAssistantActions(actions, fallbackLeadId) {
                 var leadId = Number(fallbackLeadId || 0);
                 return (Array.isArray(actions) ? actions : []).map(function (action) {
@@ -463,6 +651,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     normalized.label = String(normalized.label || '');
                     normalized.help = String(normalized.help || '');
                     normalized.lead_id = Number(normalized.lead_id || normalized.leadId || leadId || 0);
+                    normalized.action_id = Number(normalized.action_id || normalized.actionId || 0);
                     return normalized;
                 }).filter(function (action) {
                     return action.type && action.lead_id;
@@ -475,8 +664,243 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     type: String(button.dataset.actionType || fallback.type || ''),
                     label: String(button.dataset.actionLabel || fallback.label || ''),
                     help: String(button.dataset.actionHelp || fallback.help || ''),
-                    lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0)
+                    lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
+                    action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0)
                 };
+            }
+
+            function resolveDraftActionType(data, actionType) {
+                var mappedActionType = String(actionType || '');
+                if (mappedActionType === 'draft_sms' || mappedActionType === 'draft_email') {
+                    return mappedActionType;
+                }
+                if (mappedActionType === 'use_draft' || mappedActionType === 'edit_draft' || mappedActionType === 'cancel_draft') {
+                    if (data && String(data.channel || '') === 'SMS') {
+                        return 'draft_sms';
+                    }
+                    if (data && String(data.channel || '') === 'Email') {
+                        return 'draft_email';
+                    }
+                }
+                if (data && String(data.action_type || '') === 'draft_sms') {
+                    return 'draft_sms';
+                }
+                if (data && String(data.action_type || '') === 'draft_email') {
+                    return 'draft_email';
+                }
+                if (data && data.channel === 'SMS') {
+                    return 'draft_sms';
+                }
+                if (data && data.channel === 'Email') {
+                    return 'draft_email';
+                }
+                return data && data.type ? String(data.type) : '';
+            }
+
+            function normalizeDraftText(draft, actionType) {
+                if (!draft || typeof draft !== 'object') {
+                    return '';
+                }
+                if (actionType === 'draft_email') {
+                    if (typeof draft.body === 'string' && draft.body.trim() !== '') {
+                        return draft.body.trim();
+                    }
+                    if (typeof draft.message === 'string' && draft.message.trim() !== '') {
+                        return draft.message.trim();
+                    }
+                    if (typeof draft.text === 'string' && draft.text.trim() !== '') {
+                        return draft.text.trim();
+                    }
+                }
+                if (typeof draft.reply === 'string' && draft.reply.trim() !== '') {
+                    return draft.reply.trim();
+                }
+                if (typeof draft.message === 'string' && draft.message.trim() !== '') {
+                    return draft.message.trim();
+                }
+                if (typeof draft.text === 'string' && draft.text.trim() !== '') {
+                    return draft.text.trim();
+                }
+                if (typeof draft.body === 'string' && draft.body.trim() !== '') {
+                    return draft.body.trim();
+                }
+                return '';
+            }
+
+            function setDraftModeInComposer(draft, actionType, leadId, actionId, note) {
+                var draftText = normalizeDraftText(draft || {}, actionType);
+                if (draftText) {
+                    input.value = draftText;
+                }
+                input.focus();
+                ensureStatusNode();
+                var channel = actionType === 'draft_sms' ? 'SMS' : 'Email';
+                var noteText = note || 'Reviewing draft';
+                var actionText = actionId > 0 ? (' | Queue #' + String(actionId)) : '';
+                setDraftStatus(noteText + ' | ' + channel + ' | Draft only - not sent' + (leadId ? ' | Lead #' + String(leadId) : '') + actionText);
+            }
+
+            function appendDraftActionButtons(wrapper, action) {
+                if (!wrapper || !action) {
+                    return;
+                }
+                var actions = Array.isArray(action.actions) ? action.actions : [];
+                if (!actions.length) {
+                    return;
+                }
+                actions.forEach(function (entry) {
+                    var actionType = String(entry.type || '');
+                    var actionId = Number(entry.action_id || 0);
+                    if (!actionType || !actionId) {
+                        return;
+                    }
+                    var actionButton = document.createElement('button');
+                    actionButton.type = 'button';
+                    actionButton.className = 'draft-action-btn';
+                    actionButton.textContent = String(entry.label || actionType);
+                    actionButton.dataset.actionType = actionType;
+                    actionButton.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
+                    actionButton.dataset.actionId = String(Number(actionId));
+                    actionButton.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        runAssistantAction(buttonAssistantAction(actionButton, entry));
+                    });
+                    wrapper.appendChild(actionButton);
+                });
+            }
+
+            function renderDraftCard(messageArticle, draftPayload, actionType, actionId, leadId, data, action) {
+                if (!messageArticle) {
+                    return;
+                }
+                var card = document.createElement('div');
+                var cardTitle = document.createElement('p');
+                var cardText = document.createElement('p');
+                var badge = document.createElement('p');
+                var actionWrap = document.createElement('div');
+                var label = actionType === 'draft_sms' ? 'SMS Draft' : (actionType === 'draft_email' ? 'Email Draft' : 'Draft');
+                var channel = actionType === 'draft_sms' ? 'SMS' : (actionType === 'draft_email' ? 'Email' : 'Draft');
+                var status = (data && typeof data.draft_badge === 'string') ? String(data.draft_badge) : 'Draft only - not sent';
+                var preview = formatDraftPreview(draftPayload || {}, actionType);
+                var subject = '';
+                if (actionType === 'draft_email' && draftPayload && String(draftPayload.subject || '').trim() !== '') {
+                    subject = String(draftPayload.subject || '').trim();
+                }
+
+                card.className = 'draft-card';
+                cardTitle.className = 'draft-card-title';
+                cardTitle.textContent = label;
+                cardText.className = 'draft-card-body';
+                cardText.textContent = preview || 'Draft prepared for review. Draft only - not sent.';
+                badge.className = 'draft-card-meta';
+                badge.textContent = status + ' | ' + channel + ' | Lead #' + String(leadId || 0) + (actionId ? (' | Queue #' + String(actionId)) : '');
+                if (subject !== '') {
+                    var subjectRow = document.createElement('p');
+                    subjectRow.className = 'draft-card-meta draft-card-subject';
+                    subjectRow.textContent = 'Subject: ' + subject;
+                    card.appendChild(subjectRow);
+                }
+                actionWrap.className = 'draft-card-actions';
+                card.appendChild(cardTitle);
+                card.appendChild(cardText);
+                card.appendChild(badge);
+                appendDraftActionButtons(actionWrap, { lead_id: leadId, actions: resolveDraftActions(data) });
+                card.appendChild(actionWrap);
+                messageArticle.appendChild(card);
+                return card;
+            }
+
+            function resolveDraftActions(data) {
+                if (!data) {
+                    return [];
+                }
+                if (Array.isArray(data.draft_actions) && data.draft_actions.length) {
+                    return data.draft_actions;
+                }
+                if (Array.isArray(data.actions) && data.actions.length) {
+                    return data.actions;
+                }
+                return [];
+            }
+
+            function renderPendingDraft(item) {
+                if (!item || !pendingDraftsList) {
+                    return;
+                }
+                var actionId = Number(item.action_id || 0);
+                var leadId = Number(item.lead_id || 0);
+                var card = document.createElement('div');
+                card.className = 'draft-card';
+
+                var title = document.createElement('p');
+                title.className = 'draft-card-title';
+                title.textContent = String(item.channel || 'Draft') + ' Queue #' + String(actionId);
+                card.appendChild(title);
+
+                var body = document.createElement('p');
+                body.className = 'draft-card-body';
+                body.textContent = String(item.draft_preview || '').trim() || 'Draft prepared for review. Draft only - not sent.';
+                card.appendChild(body);
+
+                var meta = document.createElement('p');
+                meta.className = 'draft-card-meta';
+                meta.textContent = 'Lead #' + String(leadId) + (item.lead_name ? ' - ' + String(item.lead_name) : '');
+                card.appendChild(meta);
+
+                var actionWrap = document.createElement('div');
+                actionWrap.className = 'draft-card-actions';
+                appendDraftActionButtons(actionWrap, { lead_id: leadId, actions: item.actions || [] });
+                card.appendChild(actionWrap);
+                pendingDraftsList.appendChild(card);
+            }
+
+            function applyPendingDrafts(pendingDrafts) {
+                if (!pendingDraftsList) {
+                    return;
+                }
+                pendingDraftsList.innerHTML = '';
+                if (!Array.isArray(pendingDrafts) || !pendingDrafts.length) {
+                    pendingDraftsSection.style.display = 'none';
+                    return;
+                }
+                pendingDraftsSection.style.display = 'block';
+                if (pendingDraftsTitle) {
+                    pendingDraftsTitle.classList.remove('hidden');
+                }
+                pendingDrafts.forEach(function (item) {
+                    renderPendingDraft(item);
+                });
+            }
+
+            async function refreshPendingDrafts() {
+                if (!pendingDraftsSection || !pendingDraftsList) {
+                    return;
+                }
+                try {
+                    var response = await fetch(endpoint, {
+                        method: 'POST',
+                        credentials: 'include',
+                        cache: 'no-store',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            surface: 'mobile',
+                            prompt: '',
+                            quick_action: '',
+                            context: baseContext
+                        })
+                    });
+                    if (!response.ok) {
+                        return;
+                    }
+                    var data = await response.json();
+                    applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                } catch (error) {
+                    // keep silent.
+                }
             }
 
             function parseDraftCandidate(candidate) {
@@ -567,7 +991,18 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     return;
                 }
 
-                createMessage('user', 'Prepare ' + String(action.label || 'draft') + ' for lead #' + Number(action.lead_id));
+                var actionType = String(action.type || '');
+                var leadId = Number(action.lead_id || 0);
+                var actionLabel = String(action.label || actionType);
+                var userVerb = actionLabel;
+                if (actionType === 'use_draft') {
+                    userVerb = 'Use draft';
+                } else if (actionType === 'edit_draft') {
+                    userVerb = 'Edit draft';
+                } else if (actionType === 'cancel_draft') {
+                    userVerb = 'Cancel draft';
+                }
+                createMessage('user', userVerb + ' for lead #' + Number(action.lead_id));
                 var loading = createMessage('assistant', 'Preparing draft for approval...', [], null, true);
                 setBusy(true);
 
@@ -584,6 +1019,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             surface: 'mobile',
                             assistant_action: action.type,
                             lead_id: Number(action.lead_id || 0),
+                            action_id: Number(action.action_id || 0),
                             prompt: action.help || '',
                             instruction: action.help || '',
                             quick_action: '',
@@ -603,16 +1039,47 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
+                    if (actionType === 'cancel_draft') {
+                        setDraftStatus('');
+                        refreshPendingDrafts();
+                        createMessage('assistant', data.message || 'Draft cancelled.');
+                        return;
+                    }
+
                     var draftPayload = resolveDraftPayload(data);
-                    var preview = formatDraftPreview(draftPayload, action.type || '');
-                    if (preview) {
-                        createMessage('assistant', preview + '\n\nDraft ready. Pending approval before send.');
+                    var resolvedActionType = resolveDraftActionType(data, actionType);
+                    var actionId = Number(data.action_id || action.action_id || 0);
+                    if (actionType === 'use_draft' || actionType === 'edit_draft') {
+                        if (actionId > 0) {
+                            setDraftModeInComposer(
+                                draftPayload,
+                                resolvedActionType,
+                                leadId,
+                                actionId,
+                                actionType === 'edit_draft' ? 'Editing draft' : 'Reviewing draft'
+                            );
+                        }
+                        var loadedMessage = createMessage('assistant', data.message || 'Draft loaded into composer.');
+                        renderDraftCard(loadedMessage, draftPayload, resolvedActionType, actionId, leadId, data, action);
                         if (typeof data.warning === 'string' && data.warning.trim() !== '') {
                             createMessage('assistant', 'Note: ' + String(data.warning));
                         }
-                    } else {
-                        createMessage('assistant', 'The draft action completed, but no usable preview text came back. Nothing was sent. Please try again or open the lead directly. Queue item: #' + String(data.action_id || 0));
+                        refreshPendingDrafts();
+                        return;
                     }
+
+                    if (draftPayload) {
+                        var draftedMessage = createMessage('assistant', data.message || 'Draft prepared for review.');
+                        renderDraftCard(draftedMessage, draftPayload, resolvedActionType || actionType, actionId, leadId, data, action);
+                        if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                            createMessage('assistant', 'Note: ' + String(data.warning));
+                        }
+                        setDraftStatus('Reviewing draft | ' + (resolvedActionType === 'draft_sms' ? 'SMS' : 'Email') + ' | Draft only - not sent');
+                        refreshPendingDrafts();
+                        return;
+                    }
+                    setDraftStatus('');
+                    createMessage('assistant', 'The draft action completed, but no usable preview came back. Queue item: ' + String(actionId));
                 } catch (error) {
                     loading.remove();
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
@@ -628,7 +1095,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     return;
                 }
 
-                createMessage('user', cleanPrompt);
+                createMessage('user', cleanPrompt || String(quickAction || ''));
                 var loading = createMessage('assistant', 'Thinking...', [], true);
                 setBusy(true);
 
@@ -659,6 +1126,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
                     var assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
                     var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], assistantActions);
+                    applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                    if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                        createMessage('assistant', 'Note: ' + String(data.warning));
+                    } else {
+                        setDraftStatus('');
+                    }
                 } catch (error) {
                     loading.remove();
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
@@ -694,11 +1167,18 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
             if (mic) {
                 mic.addEventListener('click', function () {
-                    createMessage('assistant', 'Voice is not connected yet. Type the request for now.');
+                    if (isListening) {
+                        stopAssistantListening();
+                        setDraftStatus('Voice stopped.');
+                        return;
+                    }
+                    startAssistantListening();
                 });
             }
 
             buildQuickActions();
+            ensureStatusNode();
+            refreshPendingDrafts();
         }());
     </script>
 </body>

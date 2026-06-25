@@ -161,8 +161,13 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     <p class="text-sm leading-6 text-slate-700">Good morning, <?= e($firstName !== '' ? $firstName : 'Rodrigo') ?>. What do you want to do?</p>
                 </article>
             </div>
+            <div id="crm-ai-pending-drafts" class="border-t border-slate-200 bg-white px-5 py-2">
+                <p id="crm-ai-pending-drafts-title" class="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pending drafts</p>
+                <div id="crm-ai-pending-drafts-list" class="mt-2 grid gap-2"></div>
+            </div>
             <div class="border-t border-slate-200 bg-white px-5 py-4">
                 <div id="crm-ai-quick-actions" class="mb-3 flex flex-wrap gap-2"></div>
+                <div id="crm-ai-draft-status" class="mb-2 hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"></div>
                 <form id="crm-ai-form" class="flex items-center gap-3">
                     <input id="crm-ai-input" type="text" enterkeyhint="send" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
                     <button type="button" id="crm-ai-mic" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100" aria-label="Microphone placeholder">
@@ -246,18 +251,24 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     const aiClose = document.getElementById('crm-ai-close');
     const aiThread = document.getElementById('crm-ai-thread');
     const aiForm = document.getElementById('crm-ai-form');
-    const aiInput = document.getElementById('crm-ai-input');
-    const aiSend = document.getElementById('crm-ai-send');
-    const aiMic = document.getElementById('crm-ai-mic');
-    const aiNotifications = document.getElementById('crm-ai-notifications');
-    const aiQuickActions = [
-        { label: 'Morning Sweep', quick_action: 'morning-sweep' },
-        { label: 'New Leads', quick_action: 'new-leads' },
-        { label: 'Replies', quick_action: 'replies' },
-        { label: 'Follow-ups', quick_action: 'follow-ups' },
-        { label: 'No Answer Review', quick_action: 'no-answer-review' },
-        { label: 'Notifications', quick_action: 'notifications' },
-    ];
+            const aiInput = document.getElementById('crm-ai-input');
+            const aiSend = document.getElementById('crm-ai-send');
+            const aiMic = document.getElementById('crm-ai-mic');
+            const aiNotifications = document.getElementById('crm-ai-notifications');
+            const aiDraftStatus = document.getElementById('crm-ai-draft-status');
+            const aiPendingList = document.getElementById('crm-ai-pending-drafts-list');
+            const aiQuickActions = [
+                { label: 'Morning Sweep', quick_action: 'morning-sweep' },
+                { label: 'New Leads', quick_action: 'new-leads' },
+                { label: 'Replies', quick_action: 'replies' },
+                { label: 'Follow-ups', quick_action: 'follow-ups' },
+                { label: 'No Answer Review', quick_action: 'no-answer-review' },
+                { label: 'Notifications', quick_action: 'notifications' },
+            ];
+            const draftCache = {};
+            let pendingDraftsRenderedAt = 0;
+            let assistantSpeech = null;
+            let isListening = false;
 
     function aiContext() {
         return {
@@ -309,7 +320,272 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         if (open) {
             positionAssistantPanel();
             buildQuickActions();
+            refreshPendingDrafts(true);
             if (aiInput) aiInput.focus();
+        }
+    }
+
+    function normalizeDraftText(draft, actionType) {
+        if (!draft || typeof draft !== 'object') {
+            return '';
+        }
+
+        if (actionType === 'draft_email') {
+            if (typeof draft.body === 'string' && draft.body.trim() !== '') {
+                return draft.body.trim();
+            }
+            if (typeof draft.message === 'string' && draft.message.trim() !== '') {
+                return draft.message.trim();
+            }
+            if (typeof draft.text === 'string' && draft.text.trim() !== '') {
+                return draft.text.trim();
+            }
+        }
+
+        if (typeof draft.reply === 'string' && draft.reply.trim() !== '') {
+            return draft.reply.trim();
+        }
+
+        if (typeof draft.message === 'string' && draft.message.trim() !== '') {
+            return draft.message.trim();
+        }
+
+        if (typeof draft.text === 'string' && draft.text.trim() !== '') {
+            return draft.text.trim();
+        }
+
+        if (typeof draft.body === 'string' && draft.body.trim() !== '') {
+            return draft.body.trim();
+        }
+
+        return '';
+    }
+
+    function resolveDraftActionType(data, actionType) {
+        var mappedActionType = String(actionType || '');
+        if (mappedActionType === 'draft_sms' || mappedActionType === 'draft_email') {
+            return mappedActionType;
+        }
+        if (mappedActionType === 'use_draft' || mappedActionType === 'edit_draft' || mappedActionType === 'cancel_draft') {
+            if (data && String(data.channel || '') === 'SMS') {
+                return 'draft_sms';
+            }
+            if (data && String(data.channel || '') === 'Email') {
+                return 'draft_email';
+            }
+        }
+        var dataActionType = data && String(data.action_type || '');
+        if (dataActionType === 'draft_sms' || dataActionType === 'draft_email') {
+            return String(data.action_type);
+        }
+        if (data && data.channel === 'SMS') {
+            return 'draft_sms';
+        }
+        if (data && data.channel === 'Email') {
+            return 'draft_email';
+        }
+        return data && data.type ? String(data.type) : '';
+    }
+
+    function setDraftStatus(statusText) {
+        if (!aiDraftStatus) {
+            return;
+        }
+        if (!statusText) {
+            aiDraftStatus.classList.add('hidden');
+            aiDraftStatus.textContent = '';
+            return;
+        }
+        aiDraftStatus.classList.remove('hidden');
+        aiDraftStatus.textContent = statusText;
+    }
+
+    function setDraftModeInComposer(draft, actionType, leadId, actionId, note) {
+        if (!aiInput || !actionId) {
+            return;
+        }
+        const draftText = normalizeDraftText(draft || {}, actionType);
+        aiInput.value = draftText;
+        aiInput.focus();
+        const label = actionType === 'draft_sms' ? 'SMS' : 'Email';
+        setDraftStatus((note || 'Reviewing draft') + ` | ${label} | Draft only - not sent` + (leadId ? ` | Lead #${leadId}` : '') + ` | Queue #${actionId}`);
+        if (window && window.localStorage) {
+            window.localStorage.setItem('elite_ai_last_draft', JSON.stringify({
+                actionId: actionId,
+                leadId: leadId,
+                actionType: actionType,
+                draft: draft || {},
+            }));
+        }
+    }
+
+    function renderDraftCard(messageArticle, draftPayload, actionType, actionId, leadId, data) {
+        if (!aiThread) {
+            return;
+        }
+
+        const channel = actionType === 'draft_sms' ? 'SMS' : 'Email';
+        const label = actionType === 'draft_sms' ? 'SMS Draft' : 'Email Draft';
+        const previewText = formatDraftPreview(draftPayload, actionType);
+        const statusText = data && typeof data.draft_badge === 'string' ? data.draft_badge : 'Draft only - not sent';
+        const draftActions = Array.isArray(data && data.draft_actions) ? data.draft_actions : [];
+
+        const card = document.createElement('div');
+        card.className = 'mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3';
+
+        const heading = document.createElement('p');
+        heading.className = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500';
+        heading.textContent = `${label} • ${channel} • ${statusText}`;
+        card.appendChild(heading);
+
+        const body = document.createElement('p');
+        body.className = 'mt-2 text-sm leading-5 whitespace-pre-line text-slate-700';
+        body.textContent = previewText || 'Draft prepared for review.';
+        card.appendChild(body);
+
+        if (actionType === 'draft_email' && draftPayload && (draftPayload.subject || '').trim() !== '') {
+            const subject = document.createElement('p');
+            subject.className = 'mt-2 text-[11px] font-semibold text-slate-600';
+            subject.textContent = 'Subject: ' + (draftPayload.subject || '').trim();
+            card.appendChild(subject);
+        }
+
+        const actionWrap = document.createElement('div');
+        actionWrap.className = 'mt-3 flex flex-wrap gap-2';
+        draftActions.forEach(function (action) {
+            const actionTypeValue = String(action.type || '');
+            if (!actionTypeValue || !action.action_id) {
+                return;
+            }
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'crm-ai-action-button rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium';
+            button.textContent = action.label || ('Action: ' + actionTypeValue);
+            button.dataset.actionType = actionTypeValue;
+            button.dataset.leadId = String(leadId || 0);
+            button.dataset.actionId = String(Number(action.action_id || 0));
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                const resolved = buttonAssistantAction(button, {});
+                runAssistantAction(resolved);
+            });
+            actionWrap.appendChild(button);
+        });
+        card.appendChild(actionWrap);
+        messageArticle.appendChild(card);
+
+        draftCache[String(Number(actionId || 0))] = {
+            leadId: Number(leadId || 0),
+            actionType: actionType,
+            draft: draftPayload || {},
+        };
+        return card;
+    }
+
+    function renderPendingDraftCard(item) {
+        if (!item || !aiPendingList) {
+            return;
+        }
+
+        const actionId = Number(item.action_id || 0);
+        const leadId = Number(item.lead_id || 0);
+        const label = `${(item.channel || 'Draft')} #${actionId}`;
+        const draftText = String(item.draft_preview || '').trim() || 'Pending draft review.';
+        const leadName = String(item.lead_name || '').trim();
+        const article = document.createElement('article');
+        article.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-3';
+
+        const row = document.createElement('p');
+        row.className = 'text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500';
+        row.textContent = label + (leadName ? ` • ${leadName}` : '');
+        article.appendChild(row);
+
+        const body = document.createElement('p');
+        body.className = 'mt-1 text-xs leading-4 text-slate-700';
+        body.textContent = draftText;
+        article.appendChild(body);
+
+        const wrap = document.createElement('div');
+        wrap.className = 'mt-2 flex flex-wrap gap-2';
+        (item.actions || []).forEach(function (action) {
+            const actionTypeValue = String(action.type || '');
+            if (!actionTypeValue || !actionId) {
+                return;
+            }
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium';
+            button.textContent = action.label || ('Action: ' + actionTypeValue);
+            button.dataset.actionType = actionTypeValue;
+            button.dataset.leadId = String(leadId);
+            button.dataset.actionId = String(actionId);
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                runAssistantAction({
+                    type: String(actionTypeValue),
+                    lead_id: leadId,
+                    action_id: actionId,
+                });
+            });
+            wrap.appendChild(button);
+        });
+        article.appendChild(wrap);
+        aiPendingList.appendChild(article);
+
+        draftCache[String(actionId)] = {
+            leadId: leadId,
+            actionType: item.action_type || '',
+            draft: item.draft || {},
+        };
+    }
+
+    function applyPendingDrafts(pendingDrafts) {
+        if (!aiPendingList) return;
+        aiPendingList.innerHTML = '';
+        const title = document.getElementById('crm-ai-pending-drafts-title');
+        if (!Array.isArray(pendingDrafts) || !pendingDrafts.length) {
+            if (title) title.classList.add('hidden');
+            return;
+        }
+
+        if (title) title.classList.remove('hidden');
+        pendingDrafts.forEach(function (item) {
+            renderPendingDraftCard(item);
+        });
+    }
+
+    async function refreshPendingDrafts(force) {
+        if (!aiPanel || !aiPendingList) {
+            return;
+        }
+        const now = Date.now();
+        if (!force && now - pendingDraftsRenderedAt < 12000) {
+            return;
+        }
+        pendingDraftsRenderedAt = now;
+
+        try {
+            const response = await fetch(aiPanel.dataset.endpoint, {
+                method: 'POST',
+                credentials: 'include',
+                cache: 'no-store',
+                headers: assistantHeaders(),
+                body: JSON.stringify({
+                    surface: 'desktop',
+                    assistant_token: assistantToken(),
+                    prompt: '',
+                    quick_action: '',
+                    context: aiContext(),
+                }),
+            });
+            const data = await response.json();
+            if (response.ok && data && data.ok) {
+                applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+            }
+        } catch (error) {
+            // Intentionally silent for background refresh.
         }
     }
 
@@ -362,6 +638,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 button.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
                 button.dataset.actionLabel = String(action.label || '');
                 button.dataset.actionHelp = String(action.help || '');
+                button.dataset.actionId = String(Number(action.action_id || action.actionId || 0));
                 button.addEventListener('click', function (event) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -392,6 +669,81 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             });
             quickActionContainer.appendChild(button);
         });
+    }
+
+    function getSpeechRecognition() {
+        if (!window) {
+            return null;
+        }
+        return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    function stopAssistantListening() {
+        if (assistantSpeech) {
+            try {
+                assistantSpeech.stop();
+            } catch (error) {
+                // ignore
+            }
+            assistantSpeech = null;
+        }
+        isListening = false;
+        if (aiMic) {
+            aiMic.classList.remove('bg-slate-900', 'text-white');
+        }
+        setDraftStatus('');
+    }
+
+    function startAssistantListening() {
+        const Recognition = getSpeechRecognition();
+        if (!Recognition) {
+            assistantBubble('Elite AI', 'Voice input is not available in this browser. You can still type your request.', 'assistant');
+            return;
+        }
+        if (isListening) {
+            stopAssistantListening();
+            return;
+        }
+        if (!aiInput) {
+            return;
+        }
+
+        try {
+            assistantSpeech = new Recognition();
+            assistantSpeech.lang = 'en-US';
+            assistantSpeech.continuous = false;
+            assistantSpeech.interimResults = false;
+            assistantSpeech.maxAlternatives = 1;
+            assistantSpeech.onstart = function () {
+                isListening = true;
+                aiMic.classList.add('bg-slate-900', 'text-white');
+                setDraftStatus('Listening...');
+            };
+            assistantSpeech.onresult = function (event) {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i += 1) {
+                    if (event.results[i].isFinal) {
+                        transcript = String(event.results[i][0]?.transcript || '').trim();
+                    }
+                }
+                if (transcript === '') {
+                    return;
+                }
+                aiInput.value = transcript;
+                aiInput.focus();
+            };
+            assistantSpeech.onerror = function () {
+                setDraftStatus('Voice input failed. You can still type your request.');
+                stopAssistantListening();
+            };
+            assistantSpeech.onend = function () {
+                stopAssistantListening();
+            };
+            assistantSpeech.start();
+        } catch (error) {
+            stopAssistantListening();
+            assistantBubble('Elite AI', 'Voice input could not be started right now.', 'assistant');
+        }
     }
 
     function setBusy(isBusy) {
@@ -445,7 +797,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             type: String(button.dataset.actionType || fallback.type || ''),
             label: String(button.dataset.actionLabel || fallback.label || ''),
             help: String(button.dataset.actionHelp || fallback.help || ''),
-            lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0)
+            lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
+            action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0)
         };
     }
 
@@ -523,7 +876,17 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     async function runAssistantAction(action) {
         if (!aiPanel || !aiThread || !action || !action.type || !action.lead_id) return;
 
-        assistantBubble('You', 'Prepare ' + (action.label || 'draft') + ' for lead #' + Number(action.lead_id), 'user');
+        const actionType = String(action.type || '');
+        const leadId = Number(action.lead_id || 0);
+        const actionLabel = String(action.label || '');
+        const humanActionLabel = actionType === 'use_draft'
+            ? 'Use draft'
+            : actionType === 'edit_draft'
+                ? 'Edit draft'
+                : actionType === 'cancel_draft'
+                    ? 'Cancel draft'
+                    : (actionLabel || 'Prepare draft');
+        assistantBubble('You', humanActionLabel + ' for lead #' + leadId, 'user');
         const loading = assistantBubble('Elite AI', 'Preparing draft for approval...', 'assistant', [], true);
         setBusy(true);
 
@@ -538,6 +901,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     assistant_token: assistantToken(),
                     assistant_action: action.type,
                     lead_id: Number(action.lead_id || 0),
+                    action_id: Number(action.action_id || 0),
                     prompt: action.help || '',
                     instruction: action.help || '',
                     quick_action: '',
@@ -557,16 +921,53 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
-            const draftPayload = resolveDraftPayload(data);
-            const preview = formatDraftPreview(draftPayload, action.type || '');
-            if (preview) {
-                assistantBubble('Elite AI', preview + '\n\nDraft ready. Pending approval before send.', 'assistant');
-                assistantBubble('Elite AI', 'Action queued: #' + String(data.action_id || 0), 'assistant');
+            if (actionType === 'cancel_draft') {
+                assistantBubble('Elite AI', data.message || 'Draft cancelled.', 'assistant');
+                setDraftStatus('');
+                refreshPendingDrafts(true);
+                return;
+            }
+
+            if (actionType === 'use_draft' || actionType === 'edit_draft') {
+                const draftPayload = resolveDraftPayload(data);
+                const draftActionId = Number(data.action_id || action.action_id || 0);
+                const resolvedDraftType = resolveDraftActionType(data, actionType);
+                if (draftActionId > 0) {
+                    setDraftModeInComposer(
+                        draftPayload,
+                        resolvedDraftType || 'draft_email',
+                        leadId,
+                        draftActionId,
+                        actionType === 'edit_draft' ? 'Editing draft' : 'Reviewing draft'
+                    );
+                }
+
+                const draftCardMessage = assistantBubble('Elite AI', data.message || 'Draft loaded into composer.', 'assistant');
+                renderDraftCard(draftCardMessage, draftPayload, resolvedDraftType || 'draft_email', draftActionId, leadId, data);
                 if (typeof data.warning === 'string' && data.warning.trim() !== '') {
-                            assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
-                        }
+                    assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
+                }
+                refreshPendingDrafts(true);
+                return;
+            }
+
+            const draftPayload = resolveDraftPayload(data);
+            const resolvedDraftType = resolveDraftActionType(data, actionType);
+            const draftActionId = Number(data.action_id || action.action_id || 0);
+            const preview = formatDraftPreview(draftPayload, resolvedDraftType || actionType);
+            if (preview) {
+                const draftCardMessage = assistantBubble('Elite AI', 'Draft ready. Pending approval before send.', 'assistant');
+                renderDraftCard(draftCardMessage, draftPayload, resolvedDraftType || actionType, draftActionId, leadId, data);
+                if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                    assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
+                }
+                refreshPendingDrafts(true);
+                return;
+            }
+            if (data && typeof data.draft_badge === 'string') {
+                assistantBubble('Elite AI', data.draft_badge + '. Nothing was sent. Queue #' + String(draftActionId), 'assistant');
             } else {
-                assistantBubble('Elite AI', 'The draft action completed, but no usable preview text came back. Nothing was sent. Please try again or open the lead directly. Queue item: #' + String(data.action_id || 0), 'assistant');
+                assistantBubble('Elite AI', 'The draft action completed, but no usable preview text came back. Nothing was sent. Please try again or open the lead directly. Queue item: #' + String(draftActionId), 'assistant');
             }
         } catch (error) {
             if (loading) loading.remove();
@@ -631,6 +1032,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         });
         if (aiClose) {
             aiClose.addEventListener('click', function () {
+                stopAssistantListening();
                 setAssistantOpen(false);
             });
         }
@@ -642,6 +1044,11 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     }
 
     if (aiForm && aiInput) {
+        if (aiMic) {
+            aiMic.addEventListener('click', function () {
+                startAssistantListening();
+            });
+        }
         aiForm.addEventListener('submit', function (event) {
             event.preventDefault();
             const prompt = aiInput.value;

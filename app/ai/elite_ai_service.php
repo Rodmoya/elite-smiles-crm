@@ -402,6 +402,9 @@ if (!function_exists('elite_ai_notification_rows')) {
     {
         $limit = max(1, min(20, $limit));
         $notifications = [];
+        $dedupeKeys = [];
+        $messageLimit = min(50, max(10, $limit * 4));
+        $activityLimit = min(50, max(10, $limit * 2));
 
         try {
             $messages = db_all(
@@ -416,13 +419,21 @@ if (!function_exists('elite_ai_notification_rows')) {
                  FROM lead_messages lm
                  INNER JOIN leads l ON l.id = lm.lead_id
                  WHERE lm.direction = 'inbound'
+                   AND lm.is_read = 0
+                   AND lm.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
                  ORDER BY lm.created_at DESC, lm.id DESC
-                 LIMIT {$limit}"
+                 LIMIT {$messageLimit}"
             );
 
             foreach ($messages as $row) {
                 $leadId = (int) ($row['lead_id'] ?? 0);
                 $leadName = trim((string) ($row['full_name'] ?? 'Lead'));
+                $dedupeKey = "msg:{$leadId}";
+                if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
+                    continue;
+                }
+                $dedupeKeys[$dedupeKey] = true;
+
                 $notifications[] = [
                     'id' => 'msg-' . (int) ($row['id'] ?? 0),
                     'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
@@ -452,14 +463,21 @@ if (!function_exists('elite_ai_notification_rows')) {
                  FROM lead_activities la
                  INNER JOIN leads l ON l.id = la.lead_id
                  WHERE la.type IN ('lead_created', 'stage_change', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+                   AND la.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
                  ORDER BY la.created_at DESC, la.id DESC
-                 LIMIT {$limit}"
+                 LIMIT {$activityLimit}"
             );
 
             foreach ($activities as $row) {
                 $type = trim((string) ($row['type'] ?? 'activity'));
                 $leadId = (int) ($row['lead_id'] ?? 0);
                 $leadName = trim((string) ($row['full_name'] ?? 'Lead'));
+                $dedupeKey = 'activity:' . $type . ':' . $leadId;
+                if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
+                    continue;
+                }
+                $dedupeKeys[$dedupeKey] = true;
+
                 $label = match ($type) {
                     'lead_created' => 'New lead',
                     'stage_change' => 'Pipeline update',

@@ -45,6 +45,7 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('OPENAI_MODEL_CHAT',       $_ENV['OPENAI_MODEL_CHAT']       ?? 'gpt-4o');
     define('OPENAI_MODEL_TRANSCRIBE', $_ENV['OPENAI_MODEL_TRANSCRIBE'] ?? 'whisper-1');
     define('GOOGLE_GEMINI_API_KEY', $_ENV['GOOGLE_GEMINI_API_KEY'] ?? '');
+    define('GOOGLE_GEMINI_TEXT_MODEL', $_ENV['GOOGLE_GEMINI_TEXT_MODEL'] ?? 'gemini-2.5-flash');
     define('GOOGLE_GEMINI_IMAGE_MODEL', $_ENV['GOOGLE_GEMINI_IMAGE_MODEL'] ?? 'gemini-3.1-flash-image');
     define('GOOGLE_GEMINI_VIDEO_MODEL', $_ENV['GOOGLE_GEMINI_VIDEO_MODEL'] ?? 'veo-3.1-generate-preview');
     define('ELITE_AI_AUTOREPLY_ENABLED', ($_ENV['ELITE_AI_AUTOREPLY_ENABLED'] ?? 'false') === 'true');
@@ -135,6 +136,12 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'autoreply_enabled' => ELITE_AI_AUTOREPLY_ENABLED,
             'new_lead_autotext_enabled' => ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED,
             'min_confidence' => ELITE_AI_MIN_CONFIDENCE,
+        ],
+        'gemini' => [
+            'api_key' => GOOGLE_GEMINI_API_KEY,
+            'text_model' => GOOGLE_GEMINI_TEXT_MODEL,
+            'image_model' => GOOGLE_GEMINI_IMAGE_MODEL,
+            'video_model' => GOOGLE_GEMINI_VIDEO_MODEL,
         ],
         'pushover' => [
             'app_token' => ELITE_PUSHOVER_APP_TOKEN,

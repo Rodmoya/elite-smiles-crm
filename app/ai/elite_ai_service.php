@@ -1682,6 +1682,151 @@ if (!function_exists('elite_ai_resolve_lead_from_request')) {
     }
 }
 
+if (!function_exists('elite_ai_planner_schema')) {
+    function elite_ai_planner_schema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'intent' => [
+                    'type' => 'string',
+                    'enum' => ['morning_sweep', 'new_leads', 'replies', 'follow_ups', 'no_answer_review', 'notifications', 'pipeline', 'lead_summary', 'draft_sms', 'draft_email', 'help'],
+                ],
+                'reason' => ['type' => 'string'],
+                'lead_query' => ['type' => 'string'],
+                'use_current_lead' => ['type' => 'boolean'],
+                'needs_clarification' => ['type' => 'boolean'],
+                'clarification_question' => ['type' => 'string'],
+            ],
+            'required' => ['intent', 'reason', 'lead_query', 'use_current_lead', 'needs_clarification', 'clarification_question'],
+            'additionalProperties' => false,
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_planner_system_prompt')) {
+    function elite_ai_planner_system_prompt(): string
+    {
+        return implode("\n", [
+            'You are the planning layer for Elite AI inside a dental CRM.',
+            'Your job is to interpret the operator request the way a strong execution assistant would.',
+            'Choose the single best next workflow intent.',
+            'Use draft_sms or draft_email when the operator is asking you to prepare a patient-facing reply or follow-up draft.',
+            'Use lead_summary when they want context, status, or what to do next for one lead.',
+            'Use use_current_lead true when the request clearly refers to the current lead on screen.',
+            'Set needs_clarification true only when you truly cannot safely determine the lead or the requested workflow.',
+            'Do not approve sending. Do not approve stage moves. Planning only.',
+            'Return only JSON.',
+        ]);
+    }
+}
+
+if (!function_exists('elite_ai_plan_request')) {
+    function elite_ai_plan_request(string $prompt, string $quickAction, array $context): array
+    {
+        $quickAction = strtolower(trim($quickAction));
+        if ($quickAction !== '') {
+            return [
+                'intent' => elite_ai_detect_intent('', $quickAction, $context),
+                'reason' => 'Quick action selected.',
+                'lead_query' => '',
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0,
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'deterministic',
+            ];
+        }
+
+        $prompt = trim($prompt);
+        if ($prompt === '') {
+            return [
+                'intent' => 'help',
+                'reason' => 'Empty prompt.',
+                'lead_query' => '',
+                'use_current_lead' => false,
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'deterministic',
+            ];
+        }
+
+        if (!function_exists('lead_ai_json_response')) {
+            return [
+                'intent' => elite_ai_detect_intent($prompt, '', $context),
+                'reason' => 'Planner unavailable, using fallback intent router.',
+                'lead_query' => '',
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && elite_ai_prompt_mentions_current_lead($prompt),
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'fallback',
+            ];
+        }
+
+        $userPrompt = 'Operator request: ' . $prompt . "\n\n"
+            . 'Page context: ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $result = lead_ai_json_response(
+            elite_ai_planner_system_prompt(),
+            $userPrompt,
+            elite_ai_planner_schema(),
+            'elite_ai_request_planner',
+            'general'
+        );
+
+        if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
+            return [
+                'intent' => elite_ai_detect_intent($prompt, '', $context),
+                'reason' => 'Planner fallback: ' . (string) ($result['message'] ?? 'AI planner unavailable.'),
+                'lead_query' => '',
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && elite_ai_prompt_mentions_current_lead($prompt),
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'fallback',
+            ];
+        }
+
+        return [
+            'intent' => (string) ($result['data']['intent'] ?? 'help'),
+            'reason' => trim((string) ($result['data']['reason'] ?? '')),
+            'lead_query' => trim((string) ($result['data']['lead_query'] ?? '')),
+            'use_current_lead' => (bool) ($result['data']['use_current_lead'] ?? false),
+            'needs_clarification' => (bool) ($result['data']['needs_clarification'] ?? false),
+            'clarification_question' => trim((string) ($result['data']['clarification_question'] ?? '')),
+            'provider' => (string) ($result['provider'] ?? 'openai'),
+            'model' => (string) ($result['model'] ?? ''),
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_resolve_lead_from_plan')) {
+    function elite_ai_resolve_lead_from_plan(array $plan, string $prompt, array $context): array
+    {
+        if (!empty($plan['use_current_lead']) && (int) ($context['lead_id'] ?? 0) > 0) {
+            $lead = elite_ai_load_lead((int) $context['lead_id']);
+            if ($lead) {
+                return ['lead' => $lead, 'matches' => [], 'clarify' => ''];
+            }
+        }
+
+        $leadQuery = trim((string) ($plan['lead_query'] ?? ''));
+        if ($leadQuery !== '') {
+            $matches = elite_ai_find_leads($leadQuery, 5);
+            if (count($matches) === 1) {
+                return ['lead' => $matches[0], 'matches' => [], 'clarify' => ''];
+            }
+            if ($matches === []) {
+                return ['lead' => null, 'matches' => [], 'clarify' => 'I could not find a lead matching "' . $leadQuery . '".'];
+            }
+            return [
+                'lead' => null,
+                'matches' => $matches,
+                'clarify' => 'I found multiple matching leads. Please tell me which one you want by name or lead number.',
+            ];
+        }
+
+        return elite_ai_resolve_lead_from_request($prompt, $context);
+    }
+}
+
 if (!function_exists('elite_ai_detect_intent')) {
     function elite_ai_detect_intent(string $prompt, string $quickAction, array $context): string
     {
@@ -1744,7 +1889,7 @@ if (!function_exists('elite_ai_help_payload')) {
             : 'You can also ask me to summarize a specific lead by name.';
 
         return [
-            'answer' => 'Elite AI is in assistant mode with draft-first safety: I can summarize leads, notifications, pipeline priorities, replies, follow-ups, No Answer review candidates, and morning sweep actions, and generate SMS/email drafts for approval without sending. ' . $pageHint,
+            'answer' => 'Elite AI is in assistant mode with draft-first safety and dual-model routing: I can summarize leads, notifications, pipeline priorities, replies, follow-ups, No Answer review candidates, and morning sweep actions, and generate SMS/email drafts for approval without sending. ' . $pageHint,
             'cards' => [[
                 'title' => 'Try one of these prompts',
                 'items' => [
@@ -1794,9 +1939,64 @@ function elite_ai_handle_request(array $user, array $request): array
         $prompt = trim((string) ($request['prompt'] ?? ''));
         $quickAction = trim((string) ($request['quick_action'] ?? ''));
         $context = elite_ai_normalize_context($request);
-        $intent = elite_ai_detect_intent($prompt, $quickAction, $context);
+        $plan = elite_ai_plan_request($prompt, $quickAction, $context);
+        $intent = (string) ($plan['intent'] ?? elite_ai_detect_intent($prompt, $quickAction, $context));
         $payload = [];
         $leadId = null;
+
+        if (!empty($plan['needs_clarification']) && trim((string) ($plan['clarification_question'] ?? '')) !== '') {
+            $payload = [
+                'answer' => trim((string) $plan['clarification_question']),
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback')],
+            ];
+        } elseif (in_array($intent, ['draft_sms', 'draft_email'], true)) {
+            $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
+            if (!empty($resolved['lead']) && is_array($resolved['lead'])) {
+                $leadId = (int) (($resolved['lead']['id'] ?? 0));
+                $draftResult = elite_ai_prepare_action_draft($user, $request + [
+                    'assistant_action' => $intent,
+                    'lead_id' => $leadId,
+                    'instruction' => $prompt,
+                ], $surface);
+
+                if (!empty($draftResult['ok'])) {
+                    $payload = [
+                        'answer' => trim((string) ($draftResult['message'] ?? 'Draft prepared for review.'))
+                            . ' Provider: ' . trim((string) (($draftResult['draft']['provider'] ?? $draftResult['provider'] ?? 'AI')))
+                            . '. Nothing was sent.',
+                        'cards' => [[
+                            'title' => $intent === 'draft_sms' ? 'SMS draft preview' : 'Email draft preview',
+                            'items' => [trim((string) ($draftResult['draft_preview'] ?? 'Draft prepared for review.'))],
+                        ]],
+                        'actions' => array_values((array) ($draftResult['draft_actions'] ?? [])),
+                        'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), $intent],
+                    ];
+                } else {
+                    $payload = [
+                        'answer' => (string) ($draftResult['message'] ?? 'I could not prepare the requested draft.'),
+                        'cards' => [],
+                        'actions' => [],
+                        'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), $intent],
+                    ];
+                }
+            } else {
+                $items = [];
+                foreach ((array) ($resolved['matches'] ?? []) as $match) {
+                    $items[] = elite_ai_format_lead_line($match, trim((string) ($match['email'] ?? '')) !== '' ? trim((string) ($match['email'] ?? '')) : trim((string) ($match['phone'] ?? '')));
+                }
+                $payload = [
+                    'answer' => (string) ($resolved['clarify'] ?? 'Which lead should I draft for?'),
+                    'cards' => $items ? [[
+                        'title' => 'Possible matches',
+                        'items' => $items,
+                    ]] : [],
+                    'actions' => [],
+                    'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), 'lead_lookup'],
+                ];
+            }
+        } else {
 
         switch ($intent) {
             case 'morning_sweep':
@@ -1851,6 +2051,7 @@ function elite_ai_handle_request(array $user, array $request): array
             default:
                 $payload = elite_ai_help_payload($context);
                 break;
+        }
         }
 
         $summary = trim((string) ($payload['answer'] ?? 'Elite AI completed a read-only response.'));

@@ -9,6 +9,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__) . '/core/openai.php';
+require_once dirname(__DIR__) . '/core/google_gemini.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once __DIR__ . '/lead_service.php';
 require_once __DIR__ . '/lead_communications.php';
@@ -141,6 +142,67 @@ if (!function_exists('lead_ai_outbound_note_system_prompt')) {
             'Keep note under 450 characters. Use plain English and be specific.',
             'Return only JSON matching the schema.',
         ]);
+    }
+}
+
+if (!function_exists('lead_ai_router_order')) {
+    function lead_ai_router_order(string $task = 'general'): array
+    {
+        $task = strtolower(trim($task));
+        $openaiReady = function_exists('elite_openai_is_configured') && elite_openai_is_configured();
+        $geminiReady = function_exists('elite_gemini_is_configured') && elite_gemini_is_configured();
+        $providers = [];
+
+        if ($task === 'review') {
+            if ($geminiReady) {
+                $providers[] = 'gemini';
+            }
+            if ($openaiReady) {
+                $providers[] = 'openai';
+            }
+        } else {
+            if ($openaiReady) {
+                $providers[] = 'openai';
+            }
+            if ($geminiReady) {
+                $providers[] = 'gemini';
+            }
+        }
+
+        return array_values(array_unique($providers));
+    }
+}
+
+if (!function_exists('lead_ai_json_response')) {
+    function lead_ai_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, string $task = 'general'): array
+    {
+        $errors = [];
+
+        foreach (lead_ai_router_order($task) as $provider) {
+            if ($provider === 'openai' && function_exists('elite_openai_json_response')) {
+                $result = elite_openai_json_response($systemPrompt, $userPrompt, $schema, $schemaName);
+                if (!empty($result['ok'])) {
+                    $result['provider'] = 'openai';
+                    $result['model'] = defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : 'gpt-4o';
+                    return $result;
+                }
+                $errors[] = 'OpenAI: ' . (string) ($result['message'] ?? 'request failed');
+            }
+
+            if ($provider === 'gemini' && function_exists('elite_gemini_json_response')) {
+                $result = elite_gemini_json_response($systemPrompt, $userPrompt, $schema, $schemaName);
+                if (!empty($result['ok'])) {
+                    $result['provider'] = 'google_gemini';
+                    return $result;
+                }
+                $errors[] = 'Gemini: ' . (string) ($result['message'] ?? 'request failed');
+            }
+        }
+
+        return [
+            'ok' => false,
+            'message' => $errors !== [] ? implode(' | ', $errors) : 'No AI engine is configured for this request.',
+        ];
     }
 }
 
@@ -392,11 +454,12 @@ if (!function_exists('lead_ai_create_outbound_note')) {
                 'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
             ];
 
-            $result = elite_openai_json_response(
+            $result = lead_ai_json_response(
                 lead_ai_outbound_note_system_prompt(),
                 'Create the internal CRM note for this outbound communication: ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 lead_ai_outbound_note_schema(),
-                'elite_smiles_outbound_note'
+                'elite_smiles_outbound_note',
+                'review'
             );
 
             $data = [];
@@ -431,7 +494,7 @@ if (!function_exists('lead_ai_create_outbound_note')) {
                 'message_id' => (int)($meta['message_id'] ?? 0),
                 'email_id' => (int)($meta['email_id'] ?? 0),
                 'sent_at' => $sentAt,
-            ], 'OpenAI');
+            ], !empty($result['provider']) ? ucfirst(str_replace('_', ' ', (string) $result['provider'])) : 'AI');
 
             $updatedNotes = lead_ai_append_internal_note($leadId, $note);
 
@@ -457,11 +520,12 @@ if (!function_exists('lead_ai_create_outbound_note')) {
 if (!function_exists('lead_ai_generate_reply')) {
     function lead_ai_generate_reply(array $lead, string $latestMessage = '', string $mode = 'inbound_sms'): array
     {
-        $result = elite_openai_json_response(
+        $result = lead_ai_json_response(
             lead_ai_system_prompt(),
             'Create the best CRM lead response and note for this context: ' . lead_ai_context($lead, $latestMessage, $mode),
             lead_ai_schema(),
-            'elite_smiles_lead_reply'
+            'elite_smiles_lead_reply',
+            'draft'
         );
 
         if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
@@ -480,6 +544,9 @@ if (!function_exists('lead_ai_generate_reply')) {
             $data['needs_human_review'] = true;
         }
 
+        $data['provider'] = (string) ($result['provider'] ?? 'openai');
+        $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
+
         return ['ok' => true, 'data' => $data];
     }
 }
@@ -487,11 +554,12 @@ if (!function_exists('lead_ai_generate_reply')) {
 if (!function_exists('lead_ai_generate_email')) {
     function lead_ai_generate_email(array $lead, string $latestMessage = '', string $mode = 'email_draft'): array
     {
-        $result = elite_openai_json_response(
+        $result = lead_ai_json_response(
             lead_ai_email_system_prompt(),
             'Create the best CRM patient email and internal note for this context: ' . lead_ai_email_context($lead, $latestMessage, $mode),
             lead_ai_email_schema(),
-            'elite_smiles_lead_email'
+            'elite_smiles_lead_email',
+            'draft'
         );
 
         if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
@@ -511,6 +579,9 @@ if (!function_exists('lead_ai_generate_email')) {
             $data['should_send'] = false;
             $data['needs_human_review'] = true;
         }
+
+        $data['provider'] = (string) ($result['provider'] ?? 'openai');
+        $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 
         return ['ok' => true, 'data' => $data];
     }

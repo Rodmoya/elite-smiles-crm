@@ -279,6 +279,77 @@ if (!function_exists('elite_gemini_http_json')) {
     }
 }
 
+if (!function_exists('elite_gemini_extract_text')) {
+    function elite_gemini_extract_text(array $response): string
+    {
+        $parts = [];
+        foreach (($response['candidates'] ?? []) as $candidate) {
+            foreach (($candidate['content']['parts'] ?? []) as $part) {
+                if (isset($part['text']) && is_string($part['text'])) {
+                    $parts[] = trim($part['text']);
+                }
+            }
+        }
+
+        return trim(implode("\n", array_filter($parts, static fn ($part): bool => $part !== '')));
+    }
+}
+
+if (!function_exists('elite_gemini_json_response')) {
+    function elite_gemini_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, ?string $model = null): array
+    {
+        if (!elite_gemini_is_configured()) {
+            return ['ok' => false, 'message' => 'Google Gemini is not configured.'];
+        }
+
+        $model = trim((string) ($model ?? (defined('GOOGLE_GEMINI_TEXT_MODEL') ? GOOGLE_GEMINI_TEXT_MODEL : 'gemini-2.5-flash')));
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
+        $payload = [
+            'systemInstruction' => [
+                'parts' => [
+                    ['text' => $systemPrompt],
+                ],
+            ],
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [
+                    ['text' => $userPrompt],
+                ],
+            ]],
+            'generationConfig' => [
+                'temperature' => 0.2,
+                'responseMimeType' => 'application/json',
+                'responseSchema' => $schema,
+            ],
+        ];
+
+        $result = elite_gemini_http_json($url, $payload, 'POST', 60);
+        if (empty($result['ok'])) {
+            return $result;
+        }
+
+        $response = (array) ($result['response'] ?? []);
+        $outputText = elite_gemini_extract_text($response);
+        $json = $outputText !== '' ? json_decode($outputText, true) : null;
+        if (!is_array($json)) {
+            esm_log('gemini', 'Gemini structured output could not be parsed.', [
+                'schema' => $schemaName,
+                'model' => $model,
+            ]);
+            return ['ok' => false, 'message' => 'Gemini output could not be parsed.'];
+        }
+
+        return [
+            'ok' => true,
+            'data' => $json,
+            'provider' => 'google_gemini',
+            'model' => $model,
+            'status_code' => (int) ($result['status_code'] ?? 200),
+            'response' => $response,
+        ];
+    }
+}
+
 if (!function_exists('elite_gemini_download_video_bytes')) {
     function elite_gemini_download_video_bytes(string $uri, int $timeout = 180): array
     {

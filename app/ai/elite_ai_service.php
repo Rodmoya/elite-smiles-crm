@@ -2028,7 +2028,7 @@ function elite_ai_handle_request(array $user, array $request): array
                 break;
 
             case 'lead_summary':
-                $resolved = elite_ai_resolve_lead_from_request($prompt, $context);
+                $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
                 if (!empty($resolved['lead']) && is_array($resolved['lead'])) {
                     $payload = elite_ai_lead_summary_payload((array) $resolved['lead']);
                     $leadId = (int) (($payload['lead_id'] ?? 0));

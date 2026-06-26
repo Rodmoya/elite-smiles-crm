@@ -5241,6 +5241,17 @@ function applyCommunicationViewportFit() {
 
         activeCard = card;
 
+        if (typeof window.eliteAiSetLeadContext === 'function') {
+            const leadId = Number(card.dataset.leadId || 0);
+            const baseUrl = window.location.origin + window.location.pathname;
+            window.eliteAiSetLeadContext({
+                leadId: leadId,
+                page: 'leads',
+                pageTitle: (card.dataset.leadName || 'Lead') + ' | Lead Workspace',
+                currentUrl: leadId > 0 ? (baseUrl + '?lead_id=' + encodeURIComponent(String(leadId))) : window.location.href,
+            });
+        }
+
 
 
         setText('modal-lead-name', card.dataset.leadName || 'Lead', 'Lead');
@@ -5396,6 +5407,15 @@ function applyCommunicationViewportFit() {
         document.body.classList.remove('overflow-hidden');
 
         activeCard = null;
+
+        if (typeof window.eliteAiSetLeadContext === 'function') {
+            window.eliteAiSetLeadContext({
+                leadId: 0,
+                page: 'leads',
+                pageTitle: 'Leads',
+                currentUrl: window.location.href,
+            });
+        }
 
         clearMissingHighlights();
 

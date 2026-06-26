@@ -94,9 +94,7 @@ if (!function_exists('codex_api_has_explicit_send_approval')) {
         }
 
         return (bool) preg_match(
-            '/\b(?:send|dispatch|deliver)\b(?:\s+(?:all|the|these|approved)\s*)?(?:sms|text|email)\b/i'
-            . '|\b(?:send|dispatch)\s+the\s+(?:approved\s+)?drafts?\b'
-            . '|\bsend\s+(?:all|the)\s+(?:approved\s+)?(?:sms|email)\b/i',
+            '/\b(?:send|dispatch|deliver)\b(?:\\s+(?:all|the|these|approved)\\s*)?(?:sms|text|email)\\b|\\b(?:send|dispatch)\\s+the\\s+(?:approved\\s+)?drafts?\\b|\\bsend\\s+(?:all|the)\\s+(?:approved\\s+)?(?:sms|email)\\b|\\bsend\\s+(?:all|the|these)\\s+drafts?\\s+now\\b/i',
             $instruction
         );
     }
@@ -121,9 +119,7 @@ if (!function_exists('codex_api_has_explicit_stage_approval')) {
         }
 
         return (bool) preg_match(
-            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b/i'
-            . '|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b'
-            . '|\b(?:change|set)\s+lead\s+status\b',
+            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b|\b(?:change|set)\s+lead\s+status\b/i',
             $instruction
         );
     }

@@ -93,9 +93,16 @@ if (!function_exists('codex_api_has_explicit_send_approval')) {
             return false;
         }
 
+        $normalizedInstruction = preg_replace('/[^a-z0-9\\s]+/i', ' ', $instruction);
+        $normalizedInstruction = trim((string) preg_replace('/\\s+/', ' ', $normalizedInstruction));
+
+        if ((bool) preg_match('/\\bsend\\s+the\\s+approved\\s+(?:sms|text|email)\\s+drafts?\\b/i', $normalizedInstruction)) {
+            return true;
+        }
+
         return (bool) preg_match(
-            '/\b(?:send|dispatch|deliver)\b(?:\\s+(?:all|the|these|approved)\\s*)?(?:sms|text|email)\\b|\\b(?:send|dispatch)\\s+the\\s+(?:approved\\s+)?drafts?\\b|\\bsend\\s+(?:all|the)\\s+(?:approved\\s+)?(?:sms|email)\\b|\\bsend\\s+(?:all|the|these)\\s+drafts?\\s+now\\b/i',
-            $instruction
+            '/\\b(?:send|dispatch|deliver)\\b(?:\\s+(?:all|the|these|approved)\\s*)?(?:sms|text|email)\\b|\\b(?:send|dispatch)\\s+the\\s+(?:approved\\s+)?drafts?\\b|\\bsend\\s+(?:all|the)\\s+(?:approved\\s+)?(?:sms|email)\\b|\\bsend\\s+(?:all|the|these)\\s+drafts?\\s+now\\b/i',
+            $normalizedInstruction
         );
     }
 }

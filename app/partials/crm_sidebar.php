@@ -180,8 +180,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             <div class="border-t border-slate-200 bg-white px-5 py-4">
                 <div id="crm-ai-quick-actions" class="mb-3 flex flex-wrap gap-2"></div>
                 <div id="crm-ai-draft-status" class="mb-2 hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"></div>
-                <form id="crm-ai-form" class="flex items-center gap-3">
-                    <input id="crm-ai-input" type="text" enterkeyhint="send" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
+                <form id="crm-ai-form" class="flex items-end gap-3">
+                    <textarea id="crm-ai-input" rows="3" enterkeyhint="send" class="min-h-[84px] max-h-56 min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do..."></textarea>
                     <button type="button" id="crm-ai-mic" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100" aria-label="Microphone placeholder">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
@@ -1071,6 +1071,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 startAssistantListening();
             });
         }
+        aiInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                if (aiForm.requestSubmit) {
+                    aiForm.requestSubmit();
+                } else {
+                    aiForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                }
+            }
+        });
         aiForm.addEventListener('submit', function (event) {
             event.preventDefault();
             const prompt = aiInput.value;

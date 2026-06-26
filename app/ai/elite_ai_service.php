@@ -1185,6 +1185,25 @@ if (!function_exists('elite_ai_create_action_item')) {
             );
 
             if (!empty($recent['id'])) {
+                db_query(
+                    "UPDATE elite_ai_action_queue
+                     SET surface = :surface,
+                         request_prompt = :request_prompt,
+                         request_context_json = :request_context_json,
+                         request_payload_json = :request_payload_json,
+                         draft_payload_json = :draft_payload_json,
+                         updated_at = :updated_at
+                     WHERE id = :id",
+                    [
+                        'id' => (int) $recent['id'],
+                        'surface' => $surface,
+                        'request_prompt' => $requestPrompt,
+                        'request_context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        'request_payload_json' => json_encode($request, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        'draft_payload_json' => json_encode($draft, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        'updated_at' => now(),
+                    ]
+                );
                 return (int) $recent['id'];
             }
         } catch (Throwable $e) {

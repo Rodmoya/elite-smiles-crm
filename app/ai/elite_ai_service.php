@@ -901,72 +901,73 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         $conversionStageLabel = (string)($conversionSummary['stage_label'] ?? ($lead['conversion_stage_label'] ?? ''));
         $conversionNextAction = (array)($conversionSummary['next_action'] ?? ($lead['conversion_next_action'] ?? []));
         $conversionBadges = (array)($conversionSummary['badges'] ?? ($lead['conversion_badges'] ?? []));
+        $leadName = trim((string) ($lead['full_name'] ?? 'This lead'));
+        $statusLabel = elite_ai_stage_label(trim((string) ($lead['status'] ?? '')));
+        $preferredContact = trim((string) ($lead['preferred_contact'] ?? ''));
+        $sourceLabel = trim((string) ($lead['source'] ?? '')) !== '' ? trim((string) ($lead['source'] ?? '')) : 'Unknown';
 
-        $overview = [
-            'Stage: ' . elite_ai_stage_label(trim((string) ($lead['status'] ?? ''))),
-            'Conversion meaning: ' . ($conversionStageLabel !== '' ? $conversionStageLabel : 'Not available'),
-            'Source: ' . (trim((string) ($lead['source'] ?? '')) !== '' ? trim((string) ($lead['source'] ?? '')) : 'Unknown'),
-            'Preferred contact: ' . (trim((string) ($lead['preferred_contact'] ?? '')) !== '' ? trim((string) ($lead['preferred_contact'] ?? '')) : 'Not set'),
-        ];
+        $recommendation = str_replace(
+            [
+                'Rule: client-facing messages must show a draft before send.',
+                'Review the last communication and set the next best manual step.',
+                'Review the latest inbound communication and prepare a draft reply before sending.',
+                'Protect this lead and review appointment readiness only.',
+            ],
+            [
+                '',
+                'I would review the last communication and decide the next step.',
+                'I would review the latest inbound message and prepare a reply draft.',
+                'I would protect the appointment and review appointment readiness only.',
+            ],
+            $recommendation
+        );
+        $recommendation = trim((string) preg_replace('/\s+/', ' ', $recommendation));
+
+        $summaryLines = [];
+        if ($latestInbound && (!$latestOutbound || strtotime((string) ($latestInbound['created_at'] ?? '')) >= strtotime((string) ($latestOutbound['created_at'] ?? '')))) {
+            $summaryLines[] = $leadName . ' replied at ' . format_datetime((string) ($latestInbound['created_at'] ?? ''), 'M j g:i A') . ' by ' . strtoupper((string) ($latestInbound['channel'] ?? 'message')) . ': "' . trim((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? '')) . '"';
+        } elseif ($latestOutbound) {
+            $summaryLines[] = $leadName . ' has not replied yet. Our last outbound was ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . ': "' . trim((string) ($latestOutbound['body'] ?? $latestOutbound['subject'] ?? '')) . '"';
+        } else {
+            $summaryLines[] = $leadName . ' does not show a recent communication thread yet.';
+        }
+
+        $summaryLines[] = 'Right now this lead is sitting in ' . $statusLabel . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel : '') . '.';
+
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
-            $overview[] = 'Consultation: ' . format_datetime((string) ($lead['consultation_date'] ?? ''), 'M j, Y g:i A');
+            $summaryLines[] = 'The consultation is set for ' . format_datetime((string) ($lead['consultation_date'] ?? ''), 'M j, Y g:i A') . '.';
         }
 
-        $cards = [[
-            'title' => 'Lead overview',
-            'items' => $overview,
-        ]];
-
-        $activityItems = [];
-        if ($latestInbound) {
-            $activityItems[] = 'Latest inbound: ' . format_datetime((string) ($latestInbound['created_at'] ?? ''), 'M j g:i A') . ' - ' . trim((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? ''));
+        if ($recommendation !== '') {
+            $summaryLines[] = $recommendation;
         }
-        if ($latestOutbound) {
-            $activityItems[] = 'Latest outbound: ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . ' - ' . trim((string) ($latestOutbound['body'] ?? $latestOutbound['subject'] ?? ''));
-        }
-        if ($latestActivity) {
-            $activityItems[] = 'Latest activity: ' . format_datetime((string) ($latestActivity['created_at'] ?? ''), 'M j g:i A') . ' - ' . trim((string) ($latestActivity['body'] ?? ''));
-        }
-        $activityItems[] = 'Contact attempts: ' . (int) ($attempts['outbound_total'] ?? 0) . ' outbound and ' . (int) ($attempts['inbound_total'] ?? 0) . ' inbound.';
-        $cards[] = [
-            'title' => 'Latest activity',
-            'items' => $activityItems,
-        ];
 
         if ($missingItems) {
-            $cards[] = [
-                'title' => 'Missing items',
-                'items' => $missingItems,
-            ];
+            $summaryLines[] = 'We still need: ' . implode(' ', $missingItems);
         }
 
-        $conversionItems = [];
-        if ($conversionStageLabel !== '') {
-            $conversionItems[] = 'Derived conversion stage: ' . $conversionStageLabel . ' (legacy status remains ' . trim((string)($lead['status'] ?? 'unknown')) . ').';
-        }
+        $cards = [];
+        $supportItems = [
+            'Preferred contact: ' . ($preferredContact !== '' ? strtolower($preferredContact) : 'not set'),
+            'Source: ' . $sourceLabel,
+            'Contact attempts: ' . (int) ($attempts['outbound_total'] ?? 0) . ' outbound and ' . (int) ($attempts['inbound_total'] ?? 0) . ' inbound.',
+        ];
         if (trim((string)($conversionNextAction['label'] ?? '')) !== '') {
-            $conversionItems[] = 'Next Action: ' . trim((string)$conversionNextAction['label']);
+            $supportItems[] = 'Next action signal: ' . trim((string)$conversionNextAction['label']);
         }
         foreach ($conversionBadges as $badge) {
             $label = trim((string)($badge['label'] ?? ''));
             if ($label !== '') {
-                $conversionItems[] = 'Flag: ' . $label;
+                $supportItems[] = 'Flag: ' . $label;
             }
         }
-        if ($conversionItems) {
-            $cards[] = [
-                'title' => 'Conversion layer',
-                'items' => $conversionItems,
-            ];
-        }
-
         $cards[] = [
-            'title' => 'Recommended next step',
-            'items' => [$recommendation],
+            'title' => 'Quick context',
+            'items' => $supportItems,
         ];
 
         return [
-            'answer' => trim((string) ($lead['full_name'] ?? 'Lead')) . ' is currently in ' . elite_ai_stage_label(trim((string) ($lead['status'] ?? ''))) . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel . ' conversion meaning' : '') . '. I reviewed the most recent communication, the latest activity, and the obvious missing items so you can decide the next manual step.',
+            'answer' => implode(' ', $summaryLines),
             'cards' => $cards,
             'tools_used' => ['lead_summary', 'lead_thread', 'knowledge_rules'],
             'lead_id' => $leadId,

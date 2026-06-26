@@ -140,7 +140,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     <aside
         id="crm-ai-panel"
-        class="pointer-events-none fixed top-4 z-[70] hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
+        class="pointer-events-none fixed top-4 z-[70] hidden w-[440px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
@@ -149,7 +149,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         data-lead-id="<?= e((string) $assistantLeadId) ?>"
         aria-hidden="true"
     >
-        <div class="flex h-[min(78vh,720px)] w-full flex-col">
+        <div class="flex h-[min(82vh,780px)] w-full flex-col">
             <div class="border-b border-slate-200 px-5 py-4">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-lg font-semibold tracking-tight text-slate-900">Elite AI</h2>
@@ -173,9 +173,15 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     <p class="text-sm leading-6 text-slate-700">Good morning, <?= e($firstName !== '' ? $firstName : 'Rodrigo') ?>. What do you want to do?</p>
                 </article>
             </div>
-            <div id="crm-ai-pending-drafts" class="border-t border-slate-200 bg-white px-5 py-2">
-                <p id="crm-ai-pending-drafts-title" class="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pending drafts</p>
-                <div id="crm-ai-pending-drafts-list" class="mt-2 grid gap-2"></div>
+            <div id="crm-ai-pending-drafts" class="hidden border-t border-slate-200 bg-white px-5 py-2">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <p id="crm-ai-pending-drafts-title" class="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pending drafts</p>
+                        <span id="crm-ai-pending-drafts-count" class="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"></span>
+                    </div>
+                    <button type="button" id="crm-ai-pending-drafts-toggle" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:bg-slate-50">Show</button>
+                </div>
+                <div id="crm-ai-pending-drafts-list" class="mt-2 hidden max-h-56 overflow-y-auto grid gap-2"></div>
             </div>
             <div class="border-t border-slate-200 bg-white px-5 py-4">
                 <div id="crm-ai-quick-actions" class="mb-3 flex flex-wrap gap-2"></div>
@@ -269,6 +275,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             const aiNotifications = document.getElementById('crm-ai-notifications');
             const aiDraftStatus = document.getElementById('crm-ai-draft-status');
             const aiPendingList = document.getElementById('crm-ai-pending-drafts-list');
+            const aiPendingWrap = document.getElementById('crm-ai-pending-drafts');
+            const aiPendingCount = document.getElementById('crm-ai-pending-drafts-count');
+            const aiPendingToggle = document.getElementById('crm-ai-pending-drafts-toggle');
             const aiQuickActions = [
                 { label: 'Morning Sweep', quick_action: 'morning-sweep' },
                 { label: 'New Leads', quick_action: 'new-leads' },
@@ -281,6 +290,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             let pendingDraftsRenderedAt = 0;
             let assistantSpeech = null;
             let isListening = false;
+            let pendingDraftsCollapsed = true;
 
     function aiContext() {
         return {
@@ -438,6 +448,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         aiDraftStatus.textContent = statusText;
     }
 
+    function setPendingDraftsCollapsed(collapsed) {
+        pendingDraftsCollapsed = Boolean(collapsed);
+        if (aiPendingList) {
+            aiPendingList.classList.toggle('hidden', pendingDraftsCollapsed);
+        }
+        if (aiPendingToggle) {
+            aiPendingToggle.textContent = pendingDraftsCollapsed ? 'Show' : 'Hide';
+        }
+    }
+
     function setDraftModeInComposer(draft, actionType, leadId, actionId, note) {
         if (!aiInput || !actionId) {
             return;
@@ -536,7 +556,10 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         article.appendChild(row);
 
         const body = document.createElement('p');
-        body.className = 'mt-1 text-xs leading-4 text-slate-700';
+        body.className = 'mt-1 text-xs leading-4 text-slate-700 overflow-hidden';
+        body.style.display = '-webkit-box';
+        body.style.webkitLineClamp = '4';
+        body.style.webkitBoxOrient = 'vertical';
         body.textContent = draftText;
         article.appendChild(body);
 
@@ -569,15 +592,23 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     }
 
     function applyPendingDrafts(pendingDrafts) {
-        if (!aiPendingList) return;
+        if (!aiPendingList || !aiPendingWrap) return;
         aiPendingList.innerHTML = '';
-        const title = document.getElementById('crm-ai-pending-drafts-title');
         if (!Array.isArray(pendingDrafts) || !pendingDrafts.length) {
-            if (title) title.classList.add('hidden');
+            aiPendingWrap.classList.add('hidden');
+            if (aiPendingCount) {
+                aiPendingCount.classList.add('hidden');
+                aiPendingCount.textContent = '';
+            }
             return;
         }
 
-        if (title) title.classList.remove('hidden');
+        aiPendingWrap.classList.remove('hidden');
+        if (aiPendingCount) {
+            aiPendingCount.classList.remove('hidden');
+            aiPendingCount.textContent = String(pendingDrafts.length);
+        }
+        setPendingDraftsCollapsed(pendingDraftsCollapsed);
         pendingDrafts.forEach(function (item) {
             renderPendingDraftCard(item);
         });
@@ -969,6 +1000,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 if (typeof data.warning === 'string' && data.warning.trim() !== '') {
                     assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
                 }
+                setPendingDraftsCollapsed(false);
                 refreshPendingDrafts(true);
                 return;
             }
@@ -983,6 +1015,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 if (typeof data.warning === 'string' && data.warning.trim() !== '') {
                     assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
                 }
+                setPendingDraftsCollapsed(false);
                 refreshPendingDrafts(true);
                 return;
             }
@@ -1086,6 +1119,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             const prompt = aiInput.value;
             aiInput.value = '';
             runAssistant(prompt, '');
+        });
+    }
+
+    if (aiPendingToggle) {
+        aiPendingToggle.addEventListener('click', function () {
+            setPendingDraftsCollapsed(!pendingDraftsCollapsed);
         });
     }
 

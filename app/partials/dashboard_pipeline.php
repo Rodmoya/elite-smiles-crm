@@ -3359,10 +3359,6 @@ $consultationOptions = [
             aiInstructionPanel.classList.add('hidden');
         }
 
-        if (composerMode === 'email' && activeCard && emailBodyInput && emailBodyInput.value.trim() === '') {
-            emailBodyInput.value = defaultEmailBody(activeCard);
-        }
-
         refreshComposerSafetyCue();
 
     }
@@ -4009,15 +4005,26 @@ $consultationOptions = [
 
     function defaultAiInstruction(channel) {
 
+        const leadName = activeCard?.dataset?.leadName || 'this lead';
+        const stageLabel = activeCard?.dataset?.leadConversionStageLabel || activeCard?.dataset?.leadStageLabel || '';
+        const consultationStatus = activeCard?.dataset?.leadConsult || '';
+        const contextSummary = [
+            stageLabel ? `Current stage: ${stageLabel}.` : '',
+            consultationStatus ? `Consultation status: ${consultationStatus.replace(/_/g, ' ')}.` : '',
+            'Read the latest timeline, replies, outbound touchpoints, and CRM notes before drafting.',
+            'Continue the real conversation naturally instead of restarting it.',
+            'Keep details accurate, avoid repeating what was already sent, and move toward the next best step.'
+        ].filter(Boolean).join(' ');
+
         if (channel === 'sms') {
-            return 'Draft a warm, concise SMS follow-up for this lead. Continue the conversation naturally and move toward scheduling a consultation with Dr. Meden.';
+            return `Draft a warm, concise SMS follow-up for ${leadName}. ${contextSummary} Keep it short, natural, and easy to answer by text.`;
         }
 
         if (channel === 'email') {
-            return 'Draft a warm, professional follow-up email for this lead. Continue the conversation naturally and move toward scheduling a consultation with Dr. Meden.';
+            return `Draft a warm, professional follow-up email for ${leadName}. ${contextSummary} Make it feel personal, clear, and aligned with the conversation so far.`;
         }
 
-        return 'Draft both a warm SMS and a warm follow-up email for this lead. Keep the message aligned across both channels and move toward scheduling a consultation with Dr. Meden.';
+        return `Draft both a warm SMS and a warm follow-up email for ${leadName}. ${contextSummary} Keep both channels aligned, but adapt each one to its format naturally.`;
 
     }
 
@@ -5316,16 +5323,16 @@ function applyCommunicationViewportFit() {
 
         setText('legacy-modal-sms-lead-phone', formatPhoneForDisplay(card.dataset.leadPhone || '') || 'No phone selected', 'No phone selected');
 
-        if (smsInput) smsInput.value = defaultSmsMessage(card);
+        if (smsInput) smsInput.value = '';
 
-        if (smsTemplateSelect) smsTemplateSelect.value = 'first_follow_up';
+        if (smsTemplateSelect) smsTemplateSelect.value = '';
 
         if (smsStatus) smsStatus.textContent = '';
         if (aiInstructionInput) aiInstructionInput.value = '';
         setAiStatusMessage('');
         setAiInstructionCollapsed(true);
-        if (emailSubjectInput) emailSubjectInput.value = 'Your Elite Smiles consultation request';
-        if (emailBodyInput) emailBodyInput.value = defaultEmailBody(card);
+        if (emailSubjectInput) emailSubjectInput.value = '';
+        if (emailBodyInput) emailBodyInput.value = '';
         if (emailStatus) emailStatus.textContent = '';
         if (communicationNoteInput) communicationNoteInput.value = '';
         if (communicationNoteStatus) communicationNoteStatus.textContent = '';

@@ -42,6 +42,18 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     body.crm-sidebar-collapsed .crm-sidebar-link { justify-content: center; }
     body.crm-sidebar-collapsed .crm-sidebar-ai-copy { display: none; }
 }
+
+#crm-ai-panel[aria-hidden="false"] {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#crm-ai-panel[aria-hidden="true"] {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(0.5rem);
+}
 </style>
 
 <div class="lg:pl-72">
@@ -128,7 +140,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     <aside
         id="crm-ai-panel"
-        class="pointer-events-none fixed top-4 z-50 hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
+        class="pointer-events-none fixed top-4 z-[70] hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
@@ -346,6 +358,10 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (aiInput) aiInput.focus();
         }
     }
+
+    window.eliteAiSetOpen = function (open) {
+        setAssistantOpen(Boolean(open));
+    };
 
     function normalizeDraftText(draft, actionType) {
         if (!draft || typeof draft !== 'object') {

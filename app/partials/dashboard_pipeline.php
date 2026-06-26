@@ -1016,6 +1016,34 @@ $consultationOptions = [
 
                         type="button"
 
+                        id="workspace-ai-button"
+
+                        class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+
+                        aria-label="Open Elite AI"
+
+                        title="Open Elite AI"
+
+                        onclick="if (window.eliteAiSetOpen) { window.eliteAiSetOpen(true); } return false;"
+
+                    >
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+
+                            <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"></path>
+
+                            <path d="M5 18l.8 1.9L8 21l-2.2 1.1L5 24l-.8-1.9L2 21l2.2-1.1L5 18z"></path>
+
+                        </svg>
+
+                        <span>Elite AI</span>
+
+                    </button>
+
+                    <button
+
+                        type="button"
+
                         id="workspace-save-main"
 
                         class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
@@ -5241,6 +5269,15 @@ function applyCommunicationViewportFit() {
 
         activeCard = card;
 
+        const assistantPanel = document.getElementById('crm-ai-panel');
+        if (assistantPanel && assistantPanel.dataset) {
+            const leadId = Number(card.dataset.leadId || 0);
+            const baseUrl = window.location.origin + window.location.pathname;
+            assistantPanel.dataset.leadId = String(leadId > 0 ? leadId : 0);
+            assistantPanel.dataset.page = 'leads';
+            assistantPanel.dataset.pageTitle = (card.dataset.leadName || 'Lead') + ' | Lead Workspace';
+            assistantPanel.dataset.currentUrl = leadId > 0 ? (baseUrl + '?lead_id=' + encodeURIComponent(String(leadId))) : window.location.href;
+        }
         if (typeof window.eliteAiSetLeadContext === 'function') {
             const leadId = Number(card.dataset.leadId || 0);
             const baseUrl = window.location.origin + window.location.pathname;
@@ -5408,6 +5445,13 @@ function applyCommunicationViewportFit() {
 
         activeCard = null;
 
+        const assistantPanel = document.getElementById('crm-ai-panel');
+        if (assistantPanel && assistantPanel.dataset) {
+            assistantPanel.dataset.leadId = '0';
+            assistantPanel.dataset.page = 'leads';
+            assistantPanel.dataset.pageTitle = 'Leads';
+            assistantPanel.dataset.currentUrl = window.location.href;
+        }
         if (typeof window.eliteAiSetLeadContext === 'function') {
             window.eliteAiSetLeadContext({
                 leadId: 0,

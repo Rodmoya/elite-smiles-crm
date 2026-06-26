@@ -42,6 +42,18 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     body.crm-sidebar-collapsed .crm-sidebar-link { justify-content: center; }
     body.crm-sidebar-collapsed .crm-sidebar-ai-copy { display: none; }
 }
+
+#crm-ai-panel[aria-hidden="false"] {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#crm-ai-panel[aria-hidden="true"] {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(0.5rem);
+}
 </style>
 
 <div class="lg:pl-72">
@@ -128,7 +140,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     <aside
         id="crm-ai-panel"
-        class="pointer-events-none fixed top-4 z-50 hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
+        class="pointer-events-none fixed top-4 z-[70] hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
@@ -268,6 +280,28 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         };
     }
 
+    function setAssistantLeadContext(context) {
+        if (!aiPanel || !aiPanel.dataset) {
+            return;
+        }
+
+        const payload = context && typeof context === 'object' ? context : {};
+        const leadId = Number(payload.leadId || payload.lead_id || 0);
+        aiPanel.dataset.leadId = String(leadId > 0 ? leadId : 0);
+
+        if (typeof payload.page === 'string' && payload.page.trim() !== '') {
+            aiPanel.dataset.page = payload.page.trim();
+        }
+        if (typeof payload.pageTitle === 'string' && payload.pageTitle.trim() !== '') {
+            aiPanel.dataset.pageTitle = payload.pageTitle.trim();
+        }
+        if (typeof payload.currentUrl === 'string' && payload.currentUrl.trim() !== '') {
+            aiPanel.dataset.currentUrl = payload.currentUrl.trim();
+        }
+    }
+
+    window.eliteAiSetLeadContext = setAssistantLeadContext;
+
     function applyDesktopCollapsed(collapsed) {
         document.body.classList.toggle('crm-sidebar-collapsed', collapsed);
         if (desktopToggle) {
@@ -312,6 +346,10 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (aiInput) aiInput.focus();
         }
     }
+
+    window.eliteAiSetOpen = function (open) {
+        setAssistantOpen(Boolean(open));
+    };
 
     function assistantBubble(label, text, role, cards, loading, actions) {
         if (!aiThread) return null;
@@ -362,11 +400,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 button.dataset.leadId = String(Number(action.lead_id || action.leadId || 0));
                 button.dataset.actionLabel = String(action.label || '');
                 button.dataset.actionHelp = String(action.help || '');
-                button.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    runAssistantAction(buttonAssistantAction(button, action));
-                });
+                button.dataset.actionId = String(Number(action.action_id || action.actionId || 0));
                 actionWrap.appendChild(button);
             });
             article.appendChild(actionWrap);
@@ -445,7 +479,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             type: String(button.dataset.actionType || fallback.type || ''),
             label: String(button.dataset.actionLabel || fallback.label || ''),
             help: String(button.dataset.actionHelp || fallback.help || ''),
-            lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0)
+            lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
+            action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0)
         };
     }
 
@@ -538,6 +573,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     assistant_token: assistantToken(),
                     assistant_action: action.type,
                     lead_id: Number(action.lead_id || 0),
+                    action_id: Number(action.action_id || 0),
                     prompt: action.help || '',
                     instruction: action.help || '',
                     quick_action: '',

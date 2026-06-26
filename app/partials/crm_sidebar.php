@@ -170,7 +170,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             </div>
             <div id="crm-ai-thread" class="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-5 py-4">
                 <article class="max-w-[88%] rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p class="text-sm leading-6 text-slate-700">Good morning, <?= e($firstName !== '' ? $firstName : 'Rodrigo') ?>. What do you want to do?</p>
+                    <p class="text-sm leading-6 text-slate-700">I&#8217;m here. Ask about a lead, check the latest reply, or tell me what you want to get done.</p>
                 </article>
             </div>
             <div id="crm-ai-pending-drafts" class="hidden border-t border-slate-200 bg-white px-5 py-2">
@@ -493,7 +493,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
         const heading = document.createElement('p');
         heading.className = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500';
-        heading.textContent = `${label} • ${channel} • ${statusText}`;
+        heading.textContent = `${label} â€¢ ${channel} â€¢ ${statusText}`;
         card.appendChild(heading);
 
         const body = document.createElement('p');
@@ -552,7 +552,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
         const row = document.createElement('p');
         row.className = 'text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500';
-        row.textContent = label + (leadName ? ` • ${leadName}` : '');
+        row.textContent = label + (leadName ? ` â€¢ ${leadName}` : '');
         article.appendChild(row);
 
         const body = document.createElement('p');
@@ -1147,3 +1147,5 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     });
 })();
 </script>
+
+

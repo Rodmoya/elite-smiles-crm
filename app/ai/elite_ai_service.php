@@ -840,6 +840,52 @@ if (!function_exists('elite_ai_pipeline_payload')) {
     }
 }
 
+if (!function_exists('elite_ai_prompt_requests_stage_count')) {
+    function elite_ai_prompt_requests_stage_count(string $prompt): ?string
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '' || !preg_match('/\bhow many\b|\bcount\b|\bnumber of\b/i', $normalized)) {
+            return null;
+        }
+
+        $map = [
+            'scheduling' => 'in_contact',
+            'in communication' => 'in_contact',
+            'in contact' => 'in_contact',
+            'consultation booked' => 'consultation_booked',
+            'new lead' => 'new_lead',
+            'contacted' => 'contacted',
+            'no answer' => 'no_answer',
+            'opted out' => 'opted_out',
+            'sale closed' => 'sale_closed',
+            'lead lost' => 'lost_lead',
+        ];
+
+        foreach ($map as $label => $status) {
+            if (str_contains($normalized, $label)) {
+                return $status;
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('elite_ai_pipeline_count_payload')) {
+    function elite_ai_pipeline_count_payload(string $status): array
+    {
+        $counts = elite_ai_stage_counts();
+        $count = (int) ($counts[$status] ?? 0);
+        $label = elite_ai_stage_label($status);
+
+        return [
+            'answer' => 'There are ' . $count . ' leads in ' . $label . '.',
+            'cards' => [],
+            'tools_used' => ['pipeline_count'],
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_lead_summary_payload')) {
     function elite_ai_lead_summary_payload(array $lead): array
     {
@@ -1729,6 +1775,8 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
         return implode("\n", [
             'You are the planning layer for Elite AI inside a dental CRM.',
             'Your job is to interpret the operator request the way a strong execution assistant would.',
+            'If the operator mentions one lead by name or asks about a specific reply, route that to lead_summary instead of a broad dashboard workflow.',
+            'If they ask for the latest or last reply, response, message, text, SMS, or email from a lead, treat it as a single-lead request.',
             'Choose the single best next workflow intent.',
             'Use draft_sms or draft_email when the operator is asking you to prepare a patient-facing reply or follow-up draft.',
             'Use lead_summary when they want context, status, or what to do next for one lead.',
@@ -1886,8 +1934,14 @@ if (!function_exists('elite_ai_detect_intent')) {
         if (str_contains($normalized, 'notification')) {
             return 'notifications';
         }
+        if (elite_ai_prompt_requests_stage_count($normalized) !== null) {
+            return 'pipeline';
+        }
         if (str_contains($normalized, 'pipeline') || str_contains($normalized, 'board overview') || str_contains($normalized, 'board summary')) {
             return 'pipeline';
+        }
+        if (elite_ai_prompt_requests_latest_reply($normalized)) {
+            return 'lead_summary';
         }
         if (str_contains($normalized, 'summarize this lead') || str_contains($normalized, 'summarize ') || str_contains($normalized, 'check ') || str_contains($normalized, 'review ')) {
             return 'lead_summary';
@@ -1904,14 +1958,15 @@ if (!function_exists('elite_ai_help_payload')) {
     function elite_ai_help_payload(array $context): array
     {
         $pageHint = ($context['page'] ?? '') === 'leads' && ($context['lead_id'] ?? 0) > 0
-            ? 'You are already on a lead-specific page, so you can also ask me to summarize this lead.'
-            : 'You can also ask me to summarize a specific lead by name.';
+            ? 'You are already on a lead, so I can check the latest reply, suggest the next move, or prepare a draft for that lead.'
+            : 'You can ask me about a specific lead by name, check a reply, or tell me what you want to get done.';
 
         return [
-            'answer' => 'Elite AI is in assistant mode with draft-first safety and dual-model routing: I can summarize leads, notifications, pipeline priorities, replies, follow-ups, No Answer review candidates, and morning sweep actions, and generate SMS/email drafts for approval without sending. ' . $pageHint,
+            'answer' => 'I am here to help you work the CRM like a real operator partner. I can check replies, summarize a lead, suggest the next step, review follow-ups, and prepare drafts for approval. ' . $pageHint,
             'cards' => [[
                 'title' => 'Try one of these prompts',
                 'items' => [
+                    'Check last response from Cindy Soper',
                     'Run morning sweep',
                     'Show new leads that need first contact',
                     'Who replied today?',
@@ -1922,6 +1977,98 @@ if (!function_exists('elite_ai_help_payload')) {
                 ],
             ]],
             'tools_used' => ['knowledge_rules'],
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_latest_reply')) {
+    function elite_ai_prompt_requests_latest_reply(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:check|show|read|review|what(?:\'s| is))\b.*\b(?:last|latest|most recent)\b.*\b(?:reply|response|message|text|sms|email)\b|\b(?:last|latest|most recent)\b.*\b(?:reply|response|message)\b.*\bfrom\b/i',
+            $normalized
+        );
+    }
+}
+
+if (!function_exists('elite_ai_format_operator_time')) {
+    function elite_ai_format_operator_time(string $timestamp): string
+    {
+        $ts = strtotime($timestamp);
+        if (!$ts) {
+            return '';
+        }
+
+        return date('M j, g:i A', $ts);
+    }
+}
+
+if (!function_exists('elite_ai_latest_reply_payload')) {
+    function elite_ai_latest_reply_payload(array $lead): array
+    {
+        $thread = elite_ai_lead_thread((int) ($lead['id'] ?? 0));
+        $latestInbound = elite_ai_latest_direction_item($thread, 'inbound');
+        $fullName = trim((string) ($lead['full_name'] ?? 'This lead'));
+        $nextStep = trim((string) elite_ai_recommended_next_step($lead, $thread, elite_ai_attempt_counts((int) ($lead['id'] ?? 0))));
+
+        if (!$latestInbound) {
+            $answer = $fullName . ' does not have a recent inbound reply for me to review.';
+            if ($nextStep !== '') {
+                $answer .= ' Next, I would ' . lcfirst($nextStep);
+            }
+
+            return [
+                'answer' => $answer,
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['lead_lookup', 'lead_thread', 'next_step'],
+                'lead_id' => (int) ($lead['id'] ?? 0),
+            ];
+        }
+
+        $channel = strtoupper((string) ($latestInbound['channel'] ?? 'message'));
+        $timeLabel = elite_ai_format_operator_time((string) ($latestInbound['created_at'] ?? ''));
+        $body = trim((string) ($latestInbound['body'] ?? ''));
+        $body = $body !== '' ? $body : 'No message body was captured.';
+
+        $answer = $fullName . ' replied';
+        if ($timeLabel !== '') {
+            $answer .= ' at ' . $timeLabel;
+        }
+        $answer .= ' by ' . $channel . ': "' . $body . '"';
+
+        $cards = [];
+        if ($nextStep !== '') {
+            $cards[] = [
+                'title' => 'Recommended next step',
+                'items' => [$nextStep],
+            ];
+        }
+
+        return [
+            'answer' => $answer,
+            'cards' => $cards,
+            'actions' => [
+                [
+                    'type' => 'draft_sms',
+                    'label' => 'Prepare SMS draft',
+                    'help' => 'Prepare a reply draft based on the latest inbound context.',
+                    'lead_id' => (int) ($lead['id'] ?? 0),
+                ],
+                [
+                    'type' => 'draft_email',
+                    'label' => 'Prepare Email draft',
+                    'help' => 'Prepare an email draft based on the latest inbound context.',
+                    'lead_id' => (int) ($lead['id'] ?? 0),
+                ],
+            ],
+            'tools_used' => ['lead_lookup', 'lead_thread', 'next_step'],
+            'lead_id' => (int) ($lead['id'] ?? 0),
         ];
     }
 }
@@ -1960,8 +2107,16 @@ function elite_ai_handle_request(array $user, array $request): array
         $context = elite_ai_normalize_context($request);
         $plan = elite_ai_plan_request($prompt, $quickAction, $context);
         $intent = (string) ($plan['intent'] ?? elite_ai_detect_intent($prompt, $quickAction, $context));
+        $requestsLatestReply = $quickAction === '' && elite_ai_prompt_requests_latest_reply($prompt);
+        $stageCountStatus = $quickAction === '' ? elite_ai_prompt_requests_stage_count($prompt) : null;
         $payload = [];
         $leadId = null;
+
+        if ($requestsLatestReply) {
+            $intent = 'lead_summary';
+        } elseif ($stageCountStatus !== null) {
+            $intent = 'pipeline';
+        }
 
         if (!empty($plan['needs_clarification']) && trim((string) ($plan['clarification_question'] ?? '')) !== '') {
             $payload = [
@@ -2043,13 +2198,17 @@ function elite_ai_handle_request(array $user, array $request): array
                 break;
 
             case 'pipeline':
-                $payload = elite_ai_pipeline_payload();
+                $payload = $stageCountStatus !== null
+                    ? elite_ai_pipeline_count_payload($stageCountStatus)
+                    : elite_ai_pipeline_payload();
                 break;
 
             case 'lead_summary':
                 $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
                 if (!empty($resolved['lead']) && is_array($resolved['lead'])) {
-                    $payload = elite_ai_lead_summary_payload((array) $resolved['lead']);
+                    $payload = $requestsLatestReply
+                        ? elite_ai_latest_reply_payload((array) $resolved['lead'])
+                        : elite_ai_lead_summary_payload((array) $resolved['lead']);
                     $leadId = (int) (($payload['lead_id'] ?? 0));
                 } else {
                     $items = [];
@@ -2077,14 +2236,11 @@ function elite_ai_handle_request(array $user, array $request): array
         elite_ai_log_interaction($user, $surface, $prompt !== '' ? $prompt : $quickAction, (array) ($payload['tools_used'] ?? []), $summary, $leadId, $context);
 
         $executionPolicy = elite_ai_execution_policy_tag($request);
-        $responseSummary = $summary . ' Operation lock: ' . ($executionPolicy === 'send-approved'
-            ? 'Explicit communication send approval detected.'
-            : 'Internal actions only. Drafts require explicit send approval before any outbound SMS/email/WhatsApp send.');
 
         return [
             'ok' => true,
             'surface' => $surface,
-            'answer' => $responseSummary,
+            'answer' => $summary,
             'execution_policy' => $executionPolicy,
             'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             'cards' => array_values((array) ($payload['cards'] ?? [])),
@@ -2096,3 +2252,5 @@ function elite_ai_handle_request(array $user, array $request): array
         ];
     }
 }
+
+

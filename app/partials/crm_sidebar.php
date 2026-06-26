@@ -277,8 +277,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             const aiPendingList = document.getElementById('crm-ai-pending-drafts-list');
             const aiPendingWrap = document.getElementById('crm-ai-pending-drafts');
             const aiPendingCount = document.getElementById('crm-ai-pending-drafts-count');
-            const aiPendingToggle = document.getElementById('crm-ai-pending-drafts-toggle');
-            const aiQuickActions = [
+    const aiPendingToggle = document.getElementById('crm-ai-pending-drafts-toggle');
+    const aiQuickActions = [
                 { label: 'Morning Sweep', quick_action: 'morning-sweep' },
                 { label: 'New Leads', quick_action: 'new-leads' },
                 { label: 'Replies', quick_action: 'replies' },
@@ -291,6 +291,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             let assistantSpeech = null;
             let isListening = false;
             let pendingDraftsCollapsed = true;
+            const assistantOpenStorageKey = 'elite-ai-panel-open';
 
     function aiContext() {
         return {
@@ -299,6 +300,22 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             current_url: aiPanel && aiPanel.dataset ? aiPanel.dataset.currentUrl || window.location.href : window.location.href,
             lead_id: Number(aiPanel && aiPanel.dataset ? (aiPanel.dataset.leadId || 0) : 0)
         };
+    }
+
+    function persistAssistantOpen(isOpen) {
+        try {
+            window.localStorage.setItem(assistantOpenStorageKey, isOpen ? '1' : '0');
+        } catch (error) {
+            // ignore storage failures
+        }
+    }
+
+    function shouldRestoreAssistantOpen() {
+        try {
+            return window.localStorage.getItem(assistantOpenStorageKey) === '1';
+        } catch (error) {
+            return false;
+        }
     }
 
     function setAssistantLeadContext(context) {
@@ -356,6 +373,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     function setAssistantOpen(open) {
         if (!aiPanel || !aiLaunch) return;
+        persistAssistantOpen(!!open);
         aiLaunch.setAttribute('aria-expanded', open ? 'true' : 'false');
         aiPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
         aiPanel.classList.toggle('pointer-events-none', !open);
@@ -1096,6 +1114,10 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 positionAssistantPanel();
             }
         });
+
+        if (shouldRestoreAssistantOpen()) {
+            setAssistantOpen(true);
+        }
     }
 
     if (aiForm && aiInput) {

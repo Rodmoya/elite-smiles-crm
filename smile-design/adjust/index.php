@@ -2781,7 +2781,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       if (workFrame) {
         workFrame.addEventListener('click', function (event) {
-          if (brushMode) return;
+          if (editorMode !== 'manual' || brushMode) return;
           const target = event.target;
           if (target && target.closest && (
             target.closest('#adjust-floating-controls')
@@ -2805,11 +2805,17 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       if (toothSelectLayer) {
         toothSelectLayer.addEventListener('click', function (event) {
           if (editorMode !== 'automatic') return;
-          const polygon = event.target && event.target.closest ? event.target.closest('[data-selected-tooth]') : null;
-          if (!polygon) return;
+          const target = event.target;
+          const toothNumber = target && typeof target.getAttribute === 'function'
+            ? (target.getAttribute('data-selected-tooth')
+              || (target.parentNode && typeof target.parentNode.getAttribute === 'function'
+                ? target.parentNode.getAttribute('data-selected-tooth')
+                : null))
+            : null;
+          if (!toothNumber) return;
           event.preventDefault();
           event.stopPropagation();
-          toggleToothSelection(polygon.getAttribute('data-selected-tooth'), null);
+          toggleToothSelection(toothNumber, null);
           render(readAnchorPoints());
         });
       }

@@ -941,6 +941,7 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
             'phone',
             'email',
             'procedure_interest',
+            'preferred_contact',
             'source',
             'source_medium',
             'source_type',

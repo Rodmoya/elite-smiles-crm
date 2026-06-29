@@ -1422,6 +1422,9 @@ try {
         $fields['platform'] = trim((string)($fields['platform'] ?? ''));
 
         lead_enforce_meta_defaults($fields);
+        $fields['refresh_duplicate'] = array_key_exists('refresh_duplicate', $fields)
+            ? filter_var($fields['refresh_duplicate'], FILTER_VALIDATE_BOOLEAN)
+            : true;
 
         if ($fields['source'] === '') {
             $fields['source'] = 'codex_api';

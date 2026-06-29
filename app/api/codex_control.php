@@ -1391,7 +1391,42 @@ try {
 
     if ($action === 'create_lead') {
         $fields = (array) codex_api_value('lead', codex_api_body());
-        $fields['source'] = trim((string)($fields['source'] ?? 'codex_api'));
+        if ($fields === []) {
+            $fields = (array) codex_api_body();
+        }
+
+        if (isset($fields['action'])) {
+            unset($fields['action']);
+        }
+
+        if (isset($fields['lead'])) {
+            $leadPayload = (array) $fields['lead'];
+
+            if (!array_key_exists('source', $leadPayload)
+                && (array_key_exists('source', $fields) || array_key_exists('source_medium', $fields) || array_key_exists('source_type', $fields) || array_key_exists('platform', $fields))
+            ) {
+                $leadPayload = array_merge($leadPayload, [
+                    'source' => trim((string)($fields['source'] ?? $leadPayload['source'] ?? '')),
+                    'source_medium' => trim((string)($fields['source_medium'] ?? $leadPayload['source_medium'] ?? '')),
+                    'source_type' => trim((string)($fields['source_type'] ?? $leadPayload['source_type'] ?? '')),
+                    'platform' => trim((string)($fields['platform'] ?? $leadPayload['platform'] ?? '')),
+                ]);
+            }
+
+            $fields = $leadPayload;
+        }
+
+        $fields['source'] = trim((string)($fields['source'] ?? ''));
+        $fields['source_medium'] = trim((string)($fields['source_medium'] ?? ''));
+        $fields['source_type'] = trim((string)($fields['source_type'] ?? ''));
+        $fields['platform'] = trim((string)($fields['platform'] ?? ''));
+
+        lead_enforce_meta_defaults($fields);
+
+        if ($fields['source'] === '') {
+            $fields['source'] = 'codex_api';
+        }
+
         $result = lead_create_minimal($fields, ['first_name' => 'Codex', 'last_name' => 'API']);
         if (empty($result['ok'])) {
             codex_api_response(['ok' => false, 'message' => (string)($result['message'] ?? 'Lead creation failed.')], 422);

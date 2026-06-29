@@ -271,6 +271,9 @@ if ($phoneRaw !== '' && $phone === '') {
 }
 
 $procedureInterest = meta_leads_procedure_from_payload($payload);
+if ($procedureInterest === '') {
+    $procedureInterest = 'Veneers';
+}
 
 $campaign = meta_leads_value($payload, [
     'campaign',
@@ -332,6 +335,7 @@ $input = [
     'source' => 'meta_lead_form',
     'source_medium' => 'paid',
     'source_type' => 'meta_instant_form',
+    'preferred_contact' => 'Text',
     'landing_page' => $landingPage,
     'campaign' => $campaign,
     'external_lead_id' => $externalLeadId,

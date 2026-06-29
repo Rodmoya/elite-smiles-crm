@@ -1111,6 +1111,33 @@ if (!function_exists('lead_dispatch_operator_intake_alerts')) {
 }
 
 if (!function_exists('lead_create_minimal')) {
+    function lead_enforce_meta_defaults(array &$data): void
+    {
+        $source = strtolower(trim((string)($data['source'] ?? '')));
+        $sourceMedium = strtolower(trim((string)($data['source_medium'] ?? '')));
+        $sourceType = strtolower(trim((string)($data['source_type'] ?? '')));
+
+        $isMetaSource = $source === 'meta'
+            || $source === 'meta_lead_form'
+            || str_starts_with($source, 'meta_')
+            || str_contains($sourceMedium, 'meta')
+            || str_contains($sourceType, 'meta')
+            || (string)($data['platform'] ?? '') === 'meta'
+            || (string)($data['platform'] ?? '') === 'instagram';
+
+        if (!$isMetaSource) {
+            return;
+        }
+
+        if (trim((string)($data['preferred_contact'] ?? '')) === '') {
+            $data['preferred_contact'] = 'Text';
+        }
+
+        if (trim((string)($data['procedure_interest'] ?? '')) === '') {
+            $data['procedure_interest'] = 'Veneers';
+        }
+    }
+
     function lead_create_minimal(array $input, array $user = []): array
     {
         lead_pipeline_ensure_schema();
@@ -1125,13 +1152,20 @@ if (!function_exists('lead_create_minimal')) {
 
         $data = array_merge(lead_empty_record($user), $input);
 
-        $data['full_name'] = trim((string)($data['full_name'] ?? ''));
+        if (!isset($data['full_name']) || trim((string)$data['full_name']) === '') {
+            $firstName = trim((string)($data['first_name'] ?? ''));
+            $lastName = trim((string)($data['last_name'] ?? ''));
+            $data['full_name'] = trim(($firstName . ' ' . $lastName));
+        } else {
+            $data['full_name'] = trim((string)($data['full_name'] ?? ''));
+        }
         $data['phone'] = trim((string)($data['phone'] ?? ''));
         $data['email'] = strtolower(trim((string)($data['email'] ?? '')));
-        $data['procedure_interest'] = trim((string)($data['procedure_interest'] ?? ''));
         $data['source'] = trim((string)($data['source'] ?? 'manual'));
         $data['source_medium'] = trim((string)($data['source_medium'] ?? ''));
         $data['source_type'] = trim((string)($data['source_type'] ?? ''));
+        lead_enforce_meta_defaults($data);
+        $data['procedure_interest'] = trim((string)($data['procedure_interest'] ?? ''));
         $data['landing_page'] = trim((string)($data['landing_page'] ?? ''));
         $data['campaign'] = trim((string)($data['campaign'] ?? ''));
         $data['external_lead_id'] = trim((string)($data['external_lead_id'] ?? ''));

@@ -1330,21 +1330,31 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return filtered;
       }
 
-      function splitUpperToothSegments(colHits, minX, maxX, peakHit, minWidth) {
-        const valleys = findUpperToothValleys(colHits, minX, maxX, peakHit);
-        const bounds = [];
-        let startX = minX;
-        valleys.forEach(function (valley) {
-          const endX = valley.x;
-          if ((endX - startX + 1) >= minWidth) {
-            bounds.push({ minX: startX, maxX: endX });
-          }
-          startX = valley.x + 1;
-        });
-        if ((maxX - startX + 1) >= minWidth) {
-          bounds.push({ minX: startX, maxX: maxX });
+      function findCentralSeam(valleys, smileCenter, minX, maxX) {
+        if (Array.isArray(valleys) && valleys.length) {
+          return valleys.reduce(function (best, valley) {
+            if (!best) return valley;
+            return Math.abs(valley.x - smileCenter) < Math.abs(best.x - smileCenter) ? valley : best;
+          }, null);
         }
-        return bounds;
+        return { x: normalize(smileCenter, minX, maxX), score: 0 };
+      }
+
+      function findNeighborValley(valleys, seamX, direction, fallbackX, minGap, maxGap) {
+        const filtered = (valleys || []).filter(function (valley) {
+          const gap = direction < 0 ? seamX - valley.x : valley.x - seamX;
+          return gap >= minGap && gap <= maxGap;
+        });
+        if (!filtered.length) {
+          return fallbackX;
+        }
+        const sorted = filtered.sort(function (a, b) {
+          const gapA = Math.abs(a.x - seamX);
+          const gapB = Math.abs(b.x - seamX);
+          if (gapA !== gapB) return gapA - gapB;
+          return (b.score || 0) - (a.score || 0);
+        });
+        return sorted[0].x;
       }
 
       function buildVisibleUpperToothSlots(softMask, width, height, smileBounds, smileHeight) {
@@ -1362,53 +1372,29 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           colHits[x] = hits;
           peakHit = Math.max(peakHit, hits);
         }
-        const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.052));
-        const segmentBounds = splitUpperToothSegments(colHits, smileBounds.minX, smileBounds.maxX, peakHit, minSegmentWidth);
-        if (!segmentBounds.length) return null;
-        const segments = segmentBounds.map(function (bounds) {
-          let hitCount = 0;
-          for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
-            hitCount += colHits[x] || 0;
-          }
-          return buildToothSegment(softMask, width, height, smileBounds, bounds, hitCount);
-        }).filter(function (segment) {
-          return segment.width >= minSegmentWidth
-            && (segment.right - segment.left) >= 1.2
-            && (segment.bottom - segment.top) >= 1.8;
-        });
-        if (!segments.length) return null;
-        segments.sort(function (a, b) { return a.cx - b.cx; });
-        if (segments.length === 1) {
-          const solo = segments[0];
-          return {
-            8: {
-              number: 8,
-              label: '#8',
-              left: solo.left,
-              right: solo.right,
-              top: solo.top,
-              bottom: solo.bottom,
-              contour: solo.contour,
-              source: solo.source
-            }
-          };
-        }
         const smileCenter = (smileBounds.minX + smileBounds.maxX) / 2;
-        let bestPairIndex = 0;
-        let bestPairScore = Number.NEGATIVE_INFINITY;
-        for (let index = 0; index < segments.length - 1; index += 1) {
-          const leftSegment = segments[index];
-          const rightSegment = segments[index + 1];
-          const pairCenter = (leftSegment.cx + rightSegment.cx) / 2;
-          const pairWidth = leftSegment.width + rightSegment.width;
-          const widthSimilarity = 1 - Math.min(0.75, Math.abs(leftSegment.width - rightSegment.width) / Math.max(leftSegment.width, rightSegment.width, 1));
-          const centerPenalty = Math.abs(pairCenter - smileCenter) / Math.max(1, smileWidth);
-          const score = (pairWidth * 0.70) + (widthSimilarity * 18) - (centerPenalty * 26);
-          if (score > bestPairScore) {
-            bestPairScore = score;
-            bestPairIndex = index;
-          }
-        }
+        const valleys = findUpperToothValleys(colHits, smileBounds.minX, smileBounds.maxX, peakHit);
+        const centerSeam = findCentralSeam(valleys, smileCenter, smileBounds.minX, smileBounds.maxX);
+        const expectedCentralWidth = Math.max(8, Math.round(smileWidth * 0.12));
+        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.45));
+        const maxGap = Math.max(10, Math.round(expectedCentralWidth * 1.85));
+        const leftFallback = Math.max(smileBounds.minX, Math.round(centerSeam.x - expectedCentralWidth));
+        const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
+        const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
+        const rightBoundary = findNeighborValley(valleys, centerSeam.x, 1, rightFallback, minGap, maxGap);
+        const bounds8 = {
+          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 1)),
+          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x))
+        };
+        const bounds9 = {
+          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + 1)),
+          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 2))
+        };
+        const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
+        const boundsList = [bounds8, bounds9].filter(function (bounds) {
+          return bounds.maxX > bounds.minX && (bounds.maxX - bounds.minX + 1) >= minSegmentWidth;
+        });
+        if (!boundsList.length) return null;
         const slots = {};
         const assignSegment = function (segment, toothNumber) {
           if (!segment || toothNumber < 4 || toothNumber > 13) return;
@@ -1423,16 +1409,12 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             source: segment.source
           };
         };
-        assignSegment(segments[bestPairIndex], 8);
-        assignSegment(segments[bestPairIndex + 1], 9);
-        let toothNumber = 7;
-        for (let index = bestPairIndex - 1; index >= 0 && toothNumber >= 4; index -= 1, toothNumber -= 1) {
-          assignSegment(segments[index], toothNumber);
-        }
-        toothNumber = 10;
-        for (let index = bestPairIndex + 2; index < segments.length && toothNumber <= 13; index += 1, toothNumber += 1) {
-          assignSegment(segments[index], toothNumber);
-        }
+        let hitCount8 = 0;
+        for (let x = bounds8.minX; x <= bounds8.maxX; x += 1) hitCount8 += colHits[x] || 0;
+        let hitCount9 = 0;
+        for (let x = bounds9.minX; x <= bounds9.maxX; x += 1) hitCount9 += colHits[x] || 0;
+        assignSegment(buildToothSegment(softMask, width, height, smileBounds, bounds8, hitCount8), 8);
+        assignSegment(buildToothSegment(softMask, width, height, smileBounds, bounds9, hitCount9), 9);
         return Object.keys(slots).length ? slots : null;
       }
 

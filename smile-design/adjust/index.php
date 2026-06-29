@@ -2275,6 +2275,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
         clearRetiredEditorLayer();
         writeAnchorPoints(points);
+        updateToothMapUi();
         syncZoom(points);
       }
 

@@ -105,6 +105,48 @@ if (!function_exists('smile_design_data_url_to_temp_png')) {
     }
 }
 
+if (!function_exists('smile_design_normalize_selected_teeth')) {
+    function smile_design_normalize_selected_teeth(string $selectedTeeth, string $fallback = '[8]'): string
+    {
+        $selectedTeeth = trim($selectedTeeth);
+        if ($selectedTeeth === '') {
+            return $fallback;
+        }
+
+        $decoded = json_decode($selectedTeeth, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $normalized = [];
+            foreach ($decoded as $value) {
+                $num = (int)$value;
+                if ($num <= 0 || $num > 32) {
+                    continue;
+                }
+                if (!in_array($num, $normalized, true)) {
+                    $normalized[] = $num;
+                }
+            }
+            return json_encode($normalized);
+        }
+
+        preg_match_all('/-?\d+/', $selectedTeeth, $matches);
+        if (!empty($matches[0])) {
+            $normalized = [];
+            foreach ($matches[0] as $value) {
+                $num = (int)$value;
+                if ($num <= 0 || $num > 32) {
+                    continue;
+                }
+                if (!in_array($num, $normalized, true)) {
+                    $normalized[] = $num;
+                }
+            }
+            return json_encode($normalized);
+        }
+
+        return $fallback;
+    }
+}
+
 if (!function_exists('smile_design_build_overlay_preview')) {
     function smile_design_build_overlay_preview(string $sourcePath, string $maskPath): array
     {
@@ -305,7 +347,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $brushMaskData = trim((string)($options['brush_mask_data'] ?? ''));
         $brushOverlayData = trim((string)($options['brush_overlay_data'] ?? ''));
         $editorMode = trim((string)($options['editor_mode'] ?? 'automatic'));
-        $selectedTeeth = trim((string)($options['selected_teeth'] ?? ''));
+        $selectedTeeth = smile_design_normalize_selected_teeth(trim((string)($options['selected_teeth'] ?? '')));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
         $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? 'front'));

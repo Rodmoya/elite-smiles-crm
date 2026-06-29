@@ -355,9 +355,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       let brushDrawing = false;
       let editorMode = 'automatic';
       let autoToothSelection = null;
-      let autoToothSelected = true;
       let selectedToothNumber = 8;
-      let manualToothSeedPoint = null;
+      let selectedTeeth = new Set([8]);
+      let toothSeedPoints = {};
       let detectedTeethBounds = null;
       let brushContext = null;
       let brushHistory = [];
@@ -392,33 +392,110 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
+      function normalizeToothNumber(toothNumber) {
+        const parsed = Number(toothNumber);
+        return visibleUpperTeeth.includes(parsed) ? parsed : null;
+      }
+
+      function getSelectedTeethArray() {
+        return visibleUpperTeeth.filter(function (toothNumber) {
+          return selectedTeeth.has(toothNumber);
+        });
+      }
+
       function getSelectedToothNumber() {
-        return visibleUpperTeeth.includes(Number(selectedToothNumber)) ? Number(selectedToothNumber) : 8;
+        const normalized = normalizeToothNumber(selectedToothNumber);
+        if (normalized !== null) {
+          return normalized;
+        }
+        const selected = getSelectedTeethArray();
+        return selected.length ? selected[0] : 8;
+      }
+
+      function setSelectedTeeth(nextValues, preferredToothNumber) {
+        const normalized = [];
+        (Array.isArray(nextValues) ? nextValues : []).forEach(function (value) {
+          const toothNumber = normalizeToothNumber(value);
+          if (toothNumber === null || normalized.includes(toothNumber)) return;
+          normalized.push(toothNumber);
+        });
+        selectedTeeth = new Set(normalized);
+        const preferred = normalizeToothNumber(preferredToothNumber);
+        if (preferred !== null && selectedTeeth.has(preferred)) {
+          selectedToothNumber = preferred;
+        } else if (selectedTeeth.has(selectedToothNumber)) {
+          selectedToothNumber = Number(selectedToothNumber);
+        } else if (normalized.length) {
+          selectedToothNumber = normalized[0];
+        } else {
+          selectedToothNumber = preferred !== null ? preferred : 8;
+        }
+      }
+
+      function toggleToothSelection(toothNumber, seedPoint) {
+        const normalized = normalizeToothNumber(toothNumber);
+        if (normalized === null) return;
+        const next = getSelectedTeethArray();
+        const index = next.indexOf(normalized);
+        if (index >= 0) {
+          next.splice(index, 1);
+          delete toothSeedPoints[normalized];
+        } else {
+          next.push(normalized);
+          if (seedPoint) {
+            toothSeedPoints[normalized] = seedPoint;
+          }
+        }
+        setSelectedTeeth(next, normalized);
+      }
+
+      function getSelectedTeethPayload() {
+        return JSON.stringify(getSelectedTeethArray());
       }
 
       function updateToothMapUi() {
         const current = getSelectedToothNumber();
         if (selectedToothLabel) {
-          selectedToothLabel.textContent = '#' + current;
+          const selected = getSelectedTeethArray();
+          selectedToothLabel.textContent = selected.length <= 0
+            ? 'None'
+            : (selected.length === 1 ? ('#' + selected[0]) : ('#' + current + ' +' + (selected.length - 1)));
         }
         toothSelectButtons.forEach(function (button) {
           const toothNumber = Number(button.getAttribute('data-tooth-number') || 0);
-          const isActive = toothNumber === current;
-          button.className = isActive
+          const isCurrent = toothNumber === current;
+          const isSelected = selectedTeeth.has(toothNumber);
+          button.className = isCurrent
             ? 'inline-flex min-h-8 items-center justify-center rounded-lg border border-rose-200/40 bg-rose-400/24 px-2 py-1 text-[11px] font-bold text-white shadow-[0_0_0_1px_rgba(255,255,255,0.10)]'
-            : 'inline-flex min-h-8 items-center justify-center rounded-lg border border-white/12 bg-white/8 px-2 py-1 text-[11px] font-bold text-white/78 hover:border-white/30 hover:bg-white/12';
-          button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            : (isSelected
+              ? 'inline-flex min-h-8 items-center justify-center rounded-lg border border-rose-200/26 bg-rose-400/14 px-2 py-1 text-[11px] font-bold text-white/92'
+              : 'inline-flex min-h-8 items-center justify-center rounded-lg border border-white/12 bg-white/8 px-2 py-1 text-[11px] font-bold text-white/78 hover:border-white/30 hover:bg-white/12');
+          button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         });
       }
 
       function chooseToothNumber(toothNumber) {
-        const parsed = Number(toothNumber);
-        selectedToothNumber = visibleUpperTeeth.includes(parsed) ? parsed : 8;
-        autoToothSelected = true;
+        toggleToothSelection(toothNumber, null);
         autoToothSelection = null;
-        manualToothSeedPoint = null;
         updateToothMapUi();
         render(readAnchorPoints());
+      }
+
+      function pointInPolygon(point, polygon) {
+        if (!point || !Array.isArray(polygon) || polygon.length < 3) {
+          return false;
+        }
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = Number(polygon[i].x || 0);
+          const yi = Number(polygon[i].y || 0);
+          const xj = Number(polygon[j].x || 0);
+          const yj = Number(polygon[j].y || 0);
+          const intersects = ((yi > point.y) !== (yj > point.y))
+            && (point.x < (((xj - xi) * (point.y - yi)) / Math.max(0.00001, (yj - yi))) + xi);
+          if (intersects) inside = !inside;
+        }
+        return inside;
       }
 
       function getToothNumberFromClick(clientX, clientY) {
@@ -431,6 +508,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const yPct = normalize(((clientY - imageRect.top) / imageRect.height) * 100, 0, 100);
         const slots = teethBounds && teethBounds.slots ? teethBounds.slots : null;
         if (slots) {
+          const point = { x: xPct, y: yPct };
+          for (let index = 0; index < visibleUpperTeeth.length; index += 1) {
+            const number = visibleUpperTeeth[index];
+            const slot = slots[number];
+            if (!slot || !Array.isArray(slot.contour) || slot.contour.length < 3) continue;
+            if (pointInPolygon(point, slot.contour)) {
+              return number;
+            }
+          }
           let bestNumber = getSelectedToothNumber();
           let bestScore = Number.POSITIVE_INFINITY;
           visibleUpperTeeth.forEach(function (number) {
@@ -454,10 +540,12 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       function seedToothSelectionFromClick(clientX, clientY) {
-        manualToothSeedPoint = displayPointToImage(clientX, clientY);
+        const seedPoint = displayPointToImage(clientX, clientY);
         const parsed = getToothNumberFromClick(clientX, clientY);
-        selectedToothNumber = visibleUpperTeeth.includes(parsed) ? parsed : 8;
-        autoToothSelected = true;
+        if (normalizeToothNumber(parsed) !== null) {
+          toothSeedPoints[parsed] = seedPoint;
+        }
+        toggleToothSelection(parsed, seedPoint);
         autoToothSelection = null;
         updateToothMapUi();
         render(readAnchorPoints());
@@ -549,13 +637,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       function displayPointToImage(clientX, clientY) {
-        const overlayRect = overlay.getBoundingClientRect();
         const imageRect = getVisibleImageRect();
-        const localX = clientX - overlayRect.left;
-        const localY = clientY - overlayRect.top;
         return {
-          x: Math.max(0, Math.min(100, (((localX - imageRect.left) / imageRect.width) * 100))),
-          y: Math.max(0, Math.min(100, (((localY - imageRect.top) / imageRect.height) * 100)))
+          x: Math.max(0, Math.min(100, (((clientX - imageRect.left) / imageRect.width) * 100))),
+          y: Math.max(0, Math.min(100, (((clientY - imageRect.top) / imageRect.height) * 100)))
         };
       }
 
@@ -580,6 +665,43 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
       }
 
+      function normalizeSelectedTeeth(value) {
+        const raw = String(value || '').trim();
+        if (!raw) {
+          return '[8]';
+        }
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const normalized = [];
+            parsed.forEach(function (entry) {
+              const number = Number.parseInt(entry, 10);
+              if (!Number.isFinite(number) || number <= 0 || number > 32) {
+                return;
+              }
+              if (!normalized.includes(number)) {
+                normalized.push(number);
+              }
+            });
+            return JSON.stringify(normalized);
+          }
+        } catch (error) {
+          // continue with fallback parsing below
+        }
+        const matches = raw.match(/-?\d+/g) || [];
+        const normalized = [];
+        matches.forEach(function (entry) {
+          const number = Number.parseInt(entry, 10);
+          if (!Number.isFinite(number) || number <= 0 || number > 32) {
+            return;
+          }
+          if (!normalized.includes(number)) {
+            normalized.push(number);
+          }
+        });
+        return JSON.stringify(normalized);
+      }
+
       function writeSelectionMode(value) {
         const input = form.querySelector('input[name="selection_mode"]');
         if (input) input.value = value;
@@ -592,8 +714,21 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       function writeSelectedTeeth(value) {
         const input = form.querySelector('input[name="selected_teeth"]');
-        if (input) input.value = value;
+        if (input) input.value = normalizeSelectedTeeth(value);
       }
+
+      function hydrateSelectedTeethFromInput() {
+        const input = form.querySelector('input[name="selected_teeth"]');
+        const raw = input ? normalizeSelectedTeeth(input.value) : '[8]';
+        try {
+          const parsed = JSON.parse(raw);
+          setSelectedTeeth(Array.isArray(parsed) ? parsed : [8]);
+        } catch (error) {
+          setSelectedTeeth([8]);
+        }
+      }
+
+      hydrateSelectedTeethFromInput();
 
       function writeBrushPayload(maskData, overlayData) {
         const maskInput = form.querySelector('input[name="brush_mask_data"]');
@@ -1684,12 +1819,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           brushMode = false;
           brushEraseMode = false;
           clearBrushSelection();
-          autoToothSelected = true;
         } else {
           clearBrushSelection();
           brushMode = false;
           brushEraseMode = false;
-          autoToothSelected = false;
         }
         updateBrushUi();
         updateModeUi();
@@ -1702,8 +1835,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }).join(' ');
       }
 
-      function detectSingleToothRegion(anchorPoints, contourPoints, seedPoint) {
-        const toothNumber = getSelectedToothNumber();
+      function detectSingleToothRegion(anchorPoints, contourPoints, seedPoint, toothNumberOverride) {
+        const toothNumber = normalizeToothNumber(toothNumberOverride) || getSelectedToothNumber();
         const teethBounds = getDetectedTeethBounds();
         const slotBounds = teethBounds && teethBounds.slots ? teethBounds.slots[toothNumber] : null;
         let sourceBounds = slotBounds || teethBounds || getPointBounds(contourPoints && contourPoints.length ? contourPoints : anchorPoints);
@@ -1819,11 +1952,21 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         };
       }
 
-      function renderAutoToothSelection(anchorPoints, contourPoints) {
-        if (!toothSelectLayer || !autoToothRegion || !autoToothLabel) return;
-        if (!autoToothSelection || !Array.isArray(autoToothSelection.polygon) || !autoToothSelection.polygon.length) {
-          autoToothSelection = detectSingleToothRegion(anchorPoints, contourPoints);
-        }
+      function buildSelectedToothSelections(anchorPoints, contourPoints) {
+        return getSelectedTeethArray().map(function (toothNumber) {
+          return detectSingleToothRegion(
+            anchorPoints,
+            contourPoints,
+            toothSeedPoints[toothNumber] || null,
+            toothNumber
+          );
+        }).filter(function (selection) {
+          return selection && Array.isArray(selection.polygon) && selection.polygon.length;
+        });
+      }
+
+      function renderAutoToothSelection(anchorPoints, contourPoints, selections) {
+        if (!toothSelectLayer) return;
         const imageRect = getDisplayImageRect();
         toothSelectLayer.style.left = imageRect.left + 'px';
         toothSelectLayer.style.top = imageRect.top + 'px';
@@ -1835,26 +1978,20 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         toothSelectLayer.classList.toggle('active', showSelection);
         toothSelectLayer.style.display = showSelection ? 'block' : 'none';
         toothSelectLayer.style.pointerEvents = editorMode === 'automatic' ? 'auto' : 'none';
-        autoToothRegion.setAttribute('points', polygonPointsAttribute(autoToothSelection.polygon));
-        autoToothRegion.setAttribute(
-          'fill',
-          editorMode === 'automatic'
-            ? (autoToothSelected ? 'rgba(244,63,94,0.56)' : 'rgba(148,163,184,0.18)')
-            : 'rgba(244,63,94,0.42)'
-        );
-        autoToothRegion.setAttribute('stroke', 'transparent');
-        autoToothRegion.setAttribute('stroke-width', '0');
-        const bounds = getPointBounds(autoToothSelection.polygon);
-        autoToothLabel.setAttribute('x', String((bounds.left + bounds.right) / 2));
-        autoToothLabel.setAttribute('y', String(bounds.top + ((bounds.bottom - bounds.top) * 0.44)));
-        autoToothLabel.textContent = autoToothSelection.label;
-        autoToothLabel.style.display = showSelection ? 'block' : 'none';
-        autoToothLabel.setAttribute(
-          'fill',
-          editorMode === 'automatic'
-            ? (autoToothSelected ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.60)')
-            : 'rgba(255,255,255,0.96)'
-        );
+        const selectedMarkup = (Array.isArray(selections) ? selections : []).map(function (selection) {
+          const bounds = getPointBounds(selection.polygon);
+          const isCurrent = selection.number === getSelectedToothNumber();
+          return ''
+            + '<g data-selected-tooth="' + selection.number + '">'
+            + '<polygon data-selected-tooth="' + selection.number + '" points="' + polygonPointsAttribute(selection.polygon) + '" fill="'
+            + (editorMode === 'automatic'
+              ? (isCurrent ? 'rgba(244,63,94,0.56)' : 'rgba(244,63,94,0.34)')
+              : 'rgba(244,63,94,0.42)')
+            + '" stroke="transparent" stroke-width="0" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
+            + '<text x="' + ((bounds.left + bounds.right) / 2) + '" y="' + (bounds.top + ((bounds.bottom - bounds.top) * 0.44)) + '" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="' + (isCurrent ? '700' : '600') + '">' + selection.label + '</text>'
+            + '</g>';
+        }).join('');
+        toothSelectLayer.innerHTML = selectedMarkup;
       }
 
       function getBrushPoint(event) {
@@ -1929,7 +2066,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         writeBrushPayload(payload.mask, payload.overlay);
         if (payload.mask) {
           writeSelectionMode('brush');
+          writeSelectedTeeth(getManualSelectionToothPayload());
+        } else {
+          writeSelectionMode(editorMode === 'manual' ? 'manual_single_tooth' : 'auto_single_tooth');
+          writeSelectedTeeth(getManualSelectionToothPayload());
         }
+      }
+
+      function getManualSelectionToothPayload() {
+        return getSelectedTeethPayload();
       }
 
       function saveBrushHistory() {
@@ -1972,6 +2117,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         brushHistory = [];
         writeBrushPayload('', '');
         writeSelectionMode(editorMode === 'manual' ? 'manual' : 'auto_single_tooth');
+        writeSelectedTeeth(getManualSelectionToothPayload());
       }
 
       function toggleBrushMode() {
@@ -2099,25 +2245,32 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (!isContourSane(maskPolygon, points)) {
           maskPolygon = getSmileMaskPolygon(points);
         }
+        const selectedToothList = getSelectedTeethArray();
+        const activeToothNumber = getSelectedToothNumber();
+        const activeSelection = selectedToothList.length
+          ? detectSingleToothRegion(points, maskPolygon, toothSeedPoints[activeToothNumber] || null, activeToothNumber)
+          : null;
+        const selectedToothRegions = selectedToothList.length
+          ? buildSelectedToothSelections(points, maskPolygon)
+          : [];
         if (editorMode === 'automatic') {
-          autoToothSelection = detectSingleToothRegion(points, maskPolygon, null);
-          renderAutoToothSelection(points, maskPolygon);
+          autoToothSelection = activeSelection;
+          renderAutoToothSelection(points, maskPolygon, selectedToothRegions);
           writeBrushPayload('', '');
           writeSelectionMode('auto_single_tooth');
-          writeSelectedTeeth(autoToothSelected && autoToothSelection ? JSON.stringify([autoToothSelection.number]) : '[]');
-          writeContourPoints(autoToothSelected && autoToothSelection ? autoToothSelection.polygon : []);
+          writeSelectedTeeth(getSelectedTeethPayload());
+          writeContourPoints(selectedToothList.length === 1 && activeSelection ? activeSelection.polygon : []);
         } else {
-          const manualSelection = detectSingleToothRegion(points, maskPolygon, manualToothSeedPoint);
-          autoToothSelection = manualSelection;
-          renderAutoToothSelection(points, maskPolygon);
+          autoToothSelection = activeSelection;
+          renderAutoToothSelection(points, maskPolygon, selectedToothRegions);
           if (brushMaskInput && brushMaskInput.value !== '') {
             writeSelectionMode('brush');
             writeContourPoints([]);
-            writeSelectedTeeth(JSON.stringify([getSelectedToothNumber()]));
+            writeSelectedTeeth(getSelectedTeethPayload());
           } else {
             writeSelectionMode('manual_single_tooth');
-            writeSelectedTeeth(JSON.stringify([manualSelection ? manualSelection.number : getSelectedToothNumber()]));
-            writeContourPoints(manualSelection && manualSelection.polygon ? manualSelection.polygon : []);
+            writeSelectedTeeth(getSelectedTeethPayload());
+            writeContourPoints(selectedToothList.length === 1 && activeSelection && activeSelection.polygon ? activeSelection.polygon : []);
           }
         }
         clearRetiredEditorLayer();
@@ -2628,7 +2781,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       if (workFrame) {
         workFrame.addEventListener('click', function (event) {
-          if (editorMode !== 'manual' || brushMode) return;
+          if (brushMode) return;
           const target = event.target;
           if (target && target.closest && (
             target.closest('#adjust-floating-controls')
@@ -2649,12 +2802,14 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
-      if (autoToothRegion) {
-        autoToothRegion.addEventListener('click', function (event) {
+      if (toothSelectLayer) {
+        toothSelectLayer.addEventListener('click', function (event) {
           if (editorMode !== 'automatic') return;
+          const polygon = event.target && event.target.closest ? event.target.closest('[data-selected-tooth]') : null;
+          if (!polygon) return;
           event.preventDefault();
           event.stopPropagation();
-          autoToothSelected = !autoToothSelected;
+          toggleToothSelection(polygon.getAttribute('data-selected-tooth'), null);
           render(readAnchorPoints());
         });
       }
@@ -2664,9 +2819,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           commitBrushSelection();
         } else {
           writeBrushPayload('', '');
-          writeSelectionMode('auto_single_tooth');
-          writeSelectedTeeth(autoToothSelected && autoToothSelection ? JSON.stringify([autoToothSelection.number]) : '[]');
-          writeContourPoints(autoToothSelected && autoToothSelection ? autoToothSelection.polygon : []);
+          writeSelectionMode(editorMode === 'manual' ? 'manual_single_tooth' : 'auto_single_tooth');
+          writeSelectedTeeth(getSelectedTeethPayload());
+          writeContourPoints(getSelectedTeethArray().length === 1 && autoToothSelection ? autoToothSelection.polygon : []);
         }
         if (loader) {
           if (loaderLabel) loaderLabel.textContent = 'Generating revision...';

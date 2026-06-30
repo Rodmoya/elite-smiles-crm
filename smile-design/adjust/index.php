@@ -1429,9 +1429,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const separatorScores = buildSeparatorScores(data, width, smileBounds, smileHeight);
         const valleys = findUpperToothValleys(colHits, separatorScores, smileBounds.minX, smileBounds.maxX, peakHit);
         const centerSeam = findCentralSeam(valleys, smileCenter, smileBounds.minX, smileBounds.maxX);
-        const expectedCentralWidth = Math.max(6, Math.round(smileWidth * 0.092));
-        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.56));
-        const maxGap = Math.max(8, Math.round(expectedCentralWidth * 1.45));
+        const expectedCentralWidth = Math.max(7, Math.round(smileWidth * 0.105));
+        const minGap = Math.max(5, Math.round(expectedCentralWidth * 0.82));
+        const maxGap = Math.max(10, Math.round(expectedCentralWidth * 1.95));
         const leftFallback = Math.max(smileBounds.minX, Math.round(centerSeam.x - expectedCentralWidth));
         const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
         const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
@@ -1492,9 +1492,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds8, hitCount8), 8);
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds9, hitCount9), 9);
 
-        const expectedLateralWidth = Math.max(5, Math.round(expectedCentralWidth * 0.72));
-        const lateralMinGap = Math.max(3, Math.round(expectedLateralWidth * 0.45));
-        const lateralMaxGap = Math.max(7, Math.round(expectedLateralWidth * 1.60));
+        const expectedLateralWidth = Math.max(6, Math.round(expectedCentralWidth * 0.82));
+        const lateralMinGap = Math.max(4, Math.round(expectedLateralWidth * 0.65));
+        const lateralMaxGap = Math.max(9, Math.round(expectedLateralWidth * 1.95));
         const lateralInnerGap = Math.max(1, Math.round(expectedLateralWidth * 0.10));
         const leftOuterValley = findNeighborValley(
           valleys,

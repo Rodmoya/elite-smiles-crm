@@ -1152,8 +1152,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           : fallbackCenter;
         const expectedWidth = expectedToothBounds ? Math.max(1, ((expectedToothBounds.right - expectedToothBounds.left) / 100) * canvasWidth) : Math.max(8, (sourceBounds.right - sourceBounds.left) * 0.10 * canvasWidth / 100);
         const expectedHeight = expectedToothBounds ? Math.max(1, ((expectedToothBounds.bottom - expectedToothBounds.top) / 100) * canvasHeight) : Math.max(8, (sourceBounds.bottom - sourceBounds.top) * 0.12 * canvasHeight / 100);
-        const cropWidth = normalize(expectedWidth * 1.90, Math.max(16, canvasWidth * 0.020), Math.min(canvasWidth, canvasWidth * 0.20));
-        const cropHeight = normalize(expectedHeight * 1.95, Math.max(16, canvasHeight * 0.035), Math.min(canvasHeight, canvasHeight * 0.20));
+        const cropWidth = normalize(expectedWidth * 2.45, Math.max(18, canvasWidth * 0.024), Math.min(canvasWidth, canvasWidth * 0.24));
+        const cropHeight = normalize(expectedHeight * 2.35, Math.max(18, canvasHeight * 0.040), Math.min(canvasHeight, canvasHeight * 0.24));
         const cropRect = clampRect({
           minX: seedCanvasPoint.x - (cropWidth / 2),
           maxX: seedCanvasPoint.x + (cropWidth / 2),
@@ -1167,10 +1167,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           bottom: (cropRect.maxY / canvasHeight) * 100
         };
         const focusRect = clampRect({
-          minX: ((focusRectSource.left / 100) * canvasWidth) - Math.max(2, expectedWidth * 0.10),
-          maxX: ((focusRectSource.right / 100) * canvasWidth) + Math.max(2, expectedWidth * 0.10),
-          minY: ((focusRectSource.top / 100) * canvasHeight) - Math.max(2, expectedHeight * 0.12),
-          maxY: ((focusRectSource.bottom / 100) * canvasHeight) + Math.max(2, expectedHeight * 0.14)
+          minX: ((focusRectSource.left / 100) * canvasWidth) - Math.max(3, expectedWidth * 0.14),
+          maxX: ((focusRectSource.right / 100) * canvasWidth) + Math.max(3, expectedWidth * 0.14),
+          minY: ((focusRectSource.top / 100) * canvasHeight) - Math.max(3, expectedHeight * 0.16),
+          maxY: ((focusRectSource.bottom / 100) * canvasHeight) + Math.max(3, expectedHeight * 0.20)
         }, canvasWidth, canvasHeight);
         const localWidth = cropRect.maxX - cropRect.minX + 1;
         const localHeight = cropRect.maxY - cropRect.minY + 1;
@@ -1199,7 +1199,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             toothHits += 1;
           }
         }
-        if (toothHits < 20) {
+        if (toothHits < 8) {
           return null;
         }
         let localSeedX = Math.max(0, Math.min(localWidth - 1, Math.round(seedCanvasPoint.x - cropRect.minX)));
@@ -1215,7 +1215,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           return null;
         }
         const component = floodFillComponentMask(localMask, localWidth, localHeight, localSeedX, localSeedY);
-        if (!component || component.count < 20) {
+        if (!component || component.count < 10) {
           return null;
         }
         const componentBounds = component.bounds;

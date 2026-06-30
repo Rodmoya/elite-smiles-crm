@@ -2119,38 +2119,73 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const midX = centerX;
         const shoulder = width * 0.18;
         const baseInset = width * 0.08;
-        const buildCentralIncisorFallback = function () {
-          const crownInset = width * 0.10;
-          const topLift = height * 0.08;
-          const gumDip = width * 0.09;
-          const sideBulge = width * 0.035;
-          const lowerCurve = height * 0.08;
+        const buildCentralIncisorFallback = function (variant) {
+          const isTooth9 = variant === 9;
+          const crownInset = width * 0.13;
+          const topLift = height * 0.10;
+          const gumDip = width * (isTooth9 ? 0.07 : 0.08);
+          const sideBulge = width * 0.020;
+          const lowerCurve = height * 0.06;
           return {
-            number: toothNumber,
-            label: '#' + toothNumber,
+            number: variant,
+            label: '#' + variant,
             polygon: densifyPolygonPoints([
               clampPoint({ x: left + crownInset, y: top + topLift }),
-              clampPoint({ x: midX - (width * 0.22), y: top }),
+              clampPoint({ x: midX - (width * 0.18), y: top }),
               clampPoint({ x: midX - gumDip, y: top + (topLift * 0.45) }),
               clampPoint({ x: midX + gumDip, y: top + (topLift * 0.45) }),
-              clampPoint({ x: midX + (width * 0.22), y: top }),
+              clampPoint({ x: midX + (width * 0.18), y: top }),
               clampPoint({ x: right - crownInset, y: top + topLift }),
               clampPoint({ x: right + sideBulge, y: top + (height * 0.30) }),
-              clampPoint({ x: right, y: bottom - (height * 0.18) }),
-              clampPoint({ x: right - (width * 0.05), y: bottom - lowerCurve }),
-              clampPoint({ x: midX + (width * 0.20), y: bottom }),
-              clampPoint({ x: midX, y: bottom + (height * 0.015) }),
-              clampPoint({ x: midX - (width * 0.20), y: bottom }),
-              clampPoint({ x: left + (width * 0.05), y: bottom - lowerCurve }),
-              clampPoint({ x: left, y: bottom - (height * 0.18) }),
+              clampPoint({ x: right, y: bottom - (height * 0.16) }),
+              clampPoint({ x: right - (width * 0.045), y: bottom - lowerCurve }),
+              clampPoint({ x: midX + (width * 0.16), y: bottom }),
+              clampPoint({ x: midX, y: bottom + (height * 0.008) }),
+              clampPoint({ x: midX - (width * 0.16), y: bottom }),
+              clampPoint({ x: left + (width * 0.045), y: bottom - lowerCurve }),
+              clampPoint({ x: left, y: bottom - (height * 0.16) }),
               clampPoint({ x: left - sideBulge, y: top + (height * 0.30) })
             ]),
             source: 'central_incisor_fallback'
           };
         };
+        const buildTooth8Fallback = function () {
+          const crownInset = width * 0.14;
+          const topLift = height * 0.10;
+          const seamDip = width * 0.060;
+          const outerDip = width * 0.095;
+          const outerBulge = width * 0.026;
+          const innerBulge = width * 0.014;
+          const lowerCurve = height * 0.060;
+          return {
+            number: 8,
+            label: '#8',
+            polygon: densifyPolygonPoints([
+              clampPoint({ x: left + crownInset, y: top + (topLift * 1.05) }),
+              clampPoint({ x: midX - (width * 0.18), y: top + (topLift * 0.10) }),
+              clampPoint({ x: midX - outerDip, y: top }),
+              clampPoint({ x: midX + seamDip, y: top + (topLift * 0.50) }),
+              clampPoint({ x: midX + (width * 0.19), y: top + (topLift * 0.18) }),
+              clampPoint({ x: right - crownInset, y: top + topLift }),
+              clampPoint({ x: right + innerBulge, y: top + (height * 0.28) }),
+              clampPoint({ x: right, y: bottom - (height * 0.14) }),
+              clampPoint({ x: right - (width * 0.038), y: bottom - lowerCurve }),
+              clampPoint({ x: midX + (width * 0.145), y: bottom }),
+              clampPoint({ x: midX - (width * 0.010), y: bottom + (height * 0.006) }),
+              clampPoint({ x: midX - (width * 0.17), y: bottom - (height * 0.004) }),
+              clampPoint({ x: left + (width * 0.055), y: bottom - lowerCurve }),
+              clampPoint({ x: left, y: bottom - (height * 0.17) }),
+              clampPoint({ x: left - outerBulge, y: top + (height * 0.31) })
+            ]),
+            source: 'tooth_8_fallback'
+          };
+        };
         if (isSingleToothBounds) {
-          if (toothNumber === 8 || toothNumber === 9) {
-            return buildCentralIncisorFallback();
+          if (toothNumber === 8) {
+            return buildTooth8Fallback();
+          }
+          if (toothNumber === 9) {
+            return buildCentralIncisorFallback(9);
           }
           const crownInset = width * 0.08;
           const sideBulge = width * 0.025;

@@ -1466,8 +1466,25 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           (centerSeam.x + rightBoundary) / 2,
           expectedCentralWidth
         );
+        const harmonizeCentralBounds = function (leftBounds, rightBounds) {
+          const rightWidth = Math.max(1, rightBounds.maxX - rightBounds.minX + 1);
+          const targetWidth = Math.max(
+            Math.round(expectedCentralWidth * 0.92),
+            Math.min(
+              Math.round(expectedCentralWidth * 1.18),
+              rightWidth
+            )
+          );
+          const rightEdge = Math.round(centerSeam.x - seamGap);
+          const leftEdge = Math.max(smileBounds.minX, rightEdge - targetWidth + 1);
+          return {
+            minX: leftEdge,
+            maxX: rightEdge
+          };
+        };
+        const normalizedBounds8 = harmonizeCentralBounds(bounds8, bounds9);
         const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
-        const boundsList = [bounds8, bounds9].filter(function (bounds) {
+        const boundsList = [normalizedBounds8, bounds9].filter(function (bounds) {
           return bounds.maxX > bounds.minX && (bounds.maxX - bounds.minX + 1) >= minSegmentWidth;
         });
         if (!boundsList.length) return null;
@@ -1486,10 +1503,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           };
         };
         let hitCount8 = 0;
-        for (let x = bounds8.minX; x <= bounds8.maxX; x += 1) hitCount8 += colHits[x] || 0;
+        for (let x = normalizedBounds8.minX; x <= normalizedBounds8.maxX; x += 1) hitCount8 += colHits[x] || 0;
         let hitCount9 = 0;
         for (let x = bounds9.minX; x <= bounds9.maxX; x += 1) hitCount9 += colHits[x] || 0;
-        assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds8, hitCount8), 8);
+        assignSegment(buildToothSegment(mask, width, height, smileBounds, normalizedBounds8, hitCount8), 8);
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds9, hitCount9), 9);
 
         const expectedLateralWidth = Math.max(6, Math.round(expectedCentralWidth * 0.82));
@@ -1498,9 +1515,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const lateralInnerGap = Math.max(1, Math.round(expectedLateralWidth * 0.10));
         const leftOuterValley = findNeighborValley(
           valleys,
-          bounds8.minX,
+          normalizedBounds8.minX,
           -1,
-          Math.max(smileBounds.minX, bounds8.minX - expectedLateralWidth),
+          Math.max(smileBounds.minX, normalizedBounds8.minX - expectedLateralWidth),
           lateralMinGap,
           lateralMaxGap
         );

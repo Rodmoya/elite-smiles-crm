@@ -2150,30 +2150,30 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           };
         };
         const buildTooth8Fallback = function () {
-          const crownInset = width * 0.14;
-          const topLift = height * 0.10;
-          const seamDip = width * 0.060;
-          const outerDip = width * 0.095;
-          const outerBulge = width * 0.026;
-          const innerBulge = width * 0.014;
-          const lowerCurve = height * 0.060;
+          const crownInset = width * 0.16;
+          const topLift = height * 0.11;
+          const seamDip = width * 0.050;
+          const outerDip = width * 0.120;
+          const outerBulge = width * 0.018;
+          const innerBulge = width * 0.010;
+          const lowerCurve = height * 0.055;
           return {
             number: 8,
             label: '#8',
             polygon: densifyPolygonPoints([
-              clampPoint({ x: left + crownInset, y: top + (topLift * 1.05) }),
-              clampPoint({ x: midX - (width * 0.18), y: top + (topLift * 0.10) }),
+              clampPoint({ x: left + crownInset, y: top + (topLift * 1.08) }),
+              clampPoint({ x: midX - (width * 0.16), y: top + (topLift * 0.14) }),
               clampPoint({ x: midX - outerDip, y: top }),
               clampPoint({ x: midX + seamDip, y: top + (topLift * 0.50) }),
-              clampPoint({ x: midX + (width * 0.19), y: top + (topLift * 0.18) }),
-              clampPoint({ x: right - crownInset, y: top + topLift }),
-              clampPoint({ x: right + innerBulge, y: top + (height * 0.28) }),
-              clampPoint({ x: right, y: bottom - (height * 0.14) }),
-              clampPoint({ x: right - (width * 0.038), y: bottom - lowerCurve }),
-              clampPoint({ x: midX + (width * 0.145), y: bottom }),
+              clampPoint({ x: midX + (width * 0.16), y: top + (topLift * 0.22) }),
+              clampPoint({ x: right - crownInset, y: top + (topLift * 0.98) }),
+              clampPoint({ x: right + innerBulge, y: top + (height * 0.27) }),
+              clampPoint({ x: right, y: bottom - (height * 0.13) }),
+              clampPoint({ x: right - (width * 0.032), y: bottom - lowerCurve }),
+              clampPoint({ x: midX + (width * 0.125), y: bottom }),
               clampPoint({ x: midX - (width * 0.010), y: bottom + (height * 0.006) }),
-              clampPoint({ x: midX - (width * 0.17), y: bottom - (height * 0.004) }),
-              clampPoint({ x: left + (width * 0.055), y: bottom - lowerCurve }),
+              clampPoint({ x: midX - (width * 0.145), y: bottom - (height * 0.004) }),
+              clampPoint({ x: left + (width * 0.046), y: bottom - lowerCurve }),
               clampPoint({ x: left, y: bottom - (height * 0.17) }),
               clampPoint({ x: left - outerBulge, y: top + (height * 0.31) })
             ]),

@@ -4217,6 +4217,22 @@ $consultationOptions = [
 
     }
 
+    function buildDraftInstruction(channel) {
+
+        const baseInstruction = defaultAiInstruction(channel);
+        const extraInstruction = getAiInstructionValue();
+
+        if (!extraInstruction) {
+            return baseInstruction;
+        }
+
+        return [
+            baseInstruction,
+            `Operator instruction: ${extraInstruction}`
+        ].join('\n\n');
+
+    }
+
     function applyDraftedFollowUp(value) {
 
         const normalized = String(value || '').trim();
@@ -6277,7 +6293,7 @@ function applyCommunicationViewportFit() {
         setAiStatusMessage('Drafting SMS...');
 
         try {
-            const instruction = getAiInstructionValue() || defaultAiInstruction('sms');
+            const instruction = buildDraftInstruction('sms');
             const data = await requestSmsDraft(prepared.leadId, instruction);
 
             if (smsInput) smsInput.value = data.draft?.reply || '';
@@ -6315,7 +6331,7 @@ function applyCommunicationViewportFit() {
         setAiStatusMessage('Drafting email...');
 
         try {
-            const instruction = getAiInstructionValue() || defaultAiInstruction('email');
+            const instruction = buildDraftInstruction('email');
             const data = await requestEmailDraft(prepared.leadId, instruction);
 
             if (emailSubjectInput) emailSubjectInput.value = data.draft?.subject || '';
@@ -6350,9 +6366,6 @@ function applyCommunicationViewportFit() {
             return false;
         }
 
-        if (smsTemplateSelect) smsTemplateSelect.value = '';
-
-        const originalInstruction = aiInstructionInput ? aiInstructionInput.value : '';
         const improveInstruction = buildImproveInstruction('sms');
 
         if (!improveInstruction) {
@@ -6360,12 +6373,35 @@ function applyCommunicationViewportFit() {
             return false;
         }
 
-        if (aiInstructionInput) aiInstructionInput.value = improveInstruction;
+        const prepared = await ensureLeadReadyForAi('sms');
+        if (!prepared) return false;
 
         try {
-            return await draftLeadSms();
+            isDraftingSms = true;
+            refreshAiDraftUi();
+            if (sendSmsButton) sendSmsButton.disabled = true;
+            if (smsStatus) smsStatus.textContent = 'Improving SMS with AI...';
+            setAiStatusMessage('Improving SMS...');
+
+            const data = await requestSmsDraft(prepared.leadId, improveInstruction, 'operator_improve_sms');
+
+            if (smsInput) smsInput.value = data.draft?.reply || currentMessage;
+            setComposerDraftSource('sms', 'ai');
+            if (smsStatus) smsStatus.textContent = 'SMS improved. Review before sending.';
+            setAiStatusMessage('SMS improved.');
+            refreshComposerSafetyCue();
+
+            await loadLeadThread();
+            return true;
+        } catch (error) {
+            if (smsStatus) smsStatus.textContent = error.message || 'Failed to improve SMS.';
+            setAiStatusMessage(error.message || 'Failed to improve SMS.');
+            return false;
         } finally {
-            if (aiInstructionInput) aiInstructionInput.value = originalInstruction;
+            isDraftingSms = false;
+            if (sendSmsButton) sendSmsButton.disabled = false;
+            refreshAiDraftUi();
+            setSmsOptUi(activeCard?.dataset.leadSmsOptStatus || 'unknown');
         }
 
     }
@@ -6381,7 +6417,6 @@ function applyCommunicationViewportFit() {
             return false;
         }
 
-        const originalInstruction = aiInstructionInput ? aiInstructionInput.value : '';
         const improveInstruction = buildImproveInstruction('email');
 
         if (!improveInstruction) {
@@ -6389,12 +6424,36 @@ function applyCommunicationViewportFit() {
             return false;
         }
 
-        if (aiInstructionInput) aiInstructionInput.value = improveInstruction;
+        const prepared = await ensureLeadReadyForAi('email');
+        if (!prepared) return false;
 
         try {
-            return await draftLeadEmail();
+            isDraftingEmail = true;
+            refreshAiDraftUi();
+            if (sendEmailButton) sendEmailButton.disabled = true;
+            if (emailStatus) emailStatus.textContent = 'Improving email with AI...';
+            setAiStatusMessage('Improving email...');
+
+            const data = await requestEmailDraft(prepared.leadId, improveInstruction, 'operator_improve_email');
+
+            if (emailSubjectInput) emailSubjectInput.value = data.draft?.subject || currentSubject;
+            if (emailBodyInput) emailBodyInput.value = data.draft?.body || currentBody;
+            setComposerDraftSource('email', 'ai');
+            applyDraftedFollowUp(data.draft?.next_follow_up_at || '');
+            if (emailStatus) emailStatus.textContent = 'Email improved. Review before sending.';
+            setAiStatusMessage('Email improved.');
+            refreshComposerSafetyCue();
+
+            await loadLeadThread();
+            return true;
+        } catch (error) {
+            if (emailStatus) emailStatus.textContent = error.message || 'Failed to improve email.';
+            setAiStatusMessage(error.message || 'Failed to improve email.');
+            return false;
         } finally {
-            if (aiInstructionInput) aiInstructionInput.value = originalInstruction;
+            isDraftingEmail = false;
+            if (sendEmailButton) sendEmailButton.disabled = false;
+            refreshAiDraftUi();
         }
 
     }
@@ -6415,7 +6474,7 @@ function applyCommunicationViewportFit() {
         setAiStatusMessage('Drafting SMS and email...');
 
         try {
-            const baseInstruction = getAiInstructionValue() || defaultAiInstruction('both');
+            const baseInstruction = buildDraftInstruction('both');
             const emailData = await requestEmailDraft(prepared.leadId, baseInstruction, 'operator_follow_up_email');
             const smsData = await requestSmsDraft(prepared.leadId, baseInstruction, 'operator_follow_up_sms');
 

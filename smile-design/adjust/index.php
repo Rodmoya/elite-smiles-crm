@@ -1391,6 +1391,24 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return sorted[0].x;
       }
 
+      function buildNeighborToothBounds(innerBounds, outerValley, smileBounds, expectedWidth, direction) {
+        const width = Math.max(5, Math.round(expectedWidth));
+        if (direction < 0) {
+          const maxX = Math.max(smileBounds.minX + 1, innerBounds.minX - 1);
+          const minX = Math.max(smileBounds.minX, Math.min(outerValley + 1, maxX - width + 1));
+          return {
+            minX,
+            maxX
+          };
+        }
+        const minX = Math.min(smileBounds.maxX - 1, innerBounds.maxX + 1);
+        const maxX = Math.min(smileBounds.maxX, Math.max(outerValley - 1, minX + width - 1));
+        return {
+          minX,
+          maxX
+        };
+      }
+
       function buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 8 || smileHeight < 4) return null;
@@ -1452,6 +1470,38 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         for (let x = bounds9.minX; x <= bounds9.maxX; x += 1) hitCount9 += colHits[x] || 0;
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds8, hitCount8), 8);
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds9, hitCount9), 9);
+
+        const expectedLateralWidth = Math.max(5, Math.round(expectedCentralWidth * 0.82));
+        const lateralMinGap = Math.max(3, Math.round(expectedLateralWidth * 0.45));
+        const lateralMaxGap = Math.max(7, Math.round(expectedLateralWidth * 1.60));
+        const leftOuterValley = findNeighborValley(
+          valleys,
+          bounds8.minX,
+          -1,
+          Math.max(smileBounds.minX, bounds8.minX - expectedLateralWidth),
+          lateralMinGap,
+          lateralMaxGap
+        );
+        const rightOuterValley = findNeighborValley(
+          valleys,
+          bounds9.maxX,
+          1,
+          Math.min(smileBounds.maxX, bounds9.maxX + expectedLateralWidth),
+          lateralMinGap,
+          lateralMaxGap
+        );
+        const bounds7 = buildNeighborToothBounds(bounds8, leftOuterValley, smileBounds, expectedLateralWidth, -1);
+        const bounds10 = buildNeighborToothBounds(bounds9, rightOuterValley, smileBounds, expectedLateralWidth, 1);
+        if (bounds7.maxX > bounds7.minX && (bounds7.maxX - bounds7.minX + 1) >= Math.max(4, minSegmentWidth - 1)) {
+          let hitCount7 = 0;
+          for (let x = bounds7.minX; x <= bounds7.maxX; x += 1) hitCount7 += colHits[x] || 0;
+          assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds7, hitCount7), 7);
+        }
+        if (bounds10.maxX > bounds10.minX && (bounds10.maxX - bounds10.minX + 1) >= Math.max(4, minSegmentWidth - 1)) {
+          let hitCount10 = 0;
+          for (let x = bounds10.minX; x <= bounds10.maxX; x += 1) hitCount10 += colHits[x] || 0;
+          assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds10, hitCount10), 10);
+        }
         return Object.keys(slots).length ? slots : null;
       }
 

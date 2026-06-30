@@ -1391,17 +1391,18 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return sorted[0].x;
       }
 
-      function buildNeighborToothBounds(innerBounds, outerValley, smileBounds, expectedWidth, direction) {
+      function buildNeighborToothBounds(innerBounds, outerValley, smileBounds, expectedWidth, direction, innerGap) {
         const width = Math.max(5, Math.round(expectedWidth));
+        const gap = Math.max(1, innerGap || 1);
         if (direction < 0) {
-          const maxX = Math.max(smileBounds.minX + 1, innerBounds.minX - 1);
+          const maxX = Math.max(smileBounds.minX + 1, innerBounds.minX - gap);
           const minX = Math.max(smileBounds.minX, Math.min(outerValley + 1, maxX - width + 1));
           return {
             minX,
             maxX
           };
         }
-        const minX = Math.min(smileBounds.maxX - 1, innerBounds.maxX + 1);
+        const minX = Math.min(smileBounds.maxX - 1, innerBounds.maxX + gap);
         const maxX = Math.min(smileBounds.maxX, Math.max(outerValley - 1, minX + width - 1));
         return {
           minX,
@@ -1471,9 +1472,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds8, hitCount8), 8);
         assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds9, hitCount9), 9);
 
-        const expectedLateralWidth = Math.max(5, Math.round(expectedCentralWidth * 0.82));
+        const expectedLateralWidth = Math.max(5, Math.round(expectedCentralWidth * 0.72));
         const lateralMinGap = Math.max(3, Math.round(expectedLateralWidth * 0.45));
         const lateralMaxGap = Math.max(7, Math.round(expectedLateralWidth * 1.60));
+        const lateralInnerGap = Math.max(2, Math.round(expectedLateralWidth * 0.18));
         const leftOuterValley = findNeighborValley(
           valleys,
           bounds8.minX,
@@ -1490,8 +1492,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           lateralMinGap,
           lateralMaxGap
         );
-        const bounds7 = buildNeighborToothBounds(bounds8, leftOuterValley, smileBounds, expectedLateralWidth, -1);
-        const bounds10 = buildNeighborToothBounds(bounds9, rightOuterValley, smileBounds, expectedLateralWidth, 1);
+        const bounds7 = buildNeighborToothBounds(bounds8, leftOuterValley, smileBounds, expectedLateralWidth, -1, lateralInnerGap);
+        const bounds10 = buildNeighborToothBounds(bounds9, rightOuterValley, smileBounds, expectedLateralWidth, 1, lateralInnerGap);
         if (bounds7.maxX > bounds7.minX && (bounds7.maxX - bounds7.minX + 1) >= Math.max(4, minSegmentWidth - 1)) {
           let hitCount7 = 0;
           for (let x = bounds7.minX; x <= bounds7.maxX; x += 1) hitCount7 += colHits[x] || 0;

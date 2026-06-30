@@ -1436,16 +1436,36 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
         const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
         const rightBoundary = findNeighborValley(valleys, centerSeam.x, 1, rightFallback, minGap, maxGap);
-        const seamInset = Math.max(2, Math.round(expectedCentralWidth * 0.18));
-        const outerInset = Math.max(1, Math.round(expectedCentralWidth * 0.10));
-        const bounds8 = {
-          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + outerInset, centerSeam.x - (seamInset + 2))),
-          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - seamInset))
+        const seamGap = Math.max(1, Math.round(expectedCentralWidth * 0.07));
+        const dividerInset = Math.max(1, Math.round(expectedCentralWidth * 0.04));
+        const buildSegmentBounds = function (leftCut, rightCut, fallbackCenter, fallbackWidth) {
+          const safeLeft = Math.max(smileBounds.minX, Math.min(leftCut, rightCut - 2));
+          const safeRight = Math.min(smileBounds.maxX, Math.max(rightCut, safeLeft + 2));
+          const naturalWidth = safeRight - safeLeft + 1;
+          if (naturalWidth >= Math.max(5, fallbackWidth * 0.70)) {
+            return {
+              minX: safeLeft,
+              maxX: safeRight
+            };
+          }
+          const halfWidth = Math.max(3, Math.round(fallbackWidth / 2));
+          return {
+            minX: Math.max(smileBounds.minX, Math.round(fallbackCenter - halfWidth)),
+            maxX: Math.min(smileBounds.maxX, Math.round(fallbackCenter + halfWidth))
+          };
         };
-        const bounds9 = {
-          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + seamInset)),
-          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - outerInset, centerSeam.x + seamInset + 2))
-        };
+        const bounds8 = buildSegmentBounds(
+          leftBoundary + dividerInset,
+          centerSeam.x - seamGap,
+          (leftBoundary + centerSeam.x) / 2,
+          expectedCentralWidth
+        );
+        const bounds9 = buildSegmentBounds(
+          centerSeam.x + seamGap,
+          rightBoundary - dividerInset,
+          (centerSeam.x + rightBoundary) / 2,
+          expectedCentralWidth
+        );
         const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
         const boundsList = [bounds8, bounds9].filter(function (bounds) {
           return bounds.maxX > bounds.minX && (bounds.maxX - bounds.minX + 1) >= minSegmentWidth;
@@ -1475,7 +1495,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const expectedLateralWidth = Math.max(5, Math.round(expectedCentralWidth * 0.72));
         const lateralMinGap = Math.max(3, Math.round(expectedLateralWidth * 0.45));
         const lateralMaxGap = Math.max(7, Math.round(expectedLateralWidth * 1.60));
-        const lateralInnerGap = Math.max(2, Math.round(expectedLateralWidth * 0.18));
+        const lateralInnerGap = Math.max(1, Math.round(expectedLateralWidth * 0.10));
         const leftOuterValley = findNeighborValley(
           valleys,
           bounds8.minX,
@@ -1492,8 +1512,18 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           lateralMinGap,
           lateralMaxGap
         );
-        const bounds7 = buildNeighborToothBounds(bounds8, leftOuterValley, smileBounds, expectedLateralWidth, -1, lateralInnerGap);
-        const bounds10 = buildNeighborToothBounds(bounds9, rightOuterValley, smileBounds, expectedLateralWidth, 1, lateralInnerGap);
+        const bounds7 = buildSegmentBounds(
+          leftOuterValley + dividerInset,
+          leftBoundary - lateralInnerGap,
+          (leftOuterValley + leftBoundary) / 2,
+          expectedLateralWidth
+        );
+        const bounds10 = buildSegmentBounds(
+          rightBoundary + lateralInnerGap,
+          rightOuterValley - dividerInset,
+          (rightBoundary + rightOuterValley) / 2,
+          expectedLateralWidth
+        );
         if (bounds7.maxX > bounds7.minX && (bounds7.maxX - bounds7.minX + 1) >= Math.max(4, minSegmentWidth - 1)) {
           let hitCount7 = 0;
           for (let x = bounds7.minX; x <= bounds7.maxX; x += 1) hitCount7 += colHits[x] || 0;

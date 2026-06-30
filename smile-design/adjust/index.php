@@ -1507,6 +1507,34 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return Object.keys(slots).length ? slots : null;
       }
 
+      function buildUpperTeethMassContour(mask, width, height, smileBounds) {
+        const expandedBounds = {
+          minX: Math.max(0, smileBounds.minX - 2),
+          maxX: Math.min(width - 1, smileBounds.maxX + 2),
+          minY: Math.max(0, smileBounds.minY - 2),
+          maxY: Math.min(height - 1, smileBounds.maxY + 2)
+        };
+        const contour = buildToothPixelContour(mask, width, height, expandedBounds);
+        if (contour.length >= 8) {
+          return {
+            contour,
+            bounds: getPointBounds(contour),
+            source: 'upper_teeth_mass_contour'
+          };
+        }
+        const fallback = pointBoundsFromPixelBounds(expandedBounds, width, height);
+        return {
+          contour: densifyPolygonPoints([
+            { x: fallback.left, y: fallback.top },
+            { x: fallback.right, y: fallback.top },
+            { x: fallback.right, y: fallback.bottom },
+            { x: fallback.left, y: fallback.bottom }
+          ]),
+          bounds: fallback,
+          source: 'upper_teeth_mass_box'
+        };
+      }
+
       function detectTeethBoundsFromImage(sourceImage) {
         if (!sourceImage || !sourceImage.naturalWidth || !sourceImage.naturalHeight) {
           return null;
@@ -1667,17 +1695,18 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (smileWidth < width * 0.035 || smileHeight < height * 0.018) {
           return null;
         }
+        const upperTeethMass = buildUpperTeethMassContour(mask, width, height, smileBounds);
         const upperToothSlots = buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight);
         if (upperToothSlots) {
           const selectedSlot = upperToothSlots[8] || upperToothSlots[9] || upperToothSlots[Number(Object.keys(upperToothSlots)[0])];
           return {
-            left: selectedSlot.left,
-            right: selectedSlot.right,
-            top: selectedSlot.top,
-            bottom: selectedSlot.bottom,
-            contour: selectedSlot.contour,
+            left: upperTeethMass.bounds.left,
+            right: upperTeethMass.bounds.right,
+            top: upperTeethMass.bounds.top,
+            bottom: upperTeethMass.bounds.bottom,
+            contour: upperTeethMass.contour,
             slots: upperToothSlots,
-            source: selectedSlot.source
+            source: upperTeethMass.source
           };
         }
         const targetX = ((smileBounds.minX + smileBounds.maxX) / 2) - (smileWidth * 0.055);

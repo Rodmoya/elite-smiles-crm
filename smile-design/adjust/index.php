@@ -2119,7 +2119,39 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const midX = centerX;
         const shoulder = width * 0.18;
         const baseInset = width * 0.08;
+        const buildCentralIncisorFallback = function () {
+          const crownInset = width * 0.10;
+          const topLift = height * 0.08;
+          const gumDip = width * 0.09;
+          const sideBulge = width * 0.035;
+          const lowerCurve = height * 0.08;
+          return {
+            number: toothNumber,
+            label: '#' + toothNumber,
+            polygon: densifyPolygonPoints([
+              clampPoint({ x: left + crownInset, y: top + topLift }),
+              clampPoint({ x: midX - (width * 0.22), y: top }),
+              clampPoint({ x: midX - gumDip, y: top + (topLift * 0.45) }),
+              clampPoint({ x: midX + gumDip, y: top + (topLift * 0.45) }),
+              clampPoint({ x: midX + (width * 0.22), y: top }),
+              clampPoint({ x: right - crownInset, y: top + topLift }),
+              clampPoint({ x: right + sideBulge, y: top + (height * 0.30) }),
+              clampPoint({ x: right, y: bottom - (height * 0.18) }),
+              clampPoint({ x: right - (width * 0.05), y: bottom - lowerCurve }),
+              clampPoint({ x: midX + (width * 0.20), y: bottom }),
+              clampPoint({ x: midX, y: bottom + (height * 0.015) }),
+              clampPoint({ x: midX - (width * 0.20), y: bottom }),
+              clampPoint({ x: left + (width * 0.05), y: bottom - lowerCurve }),
+              clampPoint({ x: left, y: bottom - (height * 0.18) }),
+              clampPoint({ x: left - sideBulge, y: top + (height * 0.30) })
+            ]),
+            source: 'central_incisor_fallback'
+          };
+        };
         if (isSingleToothBounds) {
+          if (toothNumber === 8 || toothNumber === 9) {
+            return buildCentralIncisorFallback();
+          }
           const crownInset = width * 0.08;
           const sideBulge = width * 0.025;
           return {

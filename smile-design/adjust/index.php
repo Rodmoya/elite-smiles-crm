@@ -1407,13 +1407,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
         const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
         const rightBoundary = findNeighborValley(valleys, centerSeam.x, 1, rightFallback, minGap, maxGap);
+        const seamInset = Math.max(2, Math.round(expectedCentralWidth * 0.18));
+        const outerInset = Math.max(1, Math.round(expectedCentralWidth * 0.10));
         const bounds8 = {
-          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 3)),
-          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - 2))
+          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + outerInset, centerSeam.x - (seamInset + 2))),
+          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - seamInset))
         };
         const bounds9 = {
-          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + 2)),
-          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 2))
+          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + seamInset)),
+          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - outerInset, centerSeam.x + seamInset + 2))
         };
         const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
         const boundsList = [bounds8, bounds9].filter(function (bounds) {

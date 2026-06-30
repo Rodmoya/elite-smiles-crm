@@ -1284,9 +1284,19 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           minY: Math.max(0, smileBounds.minY - Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.08)),
           maxY: Math.min(height - 1, smileBounds.maxY + Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.10))
         };
-        const contour = buildToothPixelContour(contourMask, width, height, paddedBounds);
+        const rawContour = buildToothPixelContour(contourMask, width, height, paddedBounds);
+        const rectContour = densifyPolygonPoints([
+          { x: normalize((paddedBounds.minX / width) * 100, 0, 100), y: normalize((paddedBounds.minY / height) * 100, 0, 100) },
+          { x: normalize((paddedBounds.maxX / width) * 100, 0, 100), y: normalize((paddedBounds.minY / height) * 100, 0, 100) },
+          { x: normalize((paddedBounds.maxX / width) * 100, 0, 100), y: normalize((paddedBounds.maxY / height) * 100, 0, 100) },
+          { x: normalize((paddedBounds.minX / width) * 100, 0, 100), y: normalize((paddedBounds.maxY / height) * 100, 0, 100) }
+        ]);
         const fallback = pointBoundsFromPixelBounds(paddedBounds, width, height);
-        const contourBounds = contour.length ? getPointBounds(contour) : fallback;
+        const rawContourBounds = rawContour.length ? getPointBounds(rawContour) : fallback;
+        const fallbackWidthPct = fallback.right - fallback.left;
+        const contourWidthPct = rawContourBounds.right - rawContourBounds.left;
+        const contour = rawContour.length && contourWidthPct <= (fallbackWidthPct * 1.06) ? rawContour : rectContour;
+        const contourBounds = getPointBounds(contour);
         return {
           bounds: paddedBounds,
           contour,

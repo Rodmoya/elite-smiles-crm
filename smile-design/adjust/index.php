@@ -1295,7 +1295,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const rawContourBounds = rawContour.length ? getPointBounds(rawContour) : fallback;
         const fallbackWidthPct = fallback.right - fallback.left;
         const contourWidthPct = rawContourBounds.right - rawContourBounds.left;
-        const contour = rawContour.length && contourWidthPct <= (fallbackWidthPct * 1.06) ? rawContour : rectContour;
+        const contour = rawContour.length && contourWidthPct <= (fallbackWidthPct * 1.40) ? rawContour : rectContour;
         const contourBounds = getPointBounds(contour);
         return {
           bounds: paddedBounds,

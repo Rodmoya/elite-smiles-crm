@@ -2176,6 +2176,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         toothSelectLayer.classList.toggle('active', showSelection);
         toothSelectLayer.style.display = showSelection ? 'block' : 'none';
         toothSelectLayer.style.pointerEvents = editorMode === 'automatic' ? 'auto' : 'none';
+        const showSelectionLabels = Array.isArray(selections) && selections.length <= 1;
         const selectedMarkup = (Array.isArray(selections) ? selections : []).map(function (selection) {
           const bounds = getPointBounds(selection.polygon);
           const isCurrent = selection.number === getSelectedToothNumber();
@@ -2185,8 +2186,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             + (editorMode === 'automatic'
               ? (isCurrent ? 'rgba(244,63,94,0.56)' : 'rgba(244,63,94,0.34)')
               : 'rgba(244,63,94,0.42)')
-            + '" stroke="transparent" stroke-width="0" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
-            + '<text x="' + ((bounds.left + bounds.right) / 2) + '" y="' + (bounds.top + ((bounds.bottom - bounds.top) * 0.44)) + '" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="' + (isCurrent ? '700' : '600') + '">' + selection.label + '</text>'
+            + '" stroke="' + (showSelectionLabels ? 'transparent' : 'rgba(255,255,255,0.55)') + '" stroke-width="' + (showSelectionLabels ? '0' : '0.45') + '" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
+            + (showSelectionLabels
+              ? ('<text x="' + ((bounds.left + bounds.right) / 2) + '" y="' + (bounds.top + ((bounds.bottom - bounds.top) * 0.44)) + '" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="' + (isCurrent ? '700' : '600') + '">' + selection.label + '</text>')
+              : '')
             + '</g>';
         }).join('');
         toothSelectLayer.innerHTML = selectedMarkup;

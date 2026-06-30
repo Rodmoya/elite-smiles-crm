@@ -933,8 +933,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const min = Math.min(r, g, b);
         const spread = max - min;
         const saturation = max === 0 ? 0 : spread / max;
-        const brightEnough = max >= 145 && r >= 125 && g >= 120 && b >= 105;
-        const neutralEnough = saturation <= 0.42 && spread <= 82;
+        const brightEnough = max >= 152 && r >= 132 && g >= 127 && b >= 112;
+        const neutralEnough = saturation <= 0.36 && spread <= 70;
         const tooPink = r > g + 42 && r > b + 52 && b < 170;
         return brightEnough && neutralEnough && !tooPink;
       }
@@ -945,8 +945,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const spread = max - min;
         const saturation = max === 0 ? 0 : spread / max;
         const hsv = rgbToHsv(r, g, b);
-        const brightEnough = max >= 108 && r >= 92 && g >= 88 && b >= 76;
-        const neutralEnough = saturation <= 0.50 && spread <= 104;
+        const brightEnough = max >= 120 && r >= 100 && g >= 96 && b >= 84;
+        const neutralEnough = saturation <= 0.42 && spread <= 88;
         const notPinkGum = !(hsv.h >= 330 || hsv.h <= 24) || saturation <= 0.30 || max >= 182;
         const notLipShadow = !(r > g + 38 && r > b + 48 && b < 158);
         return brightEnough && neutralEnough && notPinkGum && notLipShadow;
@@ -1301,7 +1301,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         };
       }
 
-      function findUpperToothValleys(colHits, minX, maxX, peakHit) {
+      function findUpperToothValleys(colHits, separatorScores, minX, maxX, peakHit) {
         const valleys = [];
         const threshold = Math.max(1, peakHit * 0.58);
         for (let x = minX + 2; x <= maxX - 2; x += 1) {
@@ -1315,7 +1315,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (current > threshold) continue;
           if (current > left || current > right) continue;
           if (valleyDepth < Math.max(2, peakHit * 0.10)) continue;
-          valleys.push({ x, score: valleyDepth - (current * 0.30) });
+          const separatorBoost = separatorScores && Number.isFinite(separatorScores[x]) ? separatorScores[x] : 0;
+          valleys.push({ x, score: valleyDepth - (current * 0.30) + (separatorBoost * 1.15) });
         }
         valleys.sort(function (a, b) { return a.x - b.x; });
         const filtered = [];
@@ -1328,6 +1329,29 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           }
         });
         return filtered;
+      }
+
+      function buildSeparatorScores(data, width, smileBounds, smileHeight) {
+        const scores = [];
+        const sampleTop = Math.max(smileBounds.minY, Math.round(smileBounds.minY + (smileHeight * 0.12)));
+        const sampleBottom = Math.min(smileBounds.maxY, Math.round(smileBounds.minY + (smileHeight * 0.78)));
+        for (let x = smileBounds.minX; x <= smileBounds.maxX; x += 1) {
+          let score = 0;
+          for (let y = sampleTop; y <= sampleBottom; y += 1) {
+            const offset = (y * width + x) * 4;
+            const r = data[offset];
+            const g = data[offset + 1];
+            const b = data[offset + 2];
+            const brightness = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+            const hsv = rgbToHsv(r, g, b);
+            const likelySeparator = brightness <= 180 && hsv.s <= 0.42 && !(r > g + 34 && r > b + 42 && b < 160);
+            if (!likelySeparator) continue;
+            const depth = Math.max(0, 190 - brightness) / 24;
+            score += 0.6 + depth;
+          }
+          scores[x] = score;
+        }
+        return scores;
       }
 
       function findCentralSeam(valleys, smileCenter, minX, maxX) {
@@ -1357,7 +1381,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return sorted[0].x;
       }
 
-      function buildVisibleUpperToothSlots(softMask, width, height, smileBounds, smileHeight) {
+      function buildVisibleUpperToothSlots(softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 8 || smileHeight < 4) return null;
         const colHits = [];
@@ -1373,22 +1397,23 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           peakHit = Math.max(peakHit, hits);
         }
         const smileCenter = (smileBounds.minX + smileBounds.maxX) / 2;
-        const valleys = findUpperToothValleys(colHits, smileBounds.minX, smileBounds.maxX, peakHit);
+        const separatorScores = buildSeparatorScores(data, width, smileBounds, smileHeight);
+        const valleys = findUpperToothValleys(colHits, separatorScores, smileBounds.minX, smileBounds.maxX, peakHit);
         const centerSeam = findCentralSeam(valleys, smileCenter, smileBounds.minX, smileBounds.maxX);
-        const expectedCentralWidth = Math.max(8, Math.round(smileWidth * 0.12));
-        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.45));
-        const maxGap = Math.max(10, Math.round(expectedCentralWidth * 1.85));
+        const expectedCentralWidth = Math.max(7, Math.round(smileWidth * 0.105));
+        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.52));
+        const maxGap = Math.max(9, Math.round(expectedCentralWidth * 1.65));
         const leftFallback = Math.max(smileBounds.minX, Math.round(centerSeam.x - expectedCentralWidth));
         const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
         const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
         const rightBoundary = findNeighborValley(valleys, centerSeam.x, 1, rightFallback, minGap, maxGap);
         const bounds8 = {
-          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 1)),
-          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x))
+          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 2)),
+          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - 1))
         };
         const bounds9 = {
           minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + 1)),
-          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 2))
+          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 1))
         };
         const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
         const boundsList = [bounds8, bounds9].filter(function (bounds) {
@@ -1578,7 +1603,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (smileWidth < width * 0.035 || smileHeight < height * 0.018) {
           return null;
         }
-        const upperToothSlots = buildVisibleUpperToothSlots(softMask, width, height, smileBounds, smileHeight);
+        const upperToothSlots = buildVisibleUpperToothSlots(softMask, data, width, height, smileBounds, smileHeight);
         if (upperToothSlots) {
           const selectedSlot = upperToothSlots[8] || upperToothSlots[9] || upperToothSlots[Number(Object.keys(upperToothSlots)[0])];
           return {

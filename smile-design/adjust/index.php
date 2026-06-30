@@ -1276,7 +1276,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return bestX;
       }
 
-      function buildToothSegment(softMask, width, height, smileBounds, bounds, hitCounts) {
+      function buildToothSegment(contourMask, width, height, smileBounds, bounds, hitCounts) {
         const segmentWidth = Math.max(2, bounds.maxX - bounds.minX + 1);
         const paddedBounds = {
           minX: Math.max(smileBounds.minX, bounds.minX - Math.max(1, segmentWidth * 0.02)),
@@ -1284,7 +1284,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           minY: Math.max(0, smileBounds.minY - Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.08)),
           maxY: Math.min(height - 1, smileBounds.maxY + Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.10))
         };
-        const contour = buildToothPixelContour(softMask, width, height, paddedBounds);
+        const contour = buildToothPixelContour(contourMask, width, height, paddedBounds);
         const fallback = pointBoundsFromPixelBounds(paddedBounds, width, height);
         const contourBounds = contour.length ? getPointBounds(contour) : fallback;
         return {
@@ -1381,7 +1381,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return sorted[0].x;
       }
 
-      function buildVisibleUpperToothSlots(softMask, data, width, height, smileBounds, smileHeight) {
+      function buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 8 || smileHeight < 4) return null;
         const colHits = [];
@@ -1438,8 +1438,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         for (let x = bounds8.minX; x <= bounds8.maxX; x += 1) hitCount8 += colHits[x] || 0;
         let hitCount9 = 0;
         for (let x = bounds9.minX; x <= bounds9.maxX; x += 1) hitCount9 += colHits[x] || 0;
-        assignSegment(buildToothSegment(softMask, width, height, smileBounds, bounds8, hitCount8), 8);
-        assignSegment(buildToothSegment(softMask, width, height, smileBounds, bounds9, hitCount9), 9);
+        assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds8, hitCount8), 8);
+        assignSegment(buildToothSegment(mask, width, height, smileBounds, bounds9, hitCount9), 9);
         return Object.keys(slots).length ? slots : null;
       }
 
@@ -1603,7 +1603,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (smileWidth < width * 0.035 || smileHeight < height * 0.018) {
           return null;
         }
-        const upperToothSlots = buildVisibleUpperToothSlots(softMask, data, width, height, smileBounds, smileHeight);
+        const upperToothSlots = buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight);
         if (upperToothSlots) {
           const selectedSlot = upperToothSlots[8] || upperToothSlots[9] || upperToothSlots[Number(Object.keys(upperToothSlots)[0])];
           return {

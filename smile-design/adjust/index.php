@@ -1279,10 +1279,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       function buildToothSegment(softMask, width, height, smileBounds, bounds, hitCounts) {
         const segmentWidth = Math.max(2, bounds.maxX - bounds.minX + 1);
         const paddedBounds = {
-          minX: Math.max(smileBounds.minX, bounds.minX - Math.max(1, segmentWidth * 0.05)),
-          maxX: Math.min(smileBounds.maxX, bounds.maxX + Math.max(1, segmentWidth * 0.05)),
-          minY: Math.max(0, smileBounds.minY - Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.11)),
-          maxY: Math.min(height - 1, smileBounds.maxY + Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.13))
+          minX: Math.max(smileBounds.minX, bounds.minX - Math.max(1, segmentWidth * 0.02)),
+          maxX: Math.min(smileBounds.maxX, bounds.maxX + Math.max(1, segmentWidth * 0.02)),
+          minY: Math.max(0, smileBounds.minY - Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.08)),
+          maxY: Math.min(height - 1, smileBounds.maxY + Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.10))
         };
         const contour = buildToothPixelContour(softMask, width, height, paddedBounds);
         const fallback = pointBoundsFromPixelBounds(paddedBounds, width, height);
@@ -1400,20 +1400,20 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const separatorScores = buildSeparatorScores(data, width, smileBounds, smileHeight);
         const valleys = findUpperToothValleys(colHits, separatorScores, smileBounds.minX, smileBounds.maxX, peakHit);
         const centerSeam = findCentralSeam(valleys, smileCenter, smileBounds.minX, smileBounds.maxX);
-        const expectedCentralWidth = Math.max(7, Math.round(smileWidth * 0.105));
-        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.52));
-        const maxGap = Math.max(9, Math.round(expectedCentralWidth * 1.65));
+        const expectedCentralWidth = Math.max(6, Math.round(smileWidth * 0.092));
+        const minGap = Math.max(4, Math.round(expectedCentralWidth * 0.56));
+        const maxGap = Math.max(8, Math.round(expectedCentralWidth * 1.45));
         const leftFallback = Math.max(smileBounds.minX, Math.round(centerSeam.x - expectedCentralWidth));
         const rightFallback = Math.min(smileBounds.maxX, Math.round(centerSeam.x + expectedCentralWidth));
         const leftBoundary = findNeighborValley(valleys, centerSeam.x, -1, leftFallback, minGap, maxGap);
         const rightBoundary = findNeighborValley(valleys, centerSeam.x, 1, rightFallback, minGap, maxGap);
         const bounds8 = {
-          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 2)),
-          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - 1))
+          minX: Math.max(smileBounds.minX, Math.min(leftBoundary + 1, centerSeam.x - 3)),
+          maxX: Math.max(smileBounds.minX + 1, Math.round(centerSeam.x - 2))
         };
         const bounds9 = {
-          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + 1)),
-          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 1))
+          minX: Math.min(smileBounds.maxX - 1, Math.round(centerSeam.x + 2)),
+          maxX: Math.min(smileBounds.maxX, Math.max(rightBoundary - 1, centerSeam.x + 2))
         };
         const minSegmentWidth = Math.max(6, Math.round(smileWidth * 0.06));
         const boundsList = [bounds8, bounds9].filter(function (bounds) {

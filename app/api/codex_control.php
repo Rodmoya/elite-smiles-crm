@@ -1449,6 +1449,20 @@ try {
         codex_api_response(['ok' => true, 'message' => 'Lead created.', 'lead_id' => $leadId, 'lead' => codex_api_load_lead($leadId)], 201);
     }
 
+    if ($action === 'import_meta_leads') {
+        $rows = (array) codex_api_value('rows', []);
+        if ($rows === []) {
+            codex_api_response(['ok' => false, 'message' => 'No lead rows were provided.'], 422);
+        }
+
+        $result = lead_import_meta_rows($rows, ['first_name' => 'Codex', 'last_name' => 'API']);
+        codex_api_response([
+            'ok' => true,
+            'message' => 'Lead import completed.',
+            'result' => $result,
+        ], 200);
+    }
+
     if ($action === 'add_note') {
         codex_api_add_note((int) codex_api_value('lead_id', 0), (string) codex_api_value('note', ''), (string) codex_api_value('created_by', 'Codex'));
     }

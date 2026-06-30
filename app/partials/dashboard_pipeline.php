@@ -198,6 +198,20 @@ $consultationOptions = [
 
                 <button
                     type="button"
+                    id="open-import-leads-picker"
+                    class="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                >
+                    Import Leads
+                </button>
+                <input
+                    type="file"
+                    id="import-leads-file"
+                    class="hidden"
+                    accept=".csv,.txt"
+                >
+
+                <button
+                    type="button"
                     id="pipeline-calendar-button"
                     class="inline-flex items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-100"
                     title="View appointments calendar"
@@ -233,6 +247,8 @@ $consultationOptions = [
                     Fixed board height + drag auto-scroll
 
                 </div>
+
+                <p id="import-leads-status" class="w-full text-xs text-slate-500"></p>
 
             </div>
 
@@ -2715,6 +2731,7 @@ $consultationOptions = [
     const saveStageUrl = <?= json_encode(base_url('app/actions/lead_update_stage.php')) ?>;
 
     const createLeadUrl = <?= json_encode(base_url('app/actions/lead_create.php')) ?>;
+    const importLeadsUrl = <?= json_encode(base_url('app/actions/lead_import.php')) ?>;
 
     const deleteLeadUrl = <?= json_encode(base_url('app/actions/lead_delete.php')) ?>;
 
@@ -2726,6 +2743,115 @@ $consultationOptions = [
     const followupCheckUrl = <?= json_encode(base_url('app/actions/lead_followup_check.php')) ?>;
     const smsTemplates = <?= json_encode($smsTemplateOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const stageLabelMap = <?= json_encode($legacyStageMap) ?>;
+    const importLeadsButton = document.getElementById('open-import-leads-picker');
+    const importLeadsFileInput = document.getElementById('import-leads-file');
+    const importLeadsStatus = document.getElementById('import-leads-status');
+    let isImportingLeads = false;
+
+    function normalizeImportedLeadHeader(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function parseImportedLeadFile(text) {
+        const normalizedText = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+        if (!normalizedText) return [];
+        const lines = normalizedText.split('\n').filter(line => line.trim() !== '');
+        if (!lines.length) return [];
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const parseLine = (line) => {
+            if (delimiter === '\t') return line.split('\t');
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i += 1) {
+                const char = line[i];
+                if (char === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === delimiter && !inQuotes) {
+                    values.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            values.push(current);
+            return values;
+        };
+        const headers = parseLine(lines[0]).map(normalizeImportedLeadHeader);
+        return lines.slice(1).map((line) => {
+            const values = parseLine(line);
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = (values[index] || '').trim();
+            });
+            return row;
+        }).filter((row) => Object.values(row).some(value => String(value || '').trim() !== ''));
+    }
+
+    async function importLeadRows(rows) {
+        if (isImportingLeads) return;
+        isImportingLeads = true;
+        if (importLeadsButton) importLeadsButton.disabled = true;
+        if (importLeadsStatus) importLeadsStatus.textContent = 'Importing leads...';
+        try {
+            const formData = new FormData();
+            formData.append('_csrf_token', csrfToken);
+            formData.append('rows_json', JSON.stringify(rows));
+            const response = await fetch(importLeadsUrl, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await parseJsonResponse(response);
+            if (!response.ok || !data.ok) throw new Error(data.message || 'Lead import failed.');
+            const result = data.result || {};
+            const summary = `Imported ${result.created_count || 0} new lead(s). Skipped ${result.duplicate_count || 0} duplicate(s). Failed ${result.failed_count || 0}.`;
+            if (importLeadsStatus) importLeadsStatus.textContent = summary;
+            window.location.reload();
+            return true;
+        } catch (error) {
+            if (importLeadsStatus) importLeadsStatus.textContent = error.message || 'Lead import failed.';
+            return false;
+        } finally {
+            isImportingLeads = false;
+            if (importLeadsButton) importLeadsButton.disabled = false;
+            if (importLeadsFileInput) importLeadsFileInput.value = '';
+        }
+    }
+
+    if (importLeadsButton && importLeadsFileInput) {
+        importLeadsButton.addEventListener('click', () => {
+            if (isImportingLeads) return;
+            importLeadsFileInput.click();
+        });
+
+        importLeadsFileInput.addEventListener('change', async (event) => {
+            const file = event.target && event.target.files ? event.target.files[0] : null;
+            if (!file) return;
+            const text = await file.text();
+            const rows = parseImportedLeadFile(text);
+            if (!rows.length) {
+                if (importLeadsStatus) importLeadsStatus.textContent = 'No lead rows were found in that file.';
+                importLeadsFileInput.value = '';
+                return;
+            }
+            const previewNames = rows.slice(0, 6).map(row => row.full_name || row.name || row.email || row.phone_number || row.phone || 'Unnamed lead');
+            const previewText = previewNames.join('\n');
+            const proceed = window.confirm(`Found ${rows.length} lead(s) in this file.\n\n${previewText}${rows.length > 6 ? `\n...and ${rows.length - 6} more.` : ''}\n\nOnly non-duplicates will be imported. Continue?`);
+            if (!proceed) {
+                importLeadsFileInput.value = '';
+                if (importLeadsStatus) importLeadsStatus.textContent = 'Lead import cancelled.';
+                return;
+            }
+            await importLeadRows(rows);
+        });
+    }
 
 
     function updateColumnCounts() {
@@ -5479,7 +5605,7 @@ function applyCommunicationViewportFit() {
 
         if (newLeadEmail) newLeadEmail.value = '';
 
-        if (newLeadPreferredContact) newLeadPreferredContact.value = '';
+        if (newLeadPreferredContact) newLeadPreferredContact.value = 'text';
 
         if (newLeadProcedure) newLeadProcedure.value = '';
 
@@ -5581,7 +5707,7 @@ function applyCommunicationViewportFit() {
 
         const email = newLeadEmail ? newLeadEmail.value.trim() : '';
 
-        const preferredContact = newLeadPreferredContact ? newLeadPreferredContact.value : '';
+        const preferredContact = newLeadPreferredContact ? (newLeadPreferredContact.value || 'text') : 'text';
 
         const procedureInterest = newLeadProcedure ? newLeadProcedure.value.trim() : '';
 

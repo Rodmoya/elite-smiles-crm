@@ -1518,3 +1518,110 @@ if (!function_exists('lead_create_minimal')) {
         }
     }
 }
+
+if (!function_exists('lead_import_meta_value')) {
+    function lead_import_meta_value(array $row, array $keys): string
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $row)) {
+                return trim((string) $row[$key]);
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('lead_import_meta_row_to_input')) {
+    function lead_import_meta_row_to_input(array $row): array
+    {
+        $externalLeadId = lead_import_meta_value($row, ['id', 'external_lead_id']);
+        $createdTime = lead_import_meta_value($row, ['created_time', 'created_at']);
+        $platform = strtolower(lead_import_meta_value($row, ['platform']));
+        $platform = $platform !== '' ? $platform : 'meta';
+        $intentType = lead_import_meta_value($row, [
+            'how_soon_are_you_looking_to_start_your_smile_transformation?',
+            'intent_type',
+            'how_soon',
+        ]);
+
+        $notesParts = ['Imported from Meta CSV via leads import tool.'];
+        if ($externalLeadId !== '') {
+            $notesParts[] = 'External lead ID: ' . $externalLeadId . '.';
+        }
+        if ($createdTime !== '') {
+            $notesParts[] = 'Created: ' . $createdTime . '.';
+        }
+
+        return [
+            'full_name' => lead_import_meta_value($row, ['full_name', 'name']),
+            'phone' => preg_replace('/^p:/i', '', lead_import_meta_value($row, ['phone_number', 'phone'])),
+            'email' => lead_import_meta_value($row, ['email']),
+            'procedure_interest' => lead_import_meta_value($row, ['procedure_interest', 'service_needed']) ?: 'Veneers',
+            'preferred_contact' => lead_import_meta_value($row, ['preferred_contact']) ?: 'Text',
+            'source' => lead_import_meta_value($row, ['source']) ?: 'meta_lead_form',
+            'source_medium' => lead_import_meta_value($row, ['source_medium']) ?: 'social',
+            'source_type' => lead_import_meta_value($row, ['source_type']) ?: 'meta_instant_form',
+            'platform' => $platform,
+            'landing_page' => lead_import_meta_value($row, ['form_name', 'landing_page']),
+            'campaign' => lead_import_meta_value($row, ['campaign_name', 'campaign']),
+            'intent_type' => $intentType,
+            'external_lead_id' => $externalLeadId,
+            'status' => lead_import_meta_value($row, ['status']) ?: 'new_lead',
+            'notes' => implode(' ', $notesParts),
+        ];
+    }
+}
+
+if (!function_exists('lead_import_meta_rows')) {
+    function lead_import_meta_rows(array $rows, array $user = []): array
+    {
+        $created = [];
+        $duplicates = [];
+        $failed = [];
+
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                $failed[] = [
+                    'index' => $index,
+                    'message' => 'Invalid row payload.',
+                ];
+                continue;
+            }
+
+            $input = lead_import_meta_row_to_input($row);
+            $result = lead_create_minimal($input, $user);
+            $entry = [
+                'index' => $index,
+                'name' => (string) ($input['full_name'] ?? ''),
+                'external_lead_id' => (string) ($input['external_lead_id'] ?? ''),
+                'lead_id' => (int) ($result['lead_id'] ?? 0),
+                'message' => (string) ($result['message'] ?? ''),
+            ];
+
+            if (!empty($result['duplicate_found'])) {
+                $duplicates[] = $entry + [
+                    'duplicate_match_type' => (string) ($result['duplicate_match_type'] ?? ''),
+                ];
+                continue;
+            }
+
+            if (!empty($result['ok'])) {
+                $created[] = $entry;
+                continue;
+            }
+
+            $failed[] = $entry;
+        }
+
+        return [
+            'created' => $created,
+            'duplicates' => $duplicates,
+            'failed' => $failed,
+            'created_count' => count($created),
+            'duplicate_count' => count($duplicates),
+            'failed_count' => count($failed),
+            'total_count' => count($rows),
+        ];
+    }
+}

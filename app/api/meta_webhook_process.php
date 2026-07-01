@@ -106,6 +106,64 @@ function meta_processor_fail_claim(array $claim, string $message): array
     ];
 }
 
+function meta_processor_is_retryable_message(string $message): bool
+{
+    $message = strtolower(trim($message));
+    if ($message === '') {
+        return false;
+    }
+
+    foreach ([
+        'database',
+        'not reachable',
+        'connection',
+        'timed out',
+        'timeout',
+        'tempor',
+        'meta_access_token',
+        'graph api',
+        'processor secret',
+        'lookup did not return usable lead details',
+    ] as $needle) {
+        if (str_contains($message, $needle)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meta_processor_retry_or_fail_claim(array $claim, string $message, bool $forceFail = false): array
+{
+    $record = $claim['record'];
+    $record['attempts'] = (int) ($record['attempts'] ?? 0) + 1;
+    $record['last_attempt_at'] = now();
+    $record['error_summary'] = $message;
+
+    $maxAttempts = meta_cfg_queue_max_attempts();
+    $shouldRetry = !$forceFail
+        && meta_processor_is_retryable_message($message)
+        && $record['attempts'] < $maxAttempts;
+
+    if ($shouldRetry) {
+        meta_queue_requeue_record((string) $claim['path'], $record, $message);
+        return [
+            'event_id' => (string) ($record['event_id'] ?? ''),
+            'status' => 'retrying',
+            'attempts' => (int) $record['attempts'],
+            'message' => $message,
+        ];
+    }
+
+    meta_queue_finalize_record((string) $claim['path'], 'failed', $record);
+    return [
+        'event_id' => (string) ($record['event_id'] ?? ''),
+        'status' => 'failed',
+        'attempts' => (int) $record['attempts'],
+        'message' => $message,
+    ];
+}
+
 function meta_processor_claims(int $limit): array
 {
     $claims = [];
@@ -313,20 +371,20 @@ try {
         }
 
         if (trim((string) meta_cfg_access_token()) === '') {
-            $results[] = meta_processor_fail_claim($claim, 'META_ACCESS_TOKEN is required for processing Meta lead events.');
+            $results[] = meta_processor_retry_or_fail_claim($claim, 'META_ACCESS_TOKEN is required for processing Meta lead events.');
             continue;
         }
 
         $dbReady = meta_processor_db_ready();
         if (empty($dbReady['ok'])) {
-            $results[] = meta_processor_fail_claim($claim, (string) ($dbReady['message'] ?? 'Database is not reachable.'));
+            $results[] = meta_processor_retry_or_fail_claim($claim, (string) ($dbReady['message'] ?? 'Database is not reachable.'));
             continue;
         }
 
         try {
             $result = meta_lead_process(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', $payload);
         } catch (Throwable $e) {
-            $results[] = meta_processor_fail_claim($claim, 'Meta processing threw an exception: ' . $e->getMessage());
+            $results[] = meta_processor_retry_or_fail_claim($claim, 'Meta processing threw an exception: ' . $e->getMessage());
             continue;
         }
 
@@ -338,13 +396,10 @@ try {
         }
 
         if ($failedMessages !== []) {
-            $record['error_summary'] = implode(' | ', array_slice($failedMessages, 0, 5));
-            meta_queue_finalize_record((string) $claim['path'], 'failed', $record);
-            $results[] = [
-                'event_id' => (string) ($record['event_id'] ?? ''),
-                'status' => 'failed',
-                'message' => $record['error_summary'],
-            ];
+            $results[] = meta_processor_retry_or_fail_claim(
+                $claim,
+                implode(' | ', array_slice($failedMessages, 0, 5))
+            );
             continue;
         }
 

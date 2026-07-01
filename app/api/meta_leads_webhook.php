@@ -23,6 +23,22 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 
+if (
+    request_method() === 'GET'
+    && (($_GET['hub.mode'] ?? $_GET['hub_mode'] ?? '') !== '')
+) {
+    require __DIR__ . '/meta_webhook.php';
+    exit;
+}
+
+if (request_method() === 'POST') {
+    $signature = trim((string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? $_SERVER['X_HUB_SIGNATURE_256'] ?? ''));
+    if ($signature !== '') {
+        require __DIR__ . '/meta_webhook.php';
+        exit;
+    }
+}
+
 header('Content-Type: application/json; charset=UTF-8');
 
 function meta_leads_json_response(array $payload, int $statusCode = 200): void

@@ -121,11 +121,11 @@ if (!function_exists('meta_queue_extract_candidates')) {
 }
 
 if (!function_exists('meta_queue_sanitize_value')) {
-function meta_queue_sanitize_value(mixed $value, int $depth = 0): mixed
-{
-    if ($depth >= 10) {
-        return '[max-depth]';
-    }
+    function meta_queue_sanitize_value(mixed $value, int $depth = 0): mixed
+    {
+        if ($depth >= 10) {
+            return '[max-depth]';
+        }
 
         if (is_array($value)) {
             $sanitized = [];
@@ -318,5 +318,25 @@ if (!function_exists('meta_queue_finalize_record')) {
         $targetPath = meta_queue_record_path($targetDir, $eventId);
 
         return @rename($currentPath, $targetPath);
+    }
+}
+
+if (!function_exists('meta_queue_requeue_record')) {
+    function meta_queue_requeue_record(string $currentPath, array $record, string $message = ''): bool
+    {
+        $eventId = trim((string) ($record['event_id'] ?? ''));
+        if ($eventId === '') {
+            return false;
+        }
+
+        $record['status'] = 'pending';
+        $record['processed_at'] = null;
+        $record['error_summary'] = $message;
+
+        if (!meta_queue_write_record($currentPath, $record)) {
+            return false;
+        }
+
+        return @rename($currentPath, meta_queue_record_path('pending', $eventId));
     }
 }

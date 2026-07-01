@@ -266,8 +266,14 @@ if (!function_exists('meta_lead_merge_candidate_with_graph')) {
     {
         $leadId = (string)($event['leadgen_id'] ?? '');
         $graph = [];
+        $graphMeta = ['ok' => false, 'message' => 'Graph lookup not attempted.'];
         if ($leadId !== '') {
             $graphResponse = meta_graph_fetch_lead($leadId);
+            $graphMeta = [
+                'ok' => !empty($graphResponse['ok']),
+                'message' => (string)($graphResponse['message'] ?? ''),
+                'status_code' => (int)($graphResponse['status_code'] ?? 0),
+            ];
             if (!empty($graphResponse['ok']) && is_array($graphResponse['lead'] ?? null)) {
                 $graph = meta_graph_normalize_payload($graphResponse['lead']);
                 if ($graph['leadgen_id'] === '') {
@@ -315,6 +321,9 @@ if (!function_exists('meta_lead_merge_candidate_with_graph')) {
         if ($base['procedure_interest'] === '' && !empty($directFields['procedure_interest'])) {
             $base['procedure_interest'] = trim((string)$directFields['procedure_interest']);
         }
+
+        $base = meta_graph_enrich_context($base);
+        $base['_graph'] = $graphMeta;
 
         $base['lead_source_columns'] = [
             'meta_lead_id' => (string)($base['leadgen_id'] ?? ''),
@@ -368,10 +377,13 @@ if (!function_exists('meta_lead_prepare_input')) {
             'treatment',
         ]));
         if ($procedure === '') {
-            $procedure = meta_lead_guess_procedure((string)meta_lead_value($normalized, ['campaign', 'campaign_name', 'source_campaign']));
+            $procedure = meta_lead_guess_procedure((string)meta_lead_value($normalized, ['campaign_name', 'campaign', 'source_campaign']));
+        }
+        if ($procedure === '') {
+            $procedure = 'Veneers';
         }
 
-        $campaign = trim((string)meta_lead_value($normalized, ['campaign', 'campaign_name', 'source_campaign']));
+        $campaign = trim((string)meta_lead_value($normalized, ['campaign_name', 'campaign', 'source_campaign']));
         $notes = meta_lead_notes($normalized, $event);
 
         if ($howSoon !== '') {
@@ -389,6 +401,7 @@ if (!function_exists('meta_lead_prepare_input')) {
             'source' => $leadSource,
             'source_medium' => 'social',
             'source_type' => 'meta_instant_form',
+            'preferred_contact' => 'Text',
             'landing_page' => trim((string)meta_lead_value($normalized, ['page_url', 'source_url', 'landing_page'])),
             'campaign' => $campaign,
             'external_lead_id' => trim((string)meta_lead_value($normalized, ['leadgen_id', 'lead_id', 'meta_lead_id', 'id'])),
@@ -407,10 +420,15 @@ if (!function_exists('meta_lead_prepare_input')) {
             'how_soon' => $howSoon,
             'leadgen_id' => trim((string)meta_lead_value($normalized, ['leadgen_id', 'lead_id', 'meta_lead_id', 'id'])),
             'form_id' => trim((string)($normalized['form_id'] ?? '')),
+            'form_name' => trim((string)($normalized['form_name'] ?? '')),
             'campaign_id' => trim((string)($normalized['campaign_id'] ?? '')),
+            'campaign_name' => trim((string)($normalized['campaign_name'] ?? '')),
             'ad_id' => trim((string)($normalized['ad_id'] ?? '')),
+            'ad_name' => trim((string)($normalized['ad_name'] ?? '')),
             'adset_id' => trim((string)($normalized['adset_id'] ?? '')),
+            'adset_name' => trim((string)($normalized['adset_name'] ?? '')),
             'page_id' => trim((string)($normalized['page_id'] ?? '')),
+            'page_name' => trim((string)($normalized['page_name'] ?? '')),
             'created_time' => trim((string)($normalized['created_time'] ?? '')),
         ];
 
@@ -432,11 +450,20 @@ if (!function_exists('meta_lead_update_tracking_columns')) {
         if (leads_has_column('source_form_name')) {
             $meta['source_form_name'] = $metadata['form_name'];
         }
+        if (leads_has_column('source_campaign')) {
+            $meta['source_campaign'] = $metadata['campaign_name'] ?: $metadata['campaign_id'];
+        }
         if (leads_has_column('source_ad_id')) {
             $meta['source_ad_id'] = $metadata['ad_id'];
         }
         if (leads_has_column('source_ad_set_id')) {
             $meta['source_ad_set_id'] = $metadata['adset_id'];
+        }
+        if (leads_has_column('source_ad_set')) {
+            $meta['source_ad_set'] = $metadata['adset_name'] ?: $metadata['adset_id'];
+        }
+        if (leads_has_column('source_ad_name')) {
+            $meta['source_ad_name'] = $metadata['ad_name'];
         }
         if (leads_has_column('source_campaign_id')) {
             $meta['source_campaign_id'] = $metadata['campaign_id'];
@@ -474,6 +501,29 @@ if (!function_exists('meta_lead_update_tracking_columns')) {
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+}
+
+if (!function_exists('meta_lead_has_contact_identity')) {
+    function meta_lead_has_contact_identity(array $merged, array $leadInput): bool
+    {
+        $name = trim((string) ($leadInput['full_name'] ?? ''));
+        $phone = trim((string) ($leadInput['phone'] ?? ''));
+        $email = trim((string) ($leadInput['email'] ?? ''));
+
+        if (($phone !== '' || $email !== '') && $name !== '') {
+            return true;
+        }
+
+        if ($phone !== '' && $email !== '') {
+            return true;
+        }
+
+        if (trim((string) ($merged['leadgen_id'] ?? '')) !== '' && ($phone !== '' || $email !== '')) {
+            return true;
+        }
+
+        return false;
     }
 }
 
@@ -529,6 +579,22 @@ if (!function_exists('meta_lead_process')) {
             $leadSourceMeta = $meta;
             unset($leadInput['lead_source_metadata']);
 
+            if (!meta_lead_has_contact_identity($merged, $leadInput)) {
+                $graphMessage = trim((string) ($merged['_graph']['message'] ?? ''));
+                $results[] = [
+                    'leadgen_id' => (string)($merged['leadgen_id'] ?? ''),
+                    'form_id' => (string)($merged['form_id'] ?? ''),
+                    'lead_id' => 0,
+                    'duplicate_found' => false,
+                    'ok' => false,
+                    'message' => $graphMessage !== ''
+                        ? 'Meta lead is missing identity/contact data. Graph lookup did not return usable lead details: ' . $graphMessage
+                        : 'Meta lead is missing identity/contact data.',
+                    'error' => 'missing_identity',
+                ];
+                continue;
+            }
+
             $createResult = lead_create_minimal($leadInput, []);
             $leadId = (int)($createResult['lead_id'] ?? 0);
 
@@ -543,10 +609,13 @@ if (!function_exists('meta_lead_process')) {
             if (!empty($createResult['ok'])) {
                 meta_lead_update_tracking_columns($leadId, [
                     'form_id' => (string)($merged['form_id'] ?? ''),
-                    'form_name' => (string)($leadInput['campaign'] ?? ''),
+                    'form_name' => (string)($leadSourceMeta['form_name'] ?? $merged['form_name'] ?? ''),
                     'ad_id' => (string)($merged['ad_id'] ?? ''),
                     'adset_id' => (string)($merged['adset_id'] ?? ''),
                     'campaign_id' => (string)($merged['campaign_id'] ?? ''),
+                    'campaign_name' => (string)($leadSourceMeta['campaign_name'] ?? $merged['campaign_name'] ?? ''),
+                    'ad_name' => (string)($leadSourceMeta['ad_name'] ?? $merged['ad_name'] ?? ''),
+                    'adset_name' => (string)($leadSourceMeta['adset_name'] ?? $merged['adset_name'] ?? ''),
                     'page_id' => (string)($merged['page_id'] ?? ''),
                     'first_name' => (string)($leadInput['first_name'] ?? ''),
                     'last_name' => (string)($leadInput['last_name'] ?? ''),
@@ -582,7 +651,7 @@ if (!function_exists('meta_lead_process')) {
                 $resultItem['error'] = (string)($createResult['message'] ?? '');
             }
 
-            if (function_exists('lead_comm_insert_activity') && $leadId > 0 && !empty($resultItem['ok'])) {
+            if (function_exists('lead_comm_insert_activity') && $leadId > 0 && !empty($resultItem['ok']) && empty($createResult['duplicate_found'])) {
                 try {
                     lead_comm_insert_activity($leadId, 'meta_webhook_processed', 'Meta webhook processed: ' . ($resultItem['message'] ?? ''), [
                         'leadgen_id' => $resultItem['leadgen_id'],

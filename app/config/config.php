@@ -77,8 +77,11 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('META_APP_SECRET',              $_ENV['META_APP_SECRET']              ?? '');
     define('META_ACCESS_TOKEN',            $_ENV['META_ACCESS_TOKEN']            ?? '');
     define('META_GRAPH_VERSION',           $_ENV['META_GRAPH_VERSION']           ?? 'v23.0');
+    define('META_FORM_IDS',                $_ENV['META_FORM_IDS']                ?? '');
     define('META_LEAD_NOTIFICATION_RECIPIENT', $_ENV['META_LEAD_NOTIFICATION_RECIPIENT'] ?? 'leads@elitesmilesutah.com');
     define('META_NOTIFICATION_FROM_EMAIL',   $_ENV['META_NOTIFICATION_FROM_EMAIL'] ?? ELITE_LEAD_ALERT_FROM_EMAIL);
+    define('META_NOTIFICATION_SMS_RECIPIENT', $_ENV['META_NOTIFICATION_SMS_RECIPIENT'] ?? '');
+    define('META_QUEUE_MAX_ATTEMPTS', is_numeric($_ENV['META_QUEUE_MAX_ATTEMPTS'] ?? null) ? max(1, (int) $_ENV['META_QUEUE_MAX_ATTEMPTS']) : 8);
 
     define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? '');
     define('SMTP_PORT', is_numeric($_ENV['SMTP_PORT'] ?? null) ? (int) $_ENV['SMTP_PORT'] : 587);
@@ -162,8 +165,11 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'app_secret' => META_APP_SECRET,
             'access_token' => META_ACCESS_TOKEN,
             'graph_version' => META_GRAPH_VERSION,
+            'form_ids' => META_FORM_IDS,
             'notification_recipient' => META_LEAD_NOTIFICATION_RECIPIENT,
             'notification_from_email' => META_NOTIFICATION_FROM_EMAIL,
+            'notification_sms_recipient' => META_NOTIFICATION_SMS_RECIPIENT,
+            'queue_max_attempts' => META_QUEUE_MAX_ATTEMPTS,
         ],
         'quick_actions' => ['secret' => ELITE_QUICK_ACTION_SECRET, 'ttl_seconds' => ELITE_QUICK_ACTION_TTL_SECONDS],
         'lead_alerts' => [

@@ -74,6 +74,27 @@ if (!function_exists('meta_cfg_graph_version')) {
     }
 }
 
+if (!function_exists('meta_cfg_form_ids')) {
+    function meta_cfg_form_ids(): array
+    {
+        $raw = meta_cfg_string('form_ids', '');
+        if ($raw === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[\s,]+/', $raw) ?: [];
+        $ids = [];
+        foreach ($parts as $part) {
+            $id = trim((string) $part);
+            if ($id !== '') {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+}
+
 if (!function_exists('meta_cfg_notification_recipient')) {
     function meta_cfg_notification_recipient(): string
     {
@@ -88,6 +109,13 @@ if (!function_exists('meta_cfg_notification_from_email')) {
     }
 }
 
+if (!function_exists('meta_cfg_notification_sms_recipient')) {
+    function meta_cfg_notification_sms_recipient(): string
+    {
+        return meta_cfg_string('notification_sms_recipient', '');
+    }
+}
+
 if (!function_exists('meta_cfg_twilio_enabled')) {
     function meta_cfg_twilio_enabled(): bool
     {
@@ -95,3 +123,10 @@ if (!function_exists('meta_cfg_twilio_enabled')) {
     }
 }
 
+if (!function_exists('meta_cfg_queue_max_attempts')) {
+    function meta_cfg_queue_max_attempts(): int
+    {
+        $value = (int) meta_cfg_value('queue_max_attempts', defined('META_QUEUE_MAX_ATTEMPTS') ? (int) META_QUEUE_MAX_ATTEMPTS : 8);
+        return max(1, $value);
+    }
+}

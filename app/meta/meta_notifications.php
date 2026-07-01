@@ -124,12 +124,14 @@ if (!function_exists('meta_notify_lead')) {
         }
 
         $phone = trim((string)($lead['phone'] ?? ''));
-        if ($phone !== '') {
+        $smsRecipient = trim((string) meta_cfg_notification_sms_recipient());
+        if ($smsRecipient !== '') {
             if (meta_cfg_twilio_enabled()) {
-                $smsText = 'NEW META LEAD: ' . ($lead['full_name'] ?: 'Lead') . ' | ' . ($phone !== '' ? $phone : 'No phone')
+                $smsText = 'NEW META LEAD: ' . ($lead['full_name'] ?: 'Lead')
+                    . ' | ' . ($phone !== '' ? $phone : 'No phone')
                     . ' | ' . ($lead['email'] ?? '')
                     . ' | CRM: ' . (string)($message['crm_link'] ?? '');
-                $smsResult = elite_twilio_send_sms($phone, $smsText);
+                $smsResult = elite_twilio_send_sms($smsRecipient, $smsText);
                 $result['sms'] = [
                     'ok' => (bool)($smsResult['ok'] ?? false),
                     'message' => (string)($smsResult['message'] ?? 'Twilio disabled/misconfigured.'),
@@ -138,9 +140,10 @@ if (!function_exists('meta_notify_lead')) {
             } else {
                 $result['sms']['message'] = 'Twilio is disabled by feature flag.';
             }
+        } else {
+            $result['sms']['message'] = 'Meta notification SMS recipient is not configured.';
         }
 
         return $result;
     }
 }
-

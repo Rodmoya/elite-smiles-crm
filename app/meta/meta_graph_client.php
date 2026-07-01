@@ -124,7 +124,7 @@ if (!function_exists('meta_graph_fetch_lead')) {
         }
 
         $response = meta_graph_request((string)$leadgenId, [
-            'fields' => 'field_data,created_time,ad_id,form_id,adset_id,campaign_id,page_id,id,platform',
+            'fields' => 'field_data,created_time,ad_id,form_id,id',
         ]);
 
         if (empty($response['ok'])) {
@@ -132,6 +132,136 @@ if (!function_exists('meta_graph_fetch_lead')) {
         }
 
         return ['ok' => true, 'lead' => $response['data'] ?? []];
+    }
+}
+
+if (!function_exists('meta_graph_fetch_form_context')) {
+    function meta_graph_fetch_form_context(string $formId): array
+    {
+        static $cache = [];
+
+        $formId = trim($formId);
+        if ($formId === '') {
+            return ['ok' => false, 'message' => 'Missing form id.'];
+        }
+
+        if (isset($cache[$formId])) {
+            return $cache[$formId];
+        }
+
+        $response = meta_graph_request($formId, [
+            'fields' => 'id,name',
+        ]);
+
+        if (empty($response['ok'])) {
+            return $cache[$formId] = $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+
+        return $cache[$formId] = [
+            'ok' => true,
+            'context' => [
+                'form_id' => trim((string) ($data['id'] ?? $formId)),
+                'form_name' => trim((string) ($data['name'] ?? '')),
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meta_graph_fetch_ad_context')) {
+    function meta_graph_fetch_ad_context(string $adId): array
+    {
+        static $cache = [];
+
+        $adId = trim($adId);
+        if ($adId === '') {
+            return ['ok' => false, 'message' => 'Missing ad id.'];
+        }
+
+        if (isset($cache[$adId])) {
+            return $cache[$adId];
+        }
+
+        $response = meta_graph_request($adId, [
+            'fields' => 'id,name,adset{id,name,campaign{id,name}}',
+        ]);
+
+        if (empty($response['ok'])) {
+            return $cache[$adId] = $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $adSet = is_array($data['adset'] ?? null) ? $data['adset'] : [];
+        $campaign = is_array($adSet['campaign'] ?? null) ? $adSet['campaign'] : [];
+
+        return $cache[$adId] = [
+            'ok' => true,
+            'context' => [
+                'ad_id' => trim((string) ($data['id'] ?? $adId)),
+                'ad_name' => trim((string) ($data['name'] ?? '')),
+                'adset_id' => trim((string) ($adSet['id'] ?? '')),
+                'adset_name' => trim((string) ($adSet['name'] ?? '')),
+                'campaign_id' => trim((string) ($campaign['id'] ?? '')),
+                'campaign_name' => trim((string) ($campaign['name'] ?? '')),
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meta_graph_fetch_page_context')) {
+    function meta_graph_fetch_page_context(string $pageId): array
+    {
+        static $cache = [];
+
+        $pageId = trim($pageId);
+        if ($pageId === '') {
+            return ['ok' => false, 'message' => 'Missing page id.'];
+        }
+
+        if (isset($cache[$pageId])) {
+            return $cache[$pageId];
+        }
+
+        $response = meta_graph_request($pageId, [
+            'fields' => 'id,name',
+        ]);
+
+        if (empty($response['ok'])) {
+            return $cache[$pageId] = $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+
+        return $cache[$pageId] = [
+            'ok' => true,
+            'context' => [
+                'page_id' => trim((string) ($data['id'] ?? $pageId)),
+                'page_name' => trim((string) ($data['name'] ?? '')),
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meta_graph_fetch_form_leads')) {
+    function meta_graph_fetch_form_leads(string $formId, int $limit = 10): array
+    {
+        $formId = trim($formId);
+        if ($formId === '') {
+            return ['ok' => false, 'message' => 'Missing form id.'];
+        }
+
+        $limit = max(1, min(100, $limit));
+        $response = meta_graph_request((string) $formId . '/leads', [
+            'fields' => 'field_data,created_time,ad_id,form_id,id',
+            'limit' => $limit,
+        ]);
+
+        if (empty($response['ok'])) {
+            return $response;
+        }
+
+        return ['ok' => true, 'leads' => is_array($response['data']['data'] ?? null) ? $response['data']['data'] : []];
     }
 }
 
@@ -197,11 +327,16 @@ if (!function_exists('meta_graph_normalize_payload')) {
             'how_soon' => trim((string)($fields['how_soon'] ?? $fields['timeline'] ?? $fields['timeframe'] ?? '')),
             'procedure_interest' => trim((string)($fields['procedure_interest'] ?? $fields['service_needed'] ?? $fields['service'] ?? $fields['procedure'] ?? '')),
             'form_id' => trim((string)($lead['form_id'] ?? '')),
+            'form_name' => trim((string)($lead['form_name'] ?? $lead['name'] ?? '')),
             'leadgen_id' => trim((string)($lead['id'] ?? $lead['leadgen_id'] ?? '')),
             'ad_id' => trim((string)($lead['ad_id'] ?? '')),
+            'ad_name' => trim((string)($lead['ad_name'] ?? '')),
             'adset_id' => trim((string)($lead['adset_id'] ?? '')),
+            'adset_name' => trim((string)($lead['adset_name'] ?? '')),
             'campaign_id' => trim((string)($lead['campaign_id'] ?? '')),
+            'campaign_name' => trim((string)($lead['campaign_name'] ?? '')),
             'page_id' => trim((string)($lead['page_id'] ?? '')),
+            'page_name' => trim((string)($lead['page_name'] ?? '')),
             'platform' => trim((string)($lead['platform'] ?? 'meta')),
             'created_time' => trim((string)($lead['created_time'] ?? '')),
             'raw_fields' => $fields,
@@ -209,3 +344,39 @@ if (!function_exists('meta_graph_normalize_payload')) {
     }
 }
 
+if (!function_exists('meta_graph_enrich_context')) {
+    function meta_graph_enrich_context(array $lead): array
+    {
+        $enriched = $lead;
+
+        $formId = trim((string) ($enriched['form_id'] ?? ''));
+        if ($formId !== '' && trim((string) ($enriched['form_name'] ?? '')) === '') {
+            $form = meta_graph_fetch_form_context($formId);
+            if (!empty($form['ok'])) {
+                $enriched = array_merge($enriched, $form['context']);
+            }
+        }
+
+        $adId = trim((string) ($enriched['ad_id'] ?? ''));
+        if ($adId !== '') {
+            $ad = meta_graph_fetch_ad_context($adId);
+            if (!empty($ad['ok'])) {
+                foreach (($ad['context'] ?? []) as $key => $value) {
+                    if (trim((string) ($enriched[$key] ?? '')) === '' && trim((string) $value) !== '') {
+                        $enriched[$key] = $value;
+                    }
+                }
+            }
+        }
+
+        $pageId = trim((string) ($enriched['page_id'] ?? ''));
+        if ($pageId !== '' && trim((string) ($enriched['page_name'] ?? '')) === '') {
+            $page = meta_graph_fetch_page_context($pageId);
+            if (!empty($page['ok'])) {
+                $enriched = array_merge($enriched, $page['context']);
+            }
+        }
+
+        return $enriched;
+    }
+}

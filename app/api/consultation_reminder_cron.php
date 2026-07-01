@@ -137,10 +137,10 @@ function consultation_reminder_copy(array $lead, string $reminderKey): array
             'email' => implode("\n\n", [
                 $greeting,
                 'This is a quick reminder that your consultation with Elite Smiles is today, ' . $appointment . '.',
-                'We look forward to seeing you. If anything changes or you need help finding us, please call us at (801) 572-6262.',
+                'We look forward to seeing you. If anything changes or you need help finding us, just reply and let us know.',
                 "Warmly,\nThe Elite Smiles Team\n11762 South State, Suite 300\nDraper, UT 84020",
             ]),
-            'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is today at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Questions? Call (801) 572-6262.'),
+            'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is today at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. If you need anything before then, just reply here.'),
         ];
     }
 
@@ -150,10 +150,10 @@ function consultation_reminder_copy(array $lead, string $reminderKey): array
             $greeting,
             'This is a friendly reminder that your consultation with Elite Smiles is tomorrow, ' . $appointment . '.',
             'Your consultation is free, and Dr. Meden’s team will review your options, pricing, and financing clearly based on your specific case.',
-            'If you need to make any changes, please call us at (801) 572-6262.',
+            'If you need to make any changes, just reply here and we will help.',
             "Warmly,\nThe Elite Smiles Team\n11762 South State, Suite 300\nDraper, UT 84020",
         ]),
-        'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is tomorrow at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Questions? Call (801) 572-6262.'),
+        'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is tomorrow at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. If you need anything before then, just reply here.'),
     ];
 }
 

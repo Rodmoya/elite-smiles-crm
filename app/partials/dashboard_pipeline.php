@@ -3482,7 +3482,6 @@ $consultationOptions = [
             '',
             'Warmly,',
             'The Elite Smiles Team',
-            '(801) 572-6262',
         ].join('\n'), card);
 
     }

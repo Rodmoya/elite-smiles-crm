@@ -195,7 +195,7 @@ if (!function_exists('lead_email_default_first_touch')) {
                 $serviceLine,
                 'The consultation with Dr. Meden is free. It gives us a chance to evaluate your case, review your options, and go over pricing and financing based on what you actually need. 0% interest may be available for qualified patients.',
                 'Would mornings or afternoons usually work better for you to come in?',
-                "Warmly,\nThe Elite Smiles Team\n(801) 572-6262",
+                "Warmly,\nThe Elite Smiles Team",
             ]),
         ];
     }
@@ -236,7 +236,7 @@ if (!function_exists('lead_email_html_template')) {
             <td style="padding:8px 34px 30px;">
               ' . $bodyHtml . '
               <div style="margin-top:26px;padding-top:20px;border-top:1px solid #e2e8f0;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">Elite Smiles by Dr. Walter Meden<br>11762 South State, Suite 300, Draper, UT 84020<br>(801) 572-6262</p>
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">Elite Smiles by Dr. Walter Meden<br>11762 South State, Suite 300, Draper, UT 84020</p>
               </div>
             </td>
           </tr>

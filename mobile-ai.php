@@ -423,6 +423,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                                 - <?= e((string) $item['lead_name']) ?>
                             <?php endif; ?>
                         </p>
+                        <?php $assistantCard = is_array($item['assistant_card'] ?? null) ? $item['assistant_card'] : []; ?>
+                        <?php if (trim((string) ($assistantCard['recommended_action'] ?? $item['suggested_action'] ?? '')) !== ''): ?>
+                            <p class="meta">
+                                Next: <?= e((string) ($assistantCard['recommended_action'] ?? $item['suggested_action'] ?? 'Review next step.')) ?>
+                            </p>
+                        <?php endif; ?>
                         <?php if ((int) ($item['lead_id'] ?? 0) > 0): ?>
                             <a class="open-link" href="<?= e(base_url('leads.php?lead_id=' . (int) ($item['lead_id'] ?? 0))) ?>">Open lead</a>
                         <?php endif; ?>

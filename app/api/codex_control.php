@@ -132,6 +132,77 @@ if (!function_exists('codex_api_has_explicit_stage_approval')) {
     }
 }
 
+if (!function_exists('codex_api_text_excerpt')) {
+    function codex_api_text_excerpt(string $text, int $limit = 180): string
+    {
+        $text = trim((string) preg_replace('/\s+/', ' ', $text));
+        if ($text === '' || strlen($text) <= $limit) {
+            return $text;
+        }
+        return rtrim(substr($text, 0, max(0, $limit - 1))) . '...';
+    }
+}
+
+if (!function_exists('codex_api_notification_assistant_card')) {
+    function codex_api_notification_assistant_card(array $row, string $type = 'reply'): array
+    {
+        $leadId = (int) ($row['lead_id'] ?? 0);
+        $leadName = trim((string) ($row['full_name'] ?? $row['lead_name'] ?? 'Lead'));
+        $body = trim((string) ($row['body'] ?? $row['message'] ?? ''));
+        $bodyLower = strtolower($body);
+        $summary = $type === 'reply'
+            ? 'New reply from ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' #' . $leadId : '') . ': "' . codex_api_text_excerpt($body, 120) . '"'
+            : 'CRM event for ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' #' . $leadId : '') . ': ' . codex_api_text_excerpt($body, 120);
+
+        $recommended = 'Review the lead context and prepare a draft before any patient-facing send.';
+        $intent = 'review_context';
+        $safeActions = [
+            ['key' => 'open_lead', 'label' => 'Open lead', 'requires_approval' => false],
+            ['key' => 'draft_reply', 'label' => 'Draft reply', 'requires_approval' => true],
+            ['key' => 'mark_reviewed', 'label' => 'Mark reviewed', 'requires_approval' => false],
+        ];
+
+        if ((bool) preg_match('/\b(?:dob|date\s+of\s+birth|birth\s*date)\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/', $bodyLower)) {
+            $intent = 'possible_dob';
+            $recommended = 'This may contain a DOB. Verify it, save it internally, then confirm the appointment only with an approved draft.';
+            $safeActions = [
+                ['key' => 'open_lead', 'label' => 'Open lead', 'requires_approval' => false],
+                ['key' => 'save_dob_review', 'label' => 'Review/save DOB', 'requires_approval' => false],
+                ['key' => 'draft_confirmation', 'label' => 'Draft confirmation', 'requires_approval' => true],
+                ['key' => 'mark_reviewed', 'label' => 'Mark reviewed', 'requires_approval' => false],
+            ];
+        } elseif ((bool) preg_match('/\b(?:yes|works|available|morning|afternoon|pm|am|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|july|jun|june)\b/', $bodyLower)) {
+            $intent = 'scheduling_reply';
+            $recommended = 'Likely scheduling intent. Check calendar/appointment context, update internally if approved, and draft the confirmation.';
+            $safeActions = [
+                ['key' => 'open_lead', 'label' => 'Open lead', 'requires_approval' => false],
+                ['key' => 'schedule_review', 'label' => 'Review schedule', 'requires_approval' => false],
+                ['key' => 'draft_confirmation', 'label' => 'Draft confirmation', 'requires_approval' => true],
+                ['key' => 'mark_reviewed', 'label' => 'Mark reviewed', 'requires_approval' => false],
+            ];
+        } elseif ((bool) preg_match('/\b(?:thanks|thank you|ok|okay|gracias|perfect|sounds good)\b/', $bodyLower)) {
+            $intent = 'acknowledgement';
+            $recommended = 'Looks like an acknowledgement. Usually mark reviewed unless context shows a follow-up is still needed.';
+            $safeActions = [
+                ['key' => 'open_lead', 'label' => 'Open lead', 'requires_approval' => false],
+                ['key' => 'mark_reviewed', 'label' => 'Mark reviewed', 'requires_approval' => false],
+            ];
+        } elseif ((bool) preg_match('/\b(?:price|cost|financ|payment|down|credit|monthly|insurance)\b/', $bodyLower)) {
+            $intent = 'financing_or_cost';
+            $recommended = 'Cost/financing question. Prepare a warm finance-aware draft, but do not send until approved.';
+        }
+
+        return [
+            'intent' => $intent,
+            'summary' => $summary,
+            'recommended_action' => $recommended,
+            'draft_before_send_required' => true,
+            'send_requires_explicit_approval' => true,
+            'safe_actions' => $safeActions,
+        ];
+    }
+}
+
 if (!function_exists('codex_api_token_from_request')) {
     function codex_api_token_from_request(): string
     {
@@ -1153,6 +1224,9 @@ if (!function_exists('codex_api_mobile_notifications')) {
         lead_comm_ensure_schema();
         $limit = max(1, min(50, (int) codex_api_value('limit', 20)));
         $notifications = [];
+        $dedupeKeys = [];
+        $messageLimit = min(75, max(10, $limit * 4));
+        $activityLimit = min(50, max(10, $limit * 2));
 
         $messages = db_all(
             "SELECT
@@ -1166,11 +1240,20 @@ if (!function_exists('codex_api_mobile_notifications')) {
              FROM lead_messages lm
              INNER JOIN leads l ON l.id = lm.lead_id
              WHERE lm.direction = 'inbound'
+               AND lm.is_read = 0
+               AND lm.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
              ORDER BY lm.created_at DESC, lm.id DESC
-             LIMIT {$limit}"
+             LIMIT {$messageLimit}"
         );
 
         foreach ($messages as $row) {
+            $leadId = (int) ($row['lead_id'] ?? 0);
+            $dedupeKey = 'reply:' . $leadId;
+            if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
+                continue;
+            }
+            $dedupeKeys[$dedupeKey] = true;
+            $assistantCard = codex_api_notification_assistant_card($row, 'reply');
             $notifications[] = [
                 'id' => 'msg-' . (int) ($row['id'] ?? 0),
                 'type' => 'reply',
@@ -1179,10 +1262,11 @@ if (!function_exists('codex_api_mobile_notifications')) {
                 'created_at' => (string) ($row['created_at'] ?? ''),
                 'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
                 'is_new' => (int) ($row['is_read'] ?? 0) === 0,
-                'lead_id' => (int) ($row['lead_id'] ?? 0),
+                'lead_id' => $leadId,
                 'lead_name' => trim((string) ($row['full_name'] ?? '')),
                 'status' => trim((string) ($row['status'] ?? '')),
-                'suggested_action' => 'Review context and prepare a draft before sending.',
+                'suggested_action' => (string) ($assistantCard['recommended_action'] ?? 'Review context and prepare a draft before sending.'),
+                'assistant_card' => $assistantCard,
             ];
         }
 
@@ -1197,13 +1281,21 @@ if (!function_exists('codex_api_mobile_notifications')) {
                 l.status
              FROM lead_activities la
              INNER JOIN leads l ON l.id = la.lead_id
-             WHERE la.type IN ('lead_created', 'stage_change', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+             WHERE la.type IN ('lead_created', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+               AND la.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
              ORDER BY la.created_at DESC, la.id DESC
-             LIMIT {$limit}"
+             LIMIT {$activityLimit}"
         );
 
         foreach ($activities as $row) {
             $type = trim((string) ($row['type'] ?? 'activity'));
+            $leadId = (int) ($row['lead_id'] ?? 0);
+            $dedupeKey = 'activity:' . $type . ':' . $leadId;
+            if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
+                continue;
+            }
+            $dedupeKeys[$dedupeKey] = true;
+            $assistantCard = codex_api_notification_assistant_card($row, $type);
             $notifications[] = [
                 'id' => 'act-' . (int) ($row['id'] ?? 0),
                 'type' => $type,
@@ -1212,12 +1304,13 @@ if (!function_exists('codex_api_mobile_notifications')) {
                 'created_at' => (string) ($row['created_at'] ?? ''),
                 'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
                 'is_new' => false,
-                'lead_id' => (int) ($row['lead_id'] ?? 0),
+                'lead_id' => $leadId,
                 'lead_name' => trim((string) ($row['full_name'] ?? '')),
                 'status' => trim((string) ($row['status'] ?? '')),
-                'suggested_action' => $type === 'lead_created'
+                'suggested_action' => (string) ($assistantCard['recommended_action'] ?? ($type === 'lead_created'
                     ? 'Open the lead and confirm first-touch drafts.'
-                    : 'Open the lead and review next steps.',
+                    : 'Open the lead and review next steps.')),
+                'assistant_card' => $assistantCard,
             ];
         }
 
@@ -1232,6 +1325,32 @@ if (!function_exists('codex_api_mobile_notifications')) {
             'notifications' => array_slice($notifications, 0, $limit),
             'adapter' => 'lead_messages + lead_activities',
             'draft_before_send_rule' => true,
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_mark_notification_reviewed')) {
+    function codex_api_mark_notification_reviewed(): void
+    {
+        $leadId = (int) codex_api_value('lead_id', 0);
+        if ($leadId <= 0) {
+            codex_api_response(['ok' => false, 'message' => 'lead_id is required.'], 422);
+        }
+
+        codex_api_load_lead($leadId);
+        lead_comm_mark_read($leadId);
+        lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Notification reviewed and cleared through Codex API.', [
+            'notification_id' => trim((string) codex_api_value('notification_id', '')),
+            'source' => 'codex_api',
+            'draft_before_send_rule' => true,
+        ], (string) codex_api_value('created_by', 'Codex'));
+        lead_comm_update_rollup($leadId);
+
+        codex_api_response([
+            'ok' => true,
+            'message' => 'Notification reviewed and inbound replies marked read.',
+            'lead_id' => $leadId,
+            'thread' => codex_api_timeline($leadId),
         ]);
     }
 }
@@ -1416,6 +1535,10 @@ try {
         codex_api_mobile_notifications();
     }
 
+    if ($action === 'mark_notification_reviewed') {
+        codex_api_mark_notification_reviewed();
+    }
+
     if ($action === 'elite_ai_audit_recent') {
         codex_api_elite_ai_audit_recent();
     }
@@ -1596,6 +1719,12 @@ try {
         if (empty($result['ok'])) {
             codex_api_response(['ok' => false, 'message' => (string)($result['message'] ?? 'Email failed.'), 'lead_id' => $leadId], 502);
         }
+        lead_comm_mark_read($leadId);
+        lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after Codex API email response.', [
+            'email_id' => (int)($result['email_id'] ?? 0),
+            'source' => 'codex_api',
+        ], (string) codex_api_value('created_by', 'Codex'));
+        lead_comm_update_rollup($leadId);
         codex_api_response(['ok' => true, 'message' => 'Email sent and logged.', 'lead_id' => $leadId, 'email_id' => (int)($result['email_id'] ?? 0), 'thread' => codex_api_timeline($leadId)]);
     }
 
@@ -1639,6 +1768,11 @@ try {
         lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS through Codex API.', [
             'message_id' => $messageRecordId,
             'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+            'source' => 'codex_api',
+        ], 'Codex');
+        lead_comm_mark_read($leadId);
+        lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after Codex API SMS response.', [
+            'message_id' => $messageRecordId,
             'source' => 'codex_api',
         ], 'Codex');
         lead_comm_update_rollup($leadId);

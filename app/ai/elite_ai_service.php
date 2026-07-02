@@ -466,6 +466,61 @@ if (!function_exists('elite_ai_recommended_next_step')) {
     }
 }
 
+if (!function_exists('elite_ai_notification_excerpt')) {
+    function elite_ai_notification_excerpt(string $text, int $limit = 150): string
+    {
+        $text = trim((string) preg_replace('/\s+/', ' ', $text));
+        if ($text === '' || strlen($text) <= $limit) {
+            return $text;
+        }
+        return rtrim(substr($text, 0, max(0, $limit - 1))) . '...';
+    }
+}
+
+if (!function_exists('elite_ai_notification_action_card')) {
+    function elite_ai_notification_action_card(array $row, string $type = 'reply'): array
+    {
+        $leadId = (int) ($row['lead_id'] ?? 0);
+        $leadName = trim((string) ($row['full_name'] ?? $row['lead_name'] ?? 'Lead'));
+        $body = trim((string) ($row['body'] ?? $row['message'] ?? ''));
+        $bodyLower = strtolower($body);
+        $summary = $type === 'reply'
+            ? 'New reply from ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' #' . $leadId : '') . ': "' . elite_ai_notification_excerpt($body, 110) . '"'
+            : 'CRM event for ' . ($leadName !== '' ? $leadName : 'Lead') . ($leadId > 0 ? ' #' . $leadId : '') . ': ' . elite_ai_notification_excerpt($body, 110);
+
+        $intent = 'review_context';
+        $recommended = 'Review context and prepare a draft before any patient-facing send.';
+        $operatorPrompt = $leadId > 0 ? 'Check lead #' . $leadId . ' and suggest the next step.' : 'Review this notification and suggest the next step.';
+
+        if ((bool) preg_match('/\b(?:dob|date\s+of\s+birth|birth\s*date)\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/', $bodyLower)) {
+            $intent = 'possible_dob';
+            $recommended = 'This may include a DOB. Verify it, save it internally, then draft any confirmation for approval.';
+            $operatorPrompt = $leadId > 0 ? 'Review lead #' . $leadId . ' for DOB and tell me what internal update is needed.' : $operatorPrompt;
+        } elseif ((bool) preg_match('/\b(?:yes|works|available|morning|afternoon|pm|am|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|july|jun|june)\b/', $bodyLower)) {
+            $intent = 'scheduling_reply';
+            $recommended = 'Likely scheduling intent. Check calendar/lead context, then prepare a confirmation draft.';
+            $operatorPrompt = $leadId > 0 ? 'Review lead #' . $leadId . ' scheduling reply and suggest the next step.' : $operatorPrompt;
+        } elseif ((bool) preg_match('/\b(?:thanks|thank you|ok|okay|gracias|perfect|sounds good)\b/', $bodyLower)) {
+            $intent = 'acknowledgement';
+            $recommended = 'Likely acknowledgement. Mark reviewed unless the lead still needs a specific next step.';
+            $operatorPrompt = $leadId > 0 ? 'Check lead #' . $leadId . ' and tell me if this acknowledgement needs a reply.' : $operatorPrompt;
+        } elseif ((bool) preg_match('/\b(?:price|cost|financ|payment|down|credit|monthly|insurance)\b/', $bodyLower)) {
+            $intent = 'financing_or_cost';
+            $recommended = 'Cost/financing question. Prepare a warm finance-aware draft for approval.';
+            $operatorPrompt = $leadId > 0 ? 'Prepare a finance-aware reply draft for lead #' . $leadId . ' after reviewing context.' : $operatorPrompt;
+        }
+
+        return [
+            'intent' => $intent,
+            'summary' => $summary,
+            'recommended_action' => $recommended,
+            'operator_prompt' => $operatorPrompt,
+            'draft_before_send_required' => true,
+            'send_requires_explicit_approval' => true,
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_notification_rows')) {
     function elite_ai_notification_rows(int $limit = 8): array
     {
@@ -502,6 +557,7 @@ if (!function_exists('elite_ai_notification_rows')) {
                     continue;
                 }
                 $dedupeKeys[$dedupeKey] = true;
+                $assistantCard = elite_ai_notification_action_card($row, 'reply');
 
                 $notifications[] = [
                     'id' => 'msg-' . (int) ($row['id'] ?? 0),
@@ -512,7 +568,8 @@ if (!function_exists('elite_ai_notification_rows')) {
                     'lead_id' => $leadId,
                     'lead_name' => $leadName,
                     'status' => trim((string) ($row['status'] ?? '')),
-                    'suggested_action' => 'Review context and prepare a draft before sending.',
+                    'suggested_action' => (string) ($assistantCard['recommended_action'] ?? 'Review context and prepare a draft before sending.'),
+                    'assistant_card' => $assistantCard,
                 ];
             }
         } catch (Throwable $e) {
@@ -531,8 +588,8 @@ if (!function_exists('elite_ai_notification_rows')) {
                     l.status
                  FROM lead_activities la
                  INNER JOIN leads l ON l.id = la.lead_id
-                 WHERE la.type IN ('lead_created', 'stage_change', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
-                   AND la.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                 WHERE la.type IN ('lead_created', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+                   AND la.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
                  ORDER BY la.created_at DESC, la.id DESC
                  LIMIT {$activityLimit}"
             );
@@ -549,12 +606,12 @@ if (!function_exists('elite_ai_notification_rows')) {
 
                 $label = match ($type) {
                     'lead_created' => 'New lead',
-                    'stage_change' => 'Pipeline update',
                     'consultation_scheduled' => 'Consultation alert',
                     'follow_up_due' => 'Follow-up alert',
                     'manual_sms_followup_prepared' => 'Draft ready',
                     default => 'CRM alert',
                 };
+                $assistantCard = elite_ai_notification_action_card($row, $type);
 
                 $notifications[] = [
                     'id' => 'act-' . (int) ($row['id'] ?? 0),
@@ -565,9 +622,10 @@ if (!function_exists('elite_ai_notification_rows')) {
                     'lead_id' => $leadId,
                     'lead_name' => $leadName,
                     'status' => trim((string) ($row['status'] ?? '')),
-                    'suggested_action' => $type === 'lead_created'
+                    'suggested_action' => (string) ($assistantCard['recommended_action'] ?? ($type === 'lead_created'
                         ? 'Review the lead for first-touch readiness.'
-                        : 'Open the lead and review the next manual step.',
+                        : 'Open the lead and review the next manual step.')),
+                    'assistant_card' => $assistantCard,
                 ];
             }
         } catch (Throwable $e) {
@@ -799,13 +857,16 @@ if (!function_exists('elite_ai_notifications_payload')) {
         $cards = [[
             'title' => 'Notifications needing attention',
             'items' => array_map(static function (array $row): string {
-                return trim((string) ($row['title'] ?? 'CRM alert')) . ' - ' . trim((string) ($row['suggested_action'] ?? 'Review next step.'));
+                $card = is_array($row['assistant_card'] ?? null) ? $row['assistant_card'] : [];
+                $summary = trim((string) ($card['summary'] ?? $row['title'] ?? 'CRM alert'));
+                $next = trim((string) ($card['recommended_action'] ?? $row['suggested_action'] ?? 'Review next step.'));
+                return $summary . ' - ' . $next;
             }, $notifications),
         ]];
 
         return [
             'answer' => $notifications
-                ? 'These are the newest notification items across replies and CRM activity. Start with unread inbound replies first.'
+                ? 'I found the active notifications that still need attention. I filtered out reviewed replies and routine stage-change noise, so this list should be actionable.'
                 : 'There are no notification items to review right now.',
             'cards' => $notifications ? $cards : [],
             'tools_used' => ['notifications'],

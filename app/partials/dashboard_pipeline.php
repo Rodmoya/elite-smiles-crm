@@ -2752,8 +2752,15 @@ $consultationOptions = [
         const lines = normalizedText.split('\n').filter(line => line.trim() !== '');
         if (!lines.length) return [];
         const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const cleanImportedLeadValue = (value) => {
+            let cleaned = String(value || '').trim();
+            if (cleaned.length >= 2 && cleaned.startsWith('"') && cleaned.endsWith('"')) {
+                cleaned = cleaned.slice(1, -1);
+            }
+            return cleaned.replace(/""/g, '"').trim();
+        };
         const parseLine = (line) => {
-            if (delimiter === '\t') return line.split('\t');
+            if (delimiter === '\t') return line.split('\t').map(cleanImportedLeadValue);
             const values = [];
             let current = '';
             let inQuotes = false;
@@ -2774,14 +2781,14 @@ $consultationOptions = [
                 }
             }
             values.push(current);
-            return values;
+            return values.map(cleanImportedLeadValue);
         };
         const headers = parseLine(lines[0]).map(normalizeImportedLeadHeader);
         return lines.slice(1).map((line) => {
             const values = parseLine(line);
             const row = {};
             headers.forEach((header, index) => {
-                row[header] = (values[index] || '').trim();
+                row[header] = cleanImportedLeadValue(values[index] || '');
             });
             return row;
         }).filter((row) => Object.values(row).some(value => String(value || '').trim() !== ''));
@@ -2796,6 +2803,9 @@ $consultationOptions = [
             const formData = new FormData();
             formData.append('_csrf_token', csrfToken);
             formData.append('rows_json', JSON.stringify(rows));
+            if (importLeadsFileInput && importLeadsFileInput.files && importLeadsFileInput.files[0]) {
+                formData.append('lead_file', importLeadsFileInput.files[0]);
+            }
             const response = await fetch(importLeadsUrl, {
                 method: 'POST',
                 body: formData,

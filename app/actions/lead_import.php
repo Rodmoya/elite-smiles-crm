@@ -17,6 +17,68 @@ function lead_import_json_response(array $payload, int $statusCode = 200): void
     exit;
 }
 
+function lead_import_clean_cell(string $value): string
+{
+    $value = trim($value);
+    if (strlen($value) >= 2 && $value[0] === '"' && substr($value, -1) === '"') {
+        $value = substr($value, 1, -1);
+    }
+    return trim(str_replace('""', '"', $value));
+}
+
+function lead_import_parse_uploaded_file(array $file): array
+{
+    $path = (string) ($file['tmp_name'] ?? '');
+    if ($path === '' || !is_uploaded_file($path)) {
+        return [];
+    }
+
+    $content = (string) file_get_contents($path);
+    $content = trim(str_replace(["\r\n", "\r"], "\n", $content));
+    if ($content === '') {
+        return [];
+    }
+
+    $firstLine = strtok($content, "\n");
+    $delimiter = is_string($firstLine) && str_contains($firstLine, "\t") ? "\t" : ',';
+    $handle = fopen('php://temp', 'r+');
+    if (!$handle) {
+        return [];
+    }
+
+    fwrite($handle, $content);
+    rewind($handle);
+    $headers = fgetcsv($handle, 0, $delimiter);
+    if (!is_array($headers) || $headers === []) {
+        fclose($handle);
+        return [];
+    }
+
+    $headers = array_map(static function ($header): string {
+        return strtolower(lead_import_clean_cell((string) $header));
+    }, $headers);
+
+    $rows = [];
+    while (($values = fgetcsv($handle, 0, $delimiter)) !== false) {
+        if (!is_array($values) || $values === []) {
+            continue;
+        }
+        $row = [];
+        foreach ($headers as $index => $header) {
+            if ($header === '') {
+                continue;
+            }
+            $row[$header] = lead_import_clean_cell((string) ($values[$index] ?? ''));
+        }
+        if (array_filter($row, static fn ($value): bool => trim((string) $value) !== '') !== []) {
+            $rows[] = $row;
+        }
+    }
+    fclose($handle);
+
+    return $rows;
+}
+
 if (!is_post()) {
     lead_import_json_response(['ok' => false, 'message' => 'Invalid request method.'], 405);
 }
@@ -33,6 +95,9 @@ try {
 
 $rawRows = trim((string) post('rows_json', ''));
 $rows = $rawRows !== '' ? json_decode($rawRows, true) : [];
+if ((!is_array($rows) || $rows === []) && is_array($_FILES['lead_file'] ?? null)) {
+    $rows = lead_import_parse_uploaded_file($_FILES['lead_file']);
+}
 if (!is_array($rows) || $rows === []) {
     lead_import_json_response(['ok' => false, 'message' => 'No lead rows were provided.'], 422);
 }

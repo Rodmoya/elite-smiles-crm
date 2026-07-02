@@ -1599,7 +1599,11 @@ if (!function_exists('lead_import_meta_value')) {
     {
         foreach ($keys as $key) {
             if (array_key_exists($key, $row)) {
-                return trim((string) $row[$key]);
+                $value = trim((string) $row[$key]);
+                if (strlen($value) >= 2 && $value[0] === '"' && substr($value, -1) === '"') {
+                    $value = substr($value, 1, -1);
+                }
+                return trim(str_replace('""', '"', $value));
             }
         }
 

@@ -498,7 +498,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             </p>
                         <?php endif; ?>
                         <?php if ((int) ($item['lead_id'] ?? 0) > 0): ?>
-                            <a class="open-link" href="<?= e(base_url('leads.php?lead_id=' . (int) ($item['lead_id'] ?? 0))) ?>">Open lead</a>
+                            <?php
+                                $notificationAssistantUrl = base_url('mobile-ai/?tab=assistant'
+                                    . '&notification_id=' . rawurlencode((string) ($item['id'] ?? ''))
+                                    . '&lead_id=' . (int) ($item['lead_id'] ?? 0));
+                            ?>
+                            <a class="open-link" href="<?= e($notificationAssistantUrl) ?>">Ask Elite AI</a>
                         <?php endif; ?>
                     </article>
                 <?php endforeach; ?>
@@ -528,11 +533,23 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             }
 
             var endpoint = '<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>';
+            var notificationSeed = <?= json_encode($notifications, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            var urlParams = new URLSearchParams(window.location.search || '');
+            var activeNotificationId = String(urlParams.get('notification_id') || '');
+            var activeLeadId = Number(urlParams.get('lead_id') || 0);
+            var activeNotification = Array.isArray(notificationSeed) ? notificationSeed.find(function (item) {
+                return String(item && item.id ? item.id : '') === activeNotificationId;
+            }) : null;
+            if (!activeNotification && activeLeadId > 0 && Array.isArray(notificationSeed)) {
+                activeNotification = notificationSeed.find(function (item) {
+                    return Number(item && item.lead_id ? item.lead_id : 0) === activeLeadId;
+                }) || null;
+            }
             var baseContext = {
                 page: 'mobile-ai',
                 page_title: 'Elite AI Mobile Portal',
                 current_url: window.location.href,
-                lead_id: 0,
+                lead_id: activeLeadId > 0 ? activeLeadId : 0,
                 tab: 'assistant'
             };
 
@@ -556,6 +573,21 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 Object.keys(baseContext).forEach(function (key) {
                     context[key] = baseContext[key];
                 });
+                if (activeNotification) {
+                    context.notification = {
+                        id: String(activeNotification.id || ''),
+                        type: String(activeNotification.type || ''),
+                        title: String(activeNotification.title || ''),
+                        message: String(activeNotification.message || ''),
+                        created_at: String(activeNotification.created_at || ''),
+                        lead_id: Number(activeNotification.lead_id || activeLeadId || 0),
+                        lead_name: String(activeNotification.lead_name || ''),
+                        status: String(activeNotification.status || ''),
+                        suggested_action: String(activeNotification.suggested_action || ''),
+                        is_new: Boolean(activeNotification.is_new)
+                    };
+                    context.lead_id = Number(activeNotification.lead_id || activeLeadId || 0);
+                }
                 context.assistant_thread = assistantConversationContext();
                 return context;
             }
@@ -1143,6 +1175,18 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                                 page_title: baseContext.page_title,
                                 current_url: baseContext.current_url,
                                 lead_id: Number(action.lead_id || 0),
+                                notification: activeNotification ? {
+                                    id: String(activeNotification.id || ''),
+                                    type: String(activeNotification.type || ''),
+                                    title: String(activeNotification.title || ''),
+                                    message: String(activeNotification.message || ''),
+                                    created_at: String(activeNotification.created_at || ''),
+                                    lead_id: Number(activeNotification.lead_id || activeLeadId || 0),
+                                    lead_name: String(activeNotification.lead_name || ''),
+                                    status: String(activeNotification.status || ''),
+                                    suggested_action: String(activeNotification.suggested_action || ''),
+                                    is_new: Boolean(activeNotification.is_new)
+                                } : null,
                                 assistant_thread: assistantConversationContext()
                             }
                         })
@@ -1300,6 +1344,35 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
             buildQuickActions();
             ensureStatusNode();
+            if (activeNotification) {
+                var notificationLeadId = Number(activeNotification.lead_id || activeLeadId || 0);
+                var notificationText = String(activeNotification.message || '').trim();
+                var notificationTitle = String(activeNotification.title || 'this notification').trim();
+                var assistantIntro = 'I am looking at ' + notificationTitle + (notificationText ? ':\n\n"' + notificationText + '"' : '') + '\n\nWhat do you want to do? I can draft a reply for approval, mark it reviewed, or help update the lead.';
+                var notificationActions = [];
+                if (notificationLeadId > 0) {
+                    notificationActions.push({
+                        type: 'draft_sms',
+                        label: 'Draft SMS reply',
+                        lead_id: notificationLeadId,
+                        help: 'Review this notification in context and prepare a warm SMS reply draft for approval. Do not send.'
+                    });
+                    notificationActions.push({
+                        type: 'draft_email',
+                        label: 'Draft Email reply',
+                        lead_id: notificationLeadId,
+                        help: 'Review this notification in context and prepare an email reply draft for approval. Do not send.'
+                    });
+                    notificationActions.push({
+                        type: 'mark_reviewed',
+                        label: 'Mark reviewed',
+                        lead_id: notificationLeadId,
+                        help: 'Mark this notification reviewed. Do not send any patient-facing message.'
+                    });
+                }
+                createMessage('assistant', assistantIntro, [], notificationActions);
+                input.placeholder = 'Tell me what to do with this notification...';
+            }
             refreshPendingDrafts();
         }());
     </script>

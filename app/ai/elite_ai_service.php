@@ -108,6 +108,26 @@ function elite_ai_normalize_context(array $request): array
         $currentUrl = trim((string) ($context['current_url'] ?? ''));
         $leadId = (int) ($context['lead_id'] ?? 0);
         $tab = preg_replace('/[^a-z0-9_\-]/i', '', (string) ($context['tab'] ?? ''));
+        $notification = [];
+        if (is_array($context['notification'] ?? null)) {
+            $notificationSource = (array) $context['notification'];
+            $notificationLeadId = (int) ($notificationSource['lead_id'] ?? 0);
+            $notification = [
+                'id' => mb_substr(trim((string) ($notificationSource['id'] ?? '')), 0, 80),
+                'type' => mb_substr(trim((string) ($notificationSource['type'] ?? '')), 0, 40),
+                'title' => mb_substr(trim((string) ($notificationSource['title'] ?? '')), 0, 180),
+                'message' => mb_substr(trim((string) ($notificationSource['message'] ?? '')), 0, 700),
+                'created_at' => mb_substr(trim((string) ($notificationSource['created_at'] ?? '')), 0, 40),
+                'lead_id' => $notificationLeadId > 0 ? $notificationLeadId : 0,
+                'lead_name' => mb_substr(trim((string) ($notificationSource['lead_name'] ?? '')), 0, 160),
+                'status' => mb_substr(trim((string) ($notificationSource['status'] ?? '')), 0, 80),
+                'suggested_action' => mb_substr(trim((string) ($notificationSource['suggested_action'] ?? '')), 0, 260),
+                'is_new' => !empty($notificationSource['is_new']),
+            ];
+            if ($leadId <= 0 && $notification['lead_id'] > 0) {
+                $leadId = (int) $notification['lead_id'];
+            }
+        }
         $assistantThread = [];
         if (is_array($context['assistant_thread'] ?? null)) {
             foreach (array_slice($context['assistant_thread'], -8) as $item) {
@@ -132,6 +152,7 @@ function elite_ai_normalize_context(array $request): array
         'current_url' => $currentUrl,
         'lead_id' => $leadId > 0 ? $leadId : 0,
         'tab' => $tab,
+        'notification' => $notification,
         'assistant_thread' => $assistantThread,
     ];
     }
@@ -1986,6 +2007,7 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
             'You are the planning layer for Elite AI inside a dental CRM.',
             'Your job is to interpret the operator request the way a strong execution assistant would.',
             'Use the assistant_thread in page context to understand follow-up phrases like "do it", "clear that", "draft it", or "send it", but never infer patient-facing send approval unless the newest operator message explicitly approves sending a specific visible draft.',
+            'When page context includes notification, treat it as the active conversation subject. Short instructions like "answer this", "draft a reply", "what should we say", "clear it", or "schedule it" should use that notification lead/message as context.',
             'If the operator mentions one lead by name or asks about a specific reply, route that to lead_summary instead of a broad dashboard workflow.',
             'If they ask for the latest or last reply, response, message, text, SMS, or email from a lead, treat it as a single-lead request.',
             'Choose the single best next workflow intent.',

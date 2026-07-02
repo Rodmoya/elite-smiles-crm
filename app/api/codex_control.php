@@ -1054,6 +1054,10 @@ if (!function_exists('codex_api_update_lead')) {
 
     function codex_api_update_lead(int $leadId, array $fields): void
     {
+        if (function_exists('lead_pipeline_ensure_schema')) {
+            lead_pipeline_ensure_schema();
+        }
+
         $lead = codex_api_load_lead($leadId);
         $allowedFields = [
             'full_name', 'phone', 'email', 'preferred_contact', 'procedure_interest',

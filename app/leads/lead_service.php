@@ -211,6 +211,34 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
             // Index may already exist.
         }
 
+        foreach ([
+            'consultation_date' => 'DATETIME NULL DEFAULT NULL',
+            'next_follow_up_at' => 'DATETIME NULL DEFAULT NULL',
+            'date_of_birth' => 'DATE NULL DEFAULT NULL',
+        ] as $dateColumn => $definition) {
+            if (!leads_has_column($dateColumn)) {
+                continue;
+            }
+
+            try {
+                $existing = db_one("SHOW COLUMNS FROM leads LIKE :column_name", ['column_name' => $dateColumn]);
+                $isNullable = strtoupper((string)($existing['Null'] ?? $existing['null'] ?? '')) === 'YES';
+                $default = $existing['Default'] ?? $existing['default'] ?? null;
+                if ($isNullable && ($default === null || $default === 'NULL')) {
+                    continue;
+                }
+                db_query("ALTER TABLE leads MODIFY COLUMN {$dateColumn} {$definition}");
+                leads_table_columns(true);
+            } catch (Throwable $e) {
+                if (function_exists('esm_log')) {
+                    esm_log('lead_pipeline', 'Could not normalize nullable date column.', [
+                        'column' => $dateColumn,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         lead_pipeline_ensure_status_values();
     }
 }

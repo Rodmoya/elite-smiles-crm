@@ -28,7 +28,7 @@ if (!in_array($tab, ['assistant', 'notifications'], true)) {
     $tab = 'assistant';
 }
 $showWelcome = get('welcome') === '1';
-$notifications = elite_ai_notification_rows(18);
+$notifications = elite_ai_notification_rows(5);
 $fullName = trim(($mobileUser['first_name'] ?? '') . ' ' . ($mobileUser['last_name'] ?? ''));
 $firstName = trim((string) ($mobileUser['first_name'] ?? ''));
 $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 'Rodrigo');
@@ -154,10 +154,27 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             margin-top: 10px;
         }
         .quick-actions {
-            display: flex;
+            display: none;
             flex-wrap: wrap;
             gap: 8px;
-            margin-bottom: 10px;
+            margin: 8px 0 10px;
+        }
+        .quick-actions.open {
+            display: flex;
+        }
+        .quick-actions-toggle {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.92);
+            border-radius: 999px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 7px 11px;
+            line-height: 1;
+        }
+        .quick-actions-shell {
+            margin-bottom: 8px;
         }
         .pending-drafts {
             border: 1px solid var(--line);
@@ -261,13 +278,32 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             background: #f9fafb;
             padding: 10px 12px;
         }
+        .result-card summary {
+            cursor: pointer;
+            list-style: none;
+        }
+        .result-card summary::-webkit-details-marker {
+            display: none;
+        }
         .result-card-title {
-            margin: 0 0 6px;
+            margin: 0;
             color: var(--muted);
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0;
+        }
+        .result-card-title::after {
+            content: " tap";
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: none;
+        }
+        .result-card[open] .result-card-title {
+            margin-bottom: 6px;
+        }
+        .result-card[open] .result-card-title::after {
+            content: "";
         }
         .result-card ul {
             margin: 0;
@@ -331,8 +367,21 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             background: var(--panel);
             padding: 12px 14px;
         }
-        .notification.priority {
-            border-color: #fecaca;
+        .notification.unread {
+            border-color: #cbd5e1;
+            background: #ffffff;
+            color: var(--ink);
+        }
+        .notification.read {
+            border-color: #e5e7eb;
+            background: #f8fafc;
+            color: #94a3b8;
+        }
+        .notification.read h2,
+        .notification.read p,
+        .notification.read .meta,
+        .notification.read .open-link {
+            color: #94a3b8;
         }
         .notification h2 {
             margin: 0;
@@ -347,6 +396,18 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
         }
         .notification .meta {
             font-size: 12px;
+        }
+        .notification-state {
+            display: inline-flex;
+            margin-left: 6px;
+            border: 1px solid currentColor;
+            border-radius: 999px;
+            padding: 2px 7px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            vertical-align: middle;
         }
         .open-link {
             display: inline-flex;
@@ -394,7 +455,10 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             </section>
 
             <section class="composer-wrap" aria-label="Assistant composer">
-                <div class="quick-actions" id="assistant-quick-actions" aria-label="Quick actions"></div>
+                <div class="quick-actions-shell">
+                    <button class="quick-actions-toggle" id="assistant-quick-actions-toggle" type="button" aria-expanded="false" aria-controls="assistant-quick-actions">Shortcuts</button>
+                    <div class="quick-actions" id="assistant-quick-actions" aria-label="Quick actions"></div>
+                </div>
                 <form class="composer" id="assistant-composer">
                     <input id="assistant-input" type="text" placeholder="Ask Elite AI what to do..." autocomplete="off" enterkeyhint="send">
                     <button id="assistant-mic" type="button" aria-label="Microphone placeholder">
@@ -412,8 +476,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 <?php endif; ?>
 
                 <?php foreach ($notifications as $item): ?>
-                    <article class="notification <?= ($item['priority'] ?? 'normal') === 'high' ? 'priority' : '' ?>">
-                        <h2><?= e((string) ($item['title'] ?? 'CRM alert')) ?></h2>
+                    <?php $isUnread = !empty($item['is_new']); ?>
+                    <article class="notification <?= $isUnread ? 'unread' : 'read' ?>">
+                        <h2>
+                            <?= e((string) ($item['title'] ?? 'CRM alert')) ?>
+                            <span class="notification-state"><?= $isUnread ? 'Unread' : 'Read' ?></span>
+                        </h2>
                         <?php if (trim((string) ($item['message'] ?? '')) !== ''): ?>
                             <p><?= e((string) ($item['message'] ?? '')) ?></p>
                         <?php endif; ?>
@@ -451,6 +519,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var input = document.getElementById('assistant-input');
             var mic = document.getElementById('assistant-mic');
             var quickActions = document.getElementById('assistant-quick-actions');
+            var quickActionsToggle = document.getElementById('assistant-quick-actions-toggle');
             var pendingDraftsSection = document.getElementById('assistant-pending-drafts');
             var pendingDraftsTitle = document.getElementById('assistant-pending-drafts-title');
             var pendingDraftsList = document.getElementById('assistant-pending-drafts-list');
@@ -469,6 +538,27 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
             var assistantSpeech = null;
             var isListening = false;
+            var assistantThreadState = [];
+
+            function assistantConversationContext() {
+                return assistantThreadState.slice(-8).map(function (item) {
+                    return {
+                        role: item && item.role === 'user' ? 'user' : 'assistant',
+                        text: String(item && item.text ? item.text : '').slice(0, 700)
+                    };
+                }).filter(function (item) {
+                    return item.text.trim() !== '';
+                });
+            }
+
+            function assistantContext() {
+                var context = {};
+                Object.keys(baseContext).forEach(function (key) {
+                    context[key] = baseContext[key];
+                });
+                context.assistant_thread = assistantConversationContext();
+                return context;
+            }
 
             var quickActionItems = [
                 { label: 'Morning Sweep', quick_action: 'morning-sweep' },
@@ -491,13 +581,16 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     var cardsWrap = document.createElement('div');
                     cardsWrap.className = 'cards';
                     cards.forEach(function (card) {
-                        var cardEl = document.createElement('div');
+                        var cardEl = document.createElement('details');
                         cardEl.className = 'result-card';
 
+                        var summary = document.createElement('summary');
                         var title = document.createElement('p');
                         title.className = 'result-card-title';
-                        title.textContent = card.title || 'Summary';
-                        cardEl.appendChild(title);
+                        var itemCount = Array.isArray(card.items) ? card.items.length : 0;
+                        title.textContent = (card.title || 'Details') + (itemCount ? ' (' + itemCount + ')' : '');
+                        summary.appendChild(title);
+                        cardEl.appendChild(summary);
 
                         var list = document.createElement('ul');
                         (card.items || []).forEach(function (item) {
@@ -534,6 +627,14 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
                 thread.appendChild(article);
                 article.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                if (!isLoading) {
+                    assistantThreadState.push({
+                        role: role === 'user' ? 'user' : 'assistant',
+                        text: String(text || ''),
+                        created_at: Date.now()
+                    });
+                    assistantThreadState = assistantThreadState.slice(-30);
+                }
                 return article;
             }
 
@@ -992,6 +1093,14 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 });
             }
 
+            if (quickActionsToggle && quickActions) {
+                quickActionsToggle.addEventListener('click', function () {
+                    var isOpen = quickActions.classList.toggle('open');
+                    quickActionsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                    quickActionsToggle.textContent = isOpen ? 'Hide shortcuts' : 'Shortcuts';
+                });
+            }
+
             async function runAssistantAction(action) {
                 if (!action || !action.type || !action.lead_id) {
                     return;
@@ -1033,7 +1142,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                                 page: baseContext.page,
                                 page_title: baseContext.page_title,
                                 current_url: baseContext.current_url,
-                                lead_id: Number(action.lead_id || 0)
+                                lead_id: Number(action.lead_id || 0),
+                                assistant_thread: assistantConversationContext()
                             }
                         })
                     });
@@ -1108,7 +1218,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 }
 
                 createMessage('user', cleanPrompt || String(quickAction || ''));
-                var loading = createMessage('assistant', 'Thinking...', [], true);
+                var loading = createMessage('assistant', 'Thinking...', [], null, true);
                 setBusy(true);
 
                 try {
@@ -1124,7 +1234,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             surface: 'mobile',
                             prompt: cleanPrompt,
                             quick_action: quickAction || '',
-                            context: baseContext
+                            context: assistantContext()
                         })
                     });
 

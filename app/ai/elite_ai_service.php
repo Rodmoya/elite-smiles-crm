@@ -108,6 +108,23 @@ function elite_ai_normalize_context(array $request): array
         $currentUrl = trim((string) ($context['current_url'] ?? ''));
         $leadId = (int) ($context['lead_id'] ?? 0);
         $tab = preg_replace('/[^a-z0-9_\-]/i', '', (string) ($context['tab'] ?? ''));
+        $assistantThread = [];
+        if (is_array($context['assistant_thread'] ?? null)) {
+            foreach (array_slice($context['assistant_thread'], -8) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $role = strtolower(trim((string) ($item['role'] ?? 'assistant')));
+                $text = trim((string) ($item['text'] ?? ''));
+                if ($text === '') {
+                    continue;
+                }
+                $assistantThread[] = [
+                    'role' => $role === 'user' ? 'user' : 'assistant',
+                    'text' => mb_substr($text, 0, 700),
+                ];
+            }
+        }
 
     return [
         'page' => $page !== '' ? $page : 'unknown',
@@ -115,6 +132,7 @@ function elite_ai_normalize_context(array $request): array
         'current_url' => $currentUrl,
         'lead_id' => $leadId > 0 ? $leadId : 0,
         'tab' => $tab,
+        'assistant_thread' => $assistantThread,
     ];
     }
 }
@@ -522,13 +540,24 @@ if (!function_exists('elite_ai_notification_action_card')) {
 }
 
 if (!function_exists('elite_ai_notification_rows')) {
-    function elite_ai_notification_rows(int $limit = 8): array
+    function elite_ai_select_notification_window(array $notifications, int $limit = 5): array
+    {
+        $limit = max(1, min(20, $limit));
+        $unread = array_values(array_filter($notifications, static fn (array $row): bool => !empty($row['is_new'])));
+        if (count($unread) > $limit) {
+            return $unread;
+        }
+
+        return array_slice($notifications, 0, $limit);
+    }
+
+    function elite_ai_notification_rows(int $limit = 5): array
     {
         $limit = max(1, min(20, $limit));
         $notifications = [];
         $dedupeKeys = [];
-        $messageLimit = min(50, max(10, $limit * 4));
-        $activityLimit = min(50, max(10, $limit * 2));
+        $messageLimit = 50;
+        $activityLimit = 30;
 
         try {
             $messages = db_all(
@@ -543,7 +572,6 @@ if (!function_exists('elite_ai_notification_rows')) {
                  FROM lead_messages lm
                  INNER JOIN leads l ON l.id = lm.lead_id
                  WHERE lm.direction = 'inbound'
-                   AND lm.is_read = 0
                    AND lm.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
                  ORDER BY lm.created_at DESC, lm.id DESC
                  LIMIT {$messageLimit}"
@@ -558,10 +586,13 @@ if (!function_exists('elite_ai_notification_rows')) {
                 }
                 $dedupeKeys[$dedupeKey] = true;
                 $assistantCard = elite_ai_notification_action_card($row, 'reply');
+                $isUnread = (int) ($row['is_read'] ?? 0) === 0;
 
                 $notifications[] = [
                     'id' => 'msg-' . (int) ($row['id'] ?? 0),
-                    'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
+                    'type' => 'reply',
+                    'priority' => $isUnread ? 'high' : 'normal',
+                    'is_new' => $isUnread,
                     'title' => 'Reply from ' . $leadName . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
                     'message' => trim((string) ($row['body'] ?? '')),
                     'created_at' => (string) ($row['created_at'] ?? ''),
@@ -615,7 +646,9 @@ if (!function_exists('elite_ai_notification_rows')) {
 
                 $notifications[] = [
                     'id' => 'act-' . (int) ($row['id'] ?? 0),
-                    'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
+                    'type' => $type,
+                    'priority' => 'normal',
+                    'is_new' => false,
                     'title' => $label . ': ' . $leadName . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
                     'message' => trim((string) ($row['body'] ?? '')),
                     'created_at' => (string) ($row['created_at'] ?? ''),
@@ -638,7 +671,7 @@ if (!function_exists('elite_ai_notification_rows')) {
             return $timeB <=> $timeA;
         });
 
-        return array_slice($notifications, 0, $limit);
+        return elite_ai_select_notification_window($notifications, $limit);
     }
 }
 
@@ -853,20 +886,21 @@ if (!function_exists('elite_ai_morning_sweep_payload')) {
 if (!function_exists('elite_ai_notifications_payload')) {
     function elite_ai_notifications_payload(): array
     {
-        $notifications = elite_ai_notification_rows(8);
+        $notifications = elite_ai_notification_rows(5);
         $cards = [[
-            'title' => 'Notifications needing attention',
+            'title' => 'Latest notifications',
             'items' => array_map(static function (array $row): string {
                 $card = is_array($row['assistant_card'] ?? null) ? $row['assistant_card'] : [];
                 $summary = trim((string) ($card['summary'] ?? $row['title'] ?? 'CRM alert'));
                 $next = trim((string) ($card['recommended_action'] ?? $row['suggested_action'] ?? 'Review next step.'));
-                return $summary . ' - ' . $next;
+                $state = !empty($row['is_new']) ? 'Unread' : 'Read';
+                return $state . ': ' . $summary . ' - ' . $next;
             }, $notifications),
         ]];
         $actions = [];
-        foreach (array_slice($notifications, 0, 5) as $row) {
+        foreach ($notifications as $row) {
             $leadId = (int) ($row['lead_id'] ?? 0);
-            if ($leadId <= 0) {
+            if ($leadId <= 0 || empty($row['is_new'])) {
                 continue;
             }
             $leadName = trim((string) ($row['lead_name'] ?? 'Lead'));
@@ -880,7 +914,7 @@ if (!function_exists('elite_ai_notifications_payload')) {
 
         return [
             'answer' => $notifications
-                ? 'I found the active notifications that still need attention. I filtered out reviewed replies and routine stage-change noise, so this list should be actionable.'
+                ? 'Here are the latest notifications. I show the last 5 by default, but if more than 5 are unread I show all unread first. Unread items are the ones to act on.'
                 : 'There are no notification items to review right now.',
             'cards' => $notifications ? $cards : [],
             'actions' => $actions,
@@ -1024,6 +1058,17 @@ if (!function_exists('elite_ai_pipeline_count_payload')) {
     }
 }
 
+if (!function_exists('elite_ai_shorten_patient_quote')) {
+    function elite_ai_shorten_patient_quote(string $text, int $limit = 180): string
+    {
+        $text = trim((string) preg_replace('/\s+/', ' ', $text));
+        if ($text === '' || strlen($text) <= $limit) {
+            return $text;
+        }
+        return rtrim(substr($text, 0, max(0, $limit - 1))) . '...';
+    }
+}
+
 if (!function_exists('elite_ai_lead_summary_payload')) {
     function elite_ai_lead_summary_payload(array $lead): array
     {
@@ -1061,27 +1106,25 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         );
         $recommendation = trim((string) preg_replace('/\s+/', ' ', $recommendation));
 
-        $summaryLines = [];
+        $conversationLine = '';
         if ($latestInbound && (!$latestOutbound || strtotime((string) ($latestInbound['created_at'] ?? '')) >= strtotime((string) ($latestOutbound['created_at'] ?? '')))) {
-            $summaryLines[] = $leadName . ' replied at ' . format_datetime((string) ($latestInbound['created_at'] ?? ''), 'M j g:i A') . ' by ' . strtoupper((string) ($latestInbound['channel'] ?? 'message')) . ': "' . trim((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? '')) . '"';
+            $conversationLine = $leadName . ' replied: "' . elite_ai_shorten_patient_quote((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? '')) . '"';
         } elseif ($latestOutbound) {
-            $summaryLines[] = $leadName . ' has not replied yet. Our last outbound was ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . ': "' . trim((string) ($latestOutbound['body'] ?? $latestOutbound['subject'] ?? '')) . '"';
+            $conversationLine = $leadName . ' has not replied yet. Last touch was ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . '.';
         } else {
-            $summaryLines[] = $leadName . ' does not show a recent communication thread yet.';
+            $conversationLine = $leadName . ' does not show a recent conversation yet.';
         }
 
-        $summaryLines[] = 'Right now this lead is sitting in ' . $statusLabel . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel : '') . '.';
+        $statusLine = 'They are in ' . $statusLabel . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel : '') . '.';
 
+        $appointmentLine = '';
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
-            $summaryLines[] = 'The consultation is set for ' . format_datetime((string) ($lead['consultation_date'] ?? ''), 'M j, Y g:i A') . '.';
+            $appointmentLine = 'Consult is set for ' . format_datetime((string) ($lead['consultation_date'] ?? ''), 'M j, Y g:i A') . '.';
         }
 
+        $nextLine = '';
         if ($recommendation !== '') {
-            $summaryLines[] = $recommendation;
-        }
-
-        if ($missingItems) {
-            $summaryLines[] = 'We still need: ' . implode(' ', $missingItems);
+            $nextLine = 'I would ' . lcfirst(rtrim($recommendation, '.')) . '.';
         }
 
         $cards = [];
@@ -1090,6 +1133,12 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
             'Source: ' . $sourceLabel,
             'Contact attempts: ' . (int) ($attempts['outbound_total'] ?? 0) . ' outbound and ' . (int) ($attempts['inbound_total'] ?? 0) . ' inbound.',
         ];
+        if ($appointmentLine !== '') {
+            $supportItems[] = $appointmentLine;
+        }
+        if ($missingItems) {
+            $supportItems[] = 'Missing: ' . implode(' ', $missingItems);
+        }
         if (trim((string)($conversionNextAction['label'] ?? '')) !== '') {
             $supportItems[] = 'Next action signal: ' . trim((string)$conversionNextAction['label']);
         }
@@ -1105,7 +1154,7 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         ];
 
         return [
-            'answer' => implode(' ', $summaryLines),
+            'answer' => trim(implode(' ', array_filter([$conversationLine, $statusLine, $nextLine]))),
             'cards' => $cards,
             'tools_used' => ['lead_summary', 'lead_thread', 'knowledge_rules'],
             'lead_id' => $leadId,
@@ -1936,6 +1985,7 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
         return implode("\n", [
             'You are the planning layer for Elite AI inside a dental CRM.',
             'Your job is to interpret the operator request the way a strong execution assistant would.',
+            'Use the assistant_thread in page context to understand follow-up phrases like "do it", "clear that", "draft it", or "send it", but never infer patient-facing send approval unless the newest operator message explicitly approves sending a specific visible draft.',
             'If the operator mentions one lead by name or asks about a specific reply, route that to lead_summary instead of a broad dashboard workflow.',
             'If they ask for the latest or last reply, response, message, text, SMS, or email from a lead, treat it as a single-lead request.',
             'Choose the single best next workflow intent.',
@@ -2130,7 +2180,7 @@ if (!function_exists('elite_ai_help_payload')) {
             : 'You can ask me about a specific lead by name, check a reply, or tell me what you want to get done.';
 
         return [
-            'answer' => 'I am here to help you work the CRM like a real operator partner. I can check replies, summarize a lead, suggest the next step, review follow-ups, and prepare drafts for approval. ' . $pageHint,
+            'answer' => 'Tell me what you want done. I can check a lead, read the last reply, suggest the next move, clear reviewed notifications, or prepare a draft for approval. ' . $pageHint,
             'cards' => [[
                 'title' => 'Try one of these prompts',
                 'items' => [
@@ -2204,18 +2254,15 @@ if (!function_exists('elite_ai_latest_reply_payload')) {
         $body = trim((string) ($latestInbound['body'] ?? ''));
         $body = $body !== '' ? $body : 'No message body was captured.';
 
-        $answer = $fullName . ' replied';
+        $answer = $fullName . ' said';
         if ($timeLabel !== '') {
             $answer .= ' at ' . $timeLabel;
         }
-        $answer .= ' by ' . $channel . ': "' . $body . '"';
+        $answer .= ': "' . elite_ai_shorten_patient_quote($body, 240) . '"';
 
         $cards = [];
         if ($nextStep !== '') {
-            $cards[] = [
-                'title' => 'Recommended next step',
-                'items' => [$nextStep],
-            ];
+            $answer .= ' I would ' . lcfirst(rtrim($nextStep, '.')) . '.';
         }
 
         return [

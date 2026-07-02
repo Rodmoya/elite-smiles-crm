@@ -269,6 +269,130 @@ if (!function_exists('codex_api_select_fields')) {
     }
 }
 
+if (!function_exists('codex_api_capabilities')) {
+    function codex_api_capabilities(): void
+    {
+        codex_api_response([
+            'ok' => true,
+            'name' => 'Elite Smiles Codex Control API',
+            'version' => '2026-07-02',
+            'safety_rules' => [
+                'patient_facing_send_requires_explicit_approval' => true,
+                'stage_change_requires_explicit_stage_approval' => true,
+                'draft_before_send' => true,
+                'notes_and_read_actions_allowed' => true,
+                'no_phone_numbers_in_message_body_policy' => true,
+            ],
+            'read_actions' => [
+                'health', 'capabilities', 'stages', 'pipeline_snapshot',
+                'list_leads', 'inbox', 'get_lead', 'get_thread',
+                'find_lead', 'search_leads', 'find_duplicates',
+                'mobile_notifications', 'elite_ai_audit_recent', 'assistant_prompt',
+            ],
+            'write_actions' => [
+                'create_lead', 'import_meta_leads', 'add_note',
+                'mark_notification_reviewed', 'update_lead', 'move_stage',
+                'prepare_sms_followup', 'draft_email', 'send_sms',
+                'send_email', 'merge_leads',
+            ],
+            'approval_required' => [
+                'send_sms' => ['send_approved' => true],
+                'send_email' => ['send_approved' => true],
+                'move_stage' => ['stage_approved' => true],
+            ],
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_pipeline_snapshot')) {
+    function codex_api_pipeline_snapshot(): void
+    {
+        if (function_exists('lead_pipeline_ensure_schema')) {
+            lead_pipeline_ensure_schema();
+        }
+
+        $limit = max(1, min(500, (int) codex_api_value('limit', 250)));
+        $rows = function_exists('lead_pipeline_rows')
+            ? lead_pipeline_rows($limit)
+            : db_all('SELECT ' . codex_api_select_fields() . ' FROM leads ORDER BY updated_at DESC, id DESC LIMIT ' . $limit);
+
+        $legacyStages = lead_stage_labels();
+        $stageCounts = [];
+        $conversionCounts = [];
+        $latestByConversionStage = [];
+
+        foreach ($rows as $row) {
+            $stage = trim((string) ($row['status'] ?? ''));
+            $stageLabel = $legacyStages[$stage] ?? ($stage !== '' ? $stage : 'Unstaged');
+            $stageCounts[$stageLabel] = ($stageCounts[$stageLabel] ?? 0) + 1;
+
+            $conversion = function_exists('lead_meta_conversion_stage') ? lead_meta_conversion_stage($row) : ['label' => $stageLabel];
+            $conversionLabel = trim((string) ($conversion['label'] ?? $stageLabel));
+            if ($conversionLabel === '') {
+                $conversionLabel = $stageLabel;
+            }
+            $conversionCounts[$conversionLabel] = ($conversionCounts[$conversionLabel] ?? 0) + 1;
+
+            if (!isset($latestByConversionStage[$conversionLabel])) {
+                $latestByConversionStage[$conversionLabel] = [];
+            }
+            if (count($latestByConversionStage[$conversionLabel]) < 5) {
+                $latestByConversionStage[$conversionLabel][] = [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'full_name' => (string) ($row['full_name'] ?? ''),
+                    'legacy_status' => $stage,
+                    'legacy_status_label' => $stageLabel,
+                    'conversion_stage' => $conversionLabel,
+                    'updated_at' => (string) ($row['updated_at'] ?? ''),
+                    'created_at' => (string) ($row['created_at'] ?? ''),
+                    'last_inbound_at' => (string) ($row['last_inbound_at'] ?? ''),
+                    'last_outbound_at' => (string) ($row['last_outbound_at'] ?? ''),
+                    'unread_message_count' => (int) ($row['unread_message_count'] ?? 0),
+                ];
+            }
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'generated_at' => now(),
+            'limit' => $limit,
+            'legacy_stage_counts' => $stageCounts,
+            'conversion_stage_counts' => $conversionCounts,
+            'latest_by_conversion_stage' => $latestByConversionStage,
+            'safety_note' => 'Read-only snapshot. No lead status was changed.',
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_assistant_prompt')) {
+    function codex_api_assistant_prompt(): void
+    {
+        $prompt = trim((string) codex_api_value('prompt', ''));
+        $quickAction = trim((string) codex_api_value('quick_action', ''));
+        $context = (array) codex_api_value('context', []);
+        if ($prompt === '' && $quickAction === '') {
+            codex_api_response(['ok' => false, 'message' => 'prompt or quick_action is required.'], 422);
+        }
+
+        $context['surface'] = 'codex_api';
+        $result = elite_ai_handle_request(
+            ['id' => 0, 'first_name' => 'Codex', 'last_name' => 'API', 'role' => 'operator'],
+            [
+                'prompt' => $prompt,
+                'quick_action' => $quickAction,
+                'context' => $context,
+                'surface' => 'codex_api',
+            ]
+        );
+
+        codex_api_response([
+            'ok' => true,
+            'assistant' => $result,
+            'safety_note' => 'Patient-facing sends still require explicit send approval.',
+        ]);
+    }
+}
+
 if (!function_exists('codex_api_load_lead')) {
     function codex_api_load_lead(int $leadId): array
     {
@@ -1219,14 +1343,25 @@ if (!function_exists('codex_api_update_lead')) {
 }
 
 if (!function_exists('codex_api_mobile_notifications')) {
+    function codex_api_select_notification_window(array $notifications, int $limit = 5): array
+    {
+        $limit = max(1, min(20, $limit));
+        $unread = array_values(array_filter($notifications, static fn (array $row): bool => !empty($row['is_new'])));
+        if (count($unread) > $limit) {
+            return $unread;
+        }
+
+        return array_slice($notifications, 0, $limit);
+    }
+
     function codex_api_mobile_notifications(): void
     {
         lead_comm_ensure_schema();
-        $limit = max(1, min(50, (int) codex_api_value('limit', 20)));
+        $limit = max(1, min(20, (int) codex_api_value('limit', 5)));
         $notifications = [];
         $dedupeKeys = [];
-        $messageLimit = min(75, max(10, $limit * 4));
-        $activityLimit = min(50, max(10, $limit * 2));
+        $messageLimit = 50;
+        $activityLimit = 30;
 
         $messages = db_all(
             "SELECT
@@ -1240,7 +1375,6 @@ if (!function_exists('codex_api_mobile_notifications')) {
              FROM lead_messages lm
              INNER JOIN leads l ON l.id = lm.lead_id
              WHERE lm.direction = 'inbound'
-               AND lm.is_read = 0
                AND lm.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
              ORDER BY lm.created_at DESC, lm.id DESC
              LIMIT {$messageLimit}"
@@ -1322,7 +1456,7 @@ if (!function_exists('codex_api_mobile_notifications')) {
 
         codex_api_response([
             'ok' => true,
-            'notifications' => array_slice($notifications, 0, $limit),
+            'notifications' => codex_api_select_notification_window($notifications, $limit),
             'adapter' => 'lead_messages + lead_activities',
             'draft_before_send_rule' => true,
         ]);
@@ -1483,14 +1617,27 @@ try {
             'ok' => true,
             'service' => 'elite-smiles-codex-api',
             'time' => now(),
+            'capabilities_url_hint' => '?action=capabilities',
             'stages' => lead_stage_labels(),
             'smtp_configured' => function_exists('elite_smtp_is_configured') ? elite_smtp_is_configured() : false,
             'twilio_configured' => defined('TWILIO_ACCOUNT_SID') && TWILIO_ACCOUNT_SID !== '' && defined('TWILIO_AUTH_TOKEN') && TWILIO_AUTH_TOKEN !== '',
         ]);
     }
 
+    if ($action === 'capabilities') {
+        codex_api_capabilities();
+    }
+
     if ($action === 'stages') {
         codex_api_response(['ok' => true, 'stages' => lead_stage_labels()]);
+    }
+
+    if ($action === 'pipeline_snapshot') {
+        codex_api_pipeline_snapshot();
+    }
+
+    if ($action === 'assistant_prompt') {
+        codex_api_assistant_prompt();
     }
 
     if ($action === 'find_duplicates') {
@@ -1712,6 +1859,14 @@ try {
     if ($action === 'send_email') {
         $leadId = (int) codex_api_value('lead_id', 0);
         codex_api_load_lead($leadId);
+        if (!codex_api_has_explicit_send_approval(codex_api_body())) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Email send blocked until explicit send approval is provided.',
+                'approval_required' => 'send_approved',
+                'lead_id' => $leadId,
+            ], 409);
+        }
         if (!elite_smtp_is_configured()) {
             codex_api_response(['ok' => false, 'message' => 'SMTP is not configured.'], 503);
         }
@@ -1734,6 +1889,14 @@ try {
         $message = trim((string) codex_api_value('message', ''));
         if ($message === '') {
             codex_api_response(['ok' => false, 'message' => 'Message cannot be empty.'], 422);
+        }
+        if (!codex_api_has_explicit_send_approval(codex_api_body())) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'SMS send blocked until explicit send approval is provided.',
+                'approval_required' => 'send_approved',
+                'lead_id' => $leadId,
+            ], 409);
         }
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
             codex_api_response(['ok' => false, 'message' => 'This lead has opted out of SMS.', 'lead_id' => $leadId], 409);

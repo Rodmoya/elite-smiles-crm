@@ -296,12 +296,24 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             let assistantThreadState = [];
             let assistantRestoringThread = false;
 
+    function assistantConversationContext() {
+        return assistantThreadState.slice(-8).map(function (item) {
+            return {
+                role: item && item.role === 'user' ? 'user' : 'assistant',
+                text: String(item && item.text ? item.text : '').slice(0, 700)
+            };
+        }).filter(function (item) {
+            return item.text.trim() !== '';
+        });
+    }
+
     function aiContext() {
         return {
             page: aiPanel && aiPanel.dataset ? aiPanel.dataset.page || '' : '',
             page_title: aiPanel && aiPanel.dataset ? aiPanel.dataset.pageTitle || '' : '',
             current_url: aiPanel && aiPanel.dataset ? aiPanel.dataset.currentUrl || window.location.href : window.location.href,
-            lead_id: Number(aiPanel && aiPanel.dataset ? (aiPanel.dataset.leadId || 0) : 0)
+            lead_id: Number(aiPanel && aiPanel.dataset ? (aiPanel.dataset.leadId || 0) : 0),
+            assistant_thread: assistantConversationContext()
         };
     }
 
@@ -1138,12 +1150,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     assistant_token: assistantToken(),
                     prompt: text,
                     quick_action: quickAction || '',
-                    context: {
-                        page: aiPanel.dataset.page || '',
-                        page_title: aiPanel.dataset.pageTitle || '',
-                        current_url: aiPanel.dataset.currentUrl || window.location.href,
-                        lead_id: Number(aiPanel.dataset.leadId || 0)
-                    }
+                    context: aiContext()
                 })
             });
             const data = await response.json();

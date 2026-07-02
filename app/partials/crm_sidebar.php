@@ -1161,6 +1161,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
+            if (Number(data.lead_id || 0) > 0) {
+                setAssistantLeadContext({ lead_id: Number(data.lead_id || 0) });
+            }
             const assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
             assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, assistantActions);
         } catch (error) {

@@ -1290,6 +1290,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
+                    if (Number(data.lead_id || 0) > 0) {
+                        baseContext.lead_id = Number(data.lead_id || 0);
+                    }
                     var assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
                     var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], assistantActions);
                     applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);

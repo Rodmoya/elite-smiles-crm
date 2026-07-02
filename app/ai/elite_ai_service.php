@@ -2041,6 +2041,21 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
 }
 
 if (!function_exists('elite_ai_plan_request')) {
+    function elite_ai_prompt_requests_reply_draft(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(?:draft|answer|reply|respond|response|say|text|message|apologize|apologise|apologies|sorry)\b/i', $normalized);
+    }
+
+    function elite_ai_prompt_explicitly_requests_email(string $prompt): bool
+    {
+        return (bool) preg_match('/\b(?:email|e-mail|mail)\b/i', strtolower(trim($prompt)));
+    }
+
     function elite_ai_plan_request(string $prompt, string $quickAction, array $context): array
     {
         $quickAction = strtolower(trim($quickAction));
@@ -2065,6 +2080,18 @@ if (!function_exists('elite_ai_plan_request')) {
                 'use_current_lead' => false,
                 'needs_clarification' => false,
                 'clarification_question' => '',
+                'provider' => 'deterministic',
+            ];
+        }
+
+        if (elite_ai_prompt_requests_reply_draft($prompt)) {
+            return [
+                'intent' => elite_ai_prompt_explicitly_requests_email($prompt) ? 'draft_email' : 'draft_sms',
+                'reason' => 'Deterministic reply draft request. Defaulting to SMS unless email is explicitly requested.',
+                'lead_query' => '',
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0,
+                'needs_clarification' => (int) ($context['lead_id'] ?? 0) <= 0 && trim((string) ($context['notification']['lead_name'] ?? '')) === '',
+                'clarification_question' => 'Which lead should I draft this for?',
                 'provider' => 'deterministic',
             ];
         }

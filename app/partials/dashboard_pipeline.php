@@ -40,9 +40,11 @@ $financingNeededOptions = function_exists('lead_financing_needed_options') ? lea
 $financingOptionLabels = function_exists('lead_financing_option_labels') ? lead_financing_option_labels() : [];
 
 require_once dirname(__DIR__) . '/leads/lead_playbooks.php';
+require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
 
 $smsTemplateOptions = function_exists('lead_playbook_sms_templates') ? lead_playbook_sms_templates() : [];
 $schedulingQuestions = function_exists('lead_playbook_scheduling_questions') ? lead_playbook_scheduling_questions() : [];
+$pipelineNotificationSeed = function_exists('elite_ai_notification_rows') ? elite_ai_notification_rows(5) : [];
 
 
 $serviceNeededOptions = [
@@ -2737,6 +2739,7 @@ $consultationOptions = [
     const followupCheckUrl = <?= json_encode(base_url('app/actions/lead_followup_check.php')) ?>;
     const smsTemplates = <?= json_encode($smsTemplateOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const stageLabelMap = <?= json_encode($legacyStageMap) ?>;
+    const pipelineNotificationSeed = <?= json_encode($pipelineNotificationSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const importLeadsButton = document.getElementById('open-import-leads-picker');
     const importLeadsFileInput = document.getElementById('import-leads-file');
     const importLeadsStatus = document.getElementById('import-leads-status');
@@ -2927,6 +2930,29 @@ $consultationOptions = [
     }
 
     function pipelineNotificationItems() {
+        const seededItems = Array.isArray(pipelineNotificationSeed) ? pipelineNotificationSeed.map((item) => {
+            const leadId = String(item.lead_id || '');
+            const card = leadId !== '' && board ? board.querySelector('.lead-card[data-lead-id="' + leadId.replace(/"/g, '\\"') + '"]') : null;
+            const isNew = Boolean(item.is_new);
+            return {
+                card,
+                leadId,
+                type: item.type === 'reply' ? 'communication' : 'activity',
+                label: item.title || 'CRM notification',
+                detail: item.message || item.suggested_action || '',
+                count: isNew ? 1 : 0,
+                name: item.lead_name || item.title || 'Lead',
+                timestamp: Date.parse(String(item.created_at || '').replace(' ', 'T')) || 0,
+                tab: 'communications',
+                isNew,
+                status: item.status || '',
+            };
+        }) : [];
+
+        if (seededItems.length > 0) {
+            return seededItems.sort((a, b) => b.timestamp - a.timestamp);
+        }
+
         if (!board) {
             return [];
         }
@@ -2949,6 +2975,7 @@ $consultationOptions = [
                     name,
                     timestamp,
                     tab: 'communications',
+                    isNew: true,
                 });
             }
 
@@ -2962,6 +2989,7 @@ $consultationOptions = [
                     name,
                     timestamp,
                     tab: 'details',
+                    isNew: true,
                 });
             }
 
@@ -2971,6 +2999,9 @@ $consultationOptions = [
 
     function openPipelineNotification(item) {
         if (!item || !item.card) {
+            if (item?.leadId) {
+                window.location.href = <?= json_encode(base_url('leads.php')) ?> + '?lead_id=' + encodeURIComponent(item.leadId);
+            }
             return;
         }
 
@@ -2995,7 +3026,7 @@ $consultationOptions = [
         }
 
         const items = pipelineNotificationItems();
-        const total = items.reduce((sum, item) => sum + Math.max(1, item.count || 1), 0);
+        const total = items.reduce((sum, item) => sum + (item.isNew ? Math.max(1, item.count || 1) : 0), 0);
         pipelineNotificationsCount.textContent = total > 99 ? '99+' : String(total);
         pipelineNotificationsCount.classList.toggle('hidden', total === 0);
         pipelineNotificationsCount.classList.toggle('inline-flex', total > 0);
@@ -3010,16 +3041,21 @@ $consultationOptions = [
             return;
         }
 
-        items.slice(0, 20).forEach((item) => {
+        items.forEach((item) => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500';
-            button.innerHTML = '<span class="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ' + (item.type === 'communication' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700') + '">' + (item.type === 'communication' ? '?' : '+') + '</span>'
-                + '<span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-900"></span><span class="mt-0.5 block text-xs font-medium text-slate-600"></span><span class="mt-1 block truncate text-xs text-slate-400"></span></span>';
+            button.className = 'flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ' + (item.isNew ? 'bg-white' : 'bg-slate-50 text-slate-400');
+            button.innerHTML = '<span class="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ' + (item.isNew ? (item.type === 'communication' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700') : 'bg-slate-100 text-slate-400') + '">' + (item.type === 'communication' ? '!' : '+') + '</span>'
+                + '<span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold"></span><span class="mt-0.5 block text-xs font-medium"></span><span class="mt-1 block truncate text-xs"></span><span class="mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"></span></span>';
             const labels = button.querySelectorAll('span span');
             labels[0].textContent = item.name;
             labels[1].textContent = item.label;
             labels[2].textContent = item.detail;
+            labels[3].textContent = item.isNew ? 'Unread' : 'Read';
+            labels[0].className = 'block truncate text-sm font-semibold ' + (item.isNew ? 'text-slate-900' : 'text-slate-400');
+            labels[1].className = 'mt-0.5 block text-xs font-medium ' + (item.isNew ? 'text-slate-600' : 'text-slate-400');
+            labels[2].className = 'mt-1 block truncate text-xs ' + (item.isNew ? 'text-slate-400' : 'text-slate-300');
+            labels[3].className = 'mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ' + (item.isNew ? 'border-blue-200 text-blue-700' : 'border-slate-200 text-slate-400');
             button.addEventListener('click', () => openPipelineNotification(item));
             pipelineNotificationsList.appendChild(button);
         });

@@ -863,13 +863,87 @@ if (!function_exists('elite_ai_notifications_payload')) {
                 return $summary . ' - ' . $next;
             }, $notifications),
         ]];
+        $actions = [];
+        foreach (array_slice($notifications, 0, 5) as $row) {
+            $leadId = (int) ($row['lead_id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $leadName = trim((string) ($row['lead_name'] ?? 'Lead'));
+            $actions[] = [
+                'type' => 'mark_reviewed',
+                'label' => 'Clear #' . $leadId,
+                'help' => 'Mark active inbound notifications reviewed for ' . ($leadName !== '' ? $leadName : 'this lead') . '.',
+                'lead_id' => $leadId,
+            ];
+        }
 
         return [
             'answer' => $notifications
                 ? 'I found the active notifications that still need attention. I filtered out reviewed replies and routine stage-change noise, so this list should be actionable.'
                 : 'There are no notification items to review right now.',
             'cards' => $notifications ? $cards : [],
+            'actions' => $actions,
             'tools_used' => ['notifications'],
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_mark_notification_reviewed_payload')) {
+    function elite_ai_mark_notification_reviewed_payload(array $user, int $leadId, string $source = 'elite_ai'): array
+    {
+        if ($leadId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Tell me which lead notification to clear.',
+            ];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return [
+                'ok' => false,
+                'message' => 'I could not find that lead.',
+            ];
+        }
+
+        if (!function_exists('lead_comm_mark_read')) {
+            return [
+                'ok' => false,
+                'message' => 'Notification clearing is not available right now.',
+            ];
+        }
+
+        lead_comm_mark_read($leadId);
+        if (function_exists('lead_comm_insert_activity')) {
+            $createdBy = trim((string) (($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')));
+            lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Elite AI marked the active notification reviewed after operator instruction.', [
+                'source' => $source,
+                'user_id' => (int) ($user['id'] ?? 0),
+                'draft_before_send_rule' => true,
+            ], $createdBy !== '' ? $createdBy : 'Elite AI');
+        }
+        if (function_exists('lead_comm_update_rollup')) {
+            lead_comm_update_rollup($leadId);
+        }
+
+        $leadName = trim((string) ($lead['full_name'] ?? 'Lead #' . $leadId));
+        return [
+            'ok' => true,
+            'action' => 'mark_reviewed',
+            'lead_id' => $leadId,
+            'message' => 'Cleared active notifications for ' . ($leadName !== '' ? $leadName : 'lead #' . $leadId) . '. No SMS or email was sent.',
+            'answer' => 'Cleared active notifications for ' . ($leadName !== '' ? $leadName : 'lead #' . $leadId) . '. No SMS or email was sent.',
+            'cards' => [[
+                'title' => 'Internal action completed',
+                'items' => [
+                    'Marked unread inbound replies reviewed.',
+                    'Added an internal activity note.',
+                    'No patient-facing message was sent.',
+                ],
+            ]],
+            'actions' => [],
+            'tools_used' => ['notification_review', 'lead_thread'],
         ];
     }
 }
@@ -1641,6 +1715,28 @@ if (!function_exists('elite_ai_handle_action_request')) {
     function elite_ai_handle_action_request(array $user, array $request): array
     {
         $surface = elite_ai_surface($request);
+        $assistantAction = strtolower(trim((string) ($request['assistant_action'] ?? '')));
+        if ($assistantAction === 'mark_reviewed') {
+            $context = elite_ai_normalize_context($request);
+            $leadId = (int) ($request['lead_id'] ?? $context['lead_id'] ?? 0);
+            $result = elite_ai_mark_notification_reviewed_payload($user, $leadId, 'elite_ai_action_button');
+            elite_ai_log_interaction(
+                $user,
+                $surface,
+                (string) ($request['prompt'] ?? ''),
+                ['notification_review'],
+                trim((string) ($result['message'] ?? 'Notification review action completed.')),
+                $leadId,
+                $context
+            );
+
+            return $result + [
+                'surface' => $surface,
+                'context' => $context,
+                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+            ];
+        }
+
         $result = elite_ai_prepare_action_draft($user, $request, $surface);
         if (!empty($result['ok'])) {
             $context = elite_ai_normalize_context($request);
@@ -1820,7 +1916,7 @@ if (!function_exists('elite_ai_planner_schema')) {
             'properties' => [
                 'intent' => [
                     'type' => 'string',
-                    'enum' => ['morning_sweep', 'new_leads', 'replies', 'follow_ups', 'no_answer_review', 'notifications', 'pipeline', 'lead_summary', 'draft_sms', 'draft_email', 'help'],
+                    'enum' => ['morning_sweep', 'new_leads', 'replies', 'follow_ups', 'no_answer_review', 'notifications', 'pipeline', 'lead_summary', 'draft_sms', 'draft_email', 'mark_reviewed', 'help'],
                 ],
                 'reason' => ['type' => 'string'],
                 'lead_query' => ['type' => 'string'],
@@ -1844,6 +1940,7 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
             'If they ask for the latest or last reply, response, message, text, SMS, or email from a lead, treat it as a single-lead request.',
             'Choose the single best next workflow intent.',
             'Use draft_sms or draft_email when the operator is asking you to prepare a patient-facing reply or follow-up draft.',
+            'Use mark_reviewed only when the operator clearly asks to clear, dismiss, review, or mark a notification/message as reviewed for a specific lead.',
             'Use lead_summary when they want context, status, or what to do next for one lead.',
             'Use use_current_lead true when the request clearly refers to the current lead on screen.',
             'Set needs_clarification true only when you truly cannot safely determine the lead or the requested workflow.',
@@ -1997,7 +2094,13 @@ if (!function_exists('elite_ai_detect_intent')) {
             return 'no_answer_review';
         }
         if (str_contains($normalized, 'notification')) {
+            if ((str_contains($normalized, 'clear') || str_contains($normalized, 'mark') || str_contains($normalized, 'reviewed') || str_contains($normalized, 'dismiss'))) {
+                return 'mark_reviewed';
+            }
             return 'notifications';
+        }
+        if ((str_contains($normalized, 'clear') || str_contains($normalized, 'mark') || str_contains($normalized, 'dismiss')) && (str_contains($normalized, 'message') || str_contains($normalized, 'reply') || str_contains($normalized, 'reviewed'))) {
+            return 'mark_reviewed';
         }
         if (elite_ai_prompt_requests_stage_count($normalized) !== null) {
             return 'pipeline';
@@ -2238,6 +2341,28 @@ function elite_ai_handle_request(array $user, array $request): array
         } else {
 
         switch ($intent) {
+            case 'mark_reviewed':
+                $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
+                if (!empty($resolved['lead']) && is_array($resolved['lead'])) {
+                    $leadId = (int) (($resolved['lead']['id'] ?? 0));
+                    $payload = elite_ai_mark_notification_reviewed_payload($user, $leadId, 'elite_ai_prompt');
+                } else {
+                    $items = [];
+                    foreach ((array) ($resolved['matches'] ?? []) as $match) {
+                        $items[] = elite_ai_format_lead_line($match, trim((string) ($match['email'] ?? '')) !== '' ? trim((string) ($match['email'] ?? '')) : trim((string) ($match['phone'] ?? '')));
+                    }
+                    $payload = [
+                        'answer' => (string) ($resolved['clarify'] ?? 'Which lead notification should I clear?'),
+                        'cards' => $items ? [[
+                            'title' => 'Possible matches',
+                            'items' => $items,
+                        ]] : [],
+                        'actions' => [],
+                        'tools_used' => ['lead_lookup'],
+                    ];
+                }
+                break;
+
             case 'morning_sweep':
                 $payload = elite_ai_morning_sweep_payload();
                 break;

@@ -958,7 +958,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     ? 'Cancel draft'
                     : (actionLabel || 'Prepare draft');
         assistantBubble('You', humanActionLabel + ' for lead #' + leadId, 'user');
-        const loading = assistantBubble('Elite AI', 'Preparing draft for approval...', 'assistant', [], true);
+        const loading = assistantBubble('Elite AI', actionType === 'mark_reviewed' ? 'Clearing notification...' : 'Preparing draft for approval...', 'assistant', [], true);
         setBusy(true);
 
         try {
@@ -988,7 +988,13 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (loading) loading.remove();
 
             if (!response.ok || !data.ok) {
-                assistantBubble('Elite AI', data.message || 'Draft action failed.', 'assistant');
+                assistantBubble('Elite AI', data.message || 'Assistant action failed.', 'assistant');
+                return;
+            }
+
+            if (actionType === 'mark_reviewed') {
+                assistantBubble('Elite AI', data.answer || data.message || 'Notification reviewed.', 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                refreshPendingDrafts(true);
                 return;
             }
 

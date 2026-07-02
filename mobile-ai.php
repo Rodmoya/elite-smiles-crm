@@ -1009,7 +1009,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     userVerb = 'Cancel draft';
                 }
                 createMessage('user', userVerb + ' for lead #' + Number(action.lead_id));
-                var loading = createMessage('assistant', 'Preparing draft for approval...', [], null, true);
+                var loading = createMessage('assistant', actionType === 'mark_reviewed' ? 'Clearing notification...' : 'Preparing draft for approval...', [], null, true);
                 setBusy(true);
 
                 try {
@@ -1041,7 +1041,13 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     loading.remove();
 
                     if (!response.ok || !data.ok) {
-                        createMessage('assistant', data.message || 'Draft action failed.');
+                        createMessage('assistant', data.message || 'Assistant action failed.');
+                        return;
+                    }
+
+                    if (actionType === 'mark_reviewed') {
+                        createMessage('assistant', data.answer || data.message || 'Notification reviewed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                        refreshPendingDrafts();
                         return;
                     }
 

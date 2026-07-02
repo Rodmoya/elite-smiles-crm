@@ -19,6 +19,7 @@ if (!function_exists('lead_stage_labels')) {
             'in_contact'          => 'Scheduling',
             'consultation_booked' => 'Consultation Booked',
             'no_show_reschedule'  => 'No Show / Reschedule',
+            'consult_completed'   => 'Consult Completed',
             'treatment_accepted'  => 'Treatment Accepted',
             'no_answer'           => 'No Answer / Nurture',
             'opted_out'           => 'Opted Out',
@@ -38,6 +39,7 @@ if (!function_exists('lead_stage_order')) {
             'in_contact',
             'consultation_booked',
             'no_show_reschedule',
+            'consult_completed',
             'treatment_accepted',
             'no_answer',
             'opted_out',
@@ -57,6 +59,7 @@ if (!function_exists('lead_stage_badge_class')) {
             'contacted'           => 'border-violet-200 bg-violet-50 text-violet-700',
             'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
             'no_show_reschedule'  => 'border-orange-200 bg-orange-50 text-orange-800',
+            'consult_completed'   => 'border-indigo-200 bg-indigo-50 text-indigo-700',
             'treatment_accepted'  => 'border-emerald-200 bg-emerald-50 text-emerald-700',
             'no_answer'           => 'border-amber-200 bg-amber-50 text-amber-800',
             'opted_out'           => 'border-slate-300 bg-slate-100 text-slate-700',
@@ -252,8 +255,8 @@ if (!function_exists('lead_conversion_stage_legacy_target')) {
             'first_touch_sent', 'follow_up_needed' => 'contacted',
             'scheduling' => 'in_contact',
             'no_show_reschedule' => 'no_show_reschedule',
-            // Consult Completed is derived from consultation timing for now.
-            'consultation_booked', 'consult_completed' => 'consultation_booked',
+            'consultation_booked' => 'consultation_booked',
+            'consult_completed' => 'consult_completed',
             'treatment_accepted' => 'treatment_accepted',
             // Nurture / Lost is intentionally conservative for drag/drop: no
             // bulk move should silently mark a lead permanently lost.
@@ -528,6 +531,9 @@ if (!function_exists('lead_conversion_stage_key')) {
         if ($status === 'treatment_accepted') {
             return 'treatment_accepted';
         }
+        if ($status === 'consult_completed') {
+            return 'consult_completed';
+        }
         if ($status === 'no_show_reschedule' || lead_conversion_missed_consult_needs_reschedule($lead)) {
             return 'no_show_reschedule';
         }
@@ -625,6 +631,9 @@ if (!function_exists('lead_conversion_next_action')) {
         if ($status === 'consultation_booked') {
             return ['key' => 'appointment_ready', 'label' => 'Prep consult', 'tone' => 'purple'];
         }
+        if ($status === 'consult_completed') {
+            return ['key' => 'review_treatment_plan', 'label' => 'Review treatment', 'tone' => 'indigo'];
+        }
         if ($status === 'no_answer') {
             return ['key' => 'nurture_review', 'label' => 'Nurture review', 'tone' => 'amber'];
         }
@@ -648,6 +657,7 @@ if (!function_exists('lead_conversion_badge_class')) {
             'teal' => 'border-teal-200 bg-teal-50 text-teal-700',
             'orange' => 'border-orange-200 bg-orange-50 text-orange-800',
             'violet' => 'border-violet-200 bg-violet-50 text-violet-700',
+            'indigo' => 'border-indigo-200 bg-indigo-50 text-indigo-700',
             'purple' => 'border-purple-200 bg-purple-50 text-purple-700',
             default => 'border-slate-200 bg-slate-50 text-slate-600',
         };

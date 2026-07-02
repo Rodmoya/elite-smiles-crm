@@ -55,6 +55,30 @@ if (!function_exists('leads_table_exists')) {
     }
 }
 
+if (!function_exists('lead_related_table_exists')) {
+    function lead_related_table_exists(string $table): bool
+    {
+        static $cache = [];
+
+        $table = trim($table);
+        if ($table === '') {
+            return false;
+        }
+
+        if (array_key_exists($table, $cache)) {
+            return $cache[$table];
+        }
+
+        try {
+            $cache[$table] = (bool) db_value("SHOW TABLES LIKE :table_name", ['table_name' => $table]);
+        } catch (Throwable $e) {
+            $cache[$table] = false;
+        }
+
+        return $cache[$table];
+    }
+}
+
 if (!function_exists('leads_table_columns')) {
     function leads_table_columns(bool $refresh = false): array
     {
@@ -724,6 +748,27 @@ if (!function_exists('lead_pipeline_rows')) {
         $limit = max(1, min(1000, $limit));
         $orderBy = [];
         $actionDateFields = [];
+
+        $latestActionSubqueries = [
+            'latest_message_at' => lead_related_table_exists('lead_messages')
+                ? "(SELECT MAX(lm.created_at) FROM lead_messages lm WHERE lm.lead_id = leads.id)"
+                : '',
+            'latest_activity_at' => lead_related_table_exists('lead_activities')
+                ? "(SELECT MAX(la.created_at) FROM lead_activities la WHERE la.lead_id = leads.id)"
+                : '',
+            'latest_email_at' => lead_related_table_exists('lead_emails')
+                ? "(SELECT MAX(le.created_at) FROM lead_emails le WHERE le.lead_id = leads.id)"
+                : '',
+        ];
+
+        foreach ($latestActionSubqueries as $alias => $expression) {
+            if ($expression === '') {
+                continue;
+            }
+            $selectFields[] = "{$expression} AS {$alias}";
+            $actionDateFields[] = "COALESCE({$expression}, '1970-01-01 00:00:00')";
+        }
+
         foreach (['last_inbound_at', 'last_outbound_at', 'last_contacted_at', 'updated_at', 'created_at'] as $actionDateField) {
             if (leads_has_column($actionDateField)) {
                 $actionDateFields[] = "COALESCE({$actionDateField}, '1970-01-01 00:00:00')";

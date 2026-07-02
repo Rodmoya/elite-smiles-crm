@@ -1186,6 +1186,131 @@ if (!function_exists('lead_dispatch_operator_intake_alerts')) {
     }
 }
 
+if (!function_exists('lead_force_send_first_touch_sms')) {
+    function lead_force_send_first_touch_sms(int $leadId): array
+    {
+        if ($leadId <= 0) {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead not found.',
+            ];
+        }
+
+        if (!function_exists('lead_ai_default_new_lead_sms')) {
+            $leadAiPath = __DIR__ . '/lead_ai.php';
+            if (is_file($leadAiPath)) {
+                require_once $leadAiPath;
+            }
+        }
+
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead not found.',
+            ];
+        }
+
+        if (trim((string)($lead['phone'] ?? '')) === '') {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead has no phone number.',
+            ];
+        }
+
+        if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out' || trim((string)($lead['status'] ?? '')) === 'opted_out') {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Lead opted out of SMS.',
+            ];
+        }
+
+        if (!function_exists('elite_twilio_send_sms')) {
+            $twilioPath = dirname(__DIR__) . '/core/twilio.php';
+            if (is_file($twilioPath)) {
+                require_once $twilioPath;
+            }
+        }
+
+        if (!function_exists('elite_twilio_send_sms')) {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => 'Twilio SMS sender unavailable.',
+            ];
+        }
+
+        $body = function_exists('lead_ai_default_new_lead_sms')
+            ? lead_ai_default_new_lead_sms($lead)
+            : 'Hi, this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. We offer a complimentary consultation with Dr. Meden to review options and financing. What day/time works best for you? Reply STOP to opt out.';
+
+        $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), $body, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the required first-touch SMS. Open lead actions to retry manually.',
+            'original_body' => $body,
+        ]);
+
+        if (empty($sendResult['ok'])) {
+            return [
+                'attempted' => true,
+                'sent' => false,
+                'body' => $body,
+                'status_label' => (string)($sendResult['message'] ?? 'Required first-touch SMS failed.'),
+            ];
+        }
+
+        $sentBody = (string)($sendResult['body'] ?? $body);
+        $messageId = function_exists('lead_comm_insert_message') ? lead_comm_insert_message([
+            'lead_id' => $leadId,
+            'direction' => 'outbound',
+            'channel' => 'sms',
+            'from_number' => (string)($sendResult['from'] ?? ''),
+            'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
+            'body' => $sentBody,
+            'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
+            'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
+            'is_read' => 1,
+        ]) : 0;
+
+        if (function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity($leadId, 'sms_outbound', 'Required first-touch SMS sent through new-lead workflow fallback.', [
+                'message_id' => $messageId,
+                'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+                'source' => 'new_lead_required_first_touch_sms',
+            ], 'System');
+        }
+        if (function_exists('lead_comm_update_rollup')) {
+            lead_comm_update_rollup($leadId);
+        }
+        if (function_exists('lead_ai_create_outbound_note')) {
+            lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [
+                'message_id' => $messageId,
+                'sent_at' => date('Y-m-d H:i:s'),
+                'created_by' => 'System',
+                'source' => 'new_lead_required_first_touch_sms',
+            ]);
+        }
+
+        return [
+            'attempted' => true,
+            'sent' => true,
+            'body' => $sentBody,
+            'status_label' => 'Required first-touch SMS sent.',
+        ];
+    }
+}
+
 if (!function_exists('lead_create_minimal')) {
     function lead_enforce_meta_defaults(array &$data): void
     {
@@ -1240,6 +1365,9 @@ if (!function_exists('lead_create_minimal')) {
         $data['source'] = trim((string)($data['source'] ?? 'manual'));
         $data['source_medium'] = trim((string)($data['source_medium'] ?? ''));
         $data['source_type'] = trim((string)($data['source_type'] ?? ''));
+        if (trim((string)($data['preferred_contact'] ?? '')) === '') {
+            $data['preferred_contact'] = 'Text';
+        }
         lead_enforce_meta_defaults($data);
         $data['procedure_interest'] = trim((string)($data['procedure_interest'] ?? ''));
         $data['landing_page'] = trim((string)($data['landing_page'] ?? ''));
@@ -1485,13 +1613,24 @@ if (!function_exists('lead_create_minimal')) {
                         ]);
                     }
                 }
-            } elseif ($leadId > 0) {
-                $firstTouchSms = [
-                    'attempted' => false,
-                    'sent' => false,
-                    'body' => '',
-                    'status_label' => 'Auto new-lead SMS hook unavailable.',
-                ];
+            }
+            if ($leadId > 0 && empty($firstTouchSms['attempted'])) {
+                try {
+                    $firstTouchSms = lead_force_send_first_touch_sms($leadId);
+                } catch (Throwable $e) {
+                    $firstTouchSms = [
+                        'attempted' => false,
+                        'sent' => false,
+                        'body' => '',
+                        'status_label' => 'Required first-touch SMS fallback failed.',
+                    ];
+                    if (function_exists('esm_log')) {
+                        esm_log('lead_workflow', 'Required first-touch SMS fallback failed.', [
+                            'lead_id' => $leadId,
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
             }
 
             if ($leadId > 0) {

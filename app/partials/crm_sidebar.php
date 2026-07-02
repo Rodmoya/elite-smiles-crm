@@ -785,6 +785,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 button.dataset.actionLabel = String(action.label || '');
                 button.dataset.actionHelp = String(action.help || '');
                 button.dataset.actionId = String(Number(action.action_id || action.actionId || 0));
+                button.dataset.targetStatus = String(action.target_status || action.targetStatus || '');
+                button.dataset.note = String(action.note || '');
                 actionWrap.appendChild(button);
             });
             article.appendChild(actionWrap);
@@ -942,7 +944,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             label: String(button.dataset.actionLabel || fallback.label || ''),
             help: String(button.dataset.actionHelp || fallback.help || ''),
             lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
-            action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0)
+            action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0),
+            target_status: String(button.dataset.targetStatus || fallback.target_status || fallback.targetStatus || ''),
+            note: String(button.dataset.note || fallback.note || '')
         };
     }
 
@@ -1046,6 +1050,8 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     assistant_action: action.type,
                     lead_id: Number(action.lead_id || 0),
                     action_id: Number(action.action_id || 0),
+                    target_status: String(action.target_status || ''),
+                    note: String(action.note || ''),
                     prompt: action.help || '',
                     instruction: action.help || '',
                     quick_action: '',
@@ -1067,6 +1073,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
             if (actionType === 'mark_reviewed') {
                 assistantBubble('Elite AI', data.answer || data.message || 'Notification reviewed.', 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                refreshPendingDrafts(true);
+                return;
+            }
+
+            if (actionType === 'move_stage' || actionType === 'add_note') {
+                assistantBubble('Elite AI', data.answer || data.message || 'Action completed.', 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                 refreshPendingDrafts(true);
                 return;
             }

@@ -647,6 +647,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         actionButton.dataset.actionId = String(Number(action.action_id || action.actionId || 0));
                         actionButton.dataset.actionLabel = String(action.label || '');
                         actionButton.dataset.actionHelp = String(action.help || '');
+                        actionButton.dataset.targetStatus = String(action.target_status || action.targetStatus || '');
+                        actionButton.dataset.note = String(action.note || '');
                         actionButton.addEventListener('click', function (event) {
                             event.preventDefault();
                             event.stopPropagation();
@@ -804,7 +806,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     label: String(button.dataset.actionLabel || fallback.label || ''),
                     help: String(button.dataset.actionHelp || fallback.help || ''),
                     lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
-                    action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0)
+                    action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0),
+                    target_status: String(button.dataset.targetStatus || fallback.target_status || fallback.targetStatus || ''),
+                    note: String(button.dataset.note || fallback.note || '')
                 };
             }
 
@@ -1167,6 +1171,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             assistant_action: action.type,
                             lead_id: Number(action.lead_id || 0),
                             action_id: Number(action.action_id || 0),
+                            target_status: String(action.target_status || ''),
+                            note: String(action.note || ''),
                             prompt: action.help || '',
                             instruction: action.help || '',
                             quick_action: '',
@@ -1201,6 +1207,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
                     if (actionType === 'mark_reviewed') {
                         createMessage('assistant', data.answer || data.message || 'Notification reviewed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                        refreshPendingDrafts();
+                        return;
+                    }
+
+                    if (actionType === 'move_stage' || actionType === 'add_note') {
+                        createMessage('assistant', data.answer || data.message || 'Action completed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                         refreshPendingDrafts();
                         return;
                     }

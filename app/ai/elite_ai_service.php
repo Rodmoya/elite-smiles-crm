@@ -1623,6 +1623,201 @@ if (!function_exists('elite_ai_fallback_email_draft')) {
     }
 }
 
+if (!function_exists('elite_ai_requested_stage_key')) {
+    function elite_ai_requested_stage_key(string $text): string
+    {
+        $normalized = strtolower(trim($text));
+        if ($normalized === '') {
+            return '';
+        }
+
+        $normalized = preg_replace('/[^a-z0-9\s\/_-]+/i', ' ', $normalized);
+        $normalized = trim((string) preg_replace('/\s+/', ' ', (string) $normalized));
+        $patterns = [
+            'new_lead' => '/\bnew\s*lead\b/',
+            'contacted' => '/\b(?:contacted|first\s*touch(?:\s*sent)?)\b/',
+            'in_contact' => '/\b(?:in\s*contact|scheduling|schedule|schudele|schudle)\b/',
+            'consultation_booked' => '/\b(?:consultation\s*booked|consult\s*booked|booked)\b/',
+            'no_show_reschedule' => '/\b(?:no\s*show|reschedule)\b/',
+            'consult_completed' => '/\b(?:consult\s*completed|consultation\s*completed|completed\s*consult)\b/',
+            'treatment_accepted' => '/\b(?:treatment\s*accepted|accepted|sale\s*closed)\b/',
+            'no_answer' => '/\b(?:no\s*answer|nurture|follow\s*later)\b/',
+            'opted_out' => '/\b(?:opted\s*out|unsubscribe|stop)\b/',
+            'lost_lead' => '/\b(?:lost|archive|archived)\b/',
+        ];
+
+        foreach ($patterns as $stage => $pattern) {
+            if ((bool) preg_match($pattern, $normalized)) {
+                return $stage;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_internal_note')) {
+    function elite_ai_prompt_requests_internal_note(string $prompt): bool
+    {
+        return (bool) preg_match('/\b(?:make|add|leave|create|record)\s+(?:a\s+)?notes?\b|\bnotes?\b/i', strtolower(trim($prompt)));
+    }
+}
+
+if (!function_exists('elite_ai_internal_action_plan')) {
+    function elite_ai_internal_action_plan(string $prompt, array $lead): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        if ($leadId <= 0) {
+            return ['cards' => [], 'actions' => []];
+        }
+
+        $items = [];
+        $actions = [];
+        $stage = elite_ai_requested_stage_key($prompt);
+        if ($stage !== '') {
+            $label = elite_ai_stage_label($stage);
+            $items[] = 'Internal action available: move this lead to ' . $label . '.';
+            $actions[] = [
+                'type' => 'move_stage',
+                'label' => 'Move to ' . $label,
+                'lead_id' => $leadId,
+                'target_status' => $stage,
+                'help' => 'Move this lead to ' . $label . ' after operator approval.',
+            ];
+        }
+
+        if (elite_ai_prompt_requests_internal_note($prompt) || $stage !== '') {
+            $items[] = 'Internal action available: add an activity note summarizing this assistant plan.';
+            $actions[] = [
+                'type' => 'add_note',
+                'label' => 'Add internal note',
+                'lead_id' => $leadId,
+                'help' => 'Add an internal note summarizing: ' . mb_substr(trim($prompt), 0, 220),
+            ];
+        }
+
+        if (!$items) {
+            return ['cards' => [], 'actions' => []];
+        }
+
+        $items[] = 'Patient-facing SMS/email still requires explicit draft approval before sending.';
+
+        return [
+            'cards' => [[
+                'title' => 'Action plan',
+                'items' => $items,
+            ]],
+            'actions' => $actions,
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_handle_move_stage_action')) {
+    function elite_ai_handle_move_stage_action(array $user, array $request, string $surface): array
+    {
+        $leadId = (int) ($request['lead_id'] ?? 0);
+        $targetStatus = trim((string) ($request['target_status'] ?? $request['status'] ?? ''));
+        if ($targetStatus === '') {
+            $targetStatus = elite_ai_requested_stage_key((string) ($request['instruction'] ?? $request['prompt'] ?? ''));
+        }
+        if ($leadId <= 0 || $targetStatus === '') {
+            return ['ok' => false, 'message' => 'I need a lead and a specific stage before I can move it.'];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return ['ok' => false, 'message' => 'Lead not found.'];
+        }
+
+        $allowedStages = function_exists('lead_stage_labels') ? lead_stage_labels() : [];
+        if (!isset($allowedStages[$targetStatus])) {
+            return ['ok' => false, 'message' => 'That stage is not allowed.'];
+        }
+
+        $oldStatus = trim((string) ($lead['status'] ?? ''));
+        $setParts = ['status = :status'];
+        $params = ['id' => $leadId, 'status' => $targetStatus];
+        if (function_exists('leads_has_column') && leads_has_column('updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = now();
+        }
+
+        db_query('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
+        if ($oldStatus !== $targetStatus && function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity(
+                $leadId,
+                'stage_change',
+                'Elite AI moved stage from ' . elite_ai_stage_label($oldStatus) . ' to ' . elite_ai_stage_label($targetStatus) . '.',
+                ['from' => $oldStatus, 'to' => $targetStatus, 'source' => 'elite_ai_action'],
+                trim((string) ($user['first_name'] ?? 'Elite AI'))
+            );
+        }
+        if (function_exists('lead_comm_update_rollup')) {
+            lead_comm_update_rollup($leadId);
+        }
+
+        return [
+            'ok' => true,
+            'surface' => $surface,
+            'action' => 'move_stage',
+            'lead_id' => $leadId,
+            'status' => $targetStatus,
+            'answer' => 'Moved ' . trim((string) ($lead['full_name'] ?? 'this lead')) . ' to ' . elite_ai_stage_label($targetStatus) . '.',
+            'message' => 'Lead stage updated.',
+            'cards' => [],
+            'actions' => [],
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_handle_add_note_action')) {
+    function elite_ai_handle_add_note_action(array $user, array $request, string $surface): array
+    {
+        $leadId = (int) ($request['lead_id'] ?? 0);
+        if ($leadId <= 0) {
+            return ['ok' => false, 'message' => 'I need a lead before I can add a note.'];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return ['ok' => false, 'message' => 'Lead not found.'];
+        }
+
+        $instruction = trim((string) ($request['instruction'] ?? $request['prompt'] ?? ''));
+        $note = trim((string) ($request['note'] ?? ''));
+        if ($note === '') {
+            $note = 'Elite AI action note: ' . ($instruction !== '' ? $instruction : 'Operator reviewed this lead with Elite AI.');
+        }
+        $note = mb_substr($note, 0, 900);
+
+        if (!function_exists('lead_comm_insert_activity')) {
+            return ['ok' => false, 'message' => 'Activity notes are not available right now.'];
+        }
+
+        lead_comm_insert_activity(
+            $leadId,
+            'operator_note',
+            $note,
+            ['source' => 'elite_ai_action'],
+            trim((string) ($user['first_name'] ?? 'Elite AI'))
+        );
+        if (function_exists('lead_comm_update_rollup')) {
+            lead_comm_update_rollup($leadId);
+        }
+
+        return [
+            'ok' => true,
+            'surface' => $surface,
+            'action' => 'add_note',
+            'lead_id' => $leadId,
+            'answer' => 'Added an internal note for ' . trim((string) ($lead['full_name'] ?? 'this lead')) . '.',
+            'message' => 'Internal note added.',
+            'cards' => [],
+            'actions' => [],
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_prepare_action_draft')) {
     function elite_ai_prepare_action_draft(array $user, array $request, string $surface): array
     {
@@ -1795,6 +1990,44 @@ if (!function_exists('elite_ai_handle_action_request')) {
     {
         $surface = elite_ai_surface($request);
         $assistantAction = strtolower(trim((string) ($request['assistant_action'] ?? '')));
+        if ($assistantAction === 'move_stage') {
+            $context = elite_ai_normalize_context($request);
+            $result = elite_ai_handle_move_stage_action($user, $request, $surface);
+            elite_ai_log_interaction(
+                $user,
+                $surface,
+                (string) ($request['prompt'] ?? $request['instruction'] ?? ''),
+                ['move_stage'],
+                trim((string) ($result['answer'] ?? $result['message'] ?? 'Stage action completed.')),
+                (int) ($result['lead_id'] ?? 0),
+                $context
+            );
+
+            return $result + [
+                'context' => $context,
+                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+            ];
+        }
+
+        if ($assistantAction === 'add_note') {
+            $context = elite_ai_normalize_context($request);
+            $result = elite_ai_handle_add_note_action($user, $request, $surface);
+            elite_ai_log_interaction(
+                $user,
+                $surface,
+                (string) ($request['prompt'] ?? $request['instruction'] ?? ''),
+                ['add_note'],
+                trim((string) ($result['answer'] ?? $result['message'] ?? 'Note action completed.')),
+                (int) ($result['lead_id'] ?? 0),
+                $context
+            );
+
+            return $result + [
+                'context' => $context,
+                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+            ];
+        }
+
         if ($assistantAction === 'mark_reviewed') {
             $context = elite_ai_normalize_context($request);
             $leadId = (int) ($request['lead_id'] ?? $context['lead_id'] ?? 0);
@@ -2434,16 +2667,24 @@ function elite_ai_handle_request(array $user, array $request): array
                 ], $surface);
 
                 if (!empty($draftResult['ok'])) {
+                    $actionPlan = elite_ai_internal_action_plan($prompt, (array) $resolved['lead']);
+                    $cards = [[
+                        'title' => $intent === 'draft_sms' ? 'SMS draft preview' : 'Email draft preview',
+                        'items' => [trim((string) ($draftResult['draft_preview'] ?? 'Draft prepared for review.'))],
+                    ]];
+                    $cards = array_merge($cards, (array) ($actionPlan['cards'] ?? []));
+                    $actions = array_merge(
+                        array_values((array) ($draftResult['draft_actions'] ?? [])),
+                        array_values((array) ($actionPlan['actions'] ?? []))
+                    );
                     $payload = [
                         'answer' => trim((string) ($draftResult['message'] ?? 'Draft prepared for review.'))
                             . ' Provider: ' . trim((string) (($draftResult['draft']['provider'] ?? $draftResult['provider'] ?? 'AI')))
-                            . '. Nothing was sent.',
-                        'cards' => [[
-                            'title' => $intent === 'draft_sms' ? 'SMS draft preview' : 'Email draft preview',
-                            'items' => [trim((string) ($draftResult['draft_preview'] ?? 'Draft prepared for review.'))],
-                        ]],
-                        'actions' => array_values((array) ($draftResult['draft_actions'] ?? [])),
-                        'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), $intent],
+                            . '. Nothing was sent.'
+                            . (!empty($actionPlan['actions']) ? ' I also prepared the safe internal actions I understood from your instruction.' : ''),
+                        'cards' => $cards,
+                        'actions' => $actions,
+                        'tools_used' => array_merge(['planner_' . (string) ($plan['provider'] ?? 'fallback'), $intent], !empty($actionPlan['actions']) ? ['action_plan'] : []),
                     ];
                 } else {
                     $payload = [

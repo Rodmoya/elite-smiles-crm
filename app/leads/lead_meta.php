@@ -480,6 +480,10 @@ if (!function_exists('lead_conversion_has_scheduling_context')) {
         if (lead_conversion_has_future_consult($lead)) {
             return true;
         }
+        $consultationStatus = trim((string)($lead['consultation_status'] ?? ''));
+        if (in_array($consultationStatus, ['requested', 'scheduling'], true)) {
+            return true;
+        }
         if (lead_conversion_reply_needed($lead)) {
             return true;
         }

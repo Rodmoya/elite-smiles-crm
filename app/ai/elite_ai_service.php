@@ -2239,7 +2239,7 @@ if (!function_exists('elite_ai_prompt_requests_latest_reply')) {
         }
 
         return (bool) preg_match(
-            '/\b(?:check|show|read|review|what(?:\'s| is))\b.*\b(?:last|latest|most recent)\b.*\b(?:reply|response|message|text|sms|email)\b|\b(?:last|latest|most recent)\b.*\b(?:reply|response|message)\b.*\bfrom\b|\b(?:any|got|get|have|has|received)\b.*\b(?:reply|response|message|text|sms|email)\b.*\bfrom\b|\b(?:did|has)\b.*\brepl(?:y|ied)\b/i',
+            '/\b(?:check|show|read|review|what(?:\'s| is))\b.*\b(?:last|latest|most recent)\b.*\b(?:reply|replay|response|message|text|sms|email)\b|\b(?:last|latest|most recent)\b.*\b(?:reply|replay|response|message)\b.*\bfrom\b|\b(?:any|got|get|have|has|received)\b.*\b(?:reply|replay|response|message|text|sms|email)\b.*\bfrom\b|\b(?:did|has)\b.*\b(?:reply|replied|replay|replayed)\b/i',
             $normalized
         );
     }

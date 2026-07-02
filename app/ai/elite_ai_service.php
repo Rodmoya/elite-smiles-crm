@@ -2117,6 +2117,16 @@ if (!function_exists('elite_ai_plan_request')) {
 }
 
 if (!function_exists('elite_ai_resolve_lead_from_plan')) {
+    function elite_ai_clean_lead_query(string $query): string
+    {
+        $query = trim($query);
+        $query = preg_replace('/\b(?:any|latest|last|most recent|recent)\s+(?:reply|replay|response|message|text|sms|email)\s+(?:from|for)\s+/i', '', $query);
+        $query = preg_replace('/\b(?:reply|replay|response|message|text|sms|email)\s+(?:from|for)\s+/i', '', (string) $query);
+        $query = preg_replace('/\b(?:check|show|read|review|what is|what\'s|did|has|have|got|get|received)\b/i', '', (string) $query);
+        $query = preg_replace('/\b(?:reply|replay|response|message|text|sms|email|from|for)\b/i', '', (string) $query);
+        return trim((string) preg_replace('/\s+/', ' ', (string) $query), " \t\n\r\0\x0B?.");
+    }
+
     function elite_ai_resolve_lead_from_plan(array $plan, string $prompt, array $context): array
     {
         if (!empty($plan['use_current_lead']) && (int) ($context['lead_id'] ?? 0) > 0) {
@@ -2126,7 +2136,7 @@ if (!function_exists('elite_ai_resolve_lead_from_plan')) {
             }
         }
 
-        $leadQuery = trim((string) ($plan['lead_query'] ?? ''));
+        $leadQuery = elite_ai_clean_lead_query((string) ($plan['lead_query'] ?? ''));
         if ($leadQuery !== '') {
             $matches = elite_ai_find_leads($leadQuery, 5);
             if (count($matches) === 1) {

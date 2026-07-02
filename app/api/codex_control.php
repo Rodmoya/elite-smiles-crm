@@ -1026,6 +1026,32 @@ if (!function_exists('codex_api_move_stage')) {
 }
 
 if (!function_exists('codex_api_update_lead')) {
+    function codex_api_normalize_nullable_date_field(mixed $value, bool $dateOnly = false): ?string
+    {
+        $raw = trim((string)$value);
+        if ($raw === '' || $raw === '0000-00-00' || $raw === '0000-00-00 00:00:00') {
+            return null;
+        }
+
+        $formats = $dateOnly
+            ? ['Y-m-d', 'm/d/Y', 'n/j/Y', 'Y-m-d H:i:s', 'Y-m-d\TH:i']
+            : ['Y-m-d\TH:i', 'Y-m-d\TH:i:s', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d'];
+
+        foreach ($formats as $format) {
+            $dt = DateTime::createFromFormat($format, $raw);
+            if ($dt instanceof DateTime) {
+                return $dateOnly ? $dt->format('Y-m-d') : $dt->format('Y-m-d H:i:s');
+            }
+        }
+
+        $timestamp = strtotime($raw);
+        if ($timestamp === false) {
+            return null;
+        }
+
+        return $dateOnly ? date('Y-m-d', $timestamp) : date('Y-m-d H:i:s', $timestamp);
+    }
+
     function codex_api_update_lead(int $leadId, array $fields): void
     {
         $lead = codex_api_load_lead($leadId);
@@ -1070,6 +1096,15 @@ if (!function_exists('codex_api_update_lead')) {
             if ($update['email'] !== '' && !filter_var($update['email'], FILTER_VALIDATE_EMAIL)) {
                 codex_api_response(['ok' => false, 'message' => 'Please provide a valid email address.'], 422);
             }
+        }
+
+        foreach (['consultation_date', 'next_follow_up_at'] as $dateTimeField) {
+            if (array_key_exists($dateTimeField, $update)) {
+                $update[$dateTimeField] = codex_api_normalize_nullable_date_field($update[$dateTimeField], false);
+            }
+        }
+        if (array_key_exists('date_of_birth', $update)) {
+            $update['date_of_birth'] = codex_api_normalize_nullable_date_field($update['date_of_birth'], true);
         }
 
         $stageLabels = lead_stage_labels();

@@ -126,7 +126,7 @@ if (!function_exists('codex_api_has_explicit_stage_approval')) {
         }
 
         return (bool) preg_match(
-            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b|\b(?:change|set)\s+lead\s+status\b/i',
+            '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|no[_ ]?show|reschedule|no[_ ]?show[_ ]?reschedule|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b|\b(?:change|set)\s+lead\s+status\b/i',
             $instruction
         );
     }

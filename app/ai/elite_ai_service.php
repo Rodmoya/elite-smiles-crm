@@ -1930,6 +1930,15 @@ if (!function_exists('elite_ai_extract_reference')) {
             }
         }
 
+        if (preg_match('/\b(?:from|for)\s+([a-z][a-z\s\'\.-]{1,80})$/i', $prompt, $matches)) {
+            $subject = trim((string) $matches[1], " \t\n\r\0\x0B?.");
+            $subject = preg_replace('/\b(?:reply|replay|response|message|text|sms|email)\b/i', '', $subject);
+            $subject = trim((string) preg_replace('/\s+/', ' ', (string) $subject));
+            if ($subject !== '' && !in_array(strtolower($subject), ['this', 'this lead', 'lead'], true)) {
+                return ['lead_id' => 0, 'query' => $subject];
+            }
+        }
+
         return ['lead_id' => 0, 'query' => ''];
     }
 }

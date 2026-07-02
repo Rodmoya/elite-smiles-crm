@@ -1128,10 +1128,19 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         $recommendation = trim((string) preg_replace('/\s+/', ' ', $recommendation));
 
         $conversationLine = '';
-        if ($latestInbound && (!$latestOutbound || strtotime((string) ($latestInbound['created_at'] ?? '')) >= strtotime((string) ($latestOutbound['created_at'] ?? '')))) {
-            $conversationLine = $leadName . ' replied: "' . elite_ai_shorten_patient_quote((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? '')) . '"';
+        if ($latestInbound) {
+            $inboundTime = strtotime((string) ($latestInbound['created_at'] ?? '')) ?: 0;
+            $outboundTime = $latestOutbound ? (strtotime((string) ($latestOutbound['created_at'] ?? '')) ?: 0) : 0;
+            $conversationLine = $leadName . ' last replied';
+            if (trim((string) ($latestInbound['created_at'] ?? '')) !== '') {
+                $conversationLine .= ' at ' . format_datetime((string) ($latestInbound['created_at'] ?? ''), 'M j g:i A');
+            }
+            $conversationLine .= ': "' . elite_ai_shorten_patient_quote((string) ($latestInbound['body'] ?? $latestInbound['subject'] ?? '')) . '"';
+            if ($latestOutbound && $outboundTime > $inboundTime) {
+                $conversationLine .= ' We already answered after that at ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . '.';
+            }
         } elseif ($latestOutbound) {
-            $conversationLine = $leadName . ' has not replied yet. Last touch was ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . '.';
+            $conversationLine = $leadName . ' has not sent an inbound reply yet. Last outbound touch was ' . format_datetime((string) ($latestOutbound['created_at'] ?? ''), 'M j g:i A') . '.';
         } else {
             $conversationLine = $leadName . ' does not show a recent conversation yet.';
         }
@@ -2230,7 +2239,7 @@ if (!function_exists('elite_ai_prompt_requests_latest_reply')) {
         }
 
         return (bool) preg_match(
-            '/\b(?:check|show|read|review|what(?:\'s| is))\b.*\b(?:last|latest|most recent)\b.*\b(?:reply|response|message|text|sms|email)\b|\b(?:last|latest|most recent)\b.*\b(?:reply|response|message)\b.*\bfrom\b/i',
+            '/\b(?:check|show|read|review|what(?:\'s| is))\b.*\b(?:last|latest|most recent)\b.*\b(?:reply|response|message|text|sms|email)\b|\b(?:last|latest|most recent)\b.*\b(?:reply|response|message)\b.*\bfrom\b|\b(?:any|got|get|have|has|received)\b.*\b(?:reply|response|message|text|sms|email)\b.*\bfrom\b|\b(?:did|has)\b.*\brepl(?:y|ied)\b/i',
             $normalized
         );
     }
@@ -2275,15 +2284,21 @@ if (!function_exists('elite_ai_latest_reply_payload')) {
         $timeLabel = elite_ai_format_operator_time((string) ($latestInbound['created_at'] ?? ''));
         $body = trim((string) ($latestInbound['body'] ?? ''));
         $body = $body !== '' ? $body : 'No message body was captured.';
+        $latestOutbound = elite_ai_latest_direction_item($thread, 'outbound');
+        $inboundTime = strtotime((string) ($latestInbound['created_at'] ?? '')) ?: 0;
+        $outboundTime = $latestOutbound ? (strtotime((string) ($latestOutbound['created_at'] ?? '')) ?: 0) : 0;
 
         $answer = $fullName . ' said';
         if ($timeLabel !== '') {
             $answer .= ' at ' . $timeLabel;
         }
         $answer .= ': "' . elite_ai_shorten_patient_quote($body, 240) . '"';
+        if ($latestOutbound && $outboundTime > $inboundTime) {
+            $answer .= ' We already answered after that at ' . elite_ai_format_operator_time((string) ($latestOutbound['created_at'] ?? '')) . ', so right now we are waiting on the next reply.';
+        }
 
         $cards = [];
-        if ($nextStep !== '') {
+        if ($nextStep !== '' && !($latestOutbound && $outboundTime > $inboundTime)) {
             $answer .= ' I would ' . lcfirst(rtrim($nextStep, '.')) . '.';
         }
 

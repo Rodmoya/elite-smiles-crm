@@ -454,6 +454,33 @@ if (!function_exists('lead_conversion_has_past_consult')) {
     }
 }
 
+if (!function_exists('lead_conversion_consult_completed')) {
+    function lead_conversion_consult_completed(array $lead): bool
+    {
+        return trim((string)($lead['consultation_status'] ?? '')) === 'completed';
+    }
+}
+
+if (!function_exists('lead_conversion_missed_consult_needs_reschedule')) {
+    function lead_conversion_missed_consult_needs_reschedule(array $lead): bool
+    {
+        $status = trim((string)($lead['status'] ?? ''));
+        $consultationStatus = trim((string)($lead['consultation_status'] ?? ''));
+
+        if ($status !== 'consultation_booked' && $consultationStatus !== 'no_show') {
+            return false;
+        }
+        if ($consultationStatus === 'completed') {
+            return false;
+        }
+        if ($consultationStatus === 'no_show') {
+            return true;
+        }
+
+        return lead_conversion_has_past_consult($lead);
+    }
+}
+
 if (!function_exists('lead_conversion_has_scheduling_context')) {
     function lead_conversion_has_scheduling_context(array $lead): bool
     {
@@ -511,7 +538,7 @@ if (!function_exists('lead_conversion_stage_key')) {
         if ($status === 'treatment_accepted') {
             return 'treatment_accepted';
         }
-        if ($status === 'no_show_reschedule' || trim((string)($lead['consultation_status'] ?? '')) === 'no_show') {
+        if ($status === 'no_show_reschedule' || lead_conversion_missed_consult_needs_reschedule($lead)) {
             return 'no_show_reschedule';
         }
         if (in_array($status, ['lost_lead', 'opted_out'], true)) {
@@ -521,7 +548,7 @@ if (!function_exists('lead_conversion_stage_key')) {
             return 'nurture_lost';
         }
         if ($status === 'consultation_booked') {
-            return lead_conversion_has_past_consult($lead) ? 'consult_completed' : 'consultation_booked';
+            return lead_conversion_consult_completed($lead) ? 'consult_completed' : 'consultation_booked';
         }
         if (lead_conversion_has_future_consult($lead)) {
             return 'consultation_booked';
@@ -572,7 +599,7 @@ if (!function_exists('lead_conversion_next_action')) {
         if ($status === 'consultation_booked' && lead_conversion_needs_dob($lead)) {
             return ['key' => 'ask_dob', 'label' => 'Ask DOB', 'tone' => 'amber'];
         }
-        if ($status === 'no_show_reschedule' || trim((string)($lead['consultation_status'] ?? '')) === 'no_show') {
+        if ($status === 'no_show_reschedule' || lead_conversion_missed_consult_needs_reschedule($lead)) {
             return ['key' => 'reschedule', 'label' => 'Reschedule', 'tone' => 'orange'];
         }
         if (lead_conversion_reply_needed($lead)) {
@@ -659,7 +686,7 @@ if (!function_exists('lead_conversion_badges')) {
         if (lead_conversion_appointment_tomorrow($lead)) {
             $badges[] = ['key' => 'appointment_tomorrow', 'label' => 'Appt Tomorrow', 'tone' => 'emerald'];
         }
-        if (trim((string)($lead['status'] ?? '')) === 'no_show_reschedule' || trim((string)($lead['consultation_status'] ?? '')) === 'no_show') {
+        if (trim((string)($lead['status'] ?? '')) === 'no_show_reschedule' || lead_conversion_missed_consult_needs_reschedule($lead)) {
             $badges[] = ['key' => 'no_show_reschedule', 'label' => 'No Show', 'tone' => 'orange'];
         }
         if (trim((string)($lead['status'] ?? '')) === 'no_answer') {

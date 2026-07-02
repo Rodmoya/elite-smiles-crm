@@ -467,17 +467,7 @@ if (!function_exists('lead_conversion_missed_consult_needs_reschedule')) {
         $status = trim((string)($lead['status'] ?? ''));
         $consultationStatus = trim((string)($lead['consultation_status'] ?? ''));
 
-        if ($status !== 'consultation_booked' && $consultationStatus !== 'no_show') {
-            return false;
-        }
-        if ($consultationStatus === 'completed') {
-            return false;
-        }
-        if ($consultationStatus === 'no_show') {
-            return true;
-        }
-
-        return lead_conversion_has_past_consult($lead);
+        return $status === 'no_show_reschedule' || $consultationStatus === 'no_show';
     }
 }
 

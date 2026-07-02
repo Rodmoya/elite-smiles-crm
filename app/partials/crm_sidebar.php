@@ -292,6 +292,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             let isListening = false;
             let pendingDraftsCollapsed = true;
             const assistantOpenStorageKey = 'elite-ai-panel-open';
+            const assistantThreadStorageKey = 'elite-ai-thread-v1';
+            let assistantThreadState = [];
+            let assistantRestoringThread = false;
 
     function aiContext() {
         return {
@@ -316,6 +319,59 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         } catch (error) {
             return false;
         }
+    }
+
+    function loadAssistantThreadState() {
+        try {
+            const raw = window.localStorage.getItem(assistantThreadStorageKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            assistantThreadState = Array.isArray(parsed) ? parsed.slice(-30) : [];
+        } catch (error) {
+            assistantThreadState = [];
+        }
+    }
+
+    function saveAssistantThreadState() {
+        try {
+            window.localStorage.setItem(assistantThreadStorageKey, JSON.stringify(assistantThreadState.slice(-30)));
+        } catch (error) {
+            // ignore storage failures
+        }
+    }
+
+    function rememberAssistantBubble(label, text, role, cards, actions) {
+        if (assistantRestoringThread) {
+            return;
+        }
+        assistantThreadState.push({
+            label: String(label || ''),
+            text: String(text || ''),
+            role: role === 'user' ? 'user' : 'assistant',
+            cards: Array.isArray(cards) ? cards : [],
+            actions: Array.isArray(actions) ? actions : [],
+            created_at: Date.now()
+        });
+        assistantThreadState = assistantThreadState.slice(-30);
+        saveAssistantThreadState();
+    }
+
+    function restoreAssistantThread() {
+        if (!aiThread || !assistantThreadState.length) {
+            return;
+        }
+        assistantRestoringThread = true;
+        aiThread.innerHTML = '';
+        assistantThreadState.forEach(function (item) {
+            assistantBubble(
+                item.label || (item.role === 'user' ? 'You' : 'Elite AI'),
+                item.text || '',
+                item.role === 'user' ? 'user' : 'assistant',
+                Array.isArray(item.cards) ? item.cards : [],
+                false,
+                Array.isArray(item.actions) ? item.actions : []
+            );
+        });
+        assistantRestoringThread = false;
     }
 
     function setAssistantLeadContext(context) {
@@ -351,6 +407,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     const saved = window.localStorage ? localStorage.getItem('elite_crm_sidebar_collapsed') : null;
     applyDesktopCollapsed(saved === '1');
+    loadAssistantThreadState();
 
     if (desktopToggle) {
         desktopToggle.addEventListener('click', function () {
@@ -381,6 +438,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         aiPanel.classList.toggle('translate-y-2', !open);
         if (open) {
             positionAssistantPanel();
+            restoreAssistantThread();
             buildQuickActions();
             refreshPendingDrafts(true);
             if (aiInput) aiInput.focus();
@@ -722,6 +780,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
         aiThread.appendChild(article);
         aiThread.scrollTop = aiThread.scrollHeight;
+        if (!loading) {
+            rememberAssistantBubble(label, text, role, cards, actions);
+        }
         return article;
     }
 

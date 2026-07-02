@@ -1993,6 +1993,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
         if ($assistantAction === 'move_stage') {
             $context = elite_ai_normalize_context($request);
             $result = elite_ai_handle_move_stage_action($user, $request, $surface);
+            $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -2012,6 +2013,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
         if ($assistantAction === 'add_note') {
             $context = elite_ai_normalize_context($request);
             $result = elite_ai_handle_add_note_action($user, $request, $surface);
+            $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -2032,6 +2034,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             $context = elite_ai_normalize_context($request);
             $leadId = (int) ($request['lead_id'] ?? $context['lead_id'] ?? 0);
             $result = elite_ai_mark_notification_reviewed_payload($user, $leadId, 'elite_ai_action_button');
+            $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -2052,6 +2055,10 @@ if (!function_exists('elite_ai_handle_action_request')) {
         $result = elite_ai_prepare_action_draft($user, $request, $surface);
         if (!empty($result['ok'])) {
             $context = elite_ai_normalize_context($request);
+            if (!empty($result['draft_preview'])) {
+                $result['answer'] = trim((string) ($result['message'] ?? 'Draft ready.')) . "\n\n" . trim((string) $result['draft_preview']);
+            }
+            $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -2629,6 +2636,44 @@ if (!function_exists('elite_ai_log_interaction')) {
     }
 }
 
+if (!function_exists('elite_ai_plain_text_payload')) {
+    function elite_ai_plain_text_payload(array $payload): array
+    {
+        $answer = trim((string) ($payload['answer'] ?? ''));
+        $lines = [];
+
+        foreach (array_slice((array) ($payload['cards'] ?? []), 0, 3) as $card) {
+            if (!is_array($card)) {
+                continue;
+            }
+
+            $title = trim((string) ($card['title'] ?? ''));
+            $items = array_values(array_filter(array_map(
+                static fn($item): string => trim((string) $item),
+                (array) ($card['items'] ?? [])
+            )));
+
+            if ($title !== '' && $items) {
+                $lines[] = $title . ':';
+            } elseif ($title !== '') {
+                $lines[] = $title;
+            }
+
+            foreach (array_slice($items, 0, 5) as $item) {
+                $lines[] = $item;
+            }
+        }
+
+        if ($lines) {
+            $answer = trim($answer . "\n\n" . implode("\n", $lines));
+        }
+
+        $payload['answer'] = $answer !== '' ? $answer : 'Ready.';
+        $payload['cards'] = [];
+        return $payload;
+    }
+}
+
 if (!function_exists('elite_ai_handle_request')) {
 function elite_ai_handle_request(array $user, array $request): array
 {
@@ -2793,6 +2838,7 @@ function elite_ai_handle_request(array $user, array $request): array
         }
         }
 
+        $payload = elite_ai_plain_text_payload($payload);
         $summary = trim((string) ($payload['answer'] ?? 'Elite AI completed a read-only response.'));
         elite_ai_log_interaction($user, $surface, $prompt !== '' ? $prompt : $quickAction, (array) ($payload['tools_used'] ?? []), $summary, $leadId, $context);
 

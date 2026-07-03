@@ -55,7 +55,8 @@ function lead_import_parse_uploaded_file(array $file): array
     }
 
     $headers = array_map(static function ($header): string {
-        return strtolower(lead_import_clean_cell((string) $header));
+        $header = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header) ?? (string) $header;
+        return strtolower(lead_import_clean_cell($header));
     }, $headers);
 
     $rows = [];
@@ -95,8 +96,23 @@ try {
 
 $rawRows = trim((string) post('rows_json', ''));
 $rows = $rawRows !== '' ? json_decode($rawRows, true) : [];
-if ((!is_array($rows) || $rows === []) && is_array($_FILES['lead_file'] ?? null)) {
-    $rows = lead_import_parse_uploaded_file($_FILES['lead_file']);
+$fileRows = [];
+if (is_array($_FILES['lead_file'] ?? null)) {
+    $fileRows = lead_import_parse_uploaded_file($_FILES['lead_file']);
+}
+
+$rowsLookMalformed = false;
+if (is_array($rows) && $rows !== []) {
+    $sample = reset($rows);
+    if (is_array($sample) && count($sample) === 1) {
+        $sampleKey = (string) array_key_first($sample);
+        $sampleValue = (string) ($sample[$sampleKey] ?? '');
+        $rowsLookMalformed = str_contains($sampleKey, "\t") && str_contains($sampleValue, "\t");
+    }
+}
+
+if ((!is_array($rows) || $rows === [] || $rowsLookMalformed) && $fileRows !== []) {
+    $rows = $fileRows;
 }
 if (!is_array($rows) || $rows === []) {
     lead_import_json_response(['ok' => false, 'message' => 'No lead rows were provided.'], 422);

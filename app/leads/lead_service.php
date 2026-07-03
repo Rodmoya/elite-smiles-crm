@@ -1734,11 +1734,31 @@ if (!function_exists('lead_create_minimal')) {
 }
 
 if (!function_exists('lead_import_meta_value')) {
+    function lead_import_meta_normalize_key(string $key): string
+    {
+        $key = preg_replace('/^\xEF\xBB\xBF/', '', $key) ?? $key;
+        return strtolower(trim($key));
+    }
+
     function lead_import_meta_value(array $row, array $keys): string
     {
+        $normalizedRow = [];
+        foreach ($row as $rowKey => $rowValue) {
+            $normalizedRow[lead_import_meta_normalize_key((string) $rowKey)] = $rowValue;
+        }
+
         foreach ($keys as $key) {
             if (array_key_exists($key, $row)) {
                 $value = trim((string) $row[$key]);
+                if (strlen($value) >= 2 && $value[0] === '"' && substr($value, -1) === '"') {
+                    $value = substr($value, 1, -1);
+                }
+                return trim(str_replace('""', '"', $value));
+            }
+
+            $normalizedKey = lead_import_meta_normalize_key($key);
+            if (array_key_exists($normalizedKey, $normalizedRow)) {
+                $value = trim((string) $normalizedRow[$normalizedKey]);
                 if (strlen($value) >= 2 && $value[0] === '"' && substr($value, -1) === '"') {
                     $value = substr($value, 1, -1);
                 }
@@ -1750,9 +1770,43 @@ if (!function_exists('lead_import_meta_value')) {
     }
 }
 
+if (!function_exists('lead_import_meta_expand_row')) {
+    function lead_import_meta_expand_row(array $row): array
+    {
+        if (count($row) !== 1) {
+            $normalized = [];
+            foreach ($row as $key => $value) {
+                $normalized[lead_import_meta_normalize_key((string) $key)] = $value;
+            }
+            return $normalized;
+        }
+
+        $keys = array_keys($row);
+        $headerLine = (string) ($keys[0] ?? '');
+        $valueLine = (string) ($row[$headerLine] ?? '');
+        if (!str_contains($headerLine, "\t") || !str_contains($valueLine, "\t")) {
+            return $row;
+        }
+
+        $headers = str_getcsv($headerLine, "\t", '"', "\\");
+        $values = str_getcsv($valueLine, "\t", '"', "\\");
+        $expanded = [];
+        foreach ($headers as $index => $header) {
+            $header = lead_import_meta_normalize_key((string) $header);
+            if ($header === '') {
+                continue;
+            }
+            $expanded[$header] = trim((string) ($values[$index] ?? ''));
+        }
+
+        return $expanded ?: $row;
+    }
+}
+
 if (!function_exists('lead_import_meta_row_to_input')) {
     function lead_import_meta_row_to_input(array $row): array
     {
+        $row = lead_import_meta_expand_row($row);
         $externalLeadId = lead_import_meta_value($row, ['id', 'external_lead_id']);
         $createdTime = lead_import_meta_value($row, ['created_time', 'created_at']);
         $platform = strtolower(lead_import_meta_value($row, ['platform']));

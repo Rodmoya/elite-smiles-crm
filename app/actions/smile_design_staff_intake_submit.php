@@ -26,7 +26,14 @@ if ($leadId > 0) {
         $leadId = 0;
     }
 }
-$staffIntakeReturnUrl = base_url('smile-design/staff-intake' . ($leadId > 0 ? '?lead_id=' . $leadId : ''));
+$returnParams = [];
+if ($leadId > 0) {
+    $returnParams['lead_id'] = (string)$leadId;
+}
+if ($mobileUploadToken !== '' && smile_design_verify_token($mobileUploadToken, 'mobile_upload')) {
+    $returnParams['mobile_upload_token'] = $mobileUploadToken;
+}
+$staffIntakeReturnUrl = base_url('smile-design/staff-intake' . ($returnParams ? '?' . http_build_query($returnParams) : ''));
 
 if ($first === '' || $phone === '') {
     flash_set('error', 'First name and phone are required before creating a Smile Design case.');
@@ -43,7 +50,17 @@ if ($mobileUploadToken !== '' && smile_design_verify_token($mobileUploadToken, '
 }
 
 if (!$hasLocalFront && !$hasMobileFront) {
-    flash_set('error', 'Please upload a front before photo from this computer, or scan the QR code and upload the Front photo from your phone before creating the case.');
+    $uploadedAngles = [];
+    foreach ($mobileUploads as $mobilePhotoType => $mobileUpload) {
+        if (!empty($mobileUpload)) {
+            $uploadedAngles[] = ucwords(str_replace('_', ' ', (string)$mobilePhotoType));
+        }
+    }
+    $missingFrontMessage = 'Please upload a front before photo from this computer, or scan the QR code and upload the Front photo from your phone before creating the case.';
+    if ($uploadedAngles !== []) {
+        $missingFrontMessage .= ' Phone uploads found: ' . implode(', ', $uploadedAngles) . '. The Front slot is still required.';
+    }
+    flash_set('error', $missingFrontMessage);
     redirect($staffIntakeReturnUrl);
 }
 

@@ -39,7 +39,10 @@ if ($sourceLeadId > 0) {
 $cancelUrl = $sourceLeadId > 0
     ? base_url('leads.php?lead_id=' . $sourceLeadId)
     : base_url('smile-design/cases');
-$mobileUploadToken = smile_design_issue_mobile_upload_token(auth_user_id(), 24);
+$requestedMobileUploadToken = trim((string)get('mobile_upload_token', ''));
+$mobileUploadToken = $requestedMobileUploadToken !== '' && smile_design_verify_token($requestedMobileUploadToken, 'mobile_upload')
+    ? $requestedMobileUploadToken
+    : smile_design_issue_mobile_upload_token(auth_user_id(), 24);
 $mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
 $mobileUploadStatusUrl = base_url('app/actions/smile_design_mobile_upload_status.php?token=' . rawurlencode($mobileUploadToken));
 $mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=' . rawurlencode($mobileUploadUrl);

@@ -75,7 +75,7 @@ $slots = [
                         <label class="mt-4 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-white/20 bg-black px-4 py-5 text-center">
                             <span class="text-sm font-semibold">Choose <?= e($label) ?> Photo</span>
                             <span class="mt-1 text-xs leading-5 text-white/45">Camera or photo library. JPG, PNG, WebP, HEIC, or HEIF.</span>
-                            <input required name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="sr-only">
+                            <input required name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="sr-only">
                         </label>
                         <button class="mt-3 w-full rounded-md bg-white px-4 py-3 text-sm font-bold text-black" type="submit">Upload <?= e($label) ?></button>
                     </form>

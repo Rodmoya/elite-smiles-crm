@@ -53,21 +53,24 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
         <div data-sd-photo-field>
             <label class="mt-3 flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                 <span class="text-base font-semibold text-slate-900">Front BEFORE photo</span>
-                <span class="mt-2 text-sm text-slate-500">Upload here or use the phone QR above. JPG, PNG, WebP, HEIC, or HEIF.</span>
-                <input name="before_photo_front" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="sr-only" data-sd-photo-input data-sd-photo-label="Front">
+                <span class="mt-2 text-sm text-slate-500">Required. Upload here or use the phone QR above. JPG, PNG, WebP, HEIC, or HEIF.</span>
+                <input name="before_photo_front" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="sr-only" data-sd-photo-input data-sd-photo-label="Front">
             </label>
             <img class="mt-4 hidden max-h-[420px] w-full rounded-md object-contain ring-1 ring-slate-200" alt="Selected front photo preview" data-sd-photo-preview>
             <p class="mt-3 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" data-sd-photo-status></p>
             <button class="mt-3 hidden rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold" type="button" data-sd-replace-photo>Replace photo</button>
         </div>
+        <div class="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-900">
+            Create Smile Design Case only after the Front photo shows ready here, or after the phone upload page shows Front as ready.
+        </div>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
             <div data-sd-photo-field>
-                <label class="block text-sm font-semibold">Left 45 photo <span class="font-normal text-slate-500">(optional)</span><input name="before_photo_left_45" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2" data-sd-photo-input data-sd-photo-label="Left 45"></label>
+                <label class="block text-sm font-semibold">Left 45 photo <span class="font-normal text-slate-500">(optional)</span><input name="before_photo_left_45" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2" data-sd-photo-input data-sd-photo-label="Left 45"></label>
                 <img class="mt-3 hidden max-h-56 w-full rounded-md object-contain ring-1 ring-slate-200" alt="Selected left 45 photo preview" data-sd-photo-preview>
                 <p class="mt-2 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" data-sd-photo-status></p>
             </div>
             <div data-sd-photo-field>
-                <label class="block text-sm font-semibold">Right 45 photo <span class="font-normal text-slate-500">(optional)</span><input name="before_photo_right_45" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2" data-sd-photo-input data-sd-photo-label="Right 45"></label>
+                <label class="block text-sm font-semibold">Right 45 photo <span class="font-normal text-slate-500">(optional)</span><input name="before_photo_right_45" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2" data-sd-photo-input data-sd-photo-label="Right 45"></label>
                 <img class="mt-3 hidden max-h-56 w-full rounded-md object-contain ring-1 ring-slate-200" alt="Selected right 45 photo preview" data-sd-photo-preview>
                 <p class="mt-2 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" data-sd-photo-status></p>
             </div>

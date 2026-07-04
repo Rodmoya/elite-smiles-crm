@@ -41,6 +41,7 @@ $cancelUrl = $sourceLeadId > 0
     : base_url('smile-design/cases');
 $mobileUploadToken = smile_design_issue_mobile_upload_token(auth_user_id(), 24);
 $mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
+$mobileUploadStatusUrl = base_url('app/actions/smile_design_mobile_upload_status.php?token=' . rawurlencode($mobileUploadToken));
 $mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=' . rawurlencode($mobileUploadUrl);
 smile_design_render_shell_start('Staff Intake');
 smile_design_page_header('Staff Intake', 'Create a smile case fast with one strong front before photo, then refine details inside the case workspace.');
@@ -96,6 +97,21 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
                 <a class="mt-3 inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700" href="<?= e($mobileUploadUrl) ?>" target="_blank" rel="noreferrer">Open mobile upload link</a>
             </div>
         </div>
+        <div class="mt-3 rounded-md border border-slate-200 bg-white p-3" data-sd-mobile-status data-status-url="<?= e($mobileUploadStatusUrl) ?>">
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-sm font-semibold text-slate-900">Phone upload status</p>
+                <button class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700" type="button" data-sd-refresh-mobile-uploads>Refresh</button>
+            </div>
+            <div class="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                <?php foreach (['front' => 'Front', 'left_45' => 'Left 45', 'right_45' => 'Right 45'] as $slotKey => $slotLabel): ?>
+                    <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" data-sd-mobile-slot="<?= e($slotKey) ?>">
+                        <p class="font-semibold text-slate-800"><?= e($slotLabel) ?></p>
+                        <p class="mt-1 text-slate-500" data-sd-mobile-slot-status>Waiting for phone upload.</p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <p class="mt-3 text-xs leading-5 text-slate-500" data-sd-mobile-status-summary>Uploads from the phone will appear here automatically.</p>
+        </div>
         <div data-sd-photo-field>
             <label class="mt-3 flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                 <span class="text-base font-semibold text-slate-900">Front BEFORE photo</span>
@@ -134,8 +150,12 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
     const lviStyleSelect = lviStyleField ? lviStyleField.querySelector('select') : null;
     const shadeField = document.querySelector('[data-sd-shade-field]');
     const shadeSelect = shadeField ? shadeField.querySelector('select') : null;
+    const mobileStatusPanel = document.querySelector('[data-sd-mobile-status]');
+    const mobileRefreshButton = document.querySelector('[data-sd-refresh-mobile-uploads]');
+    const mobileStatusSummary = document.querySelector('[data-sd-mobile-status-summary]');
     let heicConverterPromise = null;
     let preparingCount = 0;
+    let mobilePollTimer = null;
     function isLipRepositionOnly(value) {
         const text = String(value || '').toLowerCase();
         return (text.includes('lip reposition') || text.includes('gummy smile')) && !text.includes('veneer');
@@ -231,6 +251,58 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
         status.textContent = '';
         status.classList.add('hidden');
     }
+    function setMobileSlot(slotKey, slot) {
+        const slotEl = document.querySelector('[data-sd-mobile-slot="' + slotKey + '"]');
+        if (!slotEl) return;
+        const statusEl = slotEl.querySelector('[data-sd-mobile-slot-status]');
+        const ready = !!(slot && slot.ready);
+        slotEl.classList.toggle('border-emerald-200', ready);
+        slotEl.classList.toggle('bg-emerald-50', ready);
+        slotEl.classList.toggle('border-slate-200', !ready);
+        slotEl.classList.toggle('bg-slate-50', !ready);
+        if (statusEl) {
+            statusEl.textContent = ready
+                ? 'Ready from phone' + (slot.original_name ? ': ' + slot.original_name : '.')
+                : 'Waiting for phone upload.';
+            statusEl.classList.toggle('text-emerald-700', ready);
+            statusEl.classList.toggle('text-slate-500', !ready);
+        }
+    }
+    async function refreshMobileUploads(manual) {
+        if (!mobileStatusPanel || !mobileStatusPanel.dataset.statusUrl) return;
+        if (mobileRefreshButton) mobileRefreshButton.disabled = true;
+        try {
+            const response = await fetch(mobileStatusPanel.dataset.statusUrl, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Could not check phone uploads.');
+            }
+            const slots = data.slots || {};
+            ['front', 'left_45', 'right_45'].forEach(function (slotKey) {
+                setMobileSlot(slotKey, slots[slotKey] || null);
+            });
+            if (mobileStatusSummary) {
+                const count = Number(data.ready_count || 0);
+                mobileStatusSummary.textContent = count > 0
+                    ? count + ' phone upload' + (count === 1 ? ' is' : 's are') + ' ready. You can create the case now if Front is ready.'
+                    : (manual ? 'No phone uploads found yet. Try again after the phone page shows Ready.' : 'Waiting for phone uploads...');
+                mobileStatusSummary.classList.toggle('text-emerald-700', count > 0);
+                mobileStatusSummary.classList.toggle('text-slate-500', count === 0);
+            }
+        } catch (error) {
+            if (mobileStatusSummary) {
+                mobileStatusSummary.textContent = error.message || 'Could not check phone uploads.';
+                mobileStatusSummary.classList.remove('text-emerald-700');
+                mobileStatusSummary.classList.add('text-rose-700');
+            }
+        } finally {
+            if (mobileRefreshButton) mobileRefreshButton.disabled = false;
+        }
+    }
     function setSubmitReady() {
         if (!submitButton) return;
         const busy = preparingCount > 0;
@@ -315,6 +387,17 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
         const parts = photoParts(photoInput);
         if (parts.replace) parts.replace.addEventListener('click', function () { photoInput.click(); });
     });
+    if (mobileRefreshButton) {
+        mobileRefreshButton.addEventListener('click', function () {
+            refreshMobileUploads(true);
+        });
+    }
+    if (mobileStatusPanel) {
+        refreshMobileUploads(false);
+        mobilePollTimer = window.setInterval(function () {
+            if (!document.hidden) refreshMobileUploads(false);
+        }, 5000);
+    }
     if (form && progress) form.addEventListener('submit', async function (event) {
         if (preparingCount > 0) {
             event.preventDefault();

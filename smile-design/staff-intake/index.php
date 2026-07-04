@@ -4,6 +4,38 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
 $user = smile_design_internal_boot('Staff Intake');
+$sourceLeadId = (int)get('lead_id', 0);
+$sourceLead = null;
+if ($sourceLeadId > 0) {
+    $sourceLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $sourceLeadId]);
+    if (!$sourceLead) {
+        $sourceLeadId = 0;
+        flash_set('error', 'Lead not found. Staff Intake opened without lead details.');
+    }
+}
+
+$prefillFullName = trim((string)($sourceLead['full_name'] ?? ''));
+$prefillFirstName = trim((string)($sourceLead['first_name'] ?? ''));
+$prefillLastName = trim((string)($sourceLead['last_name'] ?? ''));
+if ($prefillFirstName === '' && $prefillFullName !== '') {
+    $nameParts = preg_split('/\s+/', $prefillFullName, 2);
+    $prefillFirstName = trim((string)($nameParts[0] ?? ''));
+    $prefillLastName = trim((string)($nameParts[1] ?? $prefillLastName));
+}
+$prefillPhone = trim((string)($sourceLead['phone'] ?? ''));
+$prefillEmail = trim((string)($sourceLead['email'] ?? ''));
+$prefillProcedure = trim((string)($sourceLead['procedure_interest'] ?? ''));
+$prefillNotes = trim((string)($sourceLead['notes'] ?? ''));
+if ($sourceLeadId > 0) {
+    $leadContext = 'Source lead #' . $sourceLeadId;
+    if (trim((string)($sourceLead['campaign'] ?? '')) !== '') {
+        $leadContext .= "\nCampaign: " . trim((string)$sourceLead['campaign']);
+    }
+    if (trim((string)($sourceLead['landing_page'] ?? '')) !== '') {
+        $leadContext .= "\nLanding page: " . trim((string)$sourceLead['landing_page']);
+    }
+    $prefillNotes = trim($leadContext . ($prefillNotes !== '' ? "\n\nLead notes:\n" . $prefillNotes : ''));
+}
 $mobileUploadToken = smile_design_issue_mobile_upload_token(auth_user_id(), 24);
 $mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
 $mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=' . rawurlencode($mobileUploadUrl);
@@ -12,26 +44,32 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
 ?>
 <form class="grid gap-5 lg:grid-cols-[1fr_0.85fr]" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_staff_intake_submit.php')) ?>" data-sd-staff-intake data-loading-label="Creating case and analyzing photo...">
     <?= csrf_input() ?>
+    <input type="hidden" name="lead_id" value="<?= e((string)$sourceLeadId) ?>">
     <input type="hidden" name="mobile_upload_token" value="<?= e($mobileUploadToken) ?>">
     <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <?php if ($sourceLeadId > 0): ?>
+            <div class="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-900">
+                Creating this Smile Design case from lead #<?= e((string)$sourceLeadId) ?><?= $prefillFullName !== '' ? ': ' . e($prefillFullName) : '' ?>.
+            </div>
+        <?php endif; ?>
         <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm font-semibold">First name<input required name="first_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
-            <label class="block text-sm font-semibold">Last name<input name="last_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
-            <label class="block text-sm font-semibold">Phone<input required name="phone" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
-            <label class="block text-sm font-semibold">Procedure<select name="procedure_interest" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3" data-sd-procedure-select><?php foreach (smile_design_procedure_options() as $key => $label): ?><option value="<?= e($label) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
-            <label class="block text-sm font-semibold sm:col-span-2">Email <span class="font-normal text-slate-500">(optional)</span><input name="email" type="email" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
+            <label class="block text-sm font-semibold">First name<input required name="first_name" value="<?= e($prefillFirstName) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
+            <label class="block text-sm font-semibold">Last name<input name="last_name" value="<?= e($prefillLastName) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
+            <label class="block text-sm font-semibold">Phone<input required name="phone" value="<?= e($prefillPhone) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
+            <label class="block text-sm font-semibold">Procedure<select name="procedure_interest" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3" data-sd-procedure-select><?php $procedureOptions = smile_design_procedure_options(); if ($prefillProcedure !== '' && !in_array($prefillProcedure, $procedureOptions, true)): ?><option value="<?= e($prefillProcedure) ?>" selected><?= e($prefillProcedure) ?></option><?php endif; ?><?php foreach ($procedureOptions as $key => $label): ?><option value="<?= e($label) ?>" <?= $prefillProcedure !== '' && $prefillProcedure === $label ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label class="block text-sm font-semibold sm:col-span-2">Email <span class="font-normal text-slate-500">(optional)</span><input name="email" type="email" value="<?= e($prefillEmail) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></label>
             <label class="block text-sm font-semibold" data-sd-lvi-style-field>LVI style <span class="font-normal text-slate-500">(optional)</span><select name="selected_style" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_style_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'natural' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
             <label class="block text-sm font-semibold" data-sd-shade-field>Veneer shade <span class="font-normal text-slate-500">(default)</span><select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === '110' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
             <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'upper' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
             <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= $key === 'keep_current' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
         </div>
 
-        <details class="mt-4 rounded-md bg-slate-50 p-4">
+        <details class="mt-4 rounded-md bg-slate-50 p-4" <?= $sourceLeadId > 0 ? 'open' : '' ?>>
             <summary class="cursor-pointer text-sm font-semibold text-slate-900">Optional case details</summary>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <label class="block text-sm font-semibold">Consent status<select name="consent_status" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><option value="not_recorded">Not recorded</option><option value="verbal">Verbal consent</option><option value="written">Written consent on file</option></select></label>
             </div>
-            <label class="mt-4 block text-sm font-semibold">Optional notes<textarea name="notes" rows="5" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"></textarea></label>
+            <label class="mt-4 block text-sm font-semibold">Optional notes<textarea name="notes" rows="5" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?= e($prefillNotes) ?></textarea></label>
         </details>
 
         <button class="mt-5 w-full rounded-md bg-slate-950 px-5 py-4 text-base font-semibold text-white sm:w-auto" type="submit">Create Smile Design Case</button>

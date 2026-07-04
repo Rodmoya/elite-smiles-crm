@@ -16,11 +16,20 @@ $last = trim((string)post('last_name'));
 $patientName = trim($first . ' ' . $last);
 $phone = trim((string)post('phone'));
 $email = strtolower(trim((string)post('email')));
+$leadId = (int)post('lead_id', 0);
 $mobileUploadToken = trim((string)post('mobile_upload_token', ''));
+
+if ($leadId > 0) {
+    $leadExists = db_value('SELECT id FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+    if (!$leadExists) {
+        $leadId = 0;
+    }
+}
+$staffIntakeReturnUrl = base_url('smile-design/staff-intake' . ($leadId > 0 ? '?lead_id=' . $leadId : ''));
 
 if ($first === '' || $phone === '') {
     flash_set('error', 'First name and phone are required before creating a Smile Design case.');
-    redirect(base_url('smile-design/staff-intake'));
+    redirect($staffIntakeReturnUrl);
 }
 
 $frontFile = $_FILES['before_photo_front'] ?? null;
@@ -34,7 +43,7 @@ if ($mobileUploadToken !== '' && smile_design_verify_token($mobileUploadToken, '
 
 if (!$hasLocalFront && !$hasMobileFront) {
     flash_set('error', 'Please upload a front before photo from this computer, or scan the QR code and upload the Front photo from your phone before creating the case.');
-    redirect(base_url('smile-design/staff-intake'));
+    redirect($staffIntakeReturnUrl);
 }
 
 $frontUpload = ['ok' => false, 'photo_id' => 0];
@@ -46,6 +55,7 @@ try {
     db_begin();
 
     $caseId = smile_design_create_case([
+        'lead_id' => $leadId,
         'first_name' => $first,
         'last_name' => $last,
         'patient_name' => $patientName,
@@ -99,7 +109,7 @@ try {
         throw new RuntimeException('Please upload a front before photo from this computer or scan the QR code and upload it from your phone.');
     }
 
-    smile_design_audit($caseId, 'staff_intake_submitted', ['lead_id' => null], auth_user_id());
+    smile_design_audit($caseId, 'staff_intake_submitted', ['lead_id' => $leadId ?: null], auth_user_id());
     smile_design_audit($caseId, 'staff_photo_uploaded', ['photo_id' => $frontPhotoId], auth_user_id());
 
     db_commit();
@@ -110,7 +120,7 @@ try {
         'case_id' => $caseId,
     ]);
     flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Could not create Smile Design case.');
-    redirect(base_url('smile-design/staff-intake'));
+    redirect($staffIntakeReturnUrl);
 }
 
 $analysisResult = ['ok' => false, 'message' => 'AI case analysis was not started.'];

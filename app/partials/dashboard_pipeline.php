@@ -1024,6 +1024,24 @@ $consultationOptions = [
 
                 <div class="flex items-center gap-2">
 
+                    <a
+
+                        id="workspace-smile-design-intake"
+
+                        href="<?= e(base_url('smile-design/staff-intake')) ?>"
+
+                        class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+
+                        target="_blank"
+
+                        rel="noreferrer"
+
+                    >
+
+                        <span>Smile Design</span>
+
+                    </a>
+
                     <button
 
                         type="button"
@@ -2425,6 +2443,8 @@ $consultationOptions = [
     const closeBottom = document.getElementById('lead-detail-close-bottom');
 
     const deleteLeadButton = document.getElementById('lead-delete-button');
+
+    const smileDesignIntakeButton = document.getElementById('workspace-smile-design-intake');
 
     const saveButton = document.getElementById('workspace-save-main');
 
@@ -5449,6 +5469,14 @@ function applyCommunicationViewportFit() {
         setWorkspacePresentation('screen');
 
         activeCard = card;
+
+        if (smileDesignIntakeButton) {
+            const leadId = Number(card.dataset.leadId || 0);
+            const intakeUrl = '<?= e(base_url('smile-design/staff-intake')) ?>';
+            smileDesignIntakeButton.href = leadId > 0
+                ? intakeUrl + '?lead_id=' + encodeURIComponent(String(leadId))
+                : intakeUrl;
+        }
 
         const assistantPanel = document.getElementById('crm-ai-panel');
         if (assistantPanel && assistantPanel.dataset) {

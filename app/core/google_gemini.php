@@ -419,11 +419,17 @@ if (!function_exists('elite_gemini_find_video_payload')) {
     function elite_gemini_video_empty_message(array $response): string
     {
         $blockedReasons = [];
+        $nestedKeys = [];
         $stack = [$response];
         while ($stack !== []) {
             $node = array_pop($stack);
             if (!is_array($node)) {
                 continue;
+            }
+            foreach (array_keys($node) as $key) {
+                if (is_string($key) && preg_match('/video|sample|file|media|uri|url/i', $key)) {
+                    $nestedKeys[] = $key;
+                }
             }
             foreach (['raiMediaFilteredReason', 'finishReason', 'blockReason', 'reason', 'message'] as $key) {
                 if (isset($node[$key]) && is_string($node[$key]) && trim($node[$key]) !== '') {
@@ -443,30 +449,63 @@ if (!function_exists('elite_gemini_find_video_payload')) {
         }
 
         $topLevelKeys = implode(', ', array_slice(array_keys($response), 0, 8));
-        return 'Gemini finished the video operation but did not return a downloadable video. Response keys: ' . ($topLevelKeys !== '' ? $topLevelKeys : 'none') . '.';
+        $nestedKeys = implode(', ', array_slice(array_values(array_unique($nestedKeys)), 0, 12));
+        return 'Gemini finished the video operation but did not return a downloadable video. Response keys: ' . ($topLevelKeys !== '' ? $topLevelKeys : 'none') . ($nestedKeys !== '' ? '. Nested video keys: ' . $nestedKeys : '') . '.';
     }
 
     function elite_gemini_find_video_payload(array $response): array
     {
         $videoNodes = [];
-        $generatedVideos = $response['generatedVideos'] ?? null;
-        if (is_array($generatedVideos)) {
-            foreach ($generatedVideos as $generatedVideo) {
-                if (is_array($generatedVideo['video'] ?? null)) {
-                    $videoNodes[] = $generatedVideo['video'];
+
+        $collectVideoNodes = static function ($node) use (&$collectVideoNodes, &$videoNodes): void {
+            if (!is_array($node)) {
+                return;
+            }
+
+            if (isset($node['video'])) {
+                if (is_array($node['video'])) {
+                    $videoNodes[] = $node['video'];
+                } elseif (is_string($node['video']) && trim($node['video']) !== '') {
+                    $videoNodes[] = ['uri' => trim($node['video'])];
                 }
             }
-        }
-        $generatedSamples = $response['generateVideoResponse']['generatedSamples'] ?? null;
-        if (is_array($generatedSamples)) {
-            foreach ($generatedSamples as $generatedSample) {
-                if (is_array($generatedSample['video'] ?? null)) {
-                    $videoNodes[] = $generatedSample['video'];
+
+            foreach (['generatedVideos', 'generated_videos', 'generatedSamples', 'generated_samples', 'samples'] as $key) {
+                if (!is_array($node[$key] ?? null)) {
+                    continue;
+                }
+                foreach ($node[$key] as $generatedVideo) {
+                    if (!is_array($generatedVideo)) {
+                        continue;
+                    }
+                    if (isset($generatedVideo['video'])) {
+                        if (is_array($generatedVideo['video'])) {
+                            $videoNodes[] = $generatedVideo['video'];
+                        } elseif (is_string($generatedVideo['video']) && trim($generatedVideo['video']) !== '') {
+                            $videoNodes[] = ['uri' => trim($generatedVideo['video'])];
+                        }
+                    }
+                    $collectVideoNodes($generatedVideo);
                 }
             }
-        }
+
+            foreach (['generateVideoResponse', 'generate_video_response', 'response'] as $key) {
+                if (is_array($node[$key] ?? null)) {
+                    $collectVideoNodes($node[$key]);
+                }
+            }
+
+            foreach ($node as $key => $child) {
+                if (is_array($child) && is_string($key) && preg_match('/video|file|media/i', $key)) {
+                    $collectVideoNodes($child);
+                }
+            }
+        };
+
+        $collectVideoNodes($response);
+
         foreach ($videoNodes as $videoNode) {
-            foreach (['bytesBase64Encoded', 'data'] as $key) {
+            foreach (['bytesBase64Encoded', 'videoBytes', 'video_bytes', 'data'] as $key) {
                 if (isset($videoNode[$key]) && is_string($videoNode[$key]) && $videoNode[$key] !== '') {
                     $binary = base64_decode($videoNode[$key], true);
                     if (is_string($binary) && $binary !== '') {
@@ -474,7 +513,7 @@ if (!function_exists('elite_gemini_find_video_payload')) {
                     }
                 }
             }
-            foreach (['uri', 'fileUri', 'downloadUri', 'mediaUrl', 'url', 'gcsUri'] as $key) {
+            foreach (['uri', 'fileUri', 'file_uri', 'downloadUri', 'download_uri', 'mediaUrl', 'media_url', 'url', 'gcsUri', 'gcs_uri', 'name'] as $key) {
                 if (isset($videoNode[$key]) && is_string($videoNode[$key]) && $videoNode[$key] !== '') {
                     $download = elite_gemini_download_video_bytes($videoNode[$key]);
                     if (!empty($download['ok'])) {
@@ -500,13 +539,15 @@ if (!function_exists('elite_gemini_find_video_payload')) {
                     }
                 }
             }
-            if (isset($node['bytesBase64Encoded']) && is_string($node['bytesBase64Encoded']) && $node['bytesBase64Encoded'] !== '') {
-                $binary = base64_decode($node['bytesBase64Encoded'], true);
-                if (is_string($binary) && $binary !== '') {
-                    return ['ok' => true, 'binary' => $binary, 'mime_type' => (string)($node['mimeType'] ?? 'video/mp4')];
+            foreach (['bytesBase64Encoded', 'videoBytes', 'video_bytes'] as $key) {
+                if (isset($node[$key]) && is_string($node[$key]) && $node[$key] !== '') {
+                    $binary = base64_decode($node[$key], true);
+                    if (is_string($binary) && $binary !== '') {
+                        return ['ok' => true, 'binary' => $binary, 'mime_type' => (string)($node['mimeType'] ?? 'video/mp4')];
+                    }
                 }
             }
-            foreach (['uri', 'fileUri', 'downloadUri', 'mediaUrl', 'url', 'gcsUri'] as $key) {
+            foreach (['uri', 'fileUri', 'file_uri', 'downloadUri', 'download_uri', 'mediaUrl', 'media_url', 'url', 'gcsUri', 'gcs_uri'] as $key) {
                 if (isset($node[$key]) && is_string($node[$key]) && $node[$key] !== '') {
                     $download = elite_gemini_download_video_bytes($node[$key]);
                     if (!empty($download['ok'])) {

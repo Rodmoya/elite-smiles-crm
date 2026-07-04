@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../core/helpers.php';
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../leads/lead_service.php';
 require_once __DIR__ . '/../smile_design/smile_design_service.php';
 
 require_auth();
@@ -53,6 +54,31 @@ $frontPhotoId = 0;
 
 try {
     db_begin();
+
+    if ($leadId > 0) {
+        $leadSetParts = [];
+        $leadParams = ['id' => $leadId];
+        foreach ([
+            'first_name' => $first,
+            'last_name' => $last,
+            'full_name' => $patientName,
+            'phone' => $phone,
+            'email' => $email,
+            'procedure_interest' => trim((string)post('procedure_interest')),
+        ] as $column => $value) {
+            if (function_exists('leads_has_column') && leads_has_column($column)) {
+                $leadSetParts[] = $column . ' = :' . $column;
+                $leadParams[$column] = $value !== '' ? $value : null;
+            }
+        }
+        if (function_exists('leads_has_column') && leads_has_column('updated_at')) {
+            $leadSetParts[] = 'updated_at = :updated_at';
+            $leadParams['updated_at'] = now();
+        }
+        if (!empty($leadSetParts)) {
+            db_execute('UPDATE leads SET ' . implode(', ', $leadSetParts) . ' WHERE id = :id LIMIT 1', $leadParams);
+        }
+    }
 
     $caseId = smile_design_create_case([
         'lead_id' => $leadId,

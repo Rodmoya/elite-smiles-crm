@@ -1984,7 +1984,9 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
 
     $patientName = trim((string)($case['patient_name'] ?? 'patient'));
     $prompt = implode(' ', [
-        'Create an 8-second silent cinematic patient smile reveal video for an internal cosmetic dentistry consultation.',
+        'Create an 8-second silent controlled portrait smile reveal video for an internal cosmetic dentistry consultation.',
+        'Frame is tight head-and-shoulders only: face, hair, neck, and upper shoulders may be visible, but hands, arms, fingers, dental tools, props, phones, mirrors, chairs, tables, and other people must never appear.',
+        'Do not create a treatment room scene, office activity, presentation scene, or any interaction with another person or object.',
         'No audio, no music, no voiceover, no sound effects, no spoken words, and no subtitles.',
         'The person must not talk, speak, mouth words, lip-sync, or move their mouth like they are saying anything.',
         'Mouth movement is limited to a natural transition from relaxed/closed lips into a clean smile reveal and then a steady held smile.',
@@ -1996,8 +1998,9 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         'The final frame is strict: patient faces the camera straight on, eyes open, looking directly into the camera, smiling confidently, with the new veneers fully visible.',
         'The last frame must match the selected front after smile: same person, same veneer design, same bright clean shade, same facial identity, same camera-facing smile.',
         'End with a steady held portrait, not a turn, not looking away, not eyes closed, not mid-blink, not mouth closed, and not speaking.',
-        'Preserve realistic human anatomy, natural facial motion, soft dental-office presentation lighting, and premium cosmetic dentistry polish.',
-        'Do not change identity, hair, lips, facial proportions, age, gender, or the veneer design. Do not add text, logos, captions, watermarks, extra people, dental tools, or split screens.',
+        'Preserve realistic human anatomy, natural facial motion, clean soft portrait lighting, a simple neutral background, and premium cosmetic dentistry polish.',
+        'Do not change identity, hair, lips, facial proportions, age, gender, or the veneer design. Do not add text, logos, captions, watermarks, hands, arms, fingers, extra people, dental tools, props, objects, split screens, or environmental action.',
+        'Only animate the patient face, eyes, head angle, and smile. Do not introduce anything that is not already visible in the selected reference portraits.',
         'The video must be silent and presentation-ready for a doctor to show on a big screen.',
         'Patient display name for context only: ' . $patientName . '.',
     ]);

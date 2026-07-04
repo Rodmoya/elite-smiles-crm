@@ -7525,6 +7525,21 @@ function applyCommunicationViewportFit() {
 
     });
 
+    const initialLeadId = new URLSearchParams(window.location.search).get('lead_id');
+    if (initialLeadId) {
+        const initialCard = safeCardLookupById(initialLeadId);
+        if (initialCard) {
+            window.setTimeout(() => {
+                initialCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                initialCard.classList.add('ring-2', 'ring-sky-500', 'ring-offset-2');
+                window.setTimeout(() => {
+                    initialCard.classList.remove('ring-2', 'ring-sky-500', 'ring-offset-2');
+                }, 1800);
+                openLeadModal(initialCard, 'details');
+            }, 250);
+        }
+    }
+
 
 
     if (closeTop) closeTop.addEventListener('click', requestCloseLeadModal);

@@ -36,6 +36,9 @@ if ($sourceLeadId > 0) {
     }
     $prefillNotes = trim($leadContext . ($prefillNotes !== '' ? "\n\nLead notes:\n" . $prefillNotes : ''));
 }
+$cancelUrl = $sourceLeadId > 0
+    ? base_url('leads.php?lead_id=' . $sourceLeadId)
+    : base_url('smile-design/cases');
 $mobileUploadToken = smile_design_issue_mobile_upload_token(auth_user_id(), 24);
 $mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
 $mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=' . rawurlencode($mobileUploadUrl);
@@ -72,7 +75,12 @@ smile_design_page_header('Staff Intake', 'Create a smile case fast with one stro
             <label class="mt-4 block text-sm font-semibold">Optional notes<textarea name="notes" rows="5" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-3"><?= e($prefillNotes) ?></textarea></label>
         </details>
 
-        <button class="mt-5 w-full rounded-md bg-slate-950 px-5 py-4 text-base font-semibold text-white sm:w-auto" type="submit">Create Smile Design Case</button>
+        <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button class="w-full rounded-md bg-slate-950 px-5 py-4 text-base font-semibold text-white sm:w-auto" type="submit">Create Smile Design Case</button>
+            <a class="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-4 text-base font-semibold text-slate-700 transition hover:bg-slate-100 sm:w-auto" href="<?= e($cancelUrl) ?>">
+                <?= $sourceLeadId > 0 ? 'Cancel and Return to Lead' : 'Cancel' ?>
+            </a>
+        </div>
         <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div class="hidden h-full bg-emerald-500" data-sd-upload-progress></div></div>
     </div>
 

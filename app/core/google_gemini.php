@@ -431,6 +431,22 @@ if (!function_exists('elite_gemini_find_video_payload')) {
                     $nestedKeys[] = $key;
                 }
             }
+            $raiReasons = $node['raiMediaFilteredReasons'] ?? $node['rai_media_filtered_reasons'] ?? null;
+            if (is_array($raiReasons)) {
+                foreach ($raiReasons as $reason) {
+                    if (is_string($reason) && trim($reason) !== '') {
+                        $blockedReasons[] = trim($reason);
+                    } elseif (is_array($reason)) {
+                        foreach (['reason', 'message', 'category'] as $reasonKey) {
+                            if (isset($reason[$reasonKey]) && is_string($reason[$reasonKey]) && trim($reason[$reasonKey]) !== '') {
+                                $blockedReasons[] = trim($reason[$reasonKey]);
+                            }
+                        }
+                    }
+                }
+            } elseif (is_string($raiReasons) && trim($raiReasons) !== '') {
+                $blockedReasons[] = trim($raiReasons);
+            }
             foreach (['raiMediaFilteredReason', 'finishReason', 'blockReason', 'reason', 'message'] as $key) {
                 if (isset($node[$key]) && is_string($node[$key]) && trim($node[$key]) !== '') {
                     $blockedReasons[] = trim($node[$key]);

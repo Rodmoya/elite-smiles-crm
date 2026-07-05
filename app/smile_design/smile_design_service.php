@@ -1499,10 +1499,99 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
     return $caseId;
 }
 
+function smile_design_sync_case_contact_from_linked_lead(array $case): array
+{
+    $leadId = (int)($case['lead_id'] ?? 0);
+    if ($leadId <= 0) {
+        return $case;
+    }
+
+    try {
+        $lead = db_one(
+            "SELECT id, full_name, first_name, last_name, email, phone, procedure_interest
+             FROM leads
+             WHERE id = :id
+             LIMIT 1",
+            ['id' => $leadId]
+        );
+    } catch (Throwable) {
+        return $case;
+    }
+
+    if (!$lead) {
+        return $case;
+    }
+
+    $patientName = trim((string)($lead['full_name'] ?? ''));
+    $firstName = trim((string)($lead['first_name'] ?? ''));
+    $lastName = trim((string)($lead['last_name'] ?? ''));
+    if ($patientName === '') {
+        $patientName = trim($firstName . ' ' . $lastName);
+    }
+    if ($patientName === '') {
+        return $case;
+    }
+    if ($firstName === '' || $lastName === '') {
+        $nameParts = preg_split('/\s+/', $patientName) ?: [];
+        if ($firstName === '') {
+            $firstName = trim((string)($nameParts[0] ?? ''));
+        }
+        if ($lastName === '' && count($nameParts) > 1) {
+            $lastName = trim(implode(' ', array_slice($nameParts, 1)));
+        }
+    }
+
+    $synced = [
+        'first_name' => $firstName !== '' ? $firstName : null,
+        'last_name' => $lastName !== '' ? $lastName : null,
+        'patient_name' => $patientName,
+        'email' => trim((string)($lead['email'] ?? '')) !== '' ? strtolower(trim((string)$lead['email'])) : null,
+        'phone' => trim((string)($lead['phone'] ?? '')) !== '' ? trim((string)$lead['phone']) : null,
+        'procedure_interest' => trim((string)($lead['procedure_interest'] ?? '')) !== '' ? trim((string)$lead['procedure_interest']) : null,
+    ];
+
+    $changed = false;
+    foreach ($synced as $field => $value) {
+        $current = $case[$field] ?? null;
+        if ((string)($current ?? '') !== (string)($value ?? '')) {
+            $changed = true;
+            $case[$field] = $value;
+        }
+    }
+
+    if ($changed) {
+        try {
+            db_execute(
+                "UPDATE smile_cases
+                 SET first_name = :first_name,
+                     last_name = :last_name,
+                     patient_name = :patient_name,
+                     email = :email,
+                     phone = :phone,
+                     procedure_interest = :procedure_interest
+                 WHERE id = :id",
+                [
+                    'id' => (int)$case['id'],
+                    'first_name' => $synced['first_name'],
+                    'last_name' => $synced['last_name'],
+                    'patient_name' => $synced['patient_name'],
+                    'email' => $synced['email'],
+                    'phone' => $synced['phone'],
+                    'procedure_interest' => $synced['procedure_interest'],
+                ]
+            );
+        } catch (Throwable) {
+            return $case;
+        }
+    }
+
+    return $case;
+}
+
 function smile_design_case(int $caseId): ?array
 {
     $case = db_one('SELECT * FROM smile_cases WHERE id = :id LIMIT 1', ['id' => $caseId]);
-    return $case ?: null;
+    return $case ? smile_design_sync_case_contact_from_linked_lead($case) : null;
 }
 
 function smile_design_case_analysis(int $caseId): ?array

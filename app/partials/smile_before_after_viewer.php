@@ -50,11 +50,11 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $zoomPresetForPhotoType = static function (string $photoType): array {
         $normalized = strtolower(trim($photoType));
         return match ($normalized) {
-            'front' => ['x' => 50, 'y' => 60, 'scale' => 2.05, 'pan_x' => 0, 'pan_y' => -45],
-            'left_45', 'left45' => ['x' => 50, 'y' => 57, 'scale' => 1.86, 'pan_x' => 0, 'pan_y' => -34],
-            'right_45', 'right45' => ['x' => 50, 'y' => 57, 'scale' => 1.86, 'pan_x' => 0, 'pan_y' => -34],
-            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 52, 'scale' => 1.52, 'pan_x' => 0, 'pan_y' => -16],
-            default => ['x' => 50, 'y' => 60, 'scale' => 1.98, 'pan_x' => 0, 'pan_y' => -42],
+            'front' => ['x' => 50, 'y' => 60, 'scale' => 2.05, 'pan_x' => 0, 'pan_y' => 45],
+            'left_45', 'left45' => ['x' => 50, 'y' => 57, 'scale' => 1.86, 'pan_x' => 0, 'pan_y' => 34],
+            'right_45', 'right45' => ['x' => 50, 'y' => 57, 'scale' => 1.86, 'pan_x' => 0, 'pan_y' => 34],
+            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 52, 'scale' => 1.52, 'pan_x' => 0, 'pan_y' => 16],
+            default => ['x' => 50, 'y' => 60, 'scale' => 1.98, 'pan_x' => 0, 'pan_y' => 42],
         };
     };
     $zoomPreset = $zoomPresetForPhotoType($defaultPhotoType);
@@ -63,7 +63,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         $assetsPrinted = true;
         ?>
         <style>
-            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 60%; --sd-zoom-scale: 2.05; --sd-zoom-pan-x: 0%; --sd-zoom-pan-y: -45%; }
+            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 60%; --sd-zoom-scale: 2.05; --sd-zoom-pan-x: 0%; --sd-zoom-pan-y: 45%; }
             .sd-viewer-shell { display: grid; gap: 12px; }
             .sd-viewer-shell.has-gallery { grid-template-columns: minmax(148px, 180px) minmax(0, 1fr); align-items: start; }
             .sd-viewer { overflow: hidden; border-radius: 8px; background: #050505; color: #fff; }
@@ -159,17 +159,17 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             }
             function zoomPresetForPhotoType(value) {
                 const photoType = String(value || '').trim().toLowerCase();
-                if (photoType === 'front') return { x: 50, y: 60, scale: 2.05, panX: 0, panY: -45 };
+                if (photoType === 'front') return { x: 50, y: 60, scale: 2.05, panX: 0, panY: 45 };
                 if (photoType === 'left_45' || photoType === 'left45') {
-                    return { x: 50, y: 57, scale: 1.86, panX: 0, panY: -34 };
+                    return { x: 50, y: 57, scale: 1.86, panX: 0, panY: 34 };
                 }
                 if (photoType === 'right_45' || photoType === 'right45') {
-                    return { x: 50, y: 57, scale: 1.86, panX: 0, panY: -34 };
+                    return { x: 50, y: 57, scale: 1.86, panX: 0, panY: 34 };
                 }
                 if (photoType === 'smile_close_up' || photoType === 'close_up_smile' || photoType === 'closeup' || photoType === 'close_up') {
-                    return { x: 50, y: 52, scale: 1.52, panX: 0, panY: -16 };
+                    return { x: 50, y: 52, scale: 1.52, panX: 0, panY: 16 };
                 }
-                return { x: 50, y: 60, scale: 1.98, panX: 0, panY: -42 };
+                return { x: 50, y: 60, scale: 1.98, panX: 0, panY: 42 };
             }
             function applyZoomPreset(wrap, photoType) {
                 if (!wrap) return;

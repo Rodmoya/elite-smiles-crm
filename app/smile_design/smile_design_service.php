@@ -1982,27 +1982,25 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         $afterIds[] = (int)$version['id'];
     }
 
-    $patientName = trim((string)($case['patient_name'] ?? 'patient'));
     $prompt = implode(' ', [
         'Create an 8-second silent controlled portrait smile reveal video for an internal cosmetic dentistry consultation.',
         'Use a tight head-and-shoulders portrait crop with a simple neutral background.',
-        'Keep the scene limited to one patient portrait only. Do not include hands, dental tools, props, office activity, other people, text, logos, or split screens.',
+        'Keep the scene limited to one consenting adult subject portrait only. Do not include hands, dental tools, props, office activity, other people, text, logos, or split screens.',
         'No audio, no music, no voiceover, no sound effects, no spoken words, and no subtitles.',
-        'The person must not talk, speak, mouth words, lip-sync, or move their mouth like they are saying anything.',
+        'The subject must not talk, speak, mouth words, lip-sync, or move their mouth like they are saying anything.',
         'Mouth movement is limited to a natural transition from relaxed/closed lips into a clean smile reveal and then a steady held smile.',
-        'Use the three reference images as the exact same patient and final smile result: front, left 45, and right 45 after views.',
-        'The patient starts centered with head slightly inclined downward, eyes closed or softly lowered.',
-        'Then the patient slowly raises their head, opens their eyes, and smiles, revealing the new flawless porcelain veneer smile.',
-        'The head turns naturally to the patient left, then to the patient right, then returns to center facing camera.',
-        'The patient may blink once naturally during the movement, but the final frame must show both eyes fully open.',
-        'The final frame is strict: patient faces the camera straight on, eyes open, looking directly into the camera, smiling confidently, with the new veneers fully visible.',
+        'Use the three reference images as the exact same consenting adult subject and final smile result: front, left 45, and right 45 after views.',
+        'The subject starts centered with head slightly inclined downward, eyes closed or softly lowered.',
+        'Then the subject slowly raises their head, opens their eyes, and smiles, revealing the new flawless porcelain veneer smile.',
+        'The head turns naturally to the subject left, then to the subject right, then returns to center facing camera.',
+        'The subject may blink once naturally during the movement, but the final frame must show both eyes fully open.',
+        'The final frame is strict: subject faces the camera straight on, eyes open, looking directly into the camera, smiling confidently, with the new veneers fully visible.',
         'The last frame must match the selected front after smile: same person, same veneer design, same bright clean shade, same facial identity, same camera-facing smile.',
         'End with a steady held portrait, not a turn, not looking away, not eyes closed, not mid-blink, not mouth closed, and not speaking.',
         'Preserve realistic human anatomy, natural facial motion, clean soft portrait lighting, a simple neutral background, and premium cosmetic dentistry polish.',
         'Do not change identity, hair, lips, facial proportions, age, gender, or the veneer design. Do not add captions, watermarks, objects, or environmental action.',
-        'Only animate the patient face, eyes, head angle, and smile. Do not introduce anything that is not already visible in the selected reference portraits.',
+        'Only animate the subject face, eyes, head angle, and smile. Do not introduce anything that is not already visible in the selected reference portraits.',
         'The video must be silent and presentation-ready for a doctor to show on a big screen.',
-        'Patient display name for context only: ' . $patientName . '.',
     ]);
     @set_time_limit(600);
     $result = elite_gemini_generate_video_from_references($imagePaths, $prompt, [

@@ -73,6 +73,13 @@ $afterUrl = $displayAfter ? smile_design_after_url((int)$displayAfter['id'], $to
 $latestRevealVideo = smile_design_latest_case_video($caseId);
 $latestRevealVideoUrl = $latestRevealVideo ? smile_design_case_video_url((int)$latestRevealVideo['id'], $token) : '';
 $alignment = $displayAfter ? smile_design_alignment_for_after($displayAfter) : smile_design_alignment_defaults();
+$shareTitle = 'Your Elite Smiles Smile Preview';
+$shareDescription = 'A private Elite Smiles consultation preview prepared for your smile design review.';
+$shareImageUrl = $afterUrl !== '' ? $afterUrl : $beforeUrl;
+$shareImageMime = $displayAfter ? (string)($displayAfter['mime_type'] ?? 'image/jpeg') : ($frontViewerPhoto ? (string)($frontViewerPhoto['mime_type'] ?? 'image/jpeg') : 'image/jpeg');
+$shareImageWidth = $displayAfter ? (int)($displayAfter['width'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['width'] ?? 0) : 0);
+$shareImageHeight = $displayAfter ? (int)($displayAfter['height'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['height'] ?? 0) : 0);
+$canonicalPreviewUrl = smile_design_preview_link_url($link) ?: base_url('smile-design/preview/' . rawurlencode($token));
 $practicePhone = '(801) 572-6262';
 $practiceEmail = 'elitesmilesutah@gmail.com';
 $practiceAddress1 = '11762 South State, Suite 300';
@@ -83,9 +90,26 @@ $practiceAddress2 = 'Draper, UT 84020';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Smiles | Smile Preview</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title><?= e($shareTitle) ?></title>
     <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="<?= e($shareDescription) ?>">
+    <link rel="canonical" href="<?= e($canonicalPreviewUrl) ?>">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Elite Smiles">
+    <meta property="og:title" content="<?= e($shareTitle) ?>">
+    <meta property="og:description" content="<?= e($shareDescription) ?>">
+    <meta property="og:url" content="<?= e($canonicalPreviewUrl) ?>">
+    <?php if ($shareImageUrl !== ''): ?>
+        <meta property="og:image" content="<?= e($shareImageUrl) ?>">
+        <meta property="og:image:secure_url" content="<?= e($shareImageUrl) ?>">
+        <meta property="og:image:type" content="<?= e($shareImageMime) ?>">
+        <?php if ($shareImageWidth > 0): ?><meta property="og:image:width" content="<?= e((string)$shareImageWidth) ?>"><?php endif; ?>
+        <?php if ($shareImageHeight > 0): ?><meta property="og:image:height" content="<?= e((string)$shareImageHeight) ?>"><?php endif; ?>
+        <meta property="og:image:alt" content="Elite Smiles smile preview result">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:image" content="<?= e($shareImageUrl) ?>">
+    <?php endif; ?>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-stone-50 text-slate-900 antialiased">
     <header class="border-b border-stone-200 bg-white/95 backdrop-blur">

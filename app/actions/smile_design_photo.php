@@ -61,6 +61,7 @@ if (!$photo || $storageKey === '') {
 }
 
 $authorized = auth_check();
+$authorizedByToken = false;
 if (!$authorized && $caseId > 0) {
     $token = (string)get('token', '');
     $preview = smile_design_verify_token($token, 'preview');
@@ -68,8 +69,10 @@ if (!$authorized && $caseId > 0) {
     $gallery = smile_design_verify_token($token, 'gallery');
     $link = $preview ?: $intake;
     $authorized = $link && (int)$link['case_id'] === $caseId;
+    $authorizedByToken = (bool)$authorized;
     if (!$authorized && $gallery && (int)$gallery['case_id'] === 0) {
         $authorized = true;
+        $authorizedByToken = true;
     }
 }
 
@@ -78,6 +81,7 @@ if (!$authorized && $caseId === 0) {
     $gallery = smile_design_verify_token($token, 'gallery');
     if ($gallery && (int)$gallery['case_id'] === 0) {
         $authorized = true;
+        $authorizedByToken = true;
     }
 }
 
@@ -95,7 +99,7 @@ if (!$path || !is_file($path)) {
 smile_design_audit($caseId ?: null, $videoId > 0 ? 'video_viewed' : 'photo_viewed', ['photo_id' => $photoId, 'after_id' => $afterId, 'video_id' => $videoId, 'lvi_sample_id' => $lviSampleId, 'real_pair_id' => $realPairId], auth_user_id());
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . filesize($path));
-header('Cache-Control: private, max-age=300');
+header('Cache-Control: ' . ($authorizedByToken ? 'public, max-age=3600' : 'private, max-age=300'));
 if ($videoId > 0) {
     header('Accept-Ranges: bytes');
 }

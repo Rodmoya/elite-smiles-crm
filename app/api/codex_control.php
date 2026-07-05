@@ -17,6 +17,7 @@ require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
 require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
+require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 
@@ -1247,6 +1248,51 @@ if (!function_exists('codex_api_update_lead')) {
         return $dateOnly ? date('Y-m-d', $timestamp) : date('Y-m-d H:i:s', $timestamp);
     }
 
+    function codex_api_sync_smile_design_cases_for_lead(int $leadId, array $lead): void
+    {
+        try {
+            if (function_exists('smile_design_ensure_schema')) {
+                smile_design_ensure_schema();
+            }
+
+            $fullName = trim((string)($lead['full_name'] ?? ''));
+            if ($fullName === '') {
+                return;
+            }
+
+            $nameParts = preg_split('/\s+/', $fullName) ?: [];
+            $firstName = trim((string)($nameParts[0] ?? ''));
+            $lastName = count($nameParts) > 1 ? trim(implode(' ', array_slice($nameParts, 1))) : '';
+
+            db_execute(
+                "UPDATE smile_cases
+                 SET first_name = :first_name,
+                     last_name = :last_name,
+                     patient_name = :patient_name,
+                     email = :email,
+                     phone = :phone,
+                     procedure_interest = :procedure_interest
+                 WHERE lead_id = :lead_id",
+                [
+                    'lead_id' => $leadId,
+                    'first_name' => $firstName !== '' ? $firstName : null,
+                    'last_name' => $lastName !== '' ? $lastName : null,
+                    'patient_name' => $fullName,
+                    'email' => trim((string)($lead['email'] ?? '')) !== '' ? strtolower(trim((string)$lead['email'])) : null,
+                    'phone' => trim((string)($lead['phone'] ?? '')) !== '' ? trim((string)$lead['phone']) : null,
+                    'procedure_interest' => trim((string)($lead['procedure_interest'] ?? '')) !== '' ? trim((string)$lead['procedure_interest']) : null,
+                ]
+            );
+        } catch (Throwable $syncException) {
+            if (function_exists('esm_log')) {
+                esm_log('smile_design', 'Could not sync Codex API lead update to Smile Design cases.', [
+                    'lead_id' => $leadId,
+                    'message' => $syncException->getMessage(),
+                ]);
+            }
+        }
+    }
+
     function codex_api_update_lead(int $leadId, array $fields): void
     {
         if (function_exists('lead_pipeline_ensure_schema')) {
@@ -1328,6 +1374,8 @@ if (!function_exists('codex_api_update_lead')) {
         }
 
         db_execute('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
+        $updatedLead = codex_api_load_lead($leadId);
+        codex_api_sync_smile_design_cases_for_lead($leadId, $updatedLead);
         lead_comm_insert_activity($leadId, 'lead_updated', 'Lead details updated through Codex API.', [
             'fields' => array_keys($update),
             'source' => 'codex_api',
@@ -1337,7 +1385,7 @@ if (!function_exists('codex_api_update_lead')) {
             'ok' => true,
             'message' => 'Lead updated.',
             'lead_id' => $leadId,
-            'lead' => codex_api_load_lead($leadId),
+            'lead' => $updatedLead,
         ]);
     }
 }

@@ -50,11 +50,11 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $zoomPresetForPhotoType = static function (string $photoType): array {
         $normalized = strtolower(trim($photoType));
         return match ($normalized) {
-            'front' => ['x' => 50, 'y' => 72, 'scale' => 1.08],
-            'left_45', 'left45' => ['x' => 58, 'y' => 54, 'scale' => 1],
-            'right_45', 'right45' => ['x' => 42, 'y' => 54, 'scale' => 1],
-            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 56, 'scale' => 1.03],
-            default => ['x' => 50, 'y' => 70, 'scale' => 1.08],
+            'front' => ['x' => 50, 'y' => 60, 'scale' => 1.34],
+            'left_45', 'left45' => ['x' => 50, 'y' => 57, 'scale' => 1.26],
+            'right_45', 'right45' => ['x' => 50, 'y' => 57, 'scale' => 1.26],
+            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 52, 'scale' => 1.18],
+            default => ['x' => 50, 'y' => 60, 'scale' => 1.3],
         };
     };
     $zoomPreset = $zoomPresetForPhotoType($defaultPhotoType);
@@ -63,7 +63,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         $assetsPrinted = true;
         ?>
         <style>
-            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 70%; --sd-zoom-scale: 1.08; }
+            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 60%; --sd-zoom-scale: 1.34; }
             .sd-viewer-shell { display: grid; gap: 12px; }
             .sd-viewer-shell.has-gallery { grid-template-columns: minmax(148px, 180px) minmax(0, 1fr); align-items: start; }
             .sd-viewer { overflow: hidden; border-radius: 8px; background: #050505; color: #fff; }
@@ -100,10 +100,12 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             .sd-zoom-stack { display: grid; gap: 1px; background: rgba(255,255,255,.08); }
             .sd-zoom-panel { background: #000; }
             .sd-zoom-panel-header { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #050505; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.72); }
-            .sd-zoom-frame { position: relative; aspect-ratio: 16 / 5.6; min-height: 182px; overflow: hidden; background: #000; }
-            .sd-zoom-frame img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--sd-zoom-x, 50%) var(--sd-zoom-y, 70%); user-select: none; }
+            .sd-zoom-frame { position: relative; aspect-ratio: 16 / 5.2; min-height: 198px; overflow: hidden; background: #000; }
+            .sd-zoom-frame img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--sd-zoom-x, 50%) var(--sd-zoom-y, 60%); user-select: none; }
             .sd-zoom-frame .sd-align-before,
-            .sd-zoom-frame .sd-align-after { transform: scale(var(--sd-zoom-scale, 1)); transform-origin: center; }
+            .sd-zoom-frame .sd-align-after { transform-origin: center; }
+            .sd-zoom-frame .sd-align-before { transform: translate(var(--sd-before-x), var(--sd-before-y)) scale(calc(var(--sd-before-zoom) * var(--sd-zoom-scale, 1))) rotate(var(--sd-before-rotate)); }
+            .sd-zoom-frame .sd-align-after { transform: translate(var(--sd-after-x), var(--sd-after-y)) scale(calc(var(--sd-after-zoom) * var(--sd-zoom-scale, 1))) rotate(var(--sd-after-rotate)); }
             .sd-opacity-shell { position: relative; height: 100%; background: #000; }
             .sd-opacity-shell img { position: absolute; inset: 0; }
             .sd-opacity-base { z-index: 1; }
@@ -157,17 +159,17 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             }
             function zoomPresetForPhotoType(value) {
                 const photoType = String(value || '').trim().toLowerCase();
-                if (photoType === 'front') return { x: 50, y: 72, scale: 1.08 };
+                if (photoType === 'front') return { x: 50, y: 60, scale: 1.34 };
                 if (photoType === 'left_45' || photoType === 'left45') {
-                    return { x: 58, y: 54, scale: 1 };
+                    return { x: 50, y: 57, scale: 1.26 };
                 }
                 if (photoType === 'right_45' || photoType === 'right45') {
-                    return { x: 42, y: 54, scale: 1 };
+                    return { x: 50, y: 57, scale: 1.26 };
                 }
                 if (photoType === 'smile_close_up' || photoType === 'close_up_smile' || photoType === 'closeup' || photoType === 'close_up') {
-                    return { x: 50, y: 56, scale: 1.03 };
+                    return { x: 50, y: 52, scale: 1.18 };
                 }
-                return { x: 50, y: 70, scale: 1.08 };
+                return { x: 50, y: 60, scale: 1.3 };
             }
             function applyZoomPreset(wrap, photoType) {
                 if (!wrap) return;

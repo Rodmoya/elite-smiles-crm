@@ -73,12 +73,24 @@ $afterUrl = $displayAfter ? smile_design_after_url((int)$displayAfter['id'], $to
 $latestRevealVideo = smile_design_latest_case_video($caseId);
 $latestRevealVideoUrl = $latestRevealVideo ? smile_design_case_video_url((int)$latestRevealVideo['id'], $token) : '';
 $alignment = $displayAfter ? smile_design_alignment_for_after($displayAfter) : smile_design_alignment_defaults();
-$shareTitle = 'Your Elite Smiles Smile Preview';
-$shareDescription = 'A private Elite Smiles consultation preview prepared for your smile design review.';
+$rawFirstName = trim((string)($case['first_name'] ?? ''));
+if ($rawFirstName === '') {
+    $rawFirstName = trim(strtok(trim((string)($case['patient_name'] ?? '')), ' ') ?: '');
+}
+$previewFirstName = $rawFirstName !== '' ? $rawFirstName : 'Your';
+$readyMessage = $previewFirstName . ', your before and after Smile is ready';
+$shareTitle = $readyMessage;
+$shareDescription = 'Open your private Elite Smiles consultation preview.';
 $shareImageUrl = $afterUrl !== '' ? $afterUrl : $beforeUrl;
-$shareImageMime = $displayAfter ? (string)($displayAfter['mime_type'] ?? 'image/jpeg') : ($frontViewerPhoto ? (string)($frontViewerPhoto['mime_type'] ?? 'image/jpeg') : 'image/jpeg');
-$shareImageWidth = $displayAfter ? (int)($displayAfter['width'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['width'] ?? 0) : 0);
-$shareImageHeight = $displayAfter ? (int)($displayAfter['height'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['height'] ?? 0) : 0);
+if ($shareImageUrl !== '') {
+    $shareImageUrl .= (str_contains($shareImageUrl, '?') ? '&' : '?') . 'variant=share';
+}
+$sourceImageWidth = $displayAfter ? (int)($displayAfter['width'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['width'] ?? 0) : 0);
+$sourceImageHeight = $displayAfter ? (int)($displayAfter['height'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['height'] ?? 0) : 0);
+$shareImageMime = 'image/jpeg';
+$shareImageScale = $sourceImageWidth > 0 && $sourceImageHeight > 0 ? min(1, 900 / max($sourceImageWidth, $sourceImageHeight)) : 1;
+$shareImageWidth = $sourceImageWidth > 0 ? max(1, (int)round($sourceImageWidth * $shareImageScale)) : 0;
+$shareImageHeight = $sourceImageHeight > 0 ? max(1, (int)round($sourceImageHeight * $shareImageScale)) : 0;
 $canonicalPreviewUrl = smile_design_preview_link_url($link) ?: base_url('smile-design/preview/' . rawurlencode($token));
 $practicePhone = '(801) 572-6262';
 $practiceEmail = 'elitesmilesutah@gmail.com';
@@ -134,7 +146,7 @@ $practiceAddress2 = 'Draper, UT 84020';
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Smile Preview</p>
                     <h1 class="mt-3 max-w-4xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
-                        <?= e(trim((string)($case['patient_name'] ?? 'Your'))) ?> Your Elite Smiles consultation preview
+                        <?= e($readyMessage) ?>
                     </h1>
                     <p class="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                         This private preview page was prepared by Elite Smiles to help you review your potential smile direction before your consultation with Dr. Meden.

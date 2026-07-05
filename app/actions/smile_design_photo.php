@@ -97,6 +97,41 @@ if (!$path || !is_file($path)) {
 }
 
 smile_design_audit($caseId ?: null, $videoId > 0 ? 'video_viewed' : 'photo_viewed', ['photo_id' => $photoId, 'after_id' => $afterId, 'video_id' => $videoId, 'lvi_sample_id' => $lviSampleId, 'real_pair_id' => $realPairId], auth_user_id());
+
+$variant = strtolower(trim((string)get('variant', '')));
+if ($variant === 'share' && $videoId <= 0 && str_starts_with($mime, 'image/') && function_exists('imagecreatefromstring')) {
+    $sourceBytes = @file_get_contents($path);
+    $sourceImage = is_string($sourceBytes) && $sourceBytes !== '' ? @imagecreatefromstring($sourceBytes) : false;
+    if ($sourceImage !== false) {
+        $sourceWidth = imagesx($sourceImage);
+        $sourceHeight = imagesy($sourceImage);
+        $maxSide = 900;
+        $scale = $sourceWidth > 0 && $sourceHeight > 0 ? min(1, $maxSide / max($sourceWidth, $sourceHeight)) : 1;
+        $targetWidth = max(1, (int)round($sourceWidth * $scale));
+        $targetHeight = max(1, (int)round($sourceHeight * $scale));
+        $targetImage = imagecreatetruecolor($targetWidth, $targetHeight);
+        if ($targetImage !== false) {
+            $white = imagecolorallocate($targetImage, 255, 255, 255);
+            imagefill($targetImage, 0, 0, $white);
+            imagecopyresampled($targetImage, $sourceImage, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+            ob_start();
+            imagejpeg($targetImage, null, 82);
+            $thumbBytes = (string)ob_get_clean();
+            imagedestroy($targetImage);
+            imagedestroy($sourceImage);
+            if ($thumbBytes !== '') {
+                header('Content-Type: image/jpeg');
+                header('Content-Length: ' . strlen($thumbBytes));
+                header('Cache-Control: ' . ($authorizedByToken ? 'public, max-age=86400' : 'private, max-age=300'));
+                echo $thumbBytes;
+                exit;
+            }
+        } else {
+            imagedestroy($sourceImage);
+        }
+    }
+}
+
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . filesize($path));
 header('Cache-Control: ' . ($authorizedByToken ? 'public, max-age=3600' : 'private, max-age=300'));

@@ -148,6 +148,7 @@ require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
 
 if (!function_exists('auth_check')) {
     lead_update_json_response(500, [
@@ -543,12 +544,50 @@ if (empty($setParts)) {
     ]);
 }
 
-try {
-    db_execute(
-        "UPDATE leads SET " . implode(', ', $setParts) . " WHERE id = :id LIMIT 1",
-        $params
-    );
-
+try {
+    db_execute(
+        "UPDATE leads SET " . implode(', ', $setParts) . " WHERE id = :id LIMIT 1",
+        $params
+    );
+
+    try {
+        if (function_exists('smile_design_ensure_schema')) {
+            smile_design_ensure_schema();
+        }
+        $syncedName = trim($fullName);
+        $nameParts = preg_split('/\s+/', $syncedName) ?: [];
+        $syncedFirstName = trim((string)($nameParts[0] ?? ''));
+        $syncedLastName = count($nameParts) > 1 ? trim(implode(' ', array_slice($nameParts, 1))) : '';
+        if ($syncedName !== '') {
+            db_execute(
+                "UPDATE smile_cases
+                 SET first_name = :first_name,
+                     last_name = :last_name,
+                     patient_name = :patient_name,
+                     email = :email,
+                     phone = :phone,
+                     procedure_interest = :procedure_interest
+                 WHERE lead_id = :lead_id",
+                [
+                    'lead_id' => $leadId,
+                    'first_name' => $syncedFirstName !== '' ? $syncedFirstName : null,
+                    'last_name' => $syncedLastName !== '' ? $syncedLastName : null,
+                    'patient_name' => $syncedName,
+                    'email' => $email !== '' ? strtolower($email) : null,
+                    'phone' => $phone !== '' ? $phone : null,
+                    'procedure_interest' => $procedureInterest !== '' ? $procedureInterest : null,
+                ]
+            );
+        }
+    } catch (Throwable $syncException) {
+        if (function_exists('esm_log')) {
+            esm_log('smile_design', 'Could not sync lead details to Smile Design cases.', [
+                'lead_id' => $leadId,
+                'message' => $syncException->getMessage(),
+            ]);
+        }
+    }
+
     $previousSmsOptStatus = (string)($leadRow['sms_opt_status'] ?? 'unknown');
     if ($previousSmsOptStatus !== $smsOptStatus && function_exists('lead_comm_insert_activity')) {
         $statusLabels = [

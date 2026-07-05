@@ -102,6 +102,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             .sd-zoom-panel-header { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #050505; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.72); }
             .sd-zoom-frame { position: relative; aspect-ratio: 16 / 5.2; min-height: 198px; overflow: hidden; background: #000; }
             .sd-zoom-frame img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--sd-zoom-x, 50%) var(--sd-zoom-y, 60%); user-select: none; }
+            .sd-zoom-frame img[data-sd-smile-focus="detected"] { object-position: var(--sd-detected-smile-x, var(--sd-zoom-x, 50%)) var(--sd-detected-smile-y, var(--sd-zoom-y, 88%)); }
             .sd-zoom-frame .sd-align-before,
             .sd-zoom-frame .sd-align-after { transform-origin: center; }
             .sd-zoom-frame .sd-align-before { transform: translate(calc(var(--sd-before-x) + var(--sd-zoom-pan-x, 0%)), calc(var(--sd-before-y) + var(--sd-zoom-pan-y, 0%))) scale(calc(var(--sd-before-zoom) * var(--sd-zoom-scale, 1))) rotate(var(--sd-before-rotate)); }
@@ -180,6 +181,111 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 wrap.style.setProperty('--sd-zoom-pan-x', (preset.panX || 0) + '%');
                 wrap.style.setProperty('--sd-zoom-pan-y', (preset.panY || 0) + '%');
             }
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+            function imageReady(img) {
+                return !!img && img.complete && img.naturalWidth > 20 && img.naturalHeight > 20 && !img.classList.contains('sd-hidden');
+            }
+            function detectSmileFocus(img) {
+                if (!imageReady(img)) return null;
+                const sourceWidth = img.naturalWidth;
+                const sourceHeight = img.naturalHeight;
+                const targetWidth = Math.min(360, sourceWidth);
+                const scale = targetWidth / sourceWidth;
+                const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(targetWidth);
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                if (!ctx) return null;
+                try {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                    const minY = Math.floor(canvas.height * 0.45);
+                    const maxY = Math.floor(canvas.height * 0.96);
+                    const rowCounts = new Array(canvas.height).fill(0);
+                    const rowMinX = new Array(canvas.height).fill(canvas.width);
+                    const rowMaxX = new Array(canvas.height).fill(0);
+                    let bestRowCount = 0;
+                    for (let y = minY; y < maxY; y += 1) {
+                        for (let x = 0; x < canvas.width; x += 1) {
+                            const offset = (y * canvas.width + x) * 4;
+                            const r = data[offset];
+                            const g = data[offset + 1];
+                            const b = data[offset + 2];
+                            const max = Math.max(r, g, b);
+                            const min = Math.min(r, g, b);
+                            const brightness = (r + g + b) / 3;
+                            const saturation = max > 0 ? (max - min) / max : 0;
+                            const toothLike = brightness > 132 && saturation < 0.42 && r > 105 && g > 105 && b > 95;
+                            if (!toothLike) continue;
+                            rowCounts[y] += 1;
+                            if (x < rowMinX[y]) rowMinX[y] = x;
+                            if (x > rowMaxX[y]) rowMaxX[y] = x;
+                        }
+                        if (rowCounts[y] > bestRowCount) bestRowCount = rowCounts[y];
+                    }
+                    if (bestRowCount < Math.max(8, canvas.width * 0.035)) return null;
+                    const threshold = Math.max(5, bestRowCount * 0.28);
+                    let best = null;
+                    let current = null;
+                    for (let y = minY; y < maxY; y += 1) {
+                        if (rowCounts[y] >= threshold) {
+                            if (!current) {
+                                current = { minY: y, maxY: y, minX: rowMinX[y], maxX: rowMaxX[y], score: rowCounts[y] };
+                            } else {
+                                current.maxY = y;
+                                current.minX = Math.min(current.minX, rowMinX[y]);
+                                current.maxX = Math.max(current.maxX, rowMaxX[y]);
+                                current.score += rowCounts[y];
+                            }
+                        } else if (current) {
+                            if (!best || current.score > best.score) best = current;
+                            current = null;
+                        }
+                    }
+                    if (current && (!best || current.score > best.score)) best = current;
+                    if (!best) return null;
+                    const widthRatio = (best.maxX - best.minX + 1) / canvas.width;
+                    const heightRatio = (best.maxY - best.minY + 1) / canvas.height;
+                    if (widthRatio < 0.08 || heightRatio < 0.012) return null;
+                    const centerX = ((best.minX + best.maxX) / 2) / canvas.width * 100;
+                    const centerY = ((best.minY + best.maxY) / 2) / canvas.height * 100;
+                    return {
+                        x: clamp(centerX, 25, 75),
+                        y: clamp(centerY + 13, 58, 94),
+                        confidence: clamp(best.score / (canvas.width * Math.max(1, best.maxY - best.minY + 1)), 0, 1)
+                    };
+                } catch (error) {
+                    return null;
+                }
+            }
+            function applySmileFocus(img) {
+                if (!img || img.dataset.sdSmileFocusSrc === img.currentSrc) return;
+                if (!imageReady(img)) {
+                    img.addEventListener('load', function () {
+                        img.dataset.sdSmileFocusSrc = '';
+                        applySmileFocus(img);
+                    }, { once: true });
+                    return;
+                }
+                const focus = detectSmileFocus(img);
+                img.dataset.sdSmileFocusSrc = img.currentSrc || img.src || '';
+                if (!focus) {
+                    img.removeAttribute('data-sd-smile-focus');
+                    img.style.removeProperty('--sd-detected-smile-x');
+                    img.style.removeProperty('--sd-detected-smile-y');
+                    return;
+                }
+                img.dataset.sdSmileFocus = 'detected';
+                img.style.setProperty('--sd-detected-smile-x', focus.x.toFixed(1) + '%');
+                img.style.setProperty('--sd-detected-smile-y', focus.y.toFixed(1) + '%');
+            }
+            function applySmileFocusForViewer(viewer) {
+                if (!viewer) return;
+                viewer.querySelectorAll('[data-sd-mode-panel="zoom"] img[data-sd-before-image], [data-sd-mode-panel="zoom"] img[data-sd-after-image]').forEach(applySmileFocus);
+            }
             function setSlider(viewer, percent) {
                 percent = Math.max(0, Math.min(100, percent));
                 const after = viewer.querySelector('[data-sd-after-layer]');
@@ -194,6 +300,11 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 viewer.querySelectorAll('[data-sd-mode]').forEach(function (button) {
                     button.setAttribute('aria-pressed', button.dataset.sdMode === mode ? 'true' : 'false');
                 });
+                if (mode === 'zoom') {
+                    window.requestAnimationFrame(function () {
+                        applySmileFocusForViewer(viewer);
+                    });
+                }
             }
             document.addEventListener('click', function (event) {
                 const alignToggle = event.target.closest('[data-sd-align-toggle]');
@@ -221,6 +332,8 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     item.setAttribute('aria-pressed', item === option ? 'true' : 'false');
                 });
                 wrap.querySelectorAll('[data-sd-before-image]').forEach(function (img) {
+                    img.dataset.sdSmileFocusSrc = '';
+                    img.removeAttribute('data-sd-smile-focus');
                     img.setAttribute('src', url);
                 });
                 wrap.querySelectorAll('[data-sd-before-label]').forEach(function (node) {
@@ -228,6 +341,8 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 });
                 applyZoomPreset(wrap, option.getAttribute('data-photo-type') || '');
                 wrap.querySelectorAll('[data-sd-after-image]').forEach(function (img) {
+                    img.dataset.sdSmileFocusSrc = '';
+                    img.removeAttribute('data-sd-smile-focus');
                     if (afterUrl) {
                         img.setAttribute('src', afterUrl);
                         img.classList.remove('sd-hidden');
@@ -288,6 +403,12 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                         if (select) select.value = String(nextAlignment.crop_aspect_ratio || '4:3');
                     }
                     wrap.style.setProperty('--sd-frame-aspect', aspectToCss(nextAlignment.crop_aspect_ratio || '4:3'));
+                }
+                const viewer = wrap.querySelector('[data-sd-viewer]');
+                if (viewer) {
+                    window.requestAnimationFrame(function () {
+                        applySmileFocusForViewer(viewer);
+                    });
                 }
             });
             document.addEventListener('pointerdown', function (event) {

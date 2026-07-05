@@ -104,6 +104,22 @@ smile_design_page_header('Diagnostics', 'Internal health check for Smile Design 
 </section>
 <section class="mt-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
     <h2 class="text-lg font-semibold">Recent Audit Events</h2>
-    <div class="mt-4 overflow-x-auto"><table class="min-w-full text-sm"><thead><tr class="text-left text-slate-500"><th class="py-2">Event</th><th class="py-2">Case</th><th class="py-2">Time</th></tr></thead><tbody><?php foreach ($health['recent_audit_events'] as $event): ?><tr class="border-t border-slate-100"><td class="py-2"><?= e((string)$event['event_key']) ?></td><td class="py-2"><?= e((string)$event['case_id']) ?></td><td class="py-2"><?= e(format_datetime((string)$event['created_at'])) ?></td></tr><?php endforeach; ?></tbody></table></div>
+    <div class="mt-4 overflow-x-auto"><table class="min-w-full text-sm"><thead><tr class="text-left text-slate-500"><th class="py-2">Event</th><th class="py-2">Case</th><th class="py-2">Time</th><th class="py-2">Details</th></tr></thead><tbody><?php foreach ($health['recent_audit_events'] as $event): ?><?php
+        $payload = [];
+        $payloadJson = trim((string)($event['payload_json'] ?? ''));
+        if ($payloadJson !== '') {
+            $decodedPayload = json_decode($payloadJson, true);
+            $payload = is_array($decodedPayload) ? $decodedPayload : [];
+        }
+        $details = [];
+        foreach (['message', 'model', 'provider', 'reason', 'job_id', 'after_version_id', 'video_id'] as $payloadKey) {
+            if (isset($payload[$payloadKey]) && trim((string)$payload[$payloadKey]) !== '') {
+                $details[] = $payloadKey . ': ' . trim((string)$payload[$payloadKey]);
+            }
+        }
+        if ($details === [] && $payloadJson !== '') {
+            $details[] = mb_substr($payloadJson, 0, 240);
+        }
+    ?><tr class="border-t border-slate-100"><td class="py-2"><?= e((string)$event['event_key']) ?></td><td class="py-2"><?= e((string)$event['case_id']) ?></td><td class="py-2"><?= e(format_datetime((string)$event['created_at'])) ?></td><td class="max-w-xl py-2 text-xs text-slate-600"><?= e(implode(' · ', $details)) ?></td></tr><?php endforeach; ?></tbody></table></div>
 </section>
 <?php smile_design_render_shell_end(); ?>

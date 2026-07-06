@@ -2706,6 +2706,7 @@ $consultationOptions = [
     let isDraftingEmail = false;
     let isDraftingBoth = false;
     let isSendingEmail = false;
+    let isClosingLeadModal = false;
     let composerMode = 'sms';
     let composerDraftSources = {
         sms: 'manual',
@@ -6943,21 +6944,30 @@ function applyCommunicationViewportFit() {
             return;
         }
 
+        if (isClosingLeadModal) {
+            return;
+        }
+
         if (isSaving) {
             if (saveStatus) saveStatus.textContent = 'Still saving...';
             return;
         }
 
-        if (isDirty()) {
-            if (saveStatus) saveStatus.textContent = 'Saving before closing...';
-            const saved = await saveLeadDetails();
-            if (!saved) {
-                if (saveStatus) saveStatus.textContent = 'Could not save changes. Fix the issue before closing.';
-                return;
+        isClosingLeadModal = true;
+        try {
+            if (isDirty()) {
+                if (saveStatus) saveStatus.textContent = 'Saving before closing...';
+                const saved = await saveLeadDetails();
+                if (!saved) {
+                    console.warn('Lead autosave failed while closing. Closing the card anyway so the operator is not trapped.');
+                }
             }
+        } catch (error) {
+            console.warn('Lead autosave threw while closing. Closing the card anyway.', error);
+        } finally {
+            isClosingLeadModal = false;
+            hardCloseLeadModal();
         }
-
-        hardCloseLeadModal();
     }
 
     async function saveLeadStage(card, newStageKey, newStageLabel, options = {}) {

@@ -26,6 +26,42 @@ function lead_import_clean_cell(string $value): string
     return trim(str_replace('""', '"', $value));
 }
 
+function lead_import_decode_content(string $content): string
+{
+    if ($content === '') {
+        return '';
+    }
+
+    if (str_starts_with($content, "\xFF\xFE")) {
+        if (function_exists('mb_convert_encoding')) {
+            return (string) mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16LE');
+        }
+        if (function_exists('iconv')) {
+            return (string) iconv('UTF-16LE', 'UTF-8//IGNORE', substr($content, 2));
+        }
+    }
+
+    if (str_starts_with($content, "\xFE\xFF")) {
+        if (function_exists('mb_convert_encoding')) {
+            return (string) mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16BE');
+        }
+        if (function_exists('iconv')) {
+            return (string) iconv('UTF-16BE', 'UTF-8//IGNORE', substr($content, 2));
+        }
+    }
+
+    if (substr_count(substr($content, 0, min(strlen($content), 200)), "\x00") > 10) {
+        if (function_exists('mb_convert_encoding')) {
+            return (string) mb_convert_encoding($content, 'UTF-8', 'UTF-16LE');
+        }
+        if (function_exists('iconv')) {
+            return (string) iconv('UTF-16LE', 'UTF-8//IGNORE', $content);
+        }
+    }
+
+    return preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+}
+
 function lead_import_parse_uploaded_file(array $file): array
 {
     $path = (string) ($file['tmp_name'] ?? '');
@@ -33,7 +69,7 @@ function lead_import_parse_uploaded_file(array $file): array
         return [];
     }
 
-    $content = (string) file_get_contents($path);
+    $content = lead_import_decode_content((string) file_get_contents($path));
     $content = trim(str_replace(["\r\n", "\r"], "\n", $content));
     if ($content === '') {
         return [];

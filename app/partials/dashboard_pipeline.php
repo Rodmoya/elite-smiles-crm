@@ -2817,6 +2817,23 @@ $consultationOptions = [
         }).filter((row) => Object.values(row).some(value => String(value || '').trim() !== ''));
     }
 
+    async function readImportedLeadFileText(file) {
+        if (!file) return '';
+        if (!window.TextDecoder || !file.arrayBuffer) {
+            return file.text();
+        }
+
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+            return new TextDecoder('utf-16le').decode(bytes.slice(2));
+        }
+        if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+            return new TextDecoder('utf-16be').decode(bytes.slice(2));
+        }
+        return new TextDecoder('utf-8').decode(bytes);
+    }
+
     async function importLeadRows(rows) {
         if (isImportingLeads) return;
         isImportingLeads = true;
@@ -2861,7 +2878,7 @@ $consultationOptions = [
         importLeadsFileInput.addEventListener('change', async (event) => {
             const file = event.target && event.target.files ? event.target.files[0] : null;
             if (!file) return;
-            const text = await file.text();
+            const text = await readImportedLeadFileText(file);
             const rows = parseImportedLeadFile(text);
             if (!rows.length) {
                 if (importLeadsStatus) importLeadsStatus.textContent = 'No lead rows were found in that file.';

@@ -24,8 +24,18 @@ if (!function_exists('db')) {
 
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-            // Use named timezone (handles DST automatically)
-            $pdo->exec("SET time_zone = 'America/Denver'");
+            // Prefer the named timezone when MySQL time zone tables are available.
+            try {
+                $pdo->exec("SET time_zone = 'America/Denver'");
+            } catch (PDOException $timezoneError) {
+                $offset = new DateTime('now', new DateTimeZone(APP_TIMEZONE));
+                $pdo->exec("SET time_zone = '" . $offset->format('P') . "'");
+                esm_log('database', 'Fell back to UTC offset timezone.', [
+                    'timezone' => APP_TIMEZONE,
+                    'offset' => $offset->format('P'),
+                    'message' => $timezoneError->getMessage(),
+                ]);
+            }
         } catch (PDOException $e) {
             esm_log('database', 'Connection failed', ['message' => $e->getMessage()]);
             if (APP_DEBUG) die('DB error: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));

@@ -1,0 +1,31 @@
+{
+  "name": "Elite Smiles Check-In",
+  "short_name": "Check-In",
+  "description": "Elite Smiles patient check-in kiosk.",
+  "start_url": "/crm/patient-experience/kiosk/",
+  "scope": "/crm/patient-experience/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/crm/assets/img/ES-Logo-Stack-500-x-150-px.png",
+      "sizes": "500x150",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/crm/assets/img/ES-Logo-Stack-500-x-150-px.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/crm/assets/img/ES-Logo-Stack-500-x-150-px.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

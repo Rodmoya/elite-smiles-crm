@@ -433,3 +433,211 @@ WHERE `slug` IN (
   'veneers-draper-transformation-v1',
   'veneers-draper-education-comparison-v1'
 );
+
+-- ------------------------------------------------------------
+-- Patient Experience foundation tables
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `patient_experience_kiosk_devices` (
+  `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `device_label`      VARCHAR(190) NOT NULL DEFAULT 'Waiting Room iPad',
+  `device_token_hash` CHAR(64)              DEFAULT NULL,
+  `location_label`    VARCHAR(190) NOT NULL DEFAULT 'Front Desk',
+  `is_active`         TINYINT(1)   NOT NULL DEFAULT 1,
+  `registered_at`     DATETIME              DEFAULT NULL,
+  `last_seen_at`      DATETIME              DEFAULT NULL,
+  `created_by`        INT UNSIGNED          DEFAULT NULL,
+  `created_at`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`        DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_device_token` (`device_token_hash`),
+  KEY `idx_patient_exp_device_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_kiosk_setup_tokens` (
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `kiosk_device_id` INT UNSIGNED NOT NULL,
+  `token_hash`      CHAR(64)     NOT NULL,
+  `expires_at`      DATETIME     NOT NULL,
+  `used_at`         DATETIME              DEFAULT NULL,
+  `revoked_at`      DATETIME              DEFAULT NULL,
+  `created_by`      INT UNSIGNED          DEFAULT NULL,
+  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_setup_token_hash` (`token_hash`),
+  KEY `idx_patient_exp_setup_device` (`kiosk_device_id`),
+  KEY `idx_patient_exp_setup_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_checkin_sessions` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `kiosk_device_id`    INT UNSIGNED          DEFAULT NULL,
+  `lead_id`            INT UNSIGNED          DEFAULT NULL,
+  `patient_name`       VARCHAR(190) NOT NULL DEFAULT '',
+  `session_token_hash` CHAR(64)     NOT NULL,
+  `status`             VARCHAR(40)  NOT NULL DEFAULT 'waiting',
+  `started_by_user_id` INT UNSIGNED          DEFAULT NULL,
+  `expires_at`         DATETIME     NOT NULL,
+  `started_at`         DATETIME              DEFAULT NULL,
+  `completed_at`       DATETIME              DEFAULT NULL,
+  `cancelled_at`       DATETIME              DEFAULT NULL,
+  `expired_at`         DATETIME              DEFAULT NULL,
+  `device_user_agent`  VARCHAR(255) NOT NULL DEFAULT '',
+  `device_ip`          VARCHAR(80)  NOT NULL DEFAULT '',
+  `staff_notes`        TEXT                  DEFAULT NULL,
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`         DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_session_token` (`session_token_hash`),
+  KEY `idx_patient_exp_session_status` (`status`),
+  KEY `idx_patient_exp_session_lead` (`lead_id`),
+  KEY `idx_patient_exp_session_device` (`kiosk_device_id`),
+  KEY `idx_patient_exp_session_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_form_templates` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `template_key` VARCHAR(120) NOT NULL,
+  `title`        VARCHAR(190) NOT NULL,
+  `description`  TEXT                  DEFAULT NULL,
+  `category`     VARCHAR(80)  NOT NULL DEFAULT 'intake',
+  `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_by`   INT UNSIGNED          DEFAULT NULL,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_template_key` (`template_key`),
+  KEY `idx_patient_exp_template_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_form_template_versions` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `template_id`    INT UNSIGNED NOT NULL,
+  `version_number` INT UNSIGNED NOT NULL DEFAULT 1,
+  `schema_json`    LONGTEXT              DEFAULT NULL,
+  `consent_text`   LONGTEXT              DEFAULT NULL,
+  `effective_at`   DATETIME              DEFAULT NULL,
+  `retired_at`     DATETIME              DEFAULT NULL,
+  `created_by`     INT UNSIGNED          DEFAULT NULL,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_template_version` (`template_id`, `version_number`),
+  KEY `idx_patient_exp_template_versions_template` (`template_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_packets` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `packet_key`  VARCHAR(120) NOT NULL,
+  `title`       VARCHAR(190) NOT NULL,
+  `description` TEXT                  DEFAULT NULL,
+  `is_active`   TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_by`  INT UNSIGNED          DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_packet_key` (`packet_key`),
+  KEY `idx_patient_exp_packet_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_packet_sections` (
+  `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `packet_id`           INT UNSIGNED NOT NULL,
+  `template_version_id` INT UNSIGNED NOT NULL,
+  `section_key`         VARCHAR(120) NOT NULL,
+  `title`               VARCHAR(190) NOT NULL,
+  `sort_order`          INT UNSIGNED NOT NULL DEFAULT 0,
+  `is_required`         TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_exp_packet_sections_packet` (`packet_id`),
+  KEY `idx_patient_exp_packet_sections_version` (`template_version_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_packet_answers` (
+  `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `checkin_session_id`  INT UNSIGNED NOT NULL,
+  `packet_section_id`   INT UNSIGNED NOT NULL,
+  `template_version_id` INT UNSIGNED NOT NULL,
+  `field_key`           VARCHAR(190) NOT NULL,
+  `answer_json`         LONGTEXT              DEFAULT NULL,
+  `answer_label`        TEXT                  DEFAULT NULL,
+  `is_sensitive`        TINYINT(1)   NOT NULL DEFAULT 0,
+  `answered_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_exp_answers_session` (`checkin_session_id`),
+  KEY `idx_patient_exp_answers_section` (`packet_section_id`),
+  KEY `idx_patient_exp_answers_field` (`field_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_signatures` (
+  `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `checkin_session_id`    INT UNSIGNED NOT NULL,
+  `packet_section_id`     INT UNSIGNED          DEFAULT NULL,
+  `template_version_id`   INT UNSIGNED          DEFAULT NULL,
+  `signer_name`           VARCHAR(190) NOT NULL,
+  `signer_relationship`   VARCHAR(120) NOT NULL DEFAULT 'self',
+  `signature_storage_key` VARCHAR(255)          DEFAULT NULL,
+  `signature_hash`        CHAR(64)              DEFAULT NULL,
+  `signed_at`             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `ip_address`            VARCHAR(80)  NOT NULL DEFAULT '',
+  `user_agent`            VARCHAR(255) NOT NULL DEFAULT '',
+  `device_label`          VARCHAR(190) NOT NULL DEFAULT '',
+  `created_at`            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_exp_signatures_session` (`checkin_session_id`),
+  KEY `idx_patient_exp_signatures_section` (`packet_section_id`),
+  KEY `idx_patient_exp_signatures_signed` (`signed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_generated_files` (
+  `id`                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `checkin_session_id`   INT UNSIGNED NOT NULL,
+  `file_type`            VARCHAR(80)  NOT NULL DEFAULT 'signed_packet_pdf',
+  `storage_key`          VARCHAR(255) NOT NULL,
+  `original_name`        VARCHAR(255)          DEFAULT NULL,
+  `mime_type`            VARCHAR(120) NOT NULL DEFAULT 'application/pdf',
+  `file_size`            INT UNSIGNED NOT NULL DEFAULT 0,
+  `sha256_hash`          CHAR(64)              DEFAULT NULL,
+  `protected_path`       VARCHAR(500) NOT NULL DEFAULT '',
+  `generated_by_user_id` INT UNSIGNED          DEFAULT NULL,
+  `generated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_exp_files_session` (`checkin_session_id`),
+  KEY `idx_patient_exp_files_type` (`file_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `patient_experience_audit_events` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `checkin_session_id` INT UNSIGNED          DEFAULT NULL,
+  `kiosk_device_id`    INT UNSIGNED          DEFAULT NULL,
+  `lead_id`            INT UNSIGNED          DEFAULT NULL,
+  `user_id`            INT UNSIGNED          DEFAULT NULL,
+  `event_key`          VARCHAR(120) NOT NULL,
+  `event_label`        VARCHAR(190) NOT NULL DEFAULT '',
+  `payload_json`       LONGTEXT              DEFAULT NULL,
+  `ip_address`         VARCHAR(80)  NOT NULL DEFAULT '',
+  `user_agent`         VARCHAR(255) NOT NULL DEFAULT '',
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_exp_audit_session` (`checkin_session_id`),
+  KEY `idx_patient_exp_audit_event` (`event_key`),
+  KEY `idx_patient_exp_audit_created` (`created_at`),
+  KEY `idx_patient_exp_audit_lead` (`lead_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Patient Experience Phase 2 progress columns for existing installs.
+ALTER TABLE `patient_experience_checkin_sessions`
+  ADD COLUMN IF NOT EXISTS `current_step_key` VARCHAR(120) NOT NULL DEFAULT 'welcome' AFTER `staff_notes`;
+ALTER TABLE `patient_experience_checkin_sessions`
+  ADD COLUMN IF NOT EXISTS `progress_percent` TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER `current_step_key`;
+ALTER TABLE `patient_experience_checkin_sessions`
+  ADD COLUMN IF NOT EXISTS `review_status` VARCHAR(40) NOT NULL DEFAULT 'pending' AFTER `progress_percent`;
+ALTER TABLE `patient_experience_checkin_sessions`
+  ADD COLUMN IF NOT EXISTS `reviewed_at` DATETIME DEFAULT NULL AFTER `review_status`;
+ALTER TABLE `patient_experience_checkin_sessions`
+  ADD COLUMN IF NOT EXISTS `reviewed_by_user_id` INT UNSIGNED DEFAULT NULL AFTER `reviewed_at`;
+ALTER TABLE `patient_experience_kiosk_devices`
+  ADD COLUMN IF NOT EXISTS `registered_at` DATETIME DEFAULT NULL AFTER `is_active`;

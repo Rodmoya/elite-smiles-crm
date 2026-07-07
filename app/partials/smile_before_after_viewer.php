@@ -32,16 +32,22 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     }));
     $beforeUrl = $beforeUrl ?: '';
     $afterUrl = $afterUrl ?: '';
+    $selectedInput = $inputGallery[0] ?? null;
+    if (is_array($selectedInput)) {
+        if ($beforeUrl === '') {
+            $beforeUrl = trim((string)($selectedInput['url'] ?? ''));
+        }
+        if ($afterUrl === '') {
+            $afterUrl = trim((string)($selectedInput['after_url'] ?? ''));
+        }
+    }
     $videoUrl = trim((string)($options['video_url'] ?? ''));
     $videoGenerate = is_array($options['video_generate'] ?? null) ? (array)$options['video_generate'] : [];
     $videoDelete = is_array($options['video_delete'] ?? null) ? (array)$options['video_delete'] : [];
     $hasVideo = $videoUrl !== '';
     $canGenerateVideo = !empty($videoGenerate);
     $canDeleteVideo = !empty($videoDelete);
-    $hasAfter = $afterUrl !== '';
-    if ($beforeUrl === '' && !empty($inputGallery[0]['url'])) {
-        $beforeUrl = (string)$inputGallery[0]['url'];
-    }
+    $hasAfter = $afterUrl !== '' && $afterUrl !== $beforeUrl;
     $defaultInputLabel = (string)($options['before_label'] ?? 'Original photo');
     if ($inputGallery !== [] && $defaultInputLabel === 'Original photo') {
         $defaultInputLabel = (string)($inputGallery[0]['label'] ?? 'Original photo');
@@ -306,27 +312,12 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     });
                 }
             }
-            document.addEventListener('click', function (event) {
-                const alignToggle = event.target.closest('[data-sd-align-toggle]');
-                if (alignToggle) {
-                    const wrap = alignToggle.closest('[data-sd-viewer-wrap]');
-                    const panel = wrap ? wrap.querySelector('[data-sd-align-panel]') : null;
-                    if (panel) panel.classList.toggle('sd-hidden');
-                    return;
-                }
-                const button = event.target.closest('[data-sd-mode]');
-                if (!button) return;
-                const viewer = button.closest('[data-sd-viewer]');
-                if (viewer) setMode(viewer, button.dataset.sdMode);
-            });
-            document.addEventListener('click', function (event) {
-                const option = event.target.closest('[data-sd-before-option]');
-                if (!option) return;
-                const wrap = option.closest('[data-sd-viewer-wrap]');
-                if (!wrap) return;
+            function syncSelectedInputOption(wrap, option) {
+                if (!wrap || !option) return;
                 const url = option.getAttribute('data-url') || '';
                 const label = option.getAttribute('data-label') || 'Original photo';
-                const afterUrl = option.getAttribute('data-after-url') || '';
+                const rawAfterUrl = option.getAttribute('data-after-url') || '';
+                const afterUrl = rawAfterUrl && rawAfterUrl !== url ? rawAfterUrl : '';
                 const afterLabel = option.getAttribute('data-after-label') || 'After';
                 wrap.querySelectorAll('[data-sd-before-option]').forEach(function (item) {
                     item.setAttribute('aria-pressed', item === option ? 'true' : 'false');
@@ -334,7 +325,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 wrap.querySelectorAll('[data-sd-before-image]').forEach(function (img) {
                     img.dataset.sdSmileFocusSrc = '';
                     img.removeAttribute('data-sd-smile-focus');
-                    img.setAttribute('src', url);
+                    if (url) img.setAttribute('src', url);
                 });
                 wrap.querySelectorAll('[data-sd-before-label]').forEach(function (node) {
                     node.textContent = label;
@@ -410,7 +401,39 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                         applySmileFocusForViewer(viewer);
                     });
                 }
+            }
+            function syncAllSelectedInputOptions() {
+                document.querySelectorAll('[data-sd-viewer-wrap]').forEach(function (wrap) {
+                    const option = wrap.querySelector('[data-sd-before-option][aria-pressed="true"]') || wrap.querySelector('[data-sd-before-option]');
+                    if (option) syncSelectedInputOption(wrap, option);
+                });
+            }
+            document.addEventListener('click', function (event) {
+                const alignToggle = event.target.closest('[data-sd-align-toggle]');
+                if (alignToggle) {
+                    const wrap = alignToggle.closest('[data-sd-viewer-wrap]');
+                    const panel = wrap ? wrap.querySelector('[data-sd-align-panel]') : null;
+                    if (panel) panel.classList.toggle('sd-hidden');
+                    return;
+                }
+                const button = event.target.closest('[data-sd-mode]');
+                if (!button) return;
+                const viewer = button.closest('[data-sd-viewer]');
+                if (viewer) setMode(viewer, button.dataset.sdMode);
             });
+            document.addEventListener('click', function (event) {
+                const option = event.target.closest('[data-sd-before-option]');
+                if (!option) return;
+                const wrap = option.closest('[data-sd-viewer-wrap]');
+                if (!wrap) return;
+                syncSelectedInputOption(wrap, option);
+            });
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', syncAllSelectedInputOptions, { once: true });
+            } else {
+                syncAllSelectedInputOptions();
+            }
+            window.addEventListener('pageshow', syncAllSelectedInputOptions);
             document.addEventListener('pointerdown', function (event) {
                 const frame = event.target.closest('[data-sd-slider-frame]');
                 if (!frame) return;

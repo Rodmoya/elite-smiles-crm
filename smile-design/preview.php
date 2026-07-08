@@ -26,6 +26,9 @@ $angleDefinitions = [
 $angleBeforePhotos = [];
 foreach ($angleDefinitions as $photoType => $label) {
     $photo = smile_design_find_before_photo_by_type($caseId, $photoType, true);
+    if ($photo && (string)($photo['source_type'] ?? 'uploaded') === 'ai_reference') {
+        continue;
+    }
     if ($photo) {
         $angleBeforePhotos[$photoType] = $photo;
     }

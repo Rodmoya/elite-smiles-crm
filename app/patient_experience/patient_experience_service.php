@@ -690,6 +690,26 @@ if (!function_exists('patient_experience_kiosk_device_by_id')) {
     }
 }
 
+if (!function_exists('patient_experience_kiosk_device_by_label')) {
+    function patient_experience_kiosk_device_by_label(string $deviceLabel): ?array
+    {
+        $label = trim($deviceLabel);
+        if ($label === '') {
+            return null;
+        }
+        patient_experience_ensure_schema();
+        $row = db_one(
+            "SELECT *
+             FROM patient_experience_kiosk_devices
+             WHERE device_label = :device_label
+             ORDER BY id DESC
+             LIMIT 1",
+            ['device_label' => $label]
+        );
+        return $row ?: null;
+    }
+}
+
 if (!function_exists('patient_experience_kiosk_device_registered')) {
     function patient_experience_kiosk_device_registered(array $device): bool
     {
@@ -801,6 +821,66 @@ if (!function_exists('patient_experience_issue_setup_token')) {
         ], null, null, $createdBy, $deviceId);
 
         return $token;
+    }
+}
+
+if (!function_exists('patient_experience_active_setup_token_for_device')) {
+    function patient_experience_active_setup_token_for_device(int $deviceId): string
+    {
+        if ($deviceId <= 0) {
+            return '';
+        }
+        patient_experience_ensure_schema();
+        $row = db_one(
+            "SELECT token_hash, expires_at
+             FROM patient_experience_kiosk_setup_tokens
+             WHERE kiosk_device_id = :device_id
+               AND used_at IS NULL
+               AND revoked_at IS NULL
+               AND expires_at > NOW()
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            ['device_id' => $deviceId]
+        );
+        return $row ? '__hashed__' : '';
+    }
+}
+
+if (!function_exists('patient_experience_ensure_test_kiosk_setup')) {
+    function patient_experience_ensure_test_kiosk_setup(?int $userId = null): array
+    {
+        $label = 'Test Kiosk';
+        $location = 'iPad Test';
+        $device = patient_experience_kiosk_device_by_label($label);
+        $deviceId = $device ? (int)$device['id'] : patient_experience_create_kiosk_device($label, $location, $userId);
+
+        $activeSetup = db_one(
+            "SELECT id, expires_at
+             FROM patient_experience_kiosk_setup_tokens
+             WHERE kiosk_device_id = :device_id
+               AND used_at IS NULL
+               AND revoked_at IS NULL
+               AND expires_at > NOW()
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            ['device_id' => $deviceId]
+        );
+
+        $token = '';
+        if ($activeSetup) {
+            $token = patient_experience_issue_setup_token($deviceId, $userId);
+        } else {
+            $token = patient_experience_issue_setup_token($deviceId, $userId);
+        }
+
+        return [
+            'device_id' => $deviceId,
+            'device_label' => $label,
+            'location_label' => $location,
+            'setup_token' => $token,
+            'setup_url' => patient_experience_kiosk_setup_url($token),
+            'setup_qr_url' => patient_experience_kiosk_setup_qr_url($token),
+        ];
     }
 }
 

@@ -133,7 +133,14 @@ foreach ($angleDefinitions as $photoType => $label) {
     ];
 }
 
-$setAngleDefinitions = array_intersect_key($angleDefinitions, $angleBeforePhotos);
+$generatedAfterPhotoTypes = [];
+foreach ($afterVersionsByAngle as $version) {
+    $photoType = (string)($version['photo_type'] ?? '');
+    if ($photoType !== '') {
+        $generatedAfterPhotoTypes[$photoType] = true;
+    }
+}
+$setAngleDefinitions = array_intersect_key($angleDefinitions, $generatedAfterPhotoTypes);
 if ($setAngleDefinitions === []) {
     $setAngleDefinitions = ['front' => $angleDefinitions['front']];
 }

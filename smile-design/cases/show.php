@@ -133,7 +133,11 @@ foreach ($angleDefinitions as $photoType => $label) {
     ];
 }
 
-$afterSetSize = max(1, count($angleDefinitions));
+$setAngleDefinitions = array_intersect_key($angleDefinitions, $angleBeforePhotos);
+if ($setAngleDefinitions === []) {
+    $setAngleDefinitions = ['front' => $angleDefinitions['front']];
+}
+$afterSetSize = max(1, count($setAngleDefinitions));
 $afterSets = [];
 foreach ($afterVersionsByAngle as $version) {
     $versionNumber = max(1, (int)($version['version_number'] ?? 1));
@@ -168,7 +172,7 @@ foreach ($afterSets as $setKey => $set) {
         return ((int)($a['version_number'] ?? 0)) <=> ((int)($b['version_number'] ?? 0));
     });
     $afterSets[$setKey]['selected_count'] = count(array_intersect($afterSets[$setKey]['ids'], $activeAfterIds));
-    $afterSets[$setKey]['missing_angles'] = array_values(array_diff(array_values($angleDefinitions), array_values($afterSets[$setKey]['angles'])));
+    $afterSets[$setKey]['missing_angles'] = array_values(array_diff(array_values($setAngleDefinitions), array_values($afterSets[$setKey]['angles'])));
 }
 $activeAfterSetKeys = [];
 foreach ($afterSets as $setKey => $set) {

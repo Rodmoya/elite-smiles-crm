@@ -139,6 +139,8 @@ $input = [
     'consultation_date'  => trim((string) post('consultation_date')),
     'lead_value'         => trim((string) post('lead_value', '10000')),
     'notes'              => trim((string) post('notes')),
+    'suppress_first_touch_email' => !filter_var(post('send_first_touch_email', '1'), FILTER_VALIDATE_BOOLEAN),
+    'suppress_first_touch_sms'   => !filter_var(post('send_first_touch_sms', '1'), FILTER_VALIDATE_BOOLEAN),
 ];
 
 $result = lead_create_minimal($input, is_array($user) ? $user : []);

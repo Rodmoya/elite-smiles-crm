@@ -1581,8 +1581,15 @@ if (!function_exists('lead_create_minimal')) {
                 ]);
             }
 
-            $firstTouchEmail = ['attempted' => false, 'sent' => false];
-            if ($leadId > 0 && function_exists('lead_email_maybe_send_first_touch')) {
+            $suppressFirstTouchEmail = !empty($data['suppress_first_touch_email']);
+            $firstTouchEmail = [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => $suppressFirstTouchEmail ? 'Auto first-touch email suppressed.' : '',
+            ];
+            if (!$suppressFirstTouchEmail && $leadId > 0 && function_exists('lead_email_maybe_send_first_touch')) {
                 try {
                     $firstTouchEmail = lead_email_maybe_send_first_touch($leadId);
                 } catch (Throwable $e) {
@@ -1657,7 +1664,8 @@ if (!function_exists('lead_create_minimal')) {
 
                     $freshStageLead = db_one('SELECT id, status FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
                     $freshStage = trim((string)($freshStageLead['status'] ?? ''));
-                    if ($freshStage === '' || $freshStage === lead_default_stage()) {
+                    $firstTouchSent = !empty($firstTouchEmail['sent']) || !empty($firstTouchSms['sent']);
+                    if ($firstTouchSent && ($freshStage === '' || $freshStage === lead_default_stage())) {
                         $contactedStage = 'contacted';
                         $pipelinePosition = function_exists('lead_pipeline_next_position')
                             ? lead_pipeline_next_position($contactedStage)

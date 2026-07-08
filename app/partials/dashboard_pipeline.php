@@ -910,6 +910,44 @@ $consultationOptions = [
 
                                 </div>
 
+
+
+                                <div class="rounded-2xl bg-white px-4 py-4">
+
+                                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">First Touch</p>
+
+                                    <div class="mt-3 space-y-3">
+
+                                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700">
+
+                                            <span>Send first email</span>
+
+                                            <input
+                                                type="checkbox"
+                                                id="new-lead-send-first-email"
+                                                class="h-5 w-5 rounded border-slate-300 text-slate-900"
+                                                checked
+                                            >
+
+                                        </label>
+
+                                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700">
+
+                                            <span>Send first text</span>
+
+                                            <input
+                                                type="checkbox"
+                                                id="new-lead-send-first-sms"
+                                                class="h-5 w-5 rounded border-slate-300 text-slate-900"
+                                                checked
+                                            >
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
                             </div>
 
                         </div>
@@ -2620,6 +2658,10 @@ $consultationOptions = [
     const newLeadStage = document.getElementById('new-lead-stage');
 
     const newLeadNotes = document.getElementById('new-lead-notes');
+
+    const newLeadSendFirstEmail = document.getElementById('new-lead-send-first-email');
+
+    const newLeadSendFirstSms = document.getElementById('new-lead-send-first-sms');
 
 
 
@@ -5728,6 +5770,10 @@ function applyCommunicationViewportFit() {
 
         if (newLeadNotes) newLeadNotes.value = '';
 
+        if (newLeadSendFirstEmail) newLeadSendFirstEmail.checked = true;
+
+        if (newLeadSendFirstSms) newLeadSendFirstSms.checked = true;
+
         if (newLeadStatus) newLeadStatus.textContent = '';
 
     }
@@ -5831,6 +5877,10 @@ function applyCommunicationViewportFit() {
 
         const notes = newLeadNotes ? newLeadNotes.value.trim() : '';
 
+        const sendFirstEmail = newLeadSendFirstEmail ? newLeadSendFirstEmail.checked : true;
+
+        const sendFirstSms = newLeadSendFirstSms ? newLeadSendFirstSms.checked : true;
+
 
 
         if (!fullName && !phone && !email) {
@@ -5885,6 +5935,10 @@ function applyCommunicationViewportFit() {
             formData.append('status', status);
 
             formData.append('notes', notes);
+
+            formData.append('send_first_touch_email', sendFirstEmail ? '1' : '0');
+
+            formData.append('send_first_touch_sms', sendFirstSms ? '1' : '0');
 
 
 

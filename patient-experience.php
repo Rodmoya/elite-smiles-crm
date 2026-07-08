@@ -108,6 +108,10 @@ $activeSession = patient_experience_active_session();
 $activeProgress = $activeSession ? patient_experience_session_progress($activeSession) : ['status' => 'idle', 'current_step' => 'idle', 'percent_complete' => 0];
 $activeSignatureSummary = $activeSession ? patient_experience_signature_summary((int)$activeSession['id']) : ['total' => 0, 'latest_signed_at' => ''];
 $recentSessions = patient_experience_recent_sessions(30);
+$completedSessions = array_values(array_filter(
+    $recentSessions,
+    static fn(array $session): bool => (string)($session['status'] ?? '') === 'completed'
+));
 $selectedSessionId = (int)get('session_id', '0');
 $selectedReview = $selectedSessionId > 0 ? patient_experience_staff_review_context($selectedSessionId) : null;
 $kioskUrl = base_url('patient-experience/kiosk/');
@@ -140,9 +144,9 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
                 <div class="grid gap-0 xl:grid-cols-[1.1fr_0.9fr]">
                     <div class="p-6 lg:p-8">
                         <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Patient Experience</p>
-                        <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Waiting-room check-in control</h1>
+                        <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Consent completions and kiosk setup</h1>
                         <p class="mt-4 max-w-3xl text-sm leading-7 text-slate-600">
-                            Start a secure iPad session, watch live packet progress, and review a reusable digital forms packet built for long-term intake, consent, and policy workflows.
+                            Use one kiosk QR setup, send patients to the iPad, and review the patients who completed their consent packet.
                         </p>
                         <div class="mt-6 flex flex-wrap gap-3">
                             <a href="<?= e($kioskUrl) ?>" target="_blank" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Open Kiosk</a>
@@ -205,33 +209,33 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
 
         <section class="mb-8 grid gap-6 xl:grid-cols-[0.75fr_1.25fr]">
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Start Check-In</p>
-                <h2 class="mt-2 text-xl font-semibold text-slate-950">Assign to kiosk</h2>
-                <p class="mt-3 text-sm leading-6 text-slate-600">Creates a live waiting-room session. The kiosk only sees a display name and form state.</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Send Patient</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Start on kiosk</h2>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Choose the kiosk, enter the patient name, and send the consent packet to the iPad.</p>
                 <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
                     <?= csrf_input() ?>
                     <input type="hidden" name="action" value="start_checkin">
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="kiosk-device-id">Assigned kiosk</label>
+                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="kiosk-device-id">Kiosk</label>
                         <select id="kiosk-device-id" name="kiosk_device_id" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" required>
-                            <option value="">Select a registered iPad</option>
+                            <option value="">Select kiosk</option>
                             <?php foreach ($registeredDeviceOptions as $deviceOption): ?>
                                 <option value="<?= e((string)$deviceOption['id']) ?>"><?= e((string)$deviceOption['device_label']) ?> - <?= e((string)$deviceOption['location_label']) ?></option>
                             <?php endforeach; ?>
                         </select>
                         <?php if (!$registeredDeviceOptions): ?>
-                            <p class="mt-2 text-xs text-amber-700">Register an iPad below before assigning a live check-in.</p>
+                            <p class="mt-2 text-xs text-amber-700">Save a kiosk below before sending a patient.</p>
                         <?php endif; ?>
                     </div>
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="patient-name">Patient display name</label>
+                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="patient-name">Patient name</label>
                         <input id="patient-name" name="patient_name" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: Rodrigo M.">
                     </div>
                     <div>
                         <label class="mb-1 block text-xs font-semibold text-slate-600" for="lead-id">Lead ID optional</label>
                         <input id="lead-id" name="lead_id" inputmode="numeric" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: 131">
                     </div>
-                    <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" type="submit"<?= $registeredDeviceOptions ? '' : ' disabled' ?>>Start and Assign</button>
+                    <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" type="submit"<?= $registeredDeviceOptions ? '' : ' disabled' ?>>Send to Kiosk</button>
                 </form>
 
                 <?php if ($activeSession): ?>
@@ -245,31 +249,29 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
             </div>
 
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Recent Sessions</p>
-                <h2 class="mt-2 text-xl font-semibold text-slate-950">Live progress and history</h2>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Completed Patients</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Patients who finished consents</h2>
                 <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
                     <table class="min-w-full divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
                             <tr>
-                                <th class="px-4 py-3">Session</th>
-                                <th class="px-4 py-3">Status</th>
-                                <th class="px-4 py-3">Progress</th>
+                                <th class="px-4 py-3">Patient</th>
+                                <th class="px-4 py-3">Kiosk</th>
+                                <th class="px-4 py-3">Completed</th>
                                 <th class="px-4 py-3">Signature</th>
-                                <th class="px-4 py-3">Lead</th>
-                                <th class="px-4 py-3">Created</th>
+                                <th class="px-4 py-3">Review</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
-                            <?php if (!$recentSessions): ?>
-                                <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No check-in sessions yet.</td></tr>
+                            <?php if (!$completedSessions): ?>
+                                <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No completed consent packets yet.</td></tr>
                             <?php else: ?>
-                                <?php foreach ($recentSessions as $session): ?>
-                                    <?php $progress = patient_experience_session_progress($session); ?>
+                                <?php foreach ($completedSessions as $session): ?>
                                     <?php $signatureSummary = patient_experience_signature_summary((int)$session['id']); ?>
                                     <tr>
-                                        <td class="px-4 py-3 font-semibold text-slate-900">#<?= e((string)$session['id']) ?><div class="text-xs font-normal text-slate-500"><?= e((string)$session['patient_name']) ?></div></td>
-                                        <td class="px-4 py-3"><span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"><?= e(ucwords(str_replace('_', ' ', (string)$progress['status']))) ?></span></td>
-                                        <td class="px-4 py-3 text-slate-600"><?= e(ucwords(str_replace('_', ' ', (string)$progress['current_step']))) ?><div class="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-slate-100"><div class="h-full bg-amber-400" style="width: <?= e((string)$progress['percent_complete']) ?>%"></div></div></td>
+                                        <td class="px-4 py-3 font-semibold text-slate-900"><?= e((string)$session['patient_name']) ?><div class="text-xs font-normal text-slate-500">Session #<?= e((string)$session['id']) ?></div></td>
+                                        <td class="px-4 py-3 text-slate-600"><?= e(trim((string)($session['device_label'] ?? '')) !== '' ? (string)$session['device_label'] : 'Not assigned') ?></td>
+                                        <td class="px-4 py-3 text-slate-500"><?= e(format_datetime((string)($session['completed_at'] ?? $session['updated_at'] ?? $session['created_at']))) ?></td>
                                         <td class="px-4 py-3 text-slate-600">
                                             <?php if ((int)$signatureSummary['total'] > 0): ?>
                                                 <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Captured</span>
@@ -278,12 +280,8 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
                                                 <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Missing</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="px-4 py-3 text-slate-600"><?= ((int)($session['lead_id'] ?? 0) > 0) ? '#' . e((string)$session['lead_id']) : 'Not linked' ?></td>
                                         <td class="px-4 py-3 text-slate-500">
-                                            <?= e(format_datetime((string)$session['created_at'])) ?>
-                                            <div class="mt-2">
-                                                <a href="<?= e(base_url('patient-experience.php?session_id=' . (int)$session['id'])) ?>" class="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">Review</a>
-                                            </div>
+                                            <a href="<?= e(base_url('patient-experience.php?session_id=' . (int)$session['id'])) ?>" class="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">Open</a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -296,21 +294,21 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
 
         <section class="mb-8 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Kiosk Devices</p>
-                <h2 class="mt-2 text-xl font-semibold text-slate-950">Register iPad kiosk</h2>
-                <p class="mt-3 text-sm leading-6 text-slate-600">Create a secure setup link, open it on the iPad, then tap Share → Add to Home Screen.</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Kiosk Setup</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Name kiosk and scan QR</h2>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Just give the kiosk a name, generate the QR, and scan it on the iPad.</p>
                 <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
                     <?= csrf_input() ?>
                     <input type="hidden" name="action" value="create_kiosk_device">
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="device-label">Device label</label>
-                        <input id="device-label" name="device_label" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: Front Desk iPad">
+                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="device-label">Kiosk name</label>
+                        <input id="device-label" name="device_label" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: Front Desk Kiosk">
                     </div>
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="location-label">Location label</label>
+                        <label class="mb-1 block text-xs font-semibold text-slate-600" for="location-label">Location</label>
                         <input id="location-label" name="location_label" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: Front Desk">
                     </div>
-                    <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Add / Register iPad</button>
+                    <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Generate QR</button>
                 </form>
 
                 <?php if ($setupPreviewDeviceId > 0 && $setupPreviewToken !== ''): ?>
@@ -334,11 +332,11 @@ $registeredDeviceOptions = patient_experience_registered_device_options();
             </div>
 
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Device Status</p>
-                <h2 class="mt-2 text-xl font-semibold text-slate-950">Registered kiosk inventory</h2>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Saved Kiosks</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Kiosk list</h2>
                 <div class="mt-5 space-y-4">
                     <?php if (!$kioskDevices): ?>
-                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No kiosk devices have been created yet.</div>
+                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No kiosks saved yet.</div>
                     <?php else: ?>
                         <?php foreach ($kioskDevices as $device): ?>
                             <?php

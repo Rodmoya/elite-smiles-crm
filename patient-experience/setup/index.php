@@ -42,9 +42,9 @@ $kioskUrl = base_url('patient-experience/kiosk/');
         <section class="w-full max-w-3xl overflow-hidden rounded-[2.5rem] border border-amber-200/20 bg-white text-slate-950 shadow-2xl">
             <div class="bg-[#0b0b0b] px-8 py-8 text-white">
                 <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="w-56 max-w-full rounded-2xl bg-white p-4">
-                <p class="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">iPad Kiosk Setup</p>
+                <p class="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">Kiosk Setup</p>
                 <h1 class="mt-3 text-3xl font-semibold tracking-tight">Elite Smiles Check-In</h1>
-                <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-300">Use this one-time setup flow on the iPad you want to dedicate to patient check-in. It will register the device, then open the kiosk app.</p>
+                <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-300">Use this one-time setup flow on the iPad you want to dedicate to patient check-in. It will register the kiosk, then open the kiosk app.</p>
             </div>
 
             <div class="px-8 py-8">
@@ -52,7 +52,7 @@ $kioskUrl = base_url('patient-experience/kiosk/');
                     <div class="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-6">
                         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Setup Complete</p>
                         <h2 class="mt-2 text-2xl font-semibold text-slate-950"><?= e((string)$registration['device_label']) ?> is ready.</h2>
-                        <p class="mt-3 text-sm leading-7 text-slate-700">We are saving this device locally and opening the kiosk now. On iPad, tap Share → Add to Home Screen so the kiosk can launch in standalone mode.</p>
+                        <p class="mt-3 text-sm leading-7 text-slate-700">We are saving this kiosk on the iPad and opening it now. After it opens, tap Share -> Add to Home Screen.</p>
                         <div class="mt-4 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700">
                             Location: <?= e((string)$registration['location_label']) ?>
                         </div>
@@ -77,12 +77,12 @@ $kioskUrl = base_url('patient-experience/kiosk/');
                         <p class="mt-2 text-sm text-slate-600"><?= e((string)$setup['location_label']) ?></p>
                         <ol class="mt-5 space-y-3 text-sm leading-7 text-slate-700">
                             <li>1. Keep this page open on the iPad you want to dedicate to check-in.</li>
-                            <li>2. Tap the button below to register this iPad securely.</li>
-                            <li>3. After it opens the kiosk, tap Share → Add to Home Screen.</li>
+                            <li>2. Tap the button below to register this kiosk.</li>
+                            <li>3. After it opens the kiosk, tap Share -> Add to Home Screen.</li>
                         </ol>
                         <form method="POST" action="<?= e(base_url('patient-experience/setup/' . rawurlencode($setupToken))) ?>" class="mt-6">
                             <input type="hidden" name="setup_token" value="<?= e($setupToken) ?>">
-                            <button type="submit" class="min-h-14 w-full rounded-2xl bg-slate-950 px-6 py-4 text-lg font-semibold text-white hover:bg-slate-800">Register This iPad</button>
+                            <button type="submit" class="min-h-14 w-full rounded-2xl bg-slate-950 px-6 py-4 text-lg font-semibold text-white hover:bg-slate-800">Register Kiosk</button>
                         </form>
                     </div>
                 <?php else: ?>

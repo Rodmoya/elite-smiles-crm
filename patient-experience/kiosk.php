@@ -48,7 +48,7 @@ $setupHintUrl = base_url('patient-experience.php');
                         <p id="progress-label" class="mt-3 text-sm text-slate-300">Waiting for front desk</p>
                     </div>
                     <div class="rounded-[2rem] border border-white/10 bg-white/5 p-6 text-sm leading-7 text-slate-200">
-                        This iPad is for secure check-in only. It does not show patient lists, CRM navigation, or private records while idle.
+                        This kiosk is for secure check-in only. It does not show patient lists, CRM navigation, or private records while idle.
                     </div>
                 </aside>
 
@@ -251,8 +251,8 @@ $setupHintUrl = base_url('patient-experience.php');
                     + '<div class="mt-8 rounded-[2rem] border border-slate-200 bg-white px-6 py-5 text-left text-sm leading-7 text-slate-600 shadow-sm">'
                     + '<p class="font-semibold text-slate-900">Staff instructions</p>'
                     + '<p class="mt-2">1. In the CRM, open Patient Experience.</p>'
-                    + '<p>2. Create or regenerate a kiosk setup link.</p>'
-                    + '<p>3. Open this QR code on the iPad, then tap Share → Add to Home Screen.</p>'
+                    + '<p>2. Name the kiosk and generate the QR code.</p>'
+                    + '<p>3. Open this QR code on the iPad, then tap Share -> Add to Home Screen.</p>'
                     + '</div>'
                     + '<div class="mt-6 rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">' + escapeHtml(staffSetupUrl) + '</div>';
             }

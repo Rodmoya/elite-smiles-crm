@@ -1468,6 +1468,8 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
     }
     $treatmentScope = smile_design_normalize_treatment_scope((string)($data['treatment_scope'] ?? ''), $procedureInterest);
     $smileWidthGoal = smile_design_normalize_smile_width_goal((string)($data['smile_width_goal'] ?? ''));
+    $rawNotes = trim((string)($data['notes'] ?? ''));
+    $safeNotes = smile_design_is_imported_lead_notes($rawNotes) ? '' : $rawNotes;
 
     $caseId = db_insert(
         "INSERT INTO smile_cases
@@ -1487,7 +1489,7 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
             'shade_goal' => smile_design_normalize_shade_goal((string)($data['shade_goal'] ?? '210'), $styleKey),
             'treatment_scope' => $treatmentScope,
             'smile_width_goal' => $smileWidthGoal,
-            'notes' => trim((string)($data['notes'] ?? '')) ?: null,
+            'notes' => $safeNotes !== '' ? $safeNotes : null,
             'status' => trim((string)($data['status'] ?? 'draft')) ?: 'draft',
             'visibility' => trim((string)($data['visibility'] ?? 'internal_only')) ?: 'internal_only',
             'consent_status' => trim((string)($data['consent_status'] ?? 'not_recorded')) ?: 'not_recorded',
@@ -1497,6 +1499,27 @@ function smile_design_create_case(array $data, ?int $createdBy = null): int
 
     smile_design_audit($caseId, 'case_created', ['status' => $data['status'] ?? 'draft'], $createdBy);
     return $caseId;
+}
+
+function smile_design_is_imported_lead_notes(?string $notes): bool
+{
+    $notes = trim((string)$notes);
+    if ($notes === '') {
+        return false;
+    }
+    if (!preg_match('/^Source lead #\d+/i', $notes)) {
+        return false;
+    }
+    return str_contains($notes, 'Lead notes:') || str_contains($notes, 'Landing page:') || str_contains($notes, 'Campaign:');
+}
+
+function smile_design_visible_case_notes(array $case): string
+{
+    $notes = trim((string)($case['notes'] ?? ''));
+    if (smile_design_is_imported_lead_notes($notes)) {
+        return '';
+    }
+    return $notes;
 }
 
 function smile_design_sync_case_contact_from_linked_lead(array $case): array
@@ -3683,7 +3706,10 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         return ['ok' => false, 'message' => 'Before photo not found for this case.'];
     }
 
-    if (($options['auto_prepare_missing_angles'] ?? true) !== false) {
+    // Missing-angle AI prep is now opt-in only. Staff should be able to
+    // generate or revise a front preview without the pipeline trying to
+    // invent left/right references in the background.
+    if (($options['auto_prepare_missing_angles'] ?? false) === true) {
         $prepareResult = smile_design_prepare_missing_reference_views($caseId, $beforePhotoId, $userId);
         if (empty($prepareResult['ok'])) {
             return $prepareResult;

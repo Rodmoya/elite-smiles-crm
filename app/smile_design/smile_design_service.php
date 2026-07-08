@@ -4459,6 +4459,11 @@ function smile_design_delete_case(int $caseId, ?int $userId = null): array
 
 function smile_design_prepare_missing_reference_views(int $caseId, int $frontPhotoId, ?int $userId = null): array
 {
+    // AI-generated left/right reference views are intentionally disabled.
+    // Front-only generation and revisions should never fail because those
+    // optional planning views are missing.
+    return ['ok' => true, 'created' => []];
+
     $case = smile_design_case($caseId);
     if (!$case) {
         return ['ok' => false, 'message' => 'Smile case not found.'];

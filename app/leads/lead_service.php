@@ -1595,14 +1595,20 @@ if (!function_exists('lead_create_minimal')) {
                 }
             }
 
-            $firstTouchSms = ['attempted' => false, 'sent' => false];
+            $suppressFirstTouchSms = !empty($data['suppress_first_touch_sms']);
+            $firstTouchSms = [
+                'attempted' => false,
+                'sent' => false,
+                'body' => '',
+                'status_label' => $suppressFirstTouchSms ? 'Auto new-lead SMS suppressed.' : '',
+            ];
             if ($leadId > 0 && !function_exists('lead_ai_maybe_send_new_lead_sms')) {
                 $leadAiPath = __DIR__ . '/lead_ai.php';
                 if (is_file($leadAiPath)) {
                     require_once $leadAiPath;
                 }
             }
-            if ($leadId > 0 && function_exists('lead_ai_maybe_send_new_lead_sms')) {
+            if (!$suppressFirstTouchSms && $leadId > 0 && function_exists('lead_ai_maybe_send_new_lead_sms')) {
                 try {
                     $firstTouchSms = lead_ai_maybe_send_new_lead_sms($leadId);
                 } catch (Throwable $e) {
@@ -1614,7 +1620,7 @@ if (!function_exists('lead_create_minimal')) {
                     }
                 }
             }
-            if ($leadId > 0 && empty($firstTouchSms['attempted'])) {
+            if (!$suppressFirstTouchSms && $leadId > 0 && empty($firstTouchSms['attempted'])) {
                 try {
                     $firstTouchSms = lead_force_send_first_touch_sms($leadId);
                 } catch (Throwable $e) {

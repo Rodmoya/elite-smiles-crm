@@ -22,6 +22,12 @@ if (is_post()) {
         $registration = patient_experience_register_device_from_setup_token($submittedToken);
         if (!$registration) {
             $errorMessage = 'This setup link is no longer valid. Generate a new one from the CRM.';
+        } elseif ($autoBegin && isset($setup['device_label']) && trim((string)$setup['device_label']) === 'Test Kiosk') {
+            $testSession = patient_experience_start_placeholder_session(null, 'Test Patient', null, (int)($registration['device_id'] ?? 0));
+            if (!empty($testSession['error'])) {
+                $errorMessage = 'The kiosk registered, but the test session could not start: ' . (string)$testSession['error'];
+                $registration = null;
+            }
         }
     }
 }

@@ -94,11 +94,13 @@ $setupHintUrl = base_url('patient-experience.php');
             const progressBar = document.getElementById('progress-bar');
             const progressLabel = document.getElementById('progress-label');
             const deviceTokenStorageKey = 'patient_experience_device_token';
+            const autoBeginForms = (new URLSearchParams(window.location.search).get('auto_begin') || '') === '1';
             let kioskToken = window.sessionStorage.getItem('patient_experience_kiosk_token') || '';
             let currentSessionId = Number(window.sessionStorage.getItem('patient_experience_session_id') || 0);
             let deviceToken = '';
             let currentDevice = null;
             let polling = true;
+            let autoBeginTriggered = false;
 
             function readCookie(name) {
                 const prefix = name + '=';
@@ -222,6 +224,7 @@ $setupHintUrl = base_url('patient-experience.php');
             function renderIdle() {
                 kioskToken = '';
                 currentSessionId = 0;
+                autoBeginTriggered = false;
                 window.sessionStorage.removeItem('patient_experience_kiosk_token');
                 window.sessionStorage.removeItem('patient_experience_session_id');
                 setProgress(0, 'Waiting for front desk');
@@ -240,6 +243,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 kioskToken = '';
                 currentSessionId = 0;
                 currentDevice = null;
+                autoBeginTriggered = false;
                 window.sessionStorage.removeItem('patient_experience_kiosk_token');
                 window.sessionStorage.removeItem('patient_experience_session_id');
                 setProgress(0, 'Setup needed');
@@ -273,6 +277,14 @@ $setupHintUrl = base_url('patient-experience.php');
                     + '</div>';
                 app.querySelector('.begin-checkin').addEventListener('click', beginSession);
                 app.querySelector('.cancel-checkin').addEventListener('click', cancelSession);
+                if (autoBeginForms && !autoBeginTriggered) {
+                    autoBeginTriggered = true;
+                    window.setTimeout(function () {
+                        if (kioskToken && currentSessionId === Number(session.id || currentSessionId || 0)) {
+                            beginSession();
+                        }
+                    }, 250);
+                }
             }
 
             function renderComplete() {

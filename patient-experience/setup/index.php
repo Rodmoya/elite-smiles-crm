@@ -12,6 +12,7 @@ $setupToken = trim((string)get('token', ''));
 $setup = patient_experience_find_valid_setup_token($setupToken);
 $registration = null;
 $errorMessage = '';
+$autoBegin = trim((string)get('auto_begin', '')) === '1';
 
 if (is_post()) {
     $submittedToken = trim((string)post('setup_token', ''));
@@ -27,6 +28,7 @@ if (is_post()) {
 
 $logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $kioskUrl = base_url('patient-experience/kiosk/');
+$kioskRedirectUrl = $autoBegin ? $kioskUrl . (str_contains($kioskUrl, '?') ? '&' : '?') . 'auto_begin=1' : $kioskUrl;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -60,7 +62,7 @@ $kioskUrl = base_url('patient-experience/kiosk/');
                     <script>
                         (function () {
                             var deviceToken = <?= json_encode((string)$registration['device_token']) ?>;
-                            var kioskUrl = <?= json_encode($kioskUrl) ?>;
+                            var kioskUrl = <?= json_encode($kioskRedirectUrl) ?>;
                             try {
                                 window.localStorage.setItem('patient_experience_device_token', deviceToken);
                             } catch (error) {}

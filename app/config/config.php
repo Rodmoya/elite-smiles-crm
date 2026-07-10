@@ -71,6 +71,11 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_LEAD_EMAIL_TO_TEXT_RECIPIENT', $_ENV['ELITE_LEAD_EMAIL_TO_TEXT_RECIPIENT'] ?? '8016037011@txt.att.net');
     define('ELITE_WEBSITE_WEBHOOK_SECRET', $_ENV['ELITE_WEBSITE_WEBHOOK_SECRET'] ?? '');
     define('ELITE_CODEX_API_TOKEN', $_ENV['ELITE_CODEX_API_TOKEN'] ?? '');
+    define('ELITE_CODEX_LEGACY_API_ENABLED', ($_ENV['ELITE_CODEX_LEGACY_API_ENABLED'] ?? 'false') === 'true');
+    define('ELITE_CODEX_TRUST_PROXY_HTTPS', ($_ENV['ELITE_CODEX_TRUST_PROXY_HTTPS'] ?? 'false') === 'true');
+    define('ELITE_CODEX_V1_REQUEST_TTL_SECONDS', is_numeric($_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS'] ?? null)
+        ? max(30, min(300, (int)$_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS']))
+        : 60);
 
     define('META_WEBHOOK_SECRET',          $_ENV['META_WEBHOOK_SECRET']          ?? '');
     define('META_VERIFY_TOKEN',            $_ENV['META_VERIFY_TOKEN']            ?? '');
@@ -177,7 +182,9 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'email_to_text_recipient' => ELITE_LEAD_EMAIL_TO_TEXT_RECIPIENT,
         ],
         'codex_api' => [
-            'enabled' => ELITE_CODEX_API_TOKEN !== '',
+            'legacy_enabled' => ELITE_CODEX_LEGACY_API_ENABLED && ELITE_CODEX_API_TOKEN !== '',
+            'trust_proxy_https' => ELITE_CODEX_TRUST_PROXY_HTTPS,
+            'v1_request_ttl_seconds' => ELITE_CODEX_V1_REQUEST_TTL_SECONDS,
         ],
         'smtp' => [
             'host' => SMTP_HOST,

@@ -20,6 +20,9 @@ require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
 require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
+if (defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1) {
+    require_once dirname(__DIR__) . '/core/codex_api_security.php';
+}
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -27,7 +30,11 @@ header('Cache-Control: no-store');
 if (!function_exists('codex_api_response')) {
     function codex_api_response(array $payload, int $statusCode = 200): never
     {
+        if (defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1 && function_exists('codex_security_finalize')) {
+            codex_security_finalize($statusCode, $payload);
+        }
         http_response_code($statusCode);
+        header('X-Content-Type-Options: nosniff');
         echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -38,6 +45,11 @@ if (!function_exists('codex_api_body')) {
     {
         static $body = null;
         if (is_array($body)) {
+            return $body;
+        }
+
+        if (defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1 && isset($GLOBALS['codex_api_v1_body']) && is_array($GLOBALS['codex_api_v1_body'])) {
+            $body = $GLOBALS['codex_api_v1_body'];
             return $body;
         }
 
@@ -144,6 +156,28 @@ if (!function_exists('codex_api_text_excerpt')) {
     }
 }
 
+if (!function_exists('codex_api_record_outbound_note')) {
+    function codex_api_record_outbound_note(int $leadId, string $channel, string $subject, string $body, string $createdBy, array $metadata = []): void
+    {
+        if ($leadId <= 0 || trim($body) === '' || !function_exists('lead_ai_create_outbound_note')) {
+            return;
+        }
+        try {
+            lead_ai_create_outbound_note($leadId, $channel, $subject, $body, array_merge([
+                'sent_at' => date('Y-m-d H:i:s'),
+                'created_by' => $createdBy !== '' ? $createdBy : 'Codex',
+                'source' => 'codex_operator_api',
+            ], $metadata));
+        } catch (Throwable $e) {
+            esm_log('codex_api', 'Outbound communication succeeded but its lead note could not be created.', [
+                'lead_id' => $leadId,
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+
 if (!function_exists('codex_api_notification_assistant_card')) {
     function codex_api_notification_assistant_card(array $row, string $type = 'reply'): array
     {
@@ -218,13 +252,29 @@ if (!function_exists('codex_api_token_from_request')) {
             return trim($headerToken);
         }
 
-        return trim((string) codex_api_value('token', ''));
+        return '';
     }
 }
 
 if (!function_exists('codex_api_auth')) {
     function codex_api_auth(): void
     {
+        if (defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1) {
+            $context = $GLOBALS['codex_api_security_context'] ?? null;
+            if (is_array($context) && !empty($context['client_id'])) {
+                return;
+            }
+            codex_api_response(['ok' => false, 'message' => 'Unauthorized.'], 401);
+        }
+
+        if (!defined('ELITE_CODEX_LEGACY_API_ENABLED') || !ELITE_CODEX_LEGACY_API_ENABLED) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Legacy Codex API is disabled. Use the versioned Codex API.',
+                'upgrade' => '/app/api/codex/v1/',
+            ], 410);
+        }
+
         $expected = trim((string)(defined('ELITE_CODEX_API_TOKEN') ? ELITE_CODEX_API_TOKEN : ''));
         if ($expected === '') {
             codex_api_response(['ok' => false, 'message' => 'Codex API token is not configured.'], 503);
@@ -276,7 +326,14 @@ if (!function_exists('codex_api_capabilities')) {
         codex_api_response([
             'ok' => true,
             'name' => 'Elite Smiles Codex Control API',
-            'version' => '2026-07-02',
+            'version' => '2026-07-10-v1',
+            'security' => [
+                'header_only_bearer_token' => defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1,
+                'signed_requests' => defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1,
+                'replay_protection' => defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1,
+                'scoped_permissions' => defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1,
+                'idempotency_required_for_post' => defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1,
+            ],
             'safety_rules' => [
                 'patient_facing_send_requires_explicit_approval' => true,
                 'stage_change_requires_explicit_stage_approval' => true,
@@ -959,6 +1016,9 @@ if (!function_exists('codex_api_follow_up_lead')) {
                 if (empty($sent['ok'])) {
                     codex_api_response(['ok' => false, 'message' => (string)($sent['message'] ?? 'Email failed.'), 'lead_id' => $leadId], 502);
                 }
+                codex_api_record_outbound_note($leadId, 'email', $subject, $message, $createdBy, [
+                    'email_id' => (int)($sent['email_id'] ?? 0),
+                ]);
             } elseif ($channel === 'sms') {
                 if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
                     codex_api_response(['ok' => false, 'message' => 'This lead has opted out of SMS.', 'lead_id' => $leadId], 409);
@@ -1002,6 +1062,10 @@ if (!function_exists('codex_api_follow_up_lead')) {
                     'source' => 'codex_operator_api',
                 ], $createdBy);
                 lead_comm_update_rollup($leadId);
+                codex_api_record_outbound_note($leadId, 'sms', '', $sentBody, $createdBy, [
+                    'message_id' => $messageRecordId,
+                    'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+                ]);
             }
 
             lead_comm_insert_activity($leadId, 'operator_follow_up', $note, [
@@ -1922,11 +1986,17 @@ try {
         if (empty($result['ok'])) {
             codex_api_response(['ok' => false, 'message' => (string)($result['message'] ?? 'Email failed.'), 'lead_id' => $leadId], 502);
         }
-        lead_comm_mark_read($leadId);
-        lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after Codex API email response.', [
+        $createdBy = (string) codex_api_value('created_by', 'Codex');
+        codex_api_record_outbound_note($leadId, 'email', (string) codex_api_value('subject', ''), (string) codex_api_value('body', ''), $createdBy, [
             'email_id' => (int)($result['email_id'] ?? 0),
-            'source' => 'codex_api',
-        ], (string) codex_api_value('created_by', 'Codex'));
+        ]);
+        if (filter_var(codex_api_value('mark_inbound_reviewed', false), FILTER_VALIDATE_BOOLEAN)) {
+            lead_comm_mark_read($leadId);
+            lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after an explicitly reviewed Codex API email response.', [
+                'email_id' => (int)($result['email_id'] ?? 0),
+                'source' => 'codex_api',
+            ], $createdBy);
+        }
         lead_comm_update_rollup($leadId);
         codex_api_response(['ok' => true, 'message' => 'Email sent and logged.', 'lead_id' => $leadId, 'email_id' => (int)($result['email_id'] ?? 0), 'thread' => codex_api_timeline($leadId)]);
     }
@@ -1981,11 +2051,17 @@ try {
             'twilio_sid' => $sendResult['twilio_sid'] ?? '',
             'source' => 'codex_api',
         ], 'Codex');
-        lead_comm_mark_read($leadId);
-        lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after Codex API SMS response.', [
+        codex_api_record_outbound_note($leadId, 'sms', '', $sentBody, (string)codex_api_value('created_by', 'Codex'), [
             'message_id' => $messageRecordId,
-            'source' => 'codex_api',
-        ], 'Codex');
+            'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+        ]);
+        if (filter_var(codex_api_value('mark_inbound_reviewed', false), FILTER_VALIDATE_BOOLEAN)) {
+            lead_comm_mark_read($leadId);
+            lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Inbound notification cleared after an explicitly reviewed Codex API SMS response.', [
+                'message_id' => $messageRecordId,
+                'source' => 'codex_api',
+            ], 'Codex');
+        }
         lead_comm_update_rollup($leadId);
         codex_api_response(['ok' => true, 'message' => 'SMS sent and logged.', 'lead_id' => $leadId, 'thread' => codex_api_timeline($leadId)]);
     }

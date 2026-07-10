@@ -21,6 +21,35 @@ foreach (array_slice($argv, 2) as $argument) {
 
 codex_security_ensure_schema();
 
+if ($command === 'migrate-legacy-credential') {
+    $output = trim((string)($options['output'] ?? ''));
+    $endpoint = trim((string)($options['endpoint'] ?? ''));
+    $token = trim((string)(defined('ELITE_CODEX_API_TOKEN') ? ELITE_CODEX_API_TOKEN : ''));
+    if ($output === '' || $endpoint === '' || $token === '') {
+        fwrite(STDERR, "Migration requires the configured ELITE_CODEX_API_TOKEN plus --output and --endpoint.\n");
+        exit(2);
+    }
+    $credential = [
+        'client_id' => null,
+        'label' => 'Migrated Codex Operator',
+        'token' => $token,
+        'endpoint' => rtrim($endpoint, '/') . '/',
+        'scopes' => ['system:read', 'leads:read', 'leads:write', 'messages:draft', 'messages:send', 'stages:write', 'audit:read'],
+        'expires_at' => date('Y-m-d H:i:s', strtotime('+90 days')),
+        'created_at' => date(DATE_ATOM),
+    ];
+    $directory = dirname($output);
+    if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+        throw new RuntimeException('Could not create credential directory.');
+    }
+    if (file_put_contents($output, json_encode($credential, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX) === false) {
+        throw new RuntimeException('Could not write credential file.');
+    }
+    @chmod($output, 0600);
+    echo 'Prepared the one-time v1 migration credential at ' . $output . ".\n";
+    exit(0);
+}
+
 if ($command === 'create') {
     $label = trim((string)($options['label'] ?? 'Codex Operator'));
     $scopes = array_values(array_filter(array_map('trim', explode(',', (string)($options['scopes'] ?? 'system:read,leads:read,leads:write,messages:draft,messages:send,stages:write,audit:read')))));
@@ -76,6 +105,7 @@ if ($command === 'revoke') {
 }
 
 echo "Usage:\n";
+echo "  php bin/codex-api-client.php migrate-legacy-credential --endpoint=https://example.com/crm/app/api/codex/v1/ --output=.secrets/codex-v1.json\n";
 echo "  php bin/codex-api-client.php create --label=Codex --output=.secrets/codex-v1.json [--scopes=...] [--expires=YYYY-MM-DD HH:MM:SS]\n";
 echo "  php bin/codex-api-client.php list\n";
 echo "  php bin/codex-api-client.php revoke --id=1\n";

@@ -53,3 +53,5 @@ The standard Codex operator has `system:read`, `leads:read`, `leads:write`, `mes
 Patient-facing sends still require `send_approved=true`. Stage changes still require `stage_approved=true`. Outbound communications create CRM messages, activities, and lead notes. Unread inbound messages remain unread unless `mark_inbound_reviewed=true` is explicitly supplied.
 
 The legacy static-token endpoint is disabled unless `ELITE_CODEX_LEGACY_API_ENABLED=true` is deliberately configured.
+
+On the first production v1 request only, if no active v1 client exists, the configured legacy secret can register itself as the initial scoped client. Prepare that signed migration credential locally with `migrate-legacy-credential`. Once any active v1 client exists, this bootstrap path is permanently unavailable unless every client is revoked or expired.

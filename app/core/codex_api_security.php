@@ -311,6 +311,36 @@ if (!function_exists('codex_security_authenticate')) {
             'token_hash' => hash('sha256', $token),
             'status' => 'active',
         ]);
+        if (!$client) {
+            $activeClientCount = (int)db_value("SELECT COUNT(*) FROM codex_api_clients WHERE status = 'active' AND (expires_at IS NULL OR expires_at >= :now)", [
+                'now' => date('Y-m-d H:i:s'),
+            ]);
+            $legacyToken = trim((string)(defined('ELITE_CODEX_API_TOKEN') ? ELITE_CODEX_API_TOKEN : ''));
+            if ($activeClientCount === 0 && $legacyToken !== '' && hash_equals(hash('sha256', $legacyToken), hash('sha256', $token))) {
+                $bootstrapScopes = ['system:read', 'leads:read', 'leads:write', 'messages:draft', 'messages:send', 'stages:write', 'audit:read'];
+                db_query(
+                    'INSERT INTO codex_api_clients (label, token_prefix, token_hash, scopes_json, status, rate_limit_per_minute, expires_at, created_at) VALUES (:label, :token_prefix, :token_hash, :scopes_json, :status, :rate_limit, :expires_at, :created_at)',
+                    [
+                        'label' => 'Migrated Codex Operator',
+                        'token_prefix' => substr($token, 0, 20),
+                        'token_hash' => hash('sha256', $token),
+                        'scopes_json' => json_encode($bootstrapScopes, JSON_UNESCAPED_SLASHES),
+                        'status' => 'active',
+                        'rate_limit' => 90,
+                        'expires_at' => date('Y-m-d H:i:s', strtotime('+90 days')),
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]
+                );
+                $client = db_one('SELECT * FROM codex_api_clients WHERE token_hash = :token_hash AND status = :status LIMIT 1', [
+                    'token_hash' => hash('sha256', $token),
+                    'status' => 'active',
+                ]);
+                esm_log('codex_api_security', 'Migrated the configured legacy Codex secret into the v1 client registry.', [
+                    'client_id' => (int)($client['id'] ?? 0),
+                    'token_prefix' => substr($token, 0, 12),
+                ]);
+            }
+        }
         if (!$client || (!empty($client['expires_at']) && strtotime((string)$client['expires_at']) < time())) {
             codex_security_json(['ok' => false, 'message' => 'Unauthorized.'], 401);
         }

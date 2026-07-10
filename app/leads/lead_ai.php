@@ -95,6 +95,9 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, personal, professional, persuasive, never pushy, perfect grammar and capitalization.',
+            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.has_history is true, you are continuing an existing conversation and must not open with a fresh greeting or reintroduce yourself.',
+            'If thread_state.conversation_mode is reply or follow_up, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
+            'Only use a greeting when thread_state.conversation_mode is first_touch and there is no prior thread history.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
             'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
@@ -117,6 +120,9 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, polished, professional, persuasive, personal, never pushy. Write like a real office team member, not marketing automation.',
+            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.has_history is true, you are continuing an existing conversation and must not open with a fresh greeting or reintroduce yourself.',
+            'If thread_state.conversation_mode is reply or follow_up, the body should start with the response itself, not "Hi", "Hello", or the patient name.',
+            'Only use a greeting when thread_state.conversation_mode is first_touch and there is no prior thread history.',
             'Email format: concise subject, plain-text body, short paragraphs, signed "The Elite Smiles Team" with no phone number.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
             'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
@@ -282,10 +288,154 @@ if (!function_exists('lead_ai_recent_activity_log')) {
     }
 }
 
-if (!function_exists('lead_ai_context')) {
-    function lead_ai_context(array $lead, string $latestMessage = '', string $mode = 'inbound_sms'): string
+if (!function_exists('lead_ai_text_preview')) {
+    function lead_ai_text_preview(string $text, int $limit = 180): string
+    {
+        $text = trim(preg_replace('/\s+/', ' ', str_replace(["\r\n", "\r"], "\n", $text)) ?? '');
+        if ($text === '') {
+            return '';
+        }
+
+        return mb_strlen($text) > $limit ? mb_substr($text, 0, max(1, $limit - 1)) . '…' : $text;
+    }
+}
+
+if (!function_exists('lead_ai_thread_state')) {
+    function lead_ai_thread_state(array $lead, string $mode = 'inbound_sms'): array
     {
         $leadId = (int)($lead['id'] ?? 0);
+        $smsThread = lead_ai_recent_sms_thread($leadId, 8);
+        $emailThread = lead_ai_recent_email_thread($leadId, 6);
+
+        $events = [];
+
+        foreach ($smsThread as $message) {
+            $events[] = [
+                'channel' => 'sms',
+                'direction' => (string)($message['direction'] ?? ''),
+                'body' => (string)($message['body'] ?? ''),
+                'subject' => '',
+                'created_at' => (string)($message['created_at'] ?? ''),
+            ];
+        }
+
+        foreach ($emailThread as $email) {
+            $events[] = [
+                'channel' => 'email',
+                'direction' => (string)($email['direction'] ?? ''),
+                'body' => (string)($email['body'] ?? ''),
+                'subject' => (string)($email['subject'] ?? ''),
+                'created_at' => (string)($email['created_at'] ?? ''),
+            ];
+        }
+
+        usort($events, static function (array $left, array $right): int {
+            $leftAt = (string)($left['created_at'] ?? '');
+            $rightAt = (string)($right['created_at'] ?? '');
+            $cmp = strcmp($leftAt, $rightAt);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            return strcmp((string)($left['channel'] ?? ''), (string)($right['channel'] ?? ''));
+        });
+
+        $lastInbound = null;
+        $lastOutbound = null;
+        $lastEvent = null;
+
+        foreach ($events as $event) {
+            $direction = (string)($event['direction'] ?? '');
+            if ($direction === 'inbound') {
+                $lastInbound = $event;
+            } elseif ($direction === 'outbound') {
+                $lastOutbound = $event;
+            }
+            $lastEvent = $event;
+        }
+
+        $hasHistory = $events !== [];
+        $conversationMode = 'first_touch';
+        if ($hasHistory) {
+            $conversationMode = 'follow_up';
+            if (
+                $lastInbound !== null
+                && (
+                    $lastOutbound === null
+                    || strcmp((string)($lastInbound['created_at'] ?? ''), (string)($lastOutbound['created_at'] ?? '')) >= 0
+                )
+            ) {
+                $conversationMode = 'reply';
+            }
+        }
+
+        $summaryParts = [];
+        if ($lastInbound !== null) {
+            $summaryParts[] = 'Latest inbound ' . (string)($lastInbound['channel'] ?? 'message') . ': ' . lead_ai_text_preview((string)($lastInbound['body'] ?? ''), 180);
+        }
+        if ($lastOutbound !== null) {
+            $summaryParts[] = 'Latest outbound ' . (string)($lastOutbound['channel'] ?? 'message') . ': ' . lead_ai_text_preview((string)($lastOutbound['body'] ?? ''), 180);
+        }
+        if ($summaryParts === []) {
+            $summaryParts[] = 'No prior thread history found.';
+        }
+
+        return [
+            'has_history' => $hasHistory,
+            'conversation_mode' => $conversationMode,
+            'suppress_greeting' => $hasHistory,
+            'summary' => implode(' ', $summaryParts),
+            'last_inbound' => $lastInbound !== null ? [
+                'channel' => (string)($lastInbound['channel'] ?? ''),
+                'body' => lead_ai_text_preview((string)($lastInbound['body'] ?? ''), 220),
+                'created_at' => (string)($lastInbound['created_at'] ?? ''),
+            ] : null,
+            'last_outbound' => $lastOutbound !== null ? [
+                'channel' => (string)($lastOutbound['channel'] ?? ''),
+                'body' => lead_ai_text_preview((string)($lastOutbound['body'] ?? ''), 220),
+                'created_at' => (string)($lastOutbound['created_at'] ?? ''),
+            ] : null,
+            'latest_event' => $lastEvent !== null ? [
+                'channel' => (string)($lastEvent['channel'] ?? ''),
+                'direction' => (string)($lastEvent['direction'] ?? ''),
+                'body' => lead_ai_text_preview((string)($lastEvent['body'] ?? ''), 220),
+                'created_at' => (string)($lastEvent['created_at'] ?? ''),
+            ] : null,
+            'sms_count' => count($smsThread),
+            'email_count' => count($emailThread),
+            'mode' => $mode,
+        ];
+    }
+}
+
+if (!function_exists('lead_ai_strip_redundant_greeting')) {
+    function lead_ai_strip_redundant_greeting(string $text, string $firstName = '', bool $suppressGreeting = false): string
+    {
+        $text = trim(str_replace(["\r\n", "\r"], "\n", $text));
+        if ($text === '' || !$suppressGreeting) {
+            return $text;
+        }
+
+        $patterns = [
+            '/^\s*(?:hi|hello|hey|good morning|good afternoon|good evening)(?:\s+' . preg_quote($firstName, '/') . ')?[!,.:]*\s+/i',
+            '/^\s*' . preg_quote($firstName, '/') . '[,!\.\:-]*\s+/i',
+        ];
+
+        $cleaned = preg_replace($patterns, '', $text, 1);
+        if (!is_string($cleaned)) {
+            return $text;
+        }
+
+        $cleaned = trim($cleaned);
+        return $cleaned !== '' ? $cleaned : $text;
+    }
+}
+
+if (!function_exists('lead_ai_context')) {
+    function lead_ai_context(array $lead, string $latestMessage = '', string $mode = 'inbound_sms', ?array $threadState = null): string
+    {
+        $leadId = (int)($lead['id'] ?? 0);
+        $threadState = $threadState ?? lead_ai_thread_state($lead, $mode);
 
         return json_encode([
             'mode' => $mode,
@@ -307,6 +457,7 @@ if (!function_exists('lead_ai_context')) {
                 'scheduling_preferred_time' => (string)($lead['scheduling_preferred_time'] ?? ''),
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1200),
             ],
+            'thread_state' => $threadState,
             'prompt_context' => $latestMessage,
             'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 8),
             'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
@@ -316,9 +467,10 @@ if (!function_exists('lead_ai_context')) {
 }
 
 if (!function_exists('lead_ai_email_context')) {
-    function lead_ai_email_context(array $lead, string $latestMessage = '', string $mode = 'email_draft'): string
+    function lead_ai_email_context(array $lead, string $latestMessage = '', string $mode = 'email_draft', ?array $threadState = null): string
     {
         $leadId = (int)($lead['id'] ?? 0);
+        $threadState = $threadState ?? lead_ai_thread_state($lead, $mode);
 
         return json_encode([
             'mode' => $mode,
@@ -340,6 +492,7 @@ if (!function_exists('lead_ai_email_context')) {
                 'next_follow_up_at' => (string)($lead['next_follow_up_at'] ?? ''),
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1600),
             ],
+            'thread_state' => $threadState,
             'prompt_context' => $latestMessage,
             'recent_email_thread' => lead_ai_recent_email_thread($leadId, 8),
             'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
@@ -522,9 +675,10 @@ if (!function_exists('lead_ai_create_outbound_note')) {
 if (!function_exists('lead_ai_generate_reply')) {
     function lead_ai_generate_reply(array $lead, string $latestMessage = '', string $mode = 'inbound_sms'): array
     {
+        $threadState = lead_ai_thread_state($lead, $mode);
         $result = lead_ai_json_response(
             lead_ai_system_prompt(),
-            'Create the best CRM lead response and note for this context: ' . lead_ai_context($lead, $latestMessage, $mode),
+            'Create the best CRM lead response and note for this context: ' . lead_ai_context($lead, $latestMessage, $mode, $threadState),
             lead_ai_schema(),
             'elite_smiles_lead_reply',
             'draft'
@@ -546,6 +700,12 @@ if (!function_exists('lead_ai_generate_reply')) {
             $data['needs_human_review'] = true;
         }
 
+        $data['reply'] = lead_ai_strip_redundant_greeting(
+            $data['reply'],
+            lead_ai_first_name($lead),
+            (bool)($threadState['suppress_greeting'] ?? false)
+        );
+
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 
@@ -556,9 +716,10 @@ if (!function_exists('lead_ai_generate_reply')) {
 if (!function_exists('lead_ai_generate_email')) {
     function lead_ai_generate_email(array $lead, string $latestMessage = '', string $mode = 'email_draft'): array
     {
+        $threadState = lead_ai_thread_state($lead, $mode);
         $result = lead_ai_json_response(
             lead_ai_email_system_prompt(),
-            'Create the best CRM patient email and internal note for this context: ' . lead_ai_email_context($lead, $latestMessage, $mode),
+            'Create the best CRM patient email and internal note for this context: ' . lead_ai_email_context($lead, $latestMessage, $mode, $threadState),
             lead_ai_email_schema(),
             'elite_smiles_lead_email',
             'draft'
@@ -581,6 +742,12 @@ if (!function_exists('lead_ai_generate_email')) {
             $data['should_send'] = false;
             $data['needs_human_review'] = true;
         }
+
+        $data['body'] = lead_ai_strip_redundant_greeting(
+            $data['body'],
+            lead_ai_first_name($lead),
+            (bool)($threadState['suppress_greeting'] ?? false)
+        );
 
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));

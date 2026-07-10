@@ -95,9 +95,10 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, personal, professional, persuasive, never pushy, perfect grammar and capitalization.',
-            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.has_history is true, you are continuing an existing conversation and must not open with a fresh greeting or reintroduce yourself.',
-            'If thread_state.conversation_mode is reply or follow_up, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
-            'Only use a greeting when thread_state.conversation_mode is first_touch and there is no prior thread history.',
+            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.active_thread is true, you are continuing a live back-and-forth and should not open with a fresh greeting or reintroduce yourself.',
+            'If thread_state.active_thread is false, a friendly greeting is allowed and often helpful for follow-up messages, as long as the reply still feels specific to the current lead and prior context.',
+            'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
+            'Only avoid the greeting when the thread is active and clearly a live conversation.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
             'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
@@ -120,9 +121,10 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, polished, professional, persuasive, personal, never pushy. Write like a real office team member, not marketing automation.',
-            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.has_history is true, you are continuing an existing conversation and must not open with a fresh greeting or reintroduce yourself.',
-            'If thread_state.conversation_mode is reply or follow_up, the body should start with the response itself, not "Hi", "Hello", or the patient name.',
-            'Only use a greeting when thread_state.conversation_mode is first_touch and there is no prior thread history.',
+            'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.active_thread is true, you are continuing a live back-and-forth and must not open with a fresh greeting or reintroduce yourself.',
+            'If thread_state.active_thread is false, a friendly greeting is allowed and often helpful for follow-up emails, as long as the body still feels specific to the current lead and prior context.',
+            'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, the body should start with the response itself, not "Hi", "Hello", or the patient name.',
+            'Only avoid the greeting when the thread is active and clearly a live conversation.',
             'Email format: concise subject, plain-text body, short paragraphs, signed "The Elite Smiles Team" with no phone number.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
             'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
@@ -306,6 +308,7 @@ if (!function_exists('lead_ai_thread_state')) {
         $leadId = (int)($lead['id'] ?? 0);
         $smsThread = lead_ai_recent_sms_thread($leadId, 8);
         $emailThread = lead_ai_recent_email_thread($leadId, 6);
+        $now = time();
 
         $events = [];
 
@@ -356,6 +359,7 @@ if (!function_exists('lead_ai_thread_state')) {
 
         $hasHistory = $events !== [];
         $conversationMode = 'first_touch';
+        $latestEventAt = null;
         if ($hasHistory) {
             $conversationMode = 'follow_up';
             if (
@@ -367,6 +371,12 @@ if (!function_exists('lead_ai_thread_state')) {
             ) {
                 $conversationMode = 'reply';
             }
+            $latestEventAt = $lastEvent !== null ? strtotime((string)($lastEvent['created_at'] ?? '')) : null;
+        }
+
+        $activeThread = false;
+        if ($latestEventAt !== null && $latestEventAt > 0) {
+            $activeThread = ($now - $latestEventAt) <= (2 * 60 * 60);
         }
 
         $summaryParts = [];
@@ -383,8 +393,10 @@ if (!function_exists('lead_ai_thread_state')) {
         return [
             'has_history' => $hasHistory,
             'conversation_mode' => $conversationMode,
-            'suppress_greeting' => $hasHistory,
+            'active_thread' => $activeThread,
+            'suppress_greeting' => $activeThread,
             'summary' => implode(' ', $summaryParts),
+            'latest_event_at' => $latestEventAt !== null && $latestEventAt > 0 ? date(DATE_ATOM, $latestEventAt) : null,
             'last_inbound' => $lastInbound !== null ? [
                 'channel' => (string)($lastInbound['channel'] ?? ''),
                 'body' => lead_ai_text_preview((string)($lastInbound['body'] ?? ''), 220),

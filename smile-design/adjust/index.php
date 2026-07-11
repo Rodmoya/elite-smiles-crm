@@ -1917,6 +1917,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (autoToothRegion) autoToothRegion.dataset.segmentation = 'loading';
         } catch (error) {
           openCvRequestKey = '';
+          if (autoToothRegion) {
+            autoToothRegion.dataset.segmentation = 'error';
+            autoToothRegion.dataset.segmentationError = String(error && error.message ? error.message : error);
+          }
         }
         return null;
       }

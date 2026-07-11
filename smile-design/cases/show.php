@@ -10,6 +10,8 @@ if (!$case) {
     http_response_code(404);
     exit('Case not found.');
 }
+$caseNotes = trim((string)($case['notes'] ?? ''));
+$hasImportedLeadNotes = smile_design_is_imported_lead_notes($caseNotes);
 
 $photos = smile_design_case_photos($caseId);
 $beforePhotos = smile_design_before_photos($caseId);
@@ -388,10 +390,25 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         <?php endif; ?>
                         <p class="mt-1 text-slate-600"><?= e(smile_design_treatment_scope_label((string)$caseTreatmentScope, (string)($case['procedure_interest'] ?? ''))) ?> Ã‚Â· <?= e(smile_design_smile_width_label((string)$caseSmileWidthGoal)) ?></p>
                     </div>
-                    <div class="rounded-md bg-slate-50 p-4">
-                        <p class="text-slate-500">Notes</p>
-                        <p class="mt-1 whitespace-pre-wrap leading-6 text-slate-700"><?= e((string)($case['notes'] ?: 'No intake notes yet.')) ?></p>
-                    </div>
+                    <?php if ($caseNotes !== ''): ?>
+                        <?php if ($hasImportedLeadNotes): ?>
+                            <details class="group rounded-md bg-slate-50">
+                                <summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-slate-600">
+                                    <span class="font-medium">Lead notes</span>
+                                    <span class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 group-open:hidden">Show</span>
+                                    <span class="hidden text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 group-open:inline">Hide</span>
+                                </summary>
+                                <div class="border-t border-slate-200 px-4 pb-4 pt-3">
+                                    <p class="whitespace-pre-wrap leading-6 text-slate-700"><?= e($caseNotes) ?></p>
+                                </div>
+                            </details>
+                        <?php else: ?>
+                            <div class="rounded-md bg-slate-50 p-4">
+                                <p class="text-slate-500">Notes</p>
+                                <p class="mt-1 whitespace-pre-wrap leading-6 text-slate-700"><?= e($caseNotes) ?></p>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                     <details class="rounded-md bg-slate-50 p-4">
                         <summary class="cursor-pointer list-none">
                             <div class="flex items-start justify-between gap-3">

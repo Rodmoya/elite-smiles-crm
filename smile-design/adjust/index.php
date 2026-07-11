@@ -1821,6 +1821,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         let rgba = null;
         let rgb = null;
         let markers = null;
+        let enamel = null;
+        let closedEnamel = null;
+        let allowedRegion = null;
+        let closeKernel = null;
+        let growKernel = null;
         try {
           const rgbaData = new Uint8ClampedArray(data.length);
           rgbaData.set(data);
@@ -1829,10 +1834,24 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           window.cv.cvtColor(rgba, rgb, window.cv.COLOR_RGBA2RGB);
           markers = window.cv.Mat.ones(height, width, window.cv.CV_32SC1);
 
+          enamel = window.cv.Mat.zeros(height, width, window.cv.CV_8UC1);
           for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
             for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
               const index = (y * width) + x;
-              if (softMask[index]) markers.data32S[index] = 0;
+              enamel.data[index] = softMask[index] ? 255 : 0;
+            }
+          }
+          closeKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(3, 3));
+          growKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(5, 5));
+          closedEnamel = new window.cv.Mat();
+          allowedRegion = new window.cv.Mat();
+          window.cv.morphologyEx(enamel, closedEnamel, window.cv.MORPH_CLOSE, closeKernel);
+          window.cv.dilate(closedEnamel, allowedRegion, growKernel);
+
+          for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+            for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
+              const index = (y * width) + x;
+              if (allowedRegion.data[index]) markers.data32S[index] = 0;
             }
           }
 
@@ -1873,7 +1892,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
               for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
                 const index = (y * width) + x;
-                if (markers.data32S[index] !== seed.label || !softMask[index]) continue;
+                if (markers.data32S[index] !== seed.label || !allowedRegion.data[index]) continue;
                 toothMask[index] = 1;
                 count += 1;
               }
@@ -1898,6 +1917,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (rgba) rgba.delete();
           if (rgb) rgb.delete();
           if (markers) markers.delete();
+          if (enamel) enamel.delete();
+          if (closedEnamel) closedEnamel.delete();
+          if (allowedRegion) allowedRegion.delete();
+          if (closeKernel) closeKernel.delete();
+          if (growKernel) growKernel.delete();
         }
       }
 

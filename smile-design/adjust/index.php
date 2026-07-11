@@ -172,7 +172,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                         </div>
                         <svg id="adjust-tooth-select-layer" class="absolute inset-0 z-[24] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                             <polygon id="adjust-auto-tooth-region" points="" fill="rgba(244,63,94,0.50)" stroke="transparent" stroke-width="0" stroke-linejoin="round" class="cursor-pointer"></polygon>
-                            <text id="adjust-auto-tooth-label" x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="700">#8</text>
                         </svg>
                         <div id="adjust-anchor-overlay" class="absolute inset-0"></div>
                         <svg id="adjust-anchor-path" class="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -331,9 +330,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         #adjust-auto-tooth-region {
             pointer-events: auto;
         }
-        #adjust-auto-tooth-label {
-            pointer-events: none;
-        }
         [data-editor-mode]:disabled,
         [data-brush-action]:disabled,
         #adjust-brush-size:disabled {
@@ -356,7 +352,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       const pathFill = pathSvg ? pathSvg.querySelector('polygon') : null;
       const toothSelectLayer = document.getElementById('adjust-tooth-select-layer');
       const autoToothRegion = document.getElementById('adjust-auto-tooth-region');
-      const autoToothLabel = document.getElementById('adjust-auto-tooth-label');
       const selectedToothLabel = document.getElementById('adjust-selected-tooth-label');
       const toothSelectButtons = Array.from(document.querySelectorAll('[data-tooth-number]'));
       const floatingControls = document.getElementById('adjust-floating-controls');
@@ -1187,6 +1182,70 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return contour;
       }
 
+      function buildMaskBoundaryContour(mask, width, height, bounds) {
+        const minX = Math.max(1, Math.floor(bounds.minX));
+        const maxX = Math.min(width - 2, Math.ceil(bounds.maxX));
+        const minY = Math.max(1, Math.floor(bounds.minY));
+        const maxY = Math.min(height - 2, Math.ceil(bounds.maxY));
+        let sumX = 0;
+        let sumY = 0;
+        let pixelCount = 0;
+        for (let y = minY; y <= maxY; y += 1) {
+          for (let x = minX; x <= maxX; x += 1) {
+            if (!mask[(y * width) + x]) continue;
+            sumX += x;
+            sumY += y;
+            pixelCount += 1;
+          }
+        }
+        if (pixelCount < 12) return [];
+
+        const centerX = sumX / pixelCount;
+        const centerY = sumY / pixelCount;
+        const binCount = 64;
+        const bins = new Array(binCount).fill(null);
+        for (let y = minY; y <= maxY; y += 1) {
+          for (let x = minX; x <= maxX; x += 1) {
+            const index = (y * width) + x;
+            if (!mask[index]) continue;
+            const isBoundary = !mask[index - 1]
+              || !mask[index + 1]
+              || !mask[index - width]
+              || !mask[index + width]
+              || !mask[index - width - 1]
+              || !mask[index - width + 1]
+              || !mask[index + width - 1]
+              || !mask[index + width + 1];
+            if (!isBoundary) continue;
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const angle = Math.atan2(dy, dx);
+            const normalizedAngle = (angle + Math.PI) / (Math.PI * 2);
+            const binIndex = Math.max(0, Math.min(binCount - 1, Math.floor(normalizedAngle * binCount)));
+            const distance = (dx * dx) + (dy * dy);
+            if (!bins[binIndex] || distance > bins[binIndex].distance) {
+              bins[binIndex] = { x, y, distance };
+            }
+          }
+        }
+
+        const ordered = bins.filter(Boolean).map(function (point) {
+          return { x: point.x, y: point.y };
+        });
+        if (ordered.length < 12) return [];
+        const smoothed = ordered.map(function (point, index) {
+          const previous = ordered[(index - 1 + ordered.length) % ordered.length];
+          const next = ordered[(index + 1) % ordered.length];
+          return {
+            x: (point.x * 0.68) + (previous.x * 0.16) + (next.x * 0.16),
+            y: (point.y * 0.68) + (previous.y * 0.16) + (next.y * 0.16)
+          };
+        });
+        return smoothed.map(function (point) {
+          return canvasPointToImagePct(point, width, height);
+        });
+      }
+
       function clampRect(rect, width, height) {
         const minX = Math.max(0, Math.min(width - 1, Math.floor(rect.minX)));
         const minY = Math.max(0, Math.min(height - 1, Math.floor(rect.minY)));
@@ -1453,7 +1512,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           minY: Math.max(0, Math.floor(bounds.minY !== undefined ? bounds.minY : smileBounds.minY)),
           maxY: Math.min(height - 1, Math.ceil(bounds.maxY !== undefined ? bounds.maxY : smileBounds.maxY))
         };
-        const rawContour = buildToothPixelContour(contourMask, width, height, paddedBounds);
+        const boundaryContour = buildMaskBoundaryContour(contourMask, width, height, paddedBounds);
+        const columnContour = buildToothPixelContour(contourMask, width, height, paddedBounds);
+        const rawContour = boundaryContour.length >= 12 ? boundaryContour : columnContour;
         const fallback = pointBoundsFromPixelBounds(paddedBounds, width, height);
         const insetX = Math.max(0.05, (fallback.right - fallback.left) * 0.08);
         const insetY = Math.max(0.04, (fallback.bottom - fallback.top) * 0.05);
@@ -1488,7 +1549,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           right: contourBounds.right,
           top: contourBounds.top,
           bottom: contourBounds.bottom,
-          source: usesPixelContour ? 'upper_tooth_slot_contour' : 'upper_tooth_slot_fallback'
+          source: usesPixelContour
+            ? (boundaryContour.length >= 12 ? 'upper_tooth_boundary_contour' : 'upper_tooth_slot_contour')
+            : 'upper_tooth_slot_fallback'
         };
       }
 
@@ -2650,9 +2713,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         toothSelectLayer.classList.toggle('active', showSelection);
         toothSelectLayer.style.display = showSelection ? 'block' : 'none';
         toothSelectLayer.style.pointerEvents = editorMode === 'automatic' ? 'auto' : 'none';
-        const showSelectionLabels = Array.isArray(selections) && selections.length <= 1;
         const selectedMarkup = (Array.isArray(selections) ? selections : []).map(function (selection) {
-          const bounds = getPointBounds(selection.polygon);
           const isCurrent = selection.number === getSelectedToothNumber();
           return ''
             + '<g data-selected-tooth="' + selection.number + '">'
@@ -2661,9 +2722,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
               ? (isCurrent ? 'rgba(244,63,94,0.56)' : 'rgba(244,63,94,0.34)')
               : 'rgba(244,63,94,0.42)')
             + '" stroke="transparent" stroke-width="0" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
-            + (showSelectionLabels
-              ? ('<text x="' + ((bounds.left + bounds.right) / 2) + '" y="' + (bounds.top + ((bounds.bottom - bounds.top) * 0.44)) + '" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="' + (isCurrent ? '700' : '600') + '">' + selection.label + '</text>')
-              : '')
             + '</g>';
         }).join('');
         toothSelectLayer.innerHTML = selectedMarkup;

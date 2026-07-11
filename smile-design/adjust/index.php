@@ -47,6 +47,18 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e(APP_NAME) ?> | Adjust Smile</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      window.openCvReady = new Promise(function (resolve) {
+        window.__resolveOpenCv = resolve;
+        window.Module = window.Module || {};
+        window.Module.onRuntimeInitialized = function () {
+          resolve(window.cv || null);
+        };
+      });
+    </script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js"
+            onload="if (window.cv && typeof window.cv.Mat === 'function') window.__resolveOpenCv(window.cv);"
+            onerror="window.__resolveOpenCv(null)"></script>
     <meta name="robots" content="noindex,nofollow">
 </head>
 <body class="h-screen overflow-hidden bg-slate-950 text-slate-950 antialiased">
@@ -404,6 +416,23 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       let externalEditObjectUrl = '';
+
+      async function waitForOpenCv(timeoutMs) {
+        const deadline = Date.now() + Math.max(1000, timeoutMs || 7000);
+        while (Date.now() < deadline) {
+          if (window.cv && typeof window.cv.Mat === 'function') return true;
+          if (window.cv && typeof window.cv.then === 'function') {
+            try {
+              window.cv = await window.cv;
+              if (window.cv && typeof window.cv.Mat === 'function') return true;
+            } catch (error) {
+              return false;
+            }
+          }
+          await new Promise(function (resolve) { window.setTimeout(resolve, 50); });
+        }
+        return false;
+      }
 
       function clearExternalEditPreview() {
         if (externalEditObjectUrl) {
@@ -1738,6 +1767,135 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return output;
       }
 
+      function extractOpenCvMaskContour(binaryMask, width, height) {
+        if (!window.cv || typeof window.cv.Mat !== 'function') return [];
+        let source = null;
+        let contours = null;
+        let hierarchy = null;
+        let simplified = null;
+        try {
+          source = window.cv.Mat.zeros(height, width, window.cv.CV_8UC1);
+          for (let index = 0; index < binaryMask.length; index += 1) {
+            source.data[index] = binaryMask[index] ? 255 : 0;
+          }
+          contours = new window.cv.MatVector();
+          hierarchy = new window.cv.Mat();
+          window.cv.findContours(source, contours, hierarchy, window.cv.RETR_EXTERNAL, window.cv.CHAIN_APPROX_NONE);
+          if (!contours.size()) return [];
+          let bestIndex = 0;
+          let bestArea = 0;
+          for (let index = 0; index < contours.size(); index += 1) {
+            const candidate = contours.get(index);
+            const area = Math.abs(window.cv.contourArea(candidate, false));
+            candidate.delete();
+            if (area > bestArea) {
+              bestArea = area;
+              bestIndex = index;
+            }
+          }
+          const contour = contours.get(bestIndex);
+          simplified = new window.cv.Mat();
+          const perimeter = window.cv.arcLength(contour, true);
+          window.cv.approxPolyDP(contour, simplified, Math.max(0.35, perimeter * 0.0012), true);
+          contour.delete();
+          const points = [];
+          for (let index = 0; index < simplified.data32S.length; index += 2) {
+            points.push(canvasPointToImagePct({
+              x: simplified.data32S[index],
+              y: simplified.data32S[index + 1]
+            }, width, height));
+          }
+          return points.length >= 8 ? points : [];
+        } catch (error) {
+          return [];
+        } finally {
+          if (source) source.delete();
+          if (contours) contours.delete();
+          if (hierarchy) hierarchy.delete();
+          if (simplified) simplified.delete();
+        }
+      }
+
+      function buildOpenCvToothMasks(data, hardMask, softMask, width, height, upperBand, boundaries) {
+        if (!window.cv || typeof window.cv.watershed !== 'function') return null;
+        let rgba = null;
+        let rgb = null;
+        let markers = null;
+        try {
+          const rgbaData = new Uint8ClampedArray(data.length);
+          rgbaData.set(data);
+          rgba = window.cv.matFromImageData(new ImageData(rgbaData, width, height));
+          rgb = new window.cv.Mat();
+          window.cv.cvtColor(rgba, rgb, window.cv.COLOR_RGBA2RGB);
+          markers = window.cv.Mat.ones(height, width, window.cv.CV_32SC1);
+
+          for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+            for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
+              const index = (y * width) + x;
+              if (softMask[index]) markers.data32S[index] = 0;
+            }
+          }
+
+          const seeds = [];
+          visibleUpperTeeth.forEach(function (toothNumber, slotIndex) {
+            const left = boundaries[slotIndex];
+            const right = boundaries[slotIndex + 1];
+            const targetX = Math.round((left + right) / 2);
+            const targetY = Math.round(upperBand.minY + ((upperBand.maxY - upperBand.minY) * 0.48));
+            const nearest = findNearestToothMaskPixel(
+              hardMask,
+              width,
+              height,
+              targetX,
+              targetY,
+              Math.max(5, Math.round((right - left) * 0.55))
+            );
+            if (!nearest || nearest.x < left - 2 || nearest.x > right + 2) return;
+            const label = slotIndex + 2;
+            const radiusX = Math.max(1, Math.round((right - left) * 0.10));
+            const radiusY = Math.max(1, Math.round((upperBand.maxY - upperBand.minY) * 0.08));
+            for (let y = Math.max(upperBand.minY, nearest.y - radiusY); y <= Math.min(upperBand.maxY, nearest.y + radiusY); y += 1) {
+              for (let x = Math.max(left, nearest.x - radiusX); x <= Math.min(right, nearest.x + radiusX); x += 1) {
+                const index = (y * width) + x;
+                if (hardMask[index]) markers.data32S[index] = label;
+              }
+            }
+            markers.data32S[(nearest.y * width) + nearest.x] = label;
+            seeds.push({ toothNumber: toothNumber, label: label });
+          });
+          if (seeds.length < 8) return null;
+
+          window.cv.watershed(rgb, markers);
+          const output = {};
+          seeds.forEach(function (seed) {
+            const toothMask = new Uint8Array(width * height);
+            let count = 0;
+            for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+              for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
+                const index = (y * width) + x;
+                if (markers.data32S[index] !== seed.label || !softMask[index]) continue;
+                toothMask[index] = 1;
+                count += 1;
+              }
+            }
+            if (count >= 10) {
+              output[seed.toothNumber] = {
+                mask: toothMask,
+                contour: extractOpenCvMaskContour(toothMask, width, height),
+                count: count
+              };
+            }
+          });
+          return Object.keys(output).length >= 8 ? output : null;
+        } catch (error) {
+          return null;
+        } finally {
+          if (rgba) rgba.delete();
+          if (rgb) rgb.delete();
+          if (markers) markers.delete();
+        }
+      }
+
       function buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 24 || smileHeight < 8) return null;
@@ -1829,6 +1987,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           minY: smileBounds.minY,
           maxY: upperBandBottom
         };
+        const openCvMasks = buildOpenCvToothMasks(data, mask, softMask, width, height, upperBand, boundaries);
         const slots = {};
         visibleUpperTeeth.forEach(function (toothNumber, index) {
           const leftBoundary = boundaries[index];
@@ -1844,7 +2003,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           for (let x = segmentBounds.minX; x <= segmentBounds.maxX; x += 1) {
             hitCount += colHits[x] || 0;
           }
-          const connectedSlotMask = buildConnectedToothSlotMask(mask, softMask, width, height, segmentBounds);
+          const openCvTooth = openCvMasks && openCvMasks[toothNumber] ? openCvMasks[toothNumber] : null;
+          const connectedSlotMask = openCvTooth
+            ? openCvTooth.mask
+            : buildConnectedToothSlotMask(mask, softMask, width, height, segmentBounds);
           const segmentWidth = Math.max(2, segmentBounds.maxX - segmentBounds.minX + 1);
           const contourBounds = {
             minX: Math.max(upperBand.minX, segmentBounds.minX - (segmentWidth * 0.42)),
@@ -1854,15 +2016,19 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           };
           const segment = buildToothSegment(connectedSlotMask, width, height, upperBand, contourBounds, hitCount);
           if (!segment || !Array.isArray(segment.contour) || segment.contour.length < 8) return;
+          const exactContour = openCvTooth && openCvTooth.contour.length >= 8
+            ? openCvTooth.contour
+            : segment.contour;
+          const exactBounds = getPointBounds(exactContour);
           slots[toothNumber] = {
             number: toothNumber,
             label: '#' + toothNumber,
-            left: segment.left,
-            right: segment.right,
-            top: segment.top,
-            bottom: segment.bottom,
-            contour: segment.contour,
-            source: segment.source
+            left: exactBounds.left,
+            right: exactBounds.right,
+            top: exactBounds.top,
+            bottom: exactBounds.bottom,
+            contour: exactContour,
+            source: openCvTooth ? 'opencv_watershed_contour' : segment.source
           };
         });
 
@@ -3590,6 +3756,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       });
 
       async function initializeAnchors() {
+        await waitForOpenCv(7000);
         const anchorInput = form.querySelector('input[name="anchor_points"]');
         const contourInput = form.querySelector('input[name="contour_points"]');
         if (!anchorInput.value) {

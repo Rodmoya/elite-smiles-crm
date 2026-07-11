@@ -2144,6 +2144,32 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
         boundaries[boundaries.length - 1] = smileBounds.maxX;
 
+        const centerBoundaryIndex = visibleUpperTeeth.indexOf(9);
+        const centerBoundary = boundaries[centerBoundaryIndex];
+        const leftTeeth = visibleUpperTeeth.slice(0, centerBoundaryIndex);
+        const rightTeeth = visibleUpperTeeth.slice(centerBoundaryIndex);
+        const leftRatioTotal = leftTeeth.reduce(function (sum, toothNumber) {
+          return sum + ratios[toothNumber];
+        }, 0);
+        const rightRatioTotal = rightTeeth.reduce(function (sum, toothNumber) {
+          return sum + ratios[toothNumber];
+        }, 0);
+        const leftRatioUnit = (centerBoundary - smileBounds.minX) / Math.max(1, leftRatioTotal);
+        const rightRatioUnit = (smileBounds.maxX - centerBoundary) / Math.max(1, rightRatioTotal);
+        let anchoredX = smileBounds.minX;
+        boundaries[0] = smileBounds.minX;
+        leftTeeth.forEach(function (toothNumber, index) {
+          anchoredX += ratios[toothNumber] * leftRatioUnit;
+          boundaries[index + 1] = index === leftTeeth.length - 1 ? centerBoundary : anchoredX;
+        });
+        anchoredX = centerBoundary;
+        rightTeeth.forEach(function (toothNumber, index) {
+          anchoredX += ratios[toothNumber] * rightRatioUnit;
+          boundaries[centerBoundaryIndex + index + 1] = index === rightTeeth.length - 1
+            ? smileBounds.maxX
+            : anchoredX;
+        });
+
         const rowHits = [];
         let peakRowHit = 0;
         let peakRowY = smileBounds.minY;

@@ -588,7 +588,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             $promptParts[] = 'Manual selected-tooth target displacement in image percentage points (positive x is right, positive y is down): ' . $toothOffsets . '. Move only the corresponding selected teeth toward these target positions.';
         }
         if ($toothAdjustments !== '' && $toothAdjustments !== '{}') {
-            $promptParts[] = 'Per-tooth precision adjustments: ' . $toothAdjustments . '. Apply each shape, length, width, and shade-brightness delta only to its numbered tooth; do not copy one tooth adjustment across the rest of the smile.';
+            $promptParts[] = 'Per-tooth precision adjustments: ' . $toothAdjustments . '. Apply each shape, length, and width delta only to its numbered tooth; edge_smoothing describes the intended clean mask boundary and is not a request to blur the tooth. Do not copy one tooth adjustment across the rest of the smile.';
         }
 
         if ($primaryChanges === [] && $customRequest === '') {
@@ -879,7 +879,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             $promptParts[] = 'Manual selected-tooth target displacement in image percentage points (positive x is right, positive y is down): ' . $toothOffsets . '. Move only the corresponding selected teeth toward these target positions.';
         }
         if ($toothAdjustments !== '' && $toothAdjustments !== '{}') {
-            $promptParts[] = 'Per-tooth precision adjustments: ' . $toothAdjustments . '. Apply each shape, length, width, and shade-brightness delta only to its numbered tooth; do not copy one tooth adjustment across the rest of the smile.';
+            $promptParts[] = 'Per-tooth precision adjustments: ' . $toothAdjustments . '. Apply each shape, length, and width delta only to its numbered tooth; edge_smoothing describes the intended clean mask boundary and is not a request to blur the tooth. Do not copy one tooth adjustment across the rest of the smile.';
         }
         if ($anchorPointsRaw !== '') {
             $promptParts[] = 'Anchor guidance: use the provided edit anchors only for local constraint and deformation distribution, without changing unrelated non-dental regions. ' . $anchorPointsRaw . '.';

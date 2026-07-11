@@ -223,8 +223,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                                 <input type="range" min="-40" max="40" value="0" class="mt-1 w-full accent-white" data-adjust-range="smile_width_delta">
                             </label>
                             <label class="text-xs font-semibold text-white">
-                                Shade brightness: <span id="adjust-shade-value" class="font-bold">0</span>
-                                <input type="range" min="-25" max="25" value="0" class="mt-1 w-full accent-white" data-adjust-range="shade_brightness_delta">
+                                Edge smoothing: <span id="adjust-smoothing-value" class="font-bold">45</span>%
+                                <input type="range" min="0" max="100" value="45" class="mt-1 w-full accent-white" data-adjust-range="edge_smoothing">
                             </label>
                             <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-[11px] leading-5 text-white/60">
                                 AI changes are saved as a new version. External edits are also saved as a new version, so the current result is never overwritten.
@@ -672,7 +672,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           shape_scale_delta: Number(stored.shape_scale_delta || 0),
           smile_length_delta: Number(stored.smile_length_delta || 0),
           smile_width_delta: Number(stored.smile_width_delta || 0),
-          shade_brightness_delta: Number(stored.shade_brightness_delta || 0)
+          edge_smoothing: stored.edge_smoothing === undefined ? 45 : Number(stored.edge_smoothing || 0)
         };
       }
 
@@ -3204,6 +3204,29 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
+      function smoothClosedToothContour(points, strength) {
+        const amount = normalize(Number(strength || 0), 0, 100);
+        if (!Array.isArray(points) || points.length < 5 || amount <= 0) {
+          return Array.isArray(points) ? points : [];
+        }
+        const passes = Math.min(4, 1 + Math.floor(amount / 34));
+        const neighborWeight = 0.07 + ((amount / 100) * 0.13);
+        let smoothed = points.map(function (point) {
+          return { x: point.x, y: point.y };
+        });
+        for (let pass = 0; pass < passes; pass += 1) {
+          smoothed = smoothed.map(function (point, index) {
+            const previous = smoothed[(index - 1 + smoothed.length) % smoothed.length];
+            const next = smoothed[(index + 1) % smoothed.length];
+            return clampPoint({
+              x: (previous.x * neighborWeight) + (point.x * (1 - (neighborWeight * 2))) + (next.x * neighborWeight),
+              y: (previous.y * neighborWeight) + (point.y * (1 - (neighborWeight * 2))) + (next.y * neighborWeight)
+            });
+          });
+        }
+        return smoothed;
+      }
+
       function applyPrecisionToToothSelection(selection) {
         if (!selection || !Array.isArray(selection.polygon) || selection.polygon.length < 3) {
           return selection;
@@ -3274,9 +3297,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             y: point.y + Number(manualOffset.y || 0)
           });
         });
+        const smoothedPolygon = smoothClosedToothContour(positionedPolygon, toothAdjustment.edge_smoothing);
 
         return Object.assign({}, selection, {
-          polygon: densifyPolygonPoints(positionedPolygon),
+          polygon: densifyPolygonPoints(smoothedPolygon),
           source: (selection.source || 'tooth_contour') + '_precision'
         });
       }
@@ -3935,7 +3959,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           shape_scale_delta: { label: 'adjust-shape-value', input: 'shape_scale_delta', suffix: '' },
           smile_length_delta: { label: 'adjust-length-value', input: 'smile_length_delta', suffix: '' },
           smile_width_delta: { label: 'adjust-width-value', input: 'smile_width_delta', suffix: '' },
-          shade_brightness_delta: { label: 'adjust-shade-value', input: 'shade_brightness_delta', suffix: '' }
+          edge_smoothing: { label: 'adjust-smoothing-value', input: 'edge_smoothing', suffix: '' }
         };
         return configs[key] || null;
       }

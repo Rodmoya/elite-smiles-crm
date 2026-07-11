@@ -1897,10 +1897,13 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       function buildDarkToothSeparatorCurves(data, width, height, upperBand, boundaries) {
         const curves = [];
+        const centerBoundaryIndex = visibleUpperTeeth.indexOf(9);
         for (let index = 1; index < boundaries.length - 1; index += 1) {
           const leftWidth = Math.max(2, boundaries[index] - boundaries[index - 1]);
           const rightWidth = Math.max(2, boundaries[index + 1] - boundaries[index]);
-          const radius = Math.max(3, Math.round(Math.min(leftWidth, rightWidth) * 0.14));
+          const radius = index === centerBoundaryIndex
+            ? 2
+            : Math.max(3, Math.round(Math.min(leftWidth, rightWidth) * 0.12));
           curves.push(traceDarkToothSeparator(
             data,
             width,

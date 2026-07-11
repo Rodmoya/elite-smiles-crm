@@ -5,15 +5,22 @@ function loadOpenCv() {
   openCvPromise = new Promise(function (resolve, reject) {
     try {
       importScripts('./opencv.js');
+      let poll = null;
+      const finish = function (module) {
+        if (poll) self.clearInterval(poll);
+        resolve(module);
+      };
       if (self.cv && typeof self.cv.Mat === 'function') {
-        resolve(self.cv);
+        finish(self.cv);
         return;
       }
+      if (self.cv && typeof self.cv.then === 'function') {
+        self.cv.then(finish, reject);
+      }
       const deadline = Date.now() + 60000;
-      const poll = self.setInterval(function () {
+      poll = self.setInterval(function () {
         if (self.cv && typeof self.cv.Mat === 'function') {
-          self.clearInterval(poll);
-          resolve(self.cv);
+          finish(self.cv);
           return;
         }
         if (Date.now() >= deadline) {

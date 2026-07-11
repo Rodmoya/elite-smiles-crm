@@ -3163,10 +3163,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         let sourcePolygon = selection.polygon.map(function (point) {
           return { x: point.x, y: point.y };
         });
-        const originalBounds = getPointBounds(sourcePolygon);
         const neighborSlot = teethBounds && teethBounds.slots
           ? (toothNumber === 4 ? teethBounds.slots[5] : (toothNumber === 13 ? teethBounds.slots[12] : null))
           : null;
+        if (neighborSlot && Array.isArray(neighborSlot.contour) && neighborSlot.contour.length >= 8) {
+          sourcePolygon = neighborSlot.contour.map(function (point) {
+            return { x: point.x, y: point.y };
+          });
+        }
+        const originalBounds = getPointBounds(sourcePolygon);
         if (neighborSlot && (toothNumber === 4 || toothNumber === 13)) {
           const originalWidth = Math.max(0.2, originalBounds.right - originalBounds.left);
           const neighborWidth = Math.max(0.8, neighborSlot.right - neighborSlot.left);

@@ -132,6 +132,16 @@ if ($variant === 'share' && $videoId <= 0 && str_starts_with($mime, 'image/') &&
     }
 }
 
+$downloadRequested = (string)get('download', '') === '1';
+$extension = match (strtolower($mime)) {
+    'image/png' => 'png',
+    'image/webp' => 'webp',
+    default => $videoId > 0 ? 'mp4' : 'jpg',
+};
+if ($downloadRequested) {
+    $assetId = $afterId > 0 ? $afterId : ($photoId > 0 ? $photoId : $videoId);
+    header('Content-Disposition: attachment; filename="elite-smiles-' . max(1, $assetId) . '.' . $extension . '"');
+}
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . filesize($path));
 header('Cache-Control: ' . ($authorizedByToken ? 'public, max-age=3600' : 'private, max-age=300'));

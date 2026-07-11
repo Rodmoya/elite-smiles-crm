@@ -903,6 +903,7 @@ function smile_design_source_type_labels(): array
 {
     return [
         'manual_upload' => 'Manual Upload',
+        'external_edit' => 'External Edit',
         'gem_test_output' => 'Gem Test Output',
         'ai_preview' => 'AI Preview',
         'actual_clinical_after' => 'Actual Clinical After',
@@ -3333,6 +3334,68 @@ function smile_design_create_after_version(int $caseId, array $file, array $data
         return $stored;
     }
     return smile_design_insert_after_version_record($caseId, $stored, $data, $userId);
+}
+
+function smile_design_create_external_edit_version(int $caseId, int $sourceVersionId, array $file, array $data, ?int $userId = null): array
+{
+    $sourceVersion = db_one(
+        'SELECT * FROM smile_after_versions WHERE id = :id AND case_id = :case_id LIMIT 1',
+        ['id' => $sourceVersionId, 'case_id' => $caseId]
+    );
+    if (!$sourceVersion) {
+        return ['ok' => false, 'message' => 'The source after version could not be found.'];
+    }
+
+    $expectedWidth = (int)($sourceVersion['width'] ?? 0);
+    $expectedHeight = (int)($sourceVersion['height'] ?? 0);
+    if ($expectedWidth <= 0 || $expectedHeight <= 0) {
+        $sourcePath = smile_design_safe_storage_path((string)($sourceVersion['storage_key'] ?? ''));
+        $sourceSize = $sourcePath && is_file($sourcePath) ? @getimagesize($sourcePath) : false;
+        $expectedWidth = is_array($sourceSize) ? (int)($sourceSize[0] ?? 0) : 0;
+        $expectedHeight = is_array($sourceSize) ? (int)($sourceSize[1] ?? 0) : 0;
+    }
+
+    $stored = smile_design_store_private_image($file, 'cases/' . $caseId . '/after');
+    if (empty($stored['ok'])) {
+        return $stored;
+    }
+
+    $actualWidth = (int)($stored['width'] ?? 0);
+    $actualHeight = (int)($stored['height'] ?? 0);
+    if ($expectedWidth > 0 && $expectedHeight > 0 && ($actualWidth !== $expectedWidth || $actualHeight !== $expectedHeight)) {
+        $storedPath = smile_design_safe_storage_path((string)($stored['storage_key'] ?? ''));
+        if ($storedPath && is_file($storedPath)) {
+            @unlink($storedPath);
+        }
+        return [
+            'ok' => false,
+            'message' => 'The corrected image must remain exactly ' . $expectedWidth . ' x ' . $expectedHeight . ' pixels. The uploaded file is ' . $actualWidth . ' x ' . $actualHeight . ' pixels.',
+        ];
+    }
+
+    $userNotes = trim((string)($data['notes'] ?? ''));
+    $sourceLabel = 'External edit of after version #' . (int)($sourceVersion['version_number'] ?? 0) . ' (record ' . $sourceVersionId . ').';
+    $result = smile_design_insert_after_version_record($caseId, $stored, [
+        'before_photo_id' => (int)($sourceVersion['before_photo_id'] ?? 0),
+        'version_title' => trim((string)($data['version_title'] ?? '')) ?: 'External edit of #' . (int)($sourceVersion['version_number'] ?? 0),
+        'source_type' => 'external_edit',
+        'procedure_label' => (string)($sourceVersion['procedure_label'] ?? ''),
+        'lvi_style_key' => (string)($sourceVersion['lvi_style_key'] ?? ''),
+        'photo_type' => (string)($sourceVersion['photo_type'] ?? 'front'),
+        'notes' => implode("\n", array_values(array_filter([$sourceLabel, $userNotes]))),
+    ], $userId);
+
+    if (!empty($result['ok'])) {
+        smile_design_audit($caseId, 'after_version_external_edit_uploaded', [
+            'source_after_version_id' => $sourceVersionId,
+            'after_version_id' => (int)($result['after_version_id'] ?? 0),
+            'width' => $actualWidth,
+            'height' => $actualHeight,
+        ], $userId);
+        $result['source_after_version_id'] = $sourceVersionId;
+    }
+
+    return $result;
 }
 
 function smile_design_lip_repositioning_preview_qa(array $beforePhoto, array $generationResult, string $targetPhotoLabel, string $targetPhotoType): array

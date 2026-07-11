@@ -29,6 +29,14 @@ if (!$beforePhoto) {
 
 $beforeUrl = $beforePhotoId > 0 ? smile_design_photo_url($beforePhotoId) : '';
 $afterUrl = smile_design_after_url((int)$version['id']);
+$afterDownloadUrl = $afterUrl . '&download=1';
+$afterWidth = (int)($version['width'] ?? 0);
+$afterHeight = (int)($version['height'] ?? 0);
+$afterDimensionLabel = $afterWidth > 0 && $afterHeight > 0
+    ? $afterWidth . ' x ' . $afterHeight . ' pixels'
+    : 'the original pixel dimensions';
+$versionPhotoType = (string)($version['photo_type'] ?? 'front');
+$versionPhotoLabel = smile_design_photo_type_options()[$versionPhotoType] ?? ucwords(str_replace('_', ' ', $versionPhotoType));
 $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
 ?>
@@ -126,8 +134,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                         <textarea name="adjustment_request" rows="7" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Example: widen the smile slightly, keep the exact same face and camera position, brighten the veneers one step, and refine the upper incisal edge."></textarea>
                     </label>
 
-                    <div class="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                        Automatic and manual selection are isolated. Only the active mask is submitted with the revision.
+                    <div class="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-500">
+                        Automatic sends the selected teeth and instructions to AI. Use External Edit when you need pixel-level corrections in Photoshop.
                     </div>
                 </div>
             </div>
@@ -144,7 +152,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             <div class="flex items-center justify-between border-b border-white/10 px-6 py-4 text-white">
                 <div>
                     <p class="text-sm font-semibold">Smile mask editor</p>
-                    <p class="mt-1 text-xs text-white/60">One image only. Automatic selects one tooth; manual lets you paint the exact teeth to revise.</p>
+                    <p class="mt-1 text-xs text-white/60">Select the exact teeth for an AI revision, or move the full-resolution image through an external editor.</p>
                 </div>
                 <label class="flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold">
                     <span>Zoom</span>
@@ -181,11 +189,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                                     <button id="adjust-mode-automatic" data-editor-mode="automatic" type="button" class="inline-flex items-center justify-center rounded-full border border-sky-300/30 bg-sky-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100">
                                         Automatic
                                     </button>
-                                    <button id="adjust-mode-manual" data-editor-mode="manual" type="button" class="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/88">
-                                        Manual
+                                    <button id="external-edit-open" type="button" class="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/88">
+                                        External Edit
                                     </button>
                                 </div>
-                                <p id="adjust-mode-help" class="text-[11px] leading-5 text-white/60">Automatic mode starts with one detected tooth. Manual mode starts with a click seed, then paint only as the fallback.</p>
+                                <p id="adjust-mode-help" class="text-[11px] leading-5 text-white/60">Automatic starts with one detected tooth. Add or remove teeth from the map before sending the correction to AI.</p>
                             </div>
                             <div class="grid gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">
                                 <div class="flex items-center justify-between gap-3">
@@ -200,35 +208,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                                     <?php endfor; ?>
                                 </div>
                                 <p class="text-[10px] leading-4 text-white/50">Front view: #8 and #9 are the two center teeth. Count outward to the visible smile.</p>
-                            </div>
-                            <div class="grid gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">Fallback paint</p>
-                                <div class="grid grid-cols-2 gap-2">
-                                    <button id="adjust-brush-enable" data-brush-action="toggle-paint" type="button" class="inline-flex items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
-                                        Paint Fallback
-                                    </button>
-                                    <button id="adjust-brush-erase-toggle" data-brush-action="toggle-erase" type="button" class="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/88">
-                                        Erase
-                                    </button>
-                                </div>
-                                <label class="grid gap-2 text-xs font-semibold text-white">
-                                    <span class="flex items-center justify-between gap-3">
-                                        <span>Brush size: <span id="adjust-brush-size-value" class="font-bold">12</span>px</span>
-                                        <span id="adjust-brush-size-preview" class="inline-block rounded-full border border-white/80 bg-rose-400/75 shadow-[0_0_0_3px_rgba(255,255,255,0.14)]" aria-hidden="true"></span>
-                                    </span>
-                                    <input id="adjust-brush-size" type="range" min="2" max="20" step="1" value="12" class="w-full accent-white">
-                                </label>
-                                <div class="grid grid-cols-3 gap-2">
-                                    <button id="adjust-brush-clear" data-brush-action="clear" type="button" class="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/88">
-                                        Clear
-                                    </button>
-                                    <button id="adjust-brush-undo" data-brush-action="undo" type="button" class="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/88">
-                                        Undo
-                                    </button>
-                                    <button id="adjust-brush-done" data-brush-action="apply" type="button" class="inline-flex items-center justify-center rounded-full border border-sky-300/30 bg-sky-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100">
-                                        Use Paint
-                                    </button>
-                                </div>
                             </div>
                             <label class="text-xs font-semibold text-white">
                                 Shape shift: <span id="adjust-shape-value" class="font-bold">0</span>%
@@ -247,7 +226,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                                 <input type="range" min="-25" max="25" value="0" class="mt-1 w-full accent-white" data-adjust-range="shade_brightness_delta">
                             </label>
                             <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-[11px] leading-5 text-white/60">
-                                The old contour/refine controls are parked for now. Selection is either the automatic tooth mask or the manual painted mask.
+                                AI changes are saved as a new version. External edits are also saved as a new version, so the current result is never overwritten.
                             </div>
                         </div>
                     </details>
@@ -255,6 +234,58 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             </div>
         </section>
     </form>
+
+    <div id="external-edit-modal" class="fixed inset-0 z-[100] hidden bg-black/90 p-4 md:p-6" role="dialog" aria-modal="true" aria-labelledby="external-edit-title" data-expected-width="<?= e((string)$afterWidth) ?>" data-expected-height="<?= e((string)$afterHeight) ?>">
+        <form id="external-edit-form" class="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden rounded-xl border border-white/15 bg-slate-950 text-white shadow-2xl" method="POST" action="<?= e(base_url('app/actions/smile_design_external_edit_upload.php')) ?>" enctype="multipart/form-data">
+            <?= csrf_input() ?>
+            <input type="hidden" name="source_after_version_id" value="<?= e((string)$versionId) ?>">
+            <div class="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">External correction</p>
+                    <h2 id="external-edit-title" class="mt-1 text-xl font-semibold">Edit <?= e($versionPhotoLabel) ?> Version #<?= e((string)($version['version_number'] ?? '0')) ?></h2>
+                </div>
+                <button id="external-edit-close" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-xl text-white" aria-label="Close external edit">&times;</button>
+            </div>
+
+            <div class="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_300px]">
+                <figure class="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-white/10 bg-black">
+                    <figcaption class="border-b border-white/10 px-4 py-3 text-sm font-semibold text-white/75">Current after</figcaption>
+                    <img class="min-h-0 flex-1 object-contain" src="<?= e($afterUrl) ?>" alt="Current after for external editing">
+                </figure>
+                <figure class="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-white/10 bg-black">
+                    <figcaption class="border-b border-white/10 px-4 py-3 text-sm font-semibold text-white/75">Corrected upload</figcaption>
+                    <div id="external-edit-empty" class="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-white/45">Choose the corrected image to preview it here before saving.</div>
+                    <img id="external-edit-preview" class="hidden min-h-0 flex-1 object-contain" alt="Corrected external edit preview">
+                </figure>
+
+                <aside class="space-y-4 rounded-lg border border-white/10 bg-white/5 p-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-white/55">1. Download</p>
+                        <a href="<?= e($afterDownloadUrl) ?>" class="mt-2 inline-flex w-full items-center justify-center rounded-md border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white">Download Full Image</a>
+                        <p class="mt-2 text-xs leading-5 text-white/45">Edit this exact file in Photoshop. Keep the canvas at <?= e($afterDimensionLabel) ?>.</p>
+                    </div>
+
+                    <label class="block text-sm font-semibold">
+                        2. Upload corrected image
+                        <input id="external-edit-file" required name="after_photo" type="file" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-xs text-white">
+                    </label>
+                    <p id="external-edit-file-status" class="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-5 text-white/55">Waiting for a corrected image.</p>
+
+                    <label class="block text-sm font-semibold">
+                        New version title
+                        <input name="version_title" value="<?= e('External edit of #' . (string)($version['version_number'] ?? '0') . ' ' . (string)($version['version_title'] ?? '')) ?>" class="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm font-normal text-white">
+                    </label>
+                    <label class="block text-sm font-semibold">
+                        Edit note
+                        <textarea name="notes" rows="3" class="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm font-normal text-white" placeholder="What was corrected in Photoshop?"></textarea>
+                    </label>
+
+                    <button id="external-edit-submit" disabled class="inline-flex w-full items-center justify-center rounded-md bg-white px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40" type="submit">Save as New Revision</button>
+                    <p class="text-xs leading-5 text-white/45">The current version stays unchanged. The corrected upload will appear as a separate after version for review.</p>
+                </aside>
+            </div>
+        </form>
+    </div>
 
     <div id="smile-action-loader" class="fixed inset-0 z-[95] hidden items-center justify-center bg-slate-950/60 px-4">
         <div class="flex flex-col items-center gap-4 rounded-xl bg-white px-8 py-7 text-center shadow-2xl">
@@ -332,6 +363,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       const automaticModeButton = document.getElementById('adjust-mode-automatic');
       const manualModeButton = document.getElementById('adjust-mode-manual');
       const modeHelp = document.getElementById('adjust-mode-help');
+      const externalEditOpen = document.getElementById('external-edit-open');
+      const externalEditModal = document.getElementById('external-edit-modal');
+      const externalEditClose = document.getElementById('external-edit-close');
+      const externalEditForm = document.getElementById('external-edit-form');
+      const externalEditFile = document.getElementById('external-edit-file');
+      const externalEditPreview = document.getElementById('external-edit-preview');
+      const externalEditEmpty = document.getElementById('external-edit-empty');
+      const externalEditStatus = document.getElementById('external-edit-file-status');
+      const externalEditSubmit = document.getElementById('external-edit-submit');
       const zoomRange = document.getElementById('adjust-zoom-range');
       const zoomValue = document.getElementById('adjust-zoom-value');
       const brushLayer = document.getElementById('adjust-brush-layer');
@@ -366,6 +406,135 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       const defaultZoom = 150;
       if (floatingControls) {
         floatingControls.open = true;
+      }
+
+      let externalEditObjectUrl = '';
+
+      function clearExternalEditPreview() {
+        if (externalEditObjectUrl) {
+          URL.revokeObjectURL(externalEditObjectUrl);
+          externalEditObjectUrl = '';
+        }
+        if (externalEditPreview) {
+          externalEditPreview.removeAttribute('src');
+          externalEditPreview.classList.add('hidden');
+        }
+        if (externalEditEmpty) {
+          externalEditEmpty.classList.remove('hidden');
+        }
+        if (externalEditStatus) {
+          externalEditStatus.textContent = 'Waiting for a corrected image.';
+          externalEditStatus.className = 'rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-5 text-white/55';
+        }
+        if (externalEditSubmit) {
+          externalEditSubmit.disabled = true;
+        }
+      }
+
+      function openExternalEdit() {
+        if (!externalEditModal) return;
+        externalEditModal.classList.remove('hidden');
+        if (externalEditFile) {
+          window.setTimeout(function () {
+            externalEditFile.focus();
+          }, 0);
+        }
+      }
+
+      function closeExternalEdit() {
+        if (!externalEditModal) return;
+        externalEditModal.classList.add('hidden');
+      }
+
+      if (externalEditOpen) {
+        externalEditOpen.addEventListener('click', openExternalEdit);
+      }
+      if (externalEditClose) {
+        externalEditClose.addEventListener('click', closeExternalEdit);
+      }
+      if (externalEditModal) {
+        externalEditModal.addEventListener('click', function (event) {
+          if (event.target === externalEditModal) {
+            closeExternalEdit();
+          }
+        });
+      }
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && externalEditModal && !externalEditModal.classList.contains('hidden')) {
+          closeExternalEdit();
+        }
+      });
+
+      if (externalEditFile) {
+        externalEditFile.addEventListener('change', function () {
+          clearExternalEditPreview();
+          const file = externalEditFile.files && externalEditFile.files[0] ? externalEditFile.files[0] : null;
+          if (!file) return;
+          if (!['image/jpeg', 'image/png', 'image/webp'].includes(String(file.type || '').toLowerCase())) {
+            if (externalEditStatus) {
+              externalEditStatus.textContent = 'Choose a JPG, PNG, or WebP image.';
+              externalEditStatus.className = 'rounded-md border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-100';
+            }
+            externalEditFile.value = '';
+            return;
+          }
+
+          externalEditObjectUrl = URL.createObjectURL(file);
+          const image = new Image();
+          image.onload = function () {
+            const expectedWidth = Number.parseInt(externalEditModal ? externalEditModal.dataset.expectedWidth || '0' : '0', 10);
+            const expectedHeight = Number.parseInt(externalEditModal ? externalEditModal.dataset.expectedHeight || '0' : '0', 10);
+            const dimensionsMatch = expectedWidth <= 0 || expectedHeight <= 0
+              || (image.naturalWidth === expectedWidth && image.naturalHeight === expectedHeight);
+            if (!dimensionsMatch) {
+              if (externalEditStatus) {
+                externalEditStatus.textContent = 'Size mismatch: this file is ' + image.naturalWidth + ' x ' + image.naturalHeight + ' pixels. It must remain ' + expectedWidth + ' x ' + expectedHeight + ' pixels.';
+                externalEditStatus.className = 'rounded-md border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-100';
+              }
+              URL.revokeObjectURL(externalEditObjectUrl);
+              externalEditObjectUrl = '';
+              externalEditFile.value = '';
+              return;
+            }
+            if (externalEditPreview) {
+              externalEditPreview.src = externalEditObjectUrl;
+              externalEditPreview.classList.remove('hidden');
+            }
+            if (externalEditEmpty) {
+              externalEditEmpty.classList.add('hidden');
+            }
+            if (externalEditStatus) {
+              externalEditStatus.textContent = 'Ready: ' + image.naturalWidth + ' x ' + image.naturalHeight + ' pixels. The original version will remain unchanged.';
+              externalEditStatus.className = 'rounded-md border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs leading-5 text-emerald-100';
+            }
+            if (externalEditSubmit) {
+              externalEditSubmit.disabled = false;
+            }
+          };
+          image.onerror = function () {
+            if (externalEditStatus) {
+              externalEditStatus.textContent = 'This image could not be previewed. Please export it again as JPG, PNG, or WebP.';
+              externalEditStatus.className = 'rounded-md border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-100';
+            }
+            URL.revokeObjectURL(externalEditObjectUrl);
+            externalEditObjectUrl = '';
+            externalEditFile.value = '';
+          };
+          image.src = externalEditObjectUrl;
+        });
+      }
+
+      if (externalEditForm) {
+        externalEditForm.addEventListener('submit', function (event) {
+          if (!externalEditFile || !externalEditFile.files || !externalEditFile.files[0] || (externalEditSubmit && externalEditSubmit.disabled)) {
+            event.preventDefault();
+            return;
+          }
+          if (externalEditSubmit) {
+            externalEditSubmit.disabled = true;
+            externalEditSubmit.textContent = 'Saving New Revision...';
+          }
+        });
       }
 
       const anchorDefaults = [

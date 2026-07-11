@@ -1892,12 +1892,16 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                 autoToothRegion.dataset.segmentation = Object.keys(result.contours).length >= 8 ? 'opencv' : 'fallback';
                 autoToothRegion.dataset.segmentationCount = String(Object.keys(result.contours).length);
               }
+              document.body.dataset.toothSegmentation = Object.keys(result.contours).length >= 8 ? 'opencv' : 'fallback';
+              document.body.dataset.toothSegmentationCount = String(Object.keys(result.contours).length);
+              if (result.error) document.body.dataset.toothSegmentationError = String(result.error);
               detectedTeethBounds = null;
               render(readAnchorPoints(), baseContourPoints);
             });
             openCvWorker.addEventListener('error', function () {
               openCvRequestKey = '';
               if (autoToothRegion) autoToothRegion.dataset.segmentation = 'error';
+              document.body.dataset.toothSegmentation = 'error';
             });
           }
           const imageCopy = new Uint8ClampedArray(data);
@@ -1915,12 +1919,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             teeth: visibleUpperTeeth
           }, [imageCopy.buffer, hardCopy.buffer, softCopy.buffer]);
           if (autoToothRegion) autoToothRegion.dataset.segmentation = 'loading';
+          document.body.dataset.toothSegmentation = 'loading';
         } catch (error) {
           openCvRequestKey = '';
           if (autoToothRegion) {
             autoToothRegion.dataset.segmentation = 'error';
             autoToothRegion.dataset.segmentationError = String(error && error.message ? error.message : error);
           }
+          document.body.dataset.toothSegmentation = 'error';
+          document.body.dataset.toothSegmentationError = String(error && error.message ? error.message : error);
         }
         return null;
       }

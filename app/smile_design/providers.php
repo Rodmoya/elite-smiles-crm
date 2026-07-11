@@ -348,6 +348,9 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $brushOverlayData = trim((string)($options['brush_overlay_data'] ?? ''));
         $editorMode = trim((string)($options['editor_mode'] ?? 'automatic'));
         $selectedTeeth = smile_design_normalize_selected_teeth(trim((string)($options['selected_teeth'] ?? '')));
+        $selectedTeethNumbers = json_decode($selectedTeeth, true);
+        $selectedTeethNumbers = is_array($selectedTeethNumbers) ? array_map('intval', $selectedTeethNumbers) : [];
+        $selectedPosteriorTeeth = array_values(array_intersect($selectedTeethNumbers, [4, 13]));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
         $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? 'front'));
@@ -563,6 +566,9 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         }
         if ($smileWidthDelta !== 0) {
             $promptParts[] = 'Priority smile-width adjustment: adjust visible smile breadth by about ' . $smileWidthDelta . '% while keeping face alignment and composition stable.';
+            if ($smileWidthDelta > 0 && $selectedPosteriorTeeth !== []) {
+                $promptParts[] = 'Posterior expansion priority: increase the visible facial display of tooth ' . implode(' and tooth ', $selectedPosteriorTeeth) . ' toward the corners of the smile. Make these posterior veneers visibly broader in the dental arch, reduce the dark buccal corridors on both sides, and create a wider full-arch smile. Preserve teeth #8 and #9, the lip position, face, head size, and camera framing.';
+            }
         }
         if ($shadeBrightnessDelta !== 0) {
             $promptParts[] = 'Shade/brightness adjustment: increase or reduce veneer brightness by about ' . $shadeBrightnessDelta . ' points while preserving porcelain texture and incisal translucency.';
@@ -712,6 +718,10 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $smileLengthDelta = (int)($options['smile_length_delta'] ?? ($options['precision_controls']['smile_length_delta'] ?? 0));
         $smileWidthDelta = (int)($options['smile_width_delta'] ?? ($options['precision_controls']['smile_width_delta'] ?? 0));
         $shadeBrightnessDelta = (int)($options['shade_brightness_delta'] ?? ($options['precision_controls']['shade_brightness_delta'] ?? 0));
+        $selectedTeeth = smile_design_normalize_selected_teeth(trim((string)($options['selected_teeth'] ?? '')));
+        $selectedTeethNumbers = json_decode($selectedTeeth, true);
+        $selectedTeethNumbers = is_array($selectedTeethNumbers) ? array_map('intval', $selectedTeethNumbers) : [];
+        $selectedPosteriorTeeth = array_values(array_intersect($selectedTeethNumbers, [4, 13]));
         $anchorPointsRaw = trim((string)($options['anchor_points'] ?? ($options['precision_controls']['anchor_points'] ?? '')));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
@@ -848,6 +858,9 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         }
         if ($smileWidthDelta !== 0) {
             $promptParts[] = 'Priority smile-width adjustment: adjust visible smile breadth by about ' . $smileWidthDelta . '% while keeping face alignment and composition stable.';
+            if ($smileWidthDelta > 0 && $selectedPosteriorTeeth !== []) {
+                $promptParts[] = 'Posterior expansion priority: increase the visible facial display of tooth ' . implode(' and tooth ', $selectedPosteriorTeeth) . ' toward the corners of the smile. Make these posterior veneers visibly broader in the dental arch, reduce the dark buccal corridors on both sides, and create a wider full-arch smile. Preserve teeth #8 and #9, the lip position, face, head size, and camera framing.';
+            }
         }
         if ($shadeBrightnessDelta !== 0) {
             $promptParts[] = 'Shade/brightness adjustment: increase or reduce veneer brightness by about ' . $shadeBrightnessDelta . ' points while preserving porcelain texture and incisal translucency.';

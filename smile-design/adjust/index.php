@@ -3142,14 +3142,62 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       function buildSelectedToothSelections(anchorPoints, contourPoints) {
         return getSelectedTeethArray().map(function (toothNumber) {
-          return detectSingleToothRegion(
+          const selection = detectSingleToothRegion(
             anchorPoints,
             contourPoints,
             toothSeedPoints[toothNumber] || null,
             toothNumber
           );
+          return applyPrecisionToToothSelection(selection);
         }).filter(function (selection) {
           return selection && Array.isArray(selection.polygon) && selection.polygon.length;
+        });
+      }
+
+      function applyPrecisionToToothSelection(selection) {
+        if (!selection || !Array.isArray(selection.polygon) || selection.polygon.length < 3) {
+          return selection;
+        }
+        const shapeDelta = readDelta('shape_scale_delta') / 100;
+        const lengthDelta = readDelta('smile_length_delta') / 100;
+        const widthDelta = readDelta('smile_width_delta') / 100;
+        if (shapeDelta === 0 && lengthDelta === 0 && widthDelta === 0) {
+          return selection;
+        }
+
+        const bounds = getPointBounds(selection.polygon);
+        const centerX = (bounds.left + bounds.right) / 2;
+        const centerY = (bounds.top + bounds.bottom) / 2;
+        const toothWidth = Math.max(0.2, bounds.right - bounds.left);
+        const toothHeight = Math.max(0.2, bounds.bottom - bounds.top);
+        const teethBounds = getDetectedTeethBounds();
+        const archLeft = teethBounds && Number.isFinite(teethBounds.left) ? teethBounds.left : 35;
+        const archRight = teethBounds && Number.isFinite(teethBounds.right) ? teethBounds.right : 65;
+        const archWidth = Math.max(8, archRight - archLeft);
+        const slot8 = teethBounds && teethBounds.slots ? teethBounds.slots[8] : null;
+        const slot9 = teethBounds && teethBounds.slots ? teethBounds.slots[9] : null;
+        const smileCenter = slot8 && slot9
+          ? ((slot8.right + slot9.left) / 2)
+          : ((archLeft + archRight) / 2);
+        const toothNumber = Number(selection.number || 0);
+        const sideDirection = toothNumber <= 8 ? -1 : 1;
+        const distanceRatio = normalize(Math.abs(centerX - smileCenter) / Math.max(1, archWidth / 2), 0, 1);
+        const posteriorEmphasis = toothNumber === 4 || toothNumber === 13 ? 1 : Math.max(0.18, distanceRatio);
+        const outwardShift = widthDelta * archWidth * 0.10 * posteriorEmphasis * sideDirection;
+        const widthScale = Math.max(0.55, 1 + (widthDelta * 0.72) + (shapeDelta * 0.24));
+        const heightScale = Math.max(0.60, 1 + (shapeDelta * 0.34));
+
+        const polygon = selection.polygon.map(function (point) {
+          const relativeY = (point.y - bounds.top) / toothHeight;
+          const scaledX = centerX + ((point.x - centerX) * widthScale) + outwardShift;
+          const shapeY = centerY + ((point.y - centerY) * heightScale);
+          const lengthY = shapeY + (toothHeight * lengthDelta * 0.70 * Math.pow(normalize(relativeY, 0, 1), 1.35));
+          return clampPoint({ x: scaledX, y: lengthY });
+        });
+
+        return Object.assign({}, selection, {
+          polygon: densifyPolygonPoints(polygon),
+          source: (selection.source || 'tooth_contour') + '_precision'
         });
       }
 
@@ -3433,12 +3481,14 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
         const selectedToothList = getSelectedTeethArray();
         const activeToothNumber = getSelectedToothNumber();
-        const activeSelection = selectedToothList.length
-          ? detectSingleToothRegion(points, maskPolygon, toothSeedPoints[activeToothNumber] || null, activeToothNumber)
-          : null;
         const selectedToothRegions = selectedToothList.length
           ? buildSelectedToothSelections(points, maskPolygon)
           : [];
+        const activeSelection = selectedToothList.length
+          ? (selectedToothRegions.find(function (selection) {
+              return Number(selection.number) === Number(activeToothNumber);
+            }) || null)
+          : null;
         if (editorMode === 'automatic') {
           autoToothSelection = activeSelection;
           renderAutoToothSelection(points, maskPolygon, selectedToothRegions);

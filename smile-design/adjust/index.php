@@ -1830,6 +1830,89 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
       }
 
+      function pixelBrightnessAt(data, width, height, x, y) {
+        const safeX = Math.max(0, Math.min(width - 1, Math.round(x)));
+        const safeY = Math.max(0, Math.min(height - 1, Math.round(y)));
+        const offset = ((safeY * width) + safeX) * 4;
+        return (0.2126 * data[offset]) + (0.7152 * data[offset + 1]) + (0.0722 * data[offset + 2]);
+      }
+
+      function traceDarkToothSeparator(data, width, height, upperBand, expectedX, searchRadius) {
+        const curve = new Array(height).fill(Math.round(expectedX));
+        const centerY = Math.round(upperBand.minY + ((upperBand.maxY - upperBand.minY) * 0.52));
+        const pickX = function (y, previousX) {
+          const minX = Math.max(upperBand.minX + 1, Math.round(expectedX - searchRadius));
+          const maxX = Math.min(upperBand.maxX - 1, Math.round(expectedX + searchRadius));
+          let bestX = Math.round(expectedX);
+          let bestScore = Number.NEGATIVE_INFINITY;
+          for (let x = minX; x <= maxX; x += 1) {
+            const center = pixelBrightnessAt(data, width, height, x, y);
+            const leftNear = pixelBrightnessAt(data, width, height, x - 1, y);
+            const rightNear = pixelBrightnessAt(data, width, height, x + 1, y);
+            const leftShoulder = pixelBrightnessAt(data, width, height, x - 3, y);
+            const rightShoulder = pixelBrightnessAt(data, width, height, x + 3, y);
+            const valleyDepth = Math.max(0, Math.min(leftShoulder, rightShoulder) - center);
+            const horizontalGradient = Math.abs(leftNear - rightNear);
+            const darkness = Math.max(0, 218 - center);
+            const expectedPenalty = Math.abs(x - expectedX) * 1.15;
+            const continuityPenalty = Math.abs(x - previousX) * 3.2;
+            const score = (valleyDepth * 3.4)
+              + (horizontalGradient * 0.55)
+              + (darkness * 0.42)
+              - expectedPenalty
+              - continuityPenalty;
+            if (score > bestScore) {
+              bestScore = score;
+              bestX = x;
+            }
+          }
+          return bestX;
+        };
+
+        let previousX = Math.round(expectedX);
+        for (let y = centerY; y >= upperBand.minY; y -= 1) {
+          previousX = pickX(y, previousX);
+          curve[y] = previousX;
+        }
+        previousX = curve[centerY];
+        for (let y = centerY + 1; y <= upperBand.maxY; y += 1) {
+          previousX = pickX(y, previousX);
+          curve[y] = previousX;
+        }
+
+        const smoothed = curve.slice();
+        for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+          let weightedSum = 0;
+          let weightTotal = 0;
+          for (let offset = -2; offset <= 2; offset += 1) {
+            const sampleY = Math.max(upperBand.minY, Math.min(upperBand.maxY, y + offset));
+            const weight = offset === 0 ? 3 : (Math.abs(offset) === 1 ? 2 : 1);
+            weightedSum += curve[sampleY] * weight;
+            weightTotal += weight;
+          }
+          smoothed[y] = weightedSum / Math.max(1, weightTotal);
+        }
+        return smoothed;
+      }
+
+      function buildDarkToothSeparatorCurves(data, width, height, upperBand, boundaries) {
+        const curves = [];
+        for (let index = 1; index < boundaries.length - 1; index += 1) {
+          const leftWidth = Math.max(2, boundaries[index] - boundaries[index - 1]);
+          const rightWidth = Math.max(2, boundaries[index + 1] - boundaries[index]);
+          const radius = Math.max(3, Math.round(Math.min(leftWidth, rightWidth) * 0.28));
+          curves.push(traceDarkToothSeparator(
+            data,
+            width,
+            height,
+            upperBand,
+            boundaries[index],
+            radius
+          ));
+        }
+        return curves;
+      }
+
       function buildOpenCvToothMasks(data, hardMask, softMask, width, height, upperBand, boundaries) {
         if (!window.cv || typeof window.cv.watershed !== 'function') return null;
         let rgba = null;
@@ -1861,6 +1944,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           allowedRegion = new window.cv.Mat();
           window.cv.morphologyEx(enamel, closedEnamel, window.cv.MORPH_CLOSE, closeKernel);
           window.cv.dilate(closedEnamel, allowedRegion, growKernel);
+          const separatorCurves = buildDarkToothSeparatorCurves(data, width, height, upperBand, boundaries);
 
           for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
             for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
@@ -1894,7 +1978,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
               }
             }
             markers.data32S[(nearest.y * width) + nearest.x] = label;
-            seeds.push({ toothNumber: toothNumber, label: label });
+            seeds.push({ toothNumber: toothNumber, label: label, slotIndex: slotIndex });
           });
           if (seeds.length < 8) return null;
 
@@ -1903,10 +1987,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           seeds.forEach(function (seed) {
             const toothMask = new Uint8Array(width * height);
             let count = 0;
+            const leftCurve = seed.slotIndex > 0 ? separatorCurves[seed.slotIndex - 1] : null;
+            const rightCurve = seed.slotIndex < separatorCurves.length ? separatorCurves[seed.slotIndex] : null;
             for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+              const leftLimit = leftCurve ? leftCurve[y] + 1 : upperBand.minX;
+              const rightLimit = rightCurve ? rightCurve[y] - 1 : upperBand.maxX;
               for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
                 const index = (y * width) + x;
                 if (markers.data32S[index] !== seed.label || !allowedRegion.data[index]) continue;
+                if (x < leftLimit || x > rightLimit) continue;
                 toothMask[index] = 1;
                 count += 1;
               }

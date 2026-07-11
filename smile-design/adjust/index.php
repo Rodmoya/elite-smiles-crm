@@ -1472,9 +1472,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const rawHeight = rawContourBounds ? rawContourBounds.bottom - rawContourBounds.top : 0;
         const fallbackWidth = fallback.right - fallback.left;
         const fallbackHeight = fallback.bottom - fallback.top;
-        const usesPixelContour = rawContour.length >= 12
-          && rawWidth >= Math.max(0.55, fallbackWidth * 0.34)
-          && rawHeight >= Math.max(0.70, fallbackHeight * 0.42)
+        const usesPixelContour = rawContour.length >= 8
+          && rawWidth >= Math.max(0.28, fallbackWidth * 0.16)
+          && rawHeight >= Math.max(0.42, fallbackHeight * 0.22)
           && rawWidth <= fallbackWidth * 1.08;
         const contour = usesPixelContour ? rawContour : fallbackContour;
         const contourBounds = getPointBounds(contour);
@@ -1729,7 +1729,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           for (let x = segmentBounds.minX; x <= segmentBounds.maxX; x += 1) {
             hitCount += colHits[x] || 0;
           }
-          const segment = buildToothSegment(softMask, width, height, upperBand, segmentBounds, hitCount);
+          const segment = buildToothSegment(mask, width, height, upperBand, segmentBounds, hitCount);
           if (!segment || !Array.isArray(segment.contour) || segment.contour.length < 8) return;
           slots[toothNumber] = {
             number: toothNumber,
@@ -2619,7 +2619,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             + (editorMode === 'automatic'
               ? (isCurrent ? 'rgba(244,63,94,0.56)' : 'rgba(244,63,94,0.34)')
               : 'rgba(244,63,94,0.42)')
-            + '" stroke="' + (showSelectionLabels ? 'transparent' : 'rgba(255,255,255,0.55)') + '" stroke-width="' + (showSelectionLabels ? '0' : '0.45') + '" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
+            + '" stroke="transparent" stroke-width="0" stroke-linejoin="round" class="' + (editorMode === 'automatic' ? 'cursor-pointer' : '') + '"></polygon>'
             + (showSelectionLabels
               ? ('<text x="' + ((bounds.left + bounds.right) / 2) + '" y="' + (bounds.top + ((bounds.bottom - bounds.top) * 0.44)) + '" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.96)" font-size="2.2" font-weight="' + (isCurrent ? '700' : '600') + '">' + selection.label + '</text>')
               : '')

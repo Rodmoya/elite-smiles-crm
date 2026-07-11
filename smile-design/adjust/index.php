@@ -1770,6 +1770,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       function extractOpenCvMaskContour(binaryMask, width, height) {
         if (!window.cv || typeof window.cv.Mat !== 'function') return [];
         let source = null;
+        let cleaned = null;
+        let cleanKernel = null;
         let contours = null;
         let hierarchy = null;
         let simplified = null;
@@ -1778,9 +1780,13 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           for (let index = 0; index < binaryMask.length; index += 1) {
             source.data[index] = binaryMask[index] ? 255 : 0;
           }
+          cleaned = new window.cv.Mat();
+          cleanKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(3, 3));
+          window.cv.morphologyEx(source, cleaned, window.cv.MORPH_CLOSE, cleanKernel);
+          window.cv.morphologyEx(cleaned, cleaned, window.cv.MORPH_OPEN, cleanKernel);
           contours = new window.cv.MatVector();
           hierarchy = new window.cv.Mat();
-          window.cv.findContours(source, contours, hierarchy, window.cv.RETR_EXTERNAL, window.cv.CHAIN_APPROX_NONE);
+          window.cv.findContours(cleaned, contours, hierarchy, window.cv.RETR_EXTERNAL, window.cv.CHAIN_APPROX_NONE);
           if (!contours.size()) return [];
           let bestIndex = 0;
           let bestArea = 0;
@@ -1810,6 +1816,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           return [];
         } finally {
           if (source) source.delete();
+          if (cleaned) cleaned.delete();
+          if (cleanKernel) cleanKernel.delete();
           if (contours) contours.delete();
           if (hierarchy) hierarchy.delete();
           if (simplified) simplified.delete();
@@ -1842,7 +1850,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             }
           }
           closeKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(3, 3));
-          growKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(5, 5));
+          growKernel = window.cv.getStructuringElement(window.cv.MORPH_ELLIPSE, new window.cv.Size(7, 7));
           closedEnamel = new window.cv.Mat();
           allowedRegion = new window.cv.Mat();
           window.cv.morphologyEx(enamel, closedEnamel, window.cv.MORPH_CLOSE, closeKernel);
@@ -2301,7 +2309,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (!sourceImage || !sourceImage.naturalWidth || !sourceImage.naturalHeight) {
           return null;
         }
-        const scale = Math.min(1, 520 / Math.max(1, sourceImage.naturalWidth));
+        const scale = Math.min(1, 960 / Math.max(1, sourceImage.naturalWidth));
         const width = Math.max(1, Math.round(sourceImage.naturalWidth * scale));
         const height = Math.max(1, Math.round(sourceImage.naturalHeight * scale));
         const canvas = document.createElement('canvas');

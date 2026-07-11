@@ -47,18 +47,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e(APP_NAME) ?> | Adjust Smile</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      window.openCvReady = new Promise(function (resolve) {
-        window.__resolveOpenCv = resolve;
-        window.Module = window.Module || {};
-        window.Module.onRuntimeInitialized = function () {
-          resolve(window.cv || null);
-        };
-      });
-    </script>
-    <script async src="<?= e(base_url('assets/vendor/opencv.js')) ?>"
-            onload="if (window.cv && typeof window.cv.Mat === 'function') window.__resolveOpenCv(window.cv);"
-            onerror="window.__resolveOpenCv(null)"></script>
     <meta name="robots" content="noindex,nofollow">
 </head>
 <body class="h-screen overflow-hidden bg-slate-950 text-slate-950 antialiased">
@@ -406,9 +394,13 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       let selectedTeeth = new Set([8]);
       let toothSeedPoints = {};
       let detectedTeethBounds = null;
+      let openCvWorker = null;
+      let openCvRequestKey = '';
+      let openCvContourCache = null;
       let brushContext = null;
       let brushHistory = [];
       const visibleUpperTeeth = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+      const openCvWorkerUrl = <?= json_encode(base_url('assets/js/smile-tooth-worker.js'), JSON_UNESCAPED_SLASHES) ?>;
 
       const defaultZoom = 150;
       if (floatingControls) {
@@ -416,23 +408,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       let externalEditObjectUrl = '';
-
-      async function waitForOpenCv(timeoutMs) {
-        const deadline = Date.now() + Math.max(1000, timeoutMs || 7000);
-        while (Date.now() < deadline) {
-          if (window.cv && typeof window.cv.Mat === 'function') return true;
-          if (window.cv && typeof window.cv.then === 'function') {
-            try {
-              window.cv = await window.cv;
-              if (window.cv && typeof window.cv.Mat === 'function') return true;
-            } catch (error) {
-              return false;
-            }
-          }
-          await new Promise(function (resolve) { window.setTimeout(resolve, 50); });
-        }
-        return false;
-      }
 
       function clearExternalEditPreview() {
         if (externalEditObjectUrl) {
@@ -1896,6 +1871,50 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
       }
 
+      function requestOpenCvToothContours(data, hardMask, softMask, width, height, upperBand, boundaries) {
+        const requestKey = [width, height, upperBand.minX, upperBand.maxX, upperBand.minY, upperBand.maxY]
+          .concat(boundaries.map(function (value) { return Math.round(value); }))
+          .join(':');
+        if (openCvContourCache && openCvContourCache.key === requestKey) {
+          return openCvContourCache.contours;
+        }
+        if (openCvRequestKey === requestKey) return null;
+        openCvRequestKey = requestKey;
+        try {
+          if (!openCvWorker) {
+            openCvWorker = new Worker(openCvWorkerUrl);
+            openCvWorker.addEventListener('message', function (event) {
+              const result = event.data || {};
+              if (!result.key || !result.contours) return;
+              openCvContourCache = { key: result.key, contours: result.contours };
+              openCvRequestKey = '';
+              detectedTeethBounds = null;
+              render(readAnchorPoints(), baseContourPoints);
+            });
+            openCvWorker.addEventListener('error', function () {
+              openCvRequestKey = '';
+            });
+          }
+          const imageCopy = new Uint8ClampedArray(data);
+          const hardCopy = new Uint8Array(hardMask);
+          const softCopy = new Uint8Array(softMask);
+          openCvWorker.postMessage({
+            key: requestKey,
+            imageData: imageCopy,
+            hardMask: hardCopy,
+            softMask: softCopy,
+            width: width,
+            height: height,
+            upperBand: upperBand,
+            boundaries: boundaries,
+            teeth: visibleUpperTeeth
+          }, [imageCopy.buffer, hardCopy.buffer, softCopy.buffer]);
+        } catch (error) {
+          openCvRequestKey = '';
+        }
+        return null;
+      }
+
       function buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 24 || smileHeight < 8) return null;
@@ -1987,7 +2006,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           minY: smileBounds.minY,
           maxY: upperBandBottom
         };
-        const openCvMasks = buildOpenCvToothMasks(data, mask, softMask, width, height, upperBand, boundaries);
+        const openCvContours = requestOpenCvToothContours(data, mask, softMask, width, height, upperBand, boundaries);
         const slots = {};
         visibleUpperTeeth.forEach(function (toothNumber, index) {
           const leftBoundary = boundaries[index];
@@ -2003,10 +2022,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           for (let x = segmentBounds.minX; x <= segmentBounds.maxX; x += 1) {
             hitCount += colHits[x] || 0;
           }
-          const openCvTooth = openCvMasks && openCvMasks[toothNumber] ? openCvMasks[toothNumber] : null;
-          const connectedSlotMask = openCvTooth
-            ? openCvTooth.mask
-            : buildConnectedToothSlotMask(mask, softMask, width, height, segmentBounds);
+          const openCvTooth = openCvContours && openCvContours[toothNumber] ? openCvContours[toothNumber] : null;
+          const connectedSlotMask = buildConnectedToothSlotMask(mask, softMask, width, height, segmentBounds);
           const segmentWidth = Math.max(2, segmentBounds.maxX - segmentBounds.minX + 1);
           const contourBounds = {
             minX: Math.max(upperBand.minX, segmentBounds.minX - (segmentWidth * 0.42)),
@@ -3756,7 +3773,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       });
 
       async function initializeAnchors() {
-        await waitForOpenCv(7000);
         const anchorInput = form.querySelector('input[name="anchor_points"]');
         const contourInput = form.querySelector('input[name="contour_points"]');
         if (!anchorInput.value) {

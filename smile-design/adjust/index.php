@@ -3617,7 +3617,25 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         ensureBrushLayer();
         const zoom = zoomRange ? normalize(zoomRange.value, 100, 260) : defaultZoom;
         const scale = zoom / 100;
-        const center = centroid(points);
+        let center = centroid(points);
+        const teethBounds = detectedTeethBounds && detectedTeethBounds.slots ? detectedTeethBounds : null;
+        if (teethBounds) {
+          const visibleSlots = visibleUpperTeeth.map(function (toothNumber) {
+            return teethBounds.slots[toothNumber] || null;
+          }).filter(Boolean);
+          if (visibleSlots.length) {
+            const left = Math.min.apply(null, visibleSlots.map(function (slot) { return slot.left; }));
+            const right = Math.max.apply(null, visibleSlots.map(function (slot) { return slot.right; }));
+            const top = Math.min.apply(null, visibleSlots.map(function (slot) { return slot.top; }));
+            const bottom = Math.max.apply(null, visibleSlots.map(function (slot) { return slot.bottom; }));
+            const slot8 = teethBounds.slots[8] || null;
+            const slot9 = teethBounds.slots[9] || null;
+            center = {
+              x: slot8 && slot9 ? (slot8.right + slot9.left) / 2 : (left + right) / 2,
+              y: normalize(((top + bottom) / 2) + 0.8, 0, 100)
+            };
+          }
+        }
         const rect = workFrame.getBoundingClientRect();
         const imageRect = getDisplayImageRect();
         const centerX = imageRect.left + ((center.x / 100) * imageRect.width);

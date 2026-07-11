@@ -56,7 +56,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         };
       });
     </script>
-    <script async src="https://docs.opencv.org/4.x/opencv.js"
+    <script async src="<?= e(base_url('assets/vendor/opencv.js')) ?>"
             onload="if (window.cv && typeof window.cv.Mat === 'function') window.__resolveOpenCv(window.cv);"
             onerror="window.__resolveOpenCv(null)"></script>
     <meta name="robots" content="noindex,nofollow">

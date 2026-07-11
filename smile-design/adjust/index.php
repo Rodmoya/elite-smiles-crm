@@ -1448,23 +1448,35 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       function buildToothSegment(contourMask, width, height, smileBounds, bounds, hitCounts) {
         const segmentWidth = Math.max(2, bounds.maxX - bounds.minX + 1);
         const paddedBounds = {
-          minX: Math.max(smileBounds.minX, bounds.minX - Math.max(1, segmentWidth * 0.02)),
-          maxX: Math.min(smileBounds.maxX, bounds.maxX + Math.max(1, segmentWidth * 0.02)),
-          minY: Math.max(0, smileBounds.minY - Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.08)),
-          maxY: Math.min(height - 1, smileBounds.maxY + Math.max(1, (smileBounds.maxY - smileBounds.minY + 1) * 0.10))
+          minX: Math.max(smileBounds.minX, Math.floor(bounds.minX)),
+          maxX: Math.min(smileBounds.maxX, Math.ceil(bounds.maxX)),
+          minY: Math.max(0, Math.floor(bounds.minY !== undefined ? bounds.minY : smileBounds.minY)),
+          maxY: Math.min(height - 1, Math.ceil(bounds.maxY !== undefined ? bounds.maxY : smileBounds.maxY))
         };
         const rawContour = buildToothPixelContour(contourMask, width, height, paddedBounds);
-        const rectContour = densifyPolygonPoints([
-          { x: normalize((paddedBounds.minX / width) * 100, 0, 100), y: normalize((paddedBounds.minY / height) * 100, 0, 100) },
-          { x: normalize((paddedBounds.maxX / width) * 100, 0, 100), y: normalize((paddedBounds.minY / height) * 100, 0, 100) },
-          { x: normalize((paddedBounds.maxX / width) * 100, 0, 100), y: normalize((paddedBounds.maxY / height) * 100, 0, 100) },
-          { x: normalize((paddedBounds.minX / width) * 100, 0, 100), y: normalize((paddedBounds.maxY / height) * 100, 0, 100) }
-        ]);
         const fallback = pointBoundsFromPixelBounds(paddedBounds, width, height);
-        const rawContourBounds = rawContour.length ? getPointBounds(rawContour) : fallback;
-        const fallbackWidthPct = fallback.right - fallback.left;
-        const contourWidthPct = rawContourBounds.right - rawContourBounds.left;
-        const contour = rawContour.length && contourWidthPct <= (fallbackWidthPct * 1.40) ? rawContour : rectContour;
+        const insetX = Math.max(0.05, (fallback.right - fallback.left) * 0.08);
+        const insetY = Math.max(0.04, (fallback.bottom - fallback.top) * 0.05);
+        const fallbackContour = densifyPolygonPoints([
+          { x: fallback.left + insetX, y: fallback.top + insetY },
+          { x: (fallback.left + fallback.right) / 2, y: fallback.top },
+          { x: fallback.right - insetX, y: fallback.top + insetY },
+          { x: fallback.right, y: fallback.top + ((fallback.bottom - fallback.top) * 0.32) },
+          { x: fallback.right - (insetX * 0.35), y: fallback.bottom - insetY },
+          { x: (fallback.left + fallback.right) / 2, y: fallback.bottom },
+          { x: fallback.left + (insetX * 0.35), y: fallback.bottom - insetY },
+          { x: fallback.left, y: fallback.top + ((fallback.bottom - fallback.top) * 0.32) }
+        ]);
+        const rawContourBounds = rawContour.length ? getPointBounds(rawContour) : null;
+        const rawWidth = rawContourBounds ? rawContourBounds.right - rawContourBounds.left : 0;
+        const rawHeight = rawContourBounds ? rawContourBounds.bottom - rawContourBounds.top : 0;
+        const fallbackWidth = fallback.right - fallback.left;
+        const fallbackHeight = fallback.bottom - fallback.top;
+        const usesPixelContour = rawContour.length >= 12
+          && rawWidth >= Math.max(0.55, fallbackWidth * 0.34)
+          && rawHeight >= Math.max(0.70, fallbackHeight * 0.42)
+          && rawWidth <= fallbackWidth * 1.08;
+        const contour = usesPixelContour ? rawContour : fallbackContour;
         const contourBounds = getPointBounds(contour);
         return {
           bounds: paddedBounds,
@@ -1476,7 +1488,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           right: contourBounds.right,
           top: contourBounds.top,
           bottom: contourBounds.bottom,
-          source: contour.length ? 'upper_tooth_segment_contour' : 'upper_tooth_segment'
+          source: usesPixelContour ? 'upper_tooth_slot_contour' : 'upper_tooth_slot_fallback'
         };
       }
 
@@ -1579,7 +1591,162 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         };
       }
 
+      function findBestToothSeparator(colHits, separatorScores, expectedX, minX, maxX, windowSize, peakHit) {
+        const searchMin = Math.max(minX + 2, Math.round(expectedX - windowSize));
+        const searchMax = Math.min(maxX - 2, Math.round(expectedX + windowSize));
+        if (searchMax <= searchMin) {
+          return Math.round(normalize(expectedX, minX + 1, maxX - 1));
+        }
+        let bestX = Math.round(normalize(expectedX, searchMin, searchMax));
+        let bestScore = Number.NEGATIVE_INFINITY;
+        const safePeak = Math.max(1, peakHit || 1);
+        for (let x = searchMin; x <= searchMax; x += 1) {
+          const current = colHits[x] || 0;
+          const shoulder = Math.max(
+            colHits[x - 4] || 0,
+            colHits[x - 3] || 0,
+            colHits[x - 2] || 0,
+            colHits[x + 2] || 0,
+            colHits[x + 3] || 0,
+            colHits[x + 4] || 0
+          );
+          const valleyDepth = Math.max(0, shoulder - current) / safePeak;
+          const separator = Math.max(0, separatorScores[x] || 0) / Math.max(1, (maxX - minX) * 0.025);
+          const occupancyPenalty = current / safePeak;
+          const distancePenalty = Math.abs(x - expectedX) / Math.max(1, windowSize);
+          const score = (separator * 1.45) + (valleyDepth * 3.2) - (occupancyPenalty * 1.15) - (distancePenalty * 0.72);
+          if (score > bestScore) {
+            bestScore = score;
+            bestX = x;
+          }
+        }
+        return bestX;
+      }
+
       function buildVisibleUpperToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
+        const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
+        if (smileWidth < 24 || smileHeight < 8) return null;
+
+        const colHits = [];
+        let peakHit = 0;
+        for (let x = smileBounds.minX; x <= smileBounds.maxX; x += 1) {
+          let hits = 0;
+          for (let y = smileBounds.minY; y <= smileBounds.maxY; y += 1) {
+            if (!softMask[y * width + x]) continue;
+            const verticalRatio = (y - smileBounds.minY) / Math.max(1, smileHeight);
+            hits += verticalRatio <= 0.62 ? 1.15 : 0.82;
+          }
+          colHits[x] = hits;
+          peakHit = Math.max(peakHit, hits);
+        }
+
+        const separatorScores = buildSeparatorScores(data, width, smileBounds, smileHeight);
+        const ratios = getVisibleToothWidthRatios();
+        const totalRatio = visibleUpperTeeth.reduce(function (sum, toothNumber) {
+          return sum + ratios[toothNumber];
+        }, 0);
+        const ratioUnit = smileWidth / Math.max(1, totalRatio);
+        const boundaries = [smileBounds.minX];
+        let cumulativeRatio = 0;
+        for (let index = 0; index < visibleUpperTeeth.length - 1; index += 1) {
+          const leftTooth = visibleUpperTeeth[index];
+          const rightTooth = visibleUpperTeeth[index + 1];
+          cumulativeRatio += ratios[leftTooth];
+          const expectedX = smileBounds.minX + (smileWidth * (cumulativeRatio / totalRatio));
+          const localExpectedWidth = ratioUnit * ((ratios[leftTooth] + ratios[rightTooth]) / 2);
+          const isCenterSeam = leftTooth === 8 && rightTooth === 9;
+          const searchWindow = Math.max(4, localExpectedWidth * (isCenterSeam ? 0.38 : 0.48));
+          const remainingBoundaries = (visibleUpperTeeth.length - 1) - index;
+          const minBoundary = boundaries[boundaries.length - 1] + Math.max(3, Math.round(localExpectedWidth * 0.38));
+          const maxBoundary = smileBounds.maxX - Math.max(3, remainingBoundaries * 3);
+          const separator = findBestToothSeparator(
+            colHits,
+            separatorScores,
+            expectedX,
+            Math.min(minBoundary - 1, maxBoundary - 1),
+            Math.max(minBoundary + 1, maxBoundary + 1),
+            searchWindow,
+            peakHit
+          );
+          boundaries.push(Math.round(normalize(separator, minBoundary, maxBoundary)));
+        }
+        boundaries.push(smileBounds.maxX);
+
+        for (let index = 1; index < boundaries.length; index += 1) {
+          if (boundaries[index] <= boundaries[index - 1] + 2) {
+            boundaries[index] = boundaries[index - 1] + 3;
+          }
+        }
+        boundaries[boundaries.length - 1] = smileBounds.maxX;
+
+        const rowHits = [];
+        let peakRowHit = 0;
+        let peakRowY = smileBounds.minY;
+        for (let y = smileBounds.minY; y <= smileBounds.maxY; y += 1) {
+          let hits = 0;
+          for (let x = smileBounds.minX; x <= smileBounds.maxX; x += 1) {
+            hits += softMask[y * width + x] ? 1 : 0;
+          }
+          rowHits[y] = hits;
+          if (hits > peakRowHit) {
+            peakRowHit = hits;
+            peakRowY = y;
+          }
+        }
+        let upperBandBottom = smileBounds.maxY;
+        const valleyStart = peakRowY + Math.max(3, Math.round(smileHeight * 0.16));
+        const valleyEnd = Math.min(smileBounds.maxY - 1, peakRowY + Math.round(smileHeight * 0.72));
+        let lowestRowY = -1;
+        let lowestRowHits = Number.POSITIVE_INFINITY;
+        for (let y = valleyStart; y <= valleyEnd; y += 1) {
+          if ((rowHits[y] || 0) < lowestRowHits) {
+            lowestRowHits = rowHits[y] || 0;
+            lowestRowY = y;
+          }
+        }
+        if (lowestRowY > peakRowY && lowestRowHits <= peakRowHit * 0.28 && lowestRowY < smileBounds.maxY - 2) {
+          upperBandBottom = Math.min(smileBounds.maxY, lowestRowY + 1);
+        }
+
+        const upperBand = {
+          minX: smileBounds.minX,
+          maxX: smileBounds.maxX,
+          minY: smileBounds.minY,
+          maxY: upperBandBottom
+        };
+        const slots = {};
+        visibleUpperTeeth.forEach(function (toothNumber, index) {
+          const leftBoundary = boundaries[index];
+          const rightBoundary = boundaries[index + 1];
+          if (!Number.isFinite(leftBoundary) || !Number.isFinite(rightBoundary) || rightBoundary - leftBoundary < 3) return;
+          const segmentBounds = {
+            minX: index === 0 ? leftBoundary : leftBoundary + 1,
+            maxX: index === visibleUpperTeeth.length - 1 ? rightBoundary : rightBoundary - 1,
+            minY: upperBand.minY,
+            maxY: upperBand.maxY
+          };
+          let hitCount = 0;
+          for (let x = segmentBounds.minX; x <= segmentBounds.maxX; x += 1) {
+            hitCount += colHits[x] || 0;
+          }
+          const segment = buildToothSegment(softMask, width, height, upperBand, segmentBounds, hitCount);
+          if (!segment || !Array.isArray(segment.contour) || segment.contour.length < 8) return;
+          slots[toothNumber] = {
+            number: toothNumber,
+            label: '#' + toothNumber,
+            left: segment.left,
+            right: segment.right,
+            top: segment.top,
+            bottom: segment.bottom,
+            contour: segment.contour,
+            source: segment.source
+          };
+        });
+
+        return Object.keys(slots).length >= 8 ? slots : buildLegacyCentralToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight);
+      }
+
+      function buildLegacyCentralToothSlots(mask, softMask, data, width, height, smileBounds, smileHeight) {
         const smileWidth = smileBounds.maxX - smileBounds.minX + 1;
         if (smileWidth < 8 || smileHeight < 4) return null;
         const colHits = [];
@@ -2223,6 +2390,14 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const toothNumber = normalizeToothNumber(toothNumberOverride) || getSelectedToothNumber();
         const teethBounds = getDetectedTeethBounds();
         const slotBounds = teethBounds && teethBounds.slots ? teethBounds.slots[toothNumber] : null;
+        if (slotBounds && Array.isArray(slotBounds.contour) && slotBounds.contour.length >= 8) {
+          return {
+            number: toothNumber,
+            label: '#' + toothNumber,
+            polygon: densifyPolygonPoints(slotBounds.contour),
+            source: slotBounds.source || 'upper_tooth_slot_contour'
+          };
+        }
         let sourceBounds = slotBounds || teethBounds || getPointBounds(contourPoints && contourPoints.length ? contourPoints : anchorPoints);
         const mouthReferencePoints = contourPoints && contourPoints.length
           ? contourPoints
@@ -2251,7 +2426,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const hasPixelContour = sourceBounds
           && Array.isArray(sourceBounds.contour)
           && sourceBounds.contour.length >= 8
-          && (sourceBounds.source === 'single_tooth_pixel_contour' || sourceBounds.source === 'upper_tooth_slot_contour')
+            && (
+              sourceBounds.source === 'single_tooth_pixel_contour'
+              || sourceBounds.source === 'upper_tooth_slot_contour'
+              || sourceBounds.source === 'upper_tooth_slot_fallback'
+            )
           && sourceFitsExpectedTooth;
         if (hasPixelContour) {
           return {

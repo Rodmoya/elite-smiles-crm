@@ -400,7 +400,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       let brushContext = null;
       let brushHistory = [];
       const visibleUpperTeeth = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-      const openCvWorkerUrl = <?= json_encode(base_url('assets/js/smile-tooth-worker.js'), JSON_UNESCAPED_SLASHES) ?>;
+      const openCvWorkerUrl = <?= json_encode(base_url('assets/vendor/opencv-wasm/smile-tooth-worker.js'), JSON_UNESCAPED_SLASHES) ?>;
 
       const defaultZoom = 150;
       if (floatingControls) {

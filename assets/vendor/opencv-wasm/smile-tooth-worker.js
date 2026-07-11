@@ -4,7 +4,7 @@ function loadOpenCv() {
   if (openCvPromise) return openCvPromise;
   openCvPromise = new Promise(function (resolve, reject) {
     try {
-      importScripts('../vendor/opencv.js');
+      importScripts('./opencv.js');
       if (self.cv && typeof self.cv.Mat === 'function') {
         resolve(self.cv);
         return;

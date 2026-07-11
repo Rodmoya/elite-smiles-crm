@@ -1900,7 +1900,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         for (let index = 1; index < boundaries.length - 1; index += 1) {
           const leftWidth = Math.max(2, boundaries[index] - boundaries[index - 1]);
           const rightWidth = Math.max(2, boundaries[index + 1] - boundaries[index]);
-          const radius = Math.max(3, Math.round(Math.min(leftWidth, rightWidth) * 0.28));
+          const radius = Math.max(3, Math.round(Math.min(leftWidth, rightWidth) * 0.14));
           curves.push(traceDarkToothSeparator(
             data,
             width,
@@ -2120,7 +2120,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           const expectedX = smileBounds.minX + (smileWidth * (cumulativeRatio / totalRatio));
           const localExpectedWidth = ratioUnit * ((ratios[leftTooth] + ratios[rightTooth]) / 2);
           const isCenterSeam = leftTooth === 8 && rightTooth === 9;
-          const searchWindow = Math.max(4, localExpectedWidth * (isCenterSeam ? 0.38 : 0.48));
+          const searchWindow = Math.max(4, localExpectedWidth * (isCenterSeam ? 0.26 : 0.24));
           const remainingBoundaries = (visibleUpperTeeth.length - 1) - index;
           const minBoundary = boundaries[boundaries.length - 1] + Math.max(3, Math.round(localExpectedWidth * 0.38));
           const maxBoundary = smileBounds.maxX - Math.max(3, remainingBoundaries * 3);

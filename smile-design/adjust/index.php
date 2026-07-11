@@ -1622,23 +1622,25 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       function buildSeparatorScores(data, width, smileBounds, smileHeight) {
         const scores = [];
+        const imageHeight = Math.max(1, Math.round(data.length / Math.max(1, width * 4)));
         const sampleTop = Math.max(smileBounds.minY, Math.round(smileBounds.minY + (smileHeight * 0.12)));
         const sampleBottom = Math.min(smileBounds.maxY, Math.round(smileBounds.minY + (smileHeight * 0.78)));
+        const shoulderDistance = Math.max(4, Math.round((smileBounds.maxX - smileBounds.minX + 1) * 0.017));
         for (let x = smileBounds.minX; x <= smileBounds.maxX; x += 1) {
-          let score = 0;
+          const darknessSamples = [];
           for (let y = sampleTop; y <= sampleBottom; y += 1) {
-            const offset = (y * width + x) * 4;
-            const r = data[offset];
-            const g = data[offset + 1];
-            const b = data[offset + 2];
-            const brightness = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
-            const hsv = rgbToHsv(r, g, b);
-            const likelySeparator = brightness <= 180 && hsv.s <= 0.42 && !(r > g + 34 && r > b + 42 && b < 160);
-            if (!likelySeparator) continue;
-            const depth = Math.max(0, 190 - brightness) / 24;
-            score += 0.6 + depth;
+            const center = pixelBrightnessAt(data, width, imageHeight, x, y);
+            const left = pixelBrightnessAt(data, width, imageHeight, x - shoulderDistance, y);
+            const right = pixelBrightnessAt(data, width, imageHeight, x + shoulderDistance, y);
+            const localValley = Math.max(0, Math.min(left, right) - center);
+            if (localValley > 1.5) darknessSamples.push(localValley);
           }
-          scores[x] = score;
+          darknessSamples.sort(function (a, b) { return b - a; });
+          const sampleCount = Math.max(3, Math.ceil(darknessSamples.length * 0.28));
+          const strongest = darknessSamples.slice(0, sampleCount);
+          const strongTotal = strongest.reduce(function (sum, value) { return sum + (value * value); }, 0);
+          const continuity = darknessSamples.length / Math.max(1, sampleBottom - sampleTop + 1);
+          scores[x] = strongTotal + (continuity * 180);
         }
         return scores;
       }
@@ -1713,6 +1715,35 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           const occupancyPenalty = current / safePeak;
           const distancePenalty = Math.abs(x - expectedX) / Math.max(1, windowSize);
           const score = (separator * 1.45) + (valleyDepth * 3.2) - (occupancyPenalty * 1.15) - (distancePenalty * 0.72);
+          if (score > bestScore) {
+            bestScore = score;
+            bestX = x;
+          }
+        }
+        return bestX;
+      }
+
+      function findBestContrastSeparator(separatorScores, expectedX, minX, maxX, windowSize) {
+        const searchMin = Math.max(minX, Math.round(expectedX - windowSize));
+        const searchMax = Math.min(maxX, Math.round(expectedX + windowSize));
+        if (searchMax <= searchMin) {
+          return Math.round(normalize(expectedX, minX, maxX));
+        }
+
+        let peakScore = 0;
+        for (let x = searchMin; x <= searchMax; x += 1) {
+          peakScore = Math.max(peakScore, separatorScores[x] || 0);
+        }
+        if (peakScore <= 0) {
+          return Math.round(normalize(expectedX, searchMin, searchMax));
+        }
+
+        let bestX = Math.round(normalize(expectedX, searchMin, searchMax));
+        let bestScore = Number.NEGATIVE_INFINITY;
+        for (let x = searchMin; x <= searchMax; x += 1) {
+          const contrast = (separatorScores[x] || 0) / peakScore;
+          const distance = Math.abs(x - expectedX) / Math.max(1, windowSize);
+          const score = contrast - (distance * 0.18);
           if (score > bestScore) {
             bestScore = score;
             bestX = x;
@@ -2114,64 +2145,59 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           return sum + ratios[toothNumber];
         }, 0);
         const ratioUnit = smileWidth / Math.max(1, totalRatio);
-        const boundaries = [smileBounds.minX];
-        let cumulativeRatio = 0;
-        for (let index = 0; index < visibleUpperTeeth.length - 1; index += 1) {
-          const leftTooth = visibleUpperTeeth[index];
-          const rightTooth = visibleUpperTeeth[index + 1];
-          cumulativeRatio += ratios[leftTooth];
-          const expectedX = smileBounds.minX + (smileWidth * (cumulativeRatio / totalRatio));
-          const localExpectedWidth = ratioUnit * ((ratios[leftTooth] + ratios[rightTooth]) / 2);
-          const isCenterSeam = leftTooth === 8 && rightTooth === 9;
-          const searchWindow = Math.max(4, localExpectedWidth * (isCenterSeam ? 0.26 : 0.24));
-          const remainingBoundaries = (visibleUpperTeeth.length - 1) - index;
-          const minBoundary = boundaries[boundaries.length - 1] + Math.max(3, Math.round(localExpectedWidth * 0.38));
-          const maxBoundary = smileBounds.maxX - Math.max(3, remainingBoundaries * 3);
-          const separator = findBestToothSeparator(
-            colHits,
-            separatorScores,
-            expectedX,
-            Math.min(minBoundary - 1, maxBoundary - 1),
-            Math.max(minBoundary + 1, maxBoundary + 1),
-            searchWindow,
-            peakHit
-          );
-          boundaries.push(Math.round(normalize(separator, minBoundary, maxBoundary)));
-        }
-        boundaries.push(smileBounds.maxX);
-
-        for (let index = 1; index < boundaries.length; index += 1) {
-          if (boundaries[index] <= boundaries[index - 1] + 2) {
-            boundaries[index] = boundaries[index - 1] + 3;
-          }
-        }
+        const centerBoundaryIndex = visibleUpperTeeth.indexOf(9);
+        const boundaries = new Array(visibleUpperTeeth.length + 1);
+        boundaries[0] = smileBounds.minX;
         boundaries[boundaries.length - 1] = smileBounds.maxX;
 
-        const centerBoundaryIndex = visibleUpperTeeth.indexOf(9);
-        const centerBoundary = boundaries[centerBoundaryIndex];
-        const leftTeeth = visibleUpperTeeth.slice(0, centerBoundaryIndex);
-        const rightTeeth = visibleUpperTeeth.slice(centerBoundaryIndex);
-        const leftRatioTotal = leftTeeth.reduce(function (sum, toothNumber) {
+        const leftCenterRatio = visibleUpperTeeth.slice(0, centerBoundaryIndex).reduce(function (sum, toothNumber) {
           return sum + ratios[toothNumber];
         }, 0);
-        const rightRatioTotal = rightTeeth.reduce(function (sum, toothNumber) {
-          return sum + ratios[toothNumber];
-        }, 0);
-        const leftRatioUnit = (centerBoundary - smileBounds.minX) / Math.max(1, leftRatioTotal);
-        const rightRatioUnit = (smileBounds.maxX - centerBoundary) / Math.max(1, rightRatioTotal);
-        let anchoredX = smileBounds.minX;
-        boundaries[0] = smileBounds.minX;
-        leftTeeth.forEach(function (toothNumber, index) {
-          anchoredX += ratios[toothNumber] * leftRatioUnit;
-          boundaries[index + 1] = index === leftTeeth.length - 1 ? centerBoundary : anchoredX;
-        });
-        anchoredX = centerBoundary;
-        rightTeeth.forEach(function (toothNumber, index) {
-          anchoredX += ratios[toothNumber] * rightRatioUnit;
-          boundaries[centerBoundaryIndex + index + 1] = index === rightTeeth.length - 1
-            ? smileBounds.maxX
-            : anchoredX;
-        });
+        const expectedCenter = smileBounds.minX + (ratioUnit * leftCenterRatio);
+        const centerWidth = ratioUnit * ((ratios[8] + ratios[9]) / 2);
+        boundaries[centerBoundaryIndex] = findBestContrastSeparator(
+          separatorScores,
+          expectedCenter,
+          Math.round(smileBounds.minX + (smileWidth * 0.38)),
+          Math.round(smileBounds.minX + (smileWidth * 0.62)),
+          Math.max(6, centerWidth * 0.58)
+        );
+
+        for (let boundaryIndex = centerBoundaryIndex - 1; boundaryIndex >= 1; boundaryIndex -= 1) {
+          const crossedTooth = visibleUpperTeeth[boundaryIndex];
+          const expectedWidth = ratioUnit * ratios[crossedTooth];
+          const expectedX = boundaries[boundaryIndex + 1] - expectedWidth;
+          const minX = smileBounds.minX + Math.max(3, boundaryIndex * 3);
+          const maxX = boundaries[boundaryIndex + 1] - Math.max(4, expectedWidth * 0.48);
+          boundaries[boundaryIndex] = findBestContrastSeparator(
+            separatorScores,
+            expectedX,
+            minX,
+            maxX,
+            Math.max(5, expectedWidth * 0.42)
+          );
+        }
+
+        for (let boundaryIndex = centerBoundaryIndex + 1; boundaryIndex < boundaries.length - 1; boundaryIndex += 1) {
+          const crossedTooth = visibleUpperTeeth[boundaryIndex - 1];
+          const expectedWidth = ratioUnit * ratios[crossedTooth];
+          const expectedX = boundaries[boundaryIndex - 1] + expectedWidth;
+          const minX = boundaries[boundaryIndex - 1] + Math.max(4, expectedWidth * 0.48);
+          const remaining = (boundaries.length - 1) - boundaryIndex;
+          const maxX = smileBounds.maxX - Math.max(3, remaining * 3);
+          boundaries[boundaryIndex] = findBestContrastSeparator(
+            separatorScores,
+            expectedX,
+            minX,
+            maxX,
+            Math.max(5, expectedWidth * 0.42)
+          );
+        }
+
+        for (let index = 1; index < boundaries.length; index += 1) {
+          boundaries[index] = Math.round(Math.max(boundaries[index], boundaries[index - 1] + 3));
+        }
+        boundaries[boundaries.length - 1] = smileBounds.maxX;
 
         const rowHits = [];
         let peakRowHit = 0;

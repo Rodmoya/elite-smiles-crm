@@ -566,9 +566,8 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 <button type="button" class="sd-mode-btn" data-sd-mode="result" aria-pressed="<?= $defaultMode === 'result' ? 'true' : 'false' ?>">Result</button>
                 <button type="button" class="sd-mode-btn" data-sd-mode="compare" aria-pressed="<?= $defaultMode === 'compare' ? 'true' : 'false' ?>">Compare</button>
                 <button type="button" class="sd-mode-btn" data-sd-mode="ba" aria-pressed="<?= $defaultMode === 'ba' ? 'true' : 'false' ?>">B/A</button>
-                <button type="button" class="sd-mode-btn" data-sd-mode="opacity" aria-pressed="<?= $defaultMode === 'opacity' ? 'true' : 'false' ?>">Opacity</button>
-                <button type="button" class="sd-mode-btn" data-sd-mode="zoom" aria-pressed="<?= $defaultMode === 'zoom' ? 'true' : 'false' ?>">Zoom</button>
                 <?php if ($hasVideo || $canGenerateVideo): ?><button type="button" class="sd-mode-btn" data-sd-mode="video" aria-pressed="<?= $defaultMode === 'video' ? 'true' : 'false' ?>">Video</button><?php endif; ?>
+                <button type="button" class="sd-mode-btn" data-sd-mode="zoom" aria-pressed="<?= $defaultMode === 'zoom' ? 'true' : 'false' ?>">Zoom</button>
             </div>
         </div>
         <div data-sd-mode-panel="input" class="<?= $defaultMode === 'input' ? '' : 'sd-hidden' ?>">
@@ -607,46 +606,6 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 </div>
                 <div class="sd-focus-mask" aria-hidden="true"></div>
                 <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
-            </div>
-        </div>
-        <div data-sd-mode-panel="opacity" class="<?= $defaultMode === 'opacity' ? '' : 'sd-hidden' ?>">
-            <div class="sd-label-row">
-                <span>Opacity Overlay</span>
-                <span class="sd-inline-range">
-                    <span data-sd-opacity-output>55%</span>
-                    <input type="range" min="0" max="100" step="1" value="55" data-sd-opacity-input>
-                </span>
-            </div>
-            <div class="sd-frame">
-                <?php if ($beforeUrl !== ''): ?>
-                    <div class="sd-opacity-shell">
-                        <img class="sd-opacity-base sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before photo">
-                        <img class="sd-opacity-overlay sd-align-after <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After overlay">
-                        <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
-                    </div>
-                <?php else: ?>
-                    <div class="sd-placeholder">Before photo will appear here.</div>
-                <?php endif; ?>
-                <div class="sd-focus-mask" aria-hidden="true"></div>
-                <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
-            </div>
-        </div>
-        <div data-sd-mode-panel="zoom" class="<?= $defaultMode === 'zoom' ? '' : 'sd-hidden' ?>">
-            <div class="sd-zoom-stack">
-                <div class="sd-zoom-panel">
-                    <div class="sd-zoom-panel-header"><span>Before Zoom</span><span data-sd-before-label><?= e($defaultInputLabel) ?></span></div>
-                    <div class="sd-zoom-frame">
-                        <?php if ($beforeUrl !== ''): ?><img class="sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before zoom"><?php else: ?><div class="sd-placeholder">Before photo will appear here.</div><?php endif; ?>
-                    </div>
-                </div>
-                <div class="sd-zoom-panel">
-                    <div class="sd-zoom-panel-header"><span>After Zoom</span><span data-sd-after-label><?= $hasAfter ? 'After' : 'After pending' ?></span></div>
-                    <div class="sd-zoom-frame">
-                        <img class="sd-align-after <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After zoom">
-                        <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
-                        <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
-                    </div>
-                </div>
             </div>
         </div>
         <?php if ($hasVideo || $canGenerateVideo): ?>
@@ -695,6 +654,24 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 </div>
             </div>
         <?php endif; ?>
+        <div data-sd-mode-panel="zoom" class="<?= $defaultMode === 'zoom' ? '' : 'sd-hidden' ?>">
+            <div class="sd-zoom-stack">
+                <div class="sd-zoom-panel">
+                    <div class="sd-zoom-panel-header"><span>Before Zoom</span><span data-sd-before-label><?= e($defaultInputLabel) ?></span></div>
+                    <div class="sd-zoom-frame">
+                        <?php if ($beforeUrl !== ''): ?><img class="sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before zoom"><?php else: ?><div class="sd-placeholder">Before photo will appear here.</div><?php endif; ?>
+                    </div>
+                </div>
+                <div class="sd-zoom-panel">
+                    <div class="sd-zoom-panel-header"><span>After Zoom</span><span data-sd-after-label><?= $hasAfter ? 'After' : 'After pending' ?></span></div>
+                    <div class="sd-zoom-frame">
+                        <img class="sd-align-after <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After zoom">
+                        <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
+                        <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     <?php if ($canEditAlignment): ?>
         <div class="mt-3">

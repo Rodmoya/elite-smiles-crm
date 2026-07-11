@@ -625,9 +625,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
       }
 
-      function toggleToothSelection(toothNumber, seedPoint) {
+      function toggleToothSelection(toothNumber, seedPoint, additive) {
         const normalized = normalizeToothNumber(toothNumber);
         if (normalized === null) return;
+        if (!additive) {
+          toothSeedPoints = {};
+          if (seedPoint) toothSeedPoints[normalized] = seedPoint;
+          setSelectedTeeth([normalized], normalized);
+          return;
+        }
         const next = getSelectedTeethArray();
         const index = next.indexOf(normalized);
         if (index >= 0) {
@@ -667,8 +673,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
-      function chooseToothNumber(toothNumber) {
-        toggleToothSelection(toothNumber, null);
+      function chooseToothNumber(toothNumber, additive) {
+        toggleToothSelection(toothNumber, null, additive);
         autoToothSelection = null;
         updateToothMapUi();
         render(readAnchorPoints());
@@ -732,13 +738,13 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return visibleUpperTeeth[bucket] || 8;
       }
 
-      function seedToothSelectionFromClick(clientX, clientY) {
+      function seedToothSelectionFromClick(clientX, clientY, additive) {
         const seedPoint = displayPointToImage(clientX, clientY);
         const parsed = getToothNumberFromClick(clientX, clientY);
         if (normalizeToothNumber(parsed) !== null) {
           toothSeedPoints[parsed] = seedPoint;
         }
-        toggleToothSelection(parsed, seedPoint);
+        toggleToothSelection(parsed, seedPoint, additive);
         autoToothSelection = null;
         updateToothMapUi();
         render(readAnchorPoints());
@@ -2738,7 +2744,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         }
         if (modeHelp) {
           modeHelp.textContent = editorMode === 'automatic'
-            ? 'Automatic mode starts with one detected tooth. Click the tooth overlay to keep or remove the selection.'
+            ? 'Click a tooth to select only that tooth. Hold Ctrl, Cmd, or Shift while clicking to select multiple teeth.'
             : 'Manual mode starts with a tooth click seed. Use paint only if the click needs cleanup.';
         }
         if (brushEnableButton) brushEnableButton.disabled = editorMode !== 'manual';
@@ -3793,7 +3799,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (!toothButton) return;
         event.preventDefault();
         event.stopPropagation();
-        chooseToothNumber(toothButton.getAttribute('data-tooth-number'));
+        chooseToothNumber(
+          toothButton.getAttribute('data-tooth-number'),
+          Boolean(event.ctrlKey || event.metaKey || event.shiftKey)
+        );
       });
 
       if (workFrame) {
@@ -3815,7 +3824,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (clientX < imageRect.left || clientX > imageRect.right || clientY < imageRect.top || clientY > imageRect.bottom) {
             return;
           }
-          seedToothSelectionFromClick(clientX, clientY);
+          seedToothSelectionFromClick(
+            clientX,
+            clientY,
+            Boolean(event.ctrlKey || event.metaKey || event.shiftKey)
+          );
         });
       }
 
@@ -3832,7 +3845,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (!toothNumber) return;
           event.preventDefault();
           event.stopPropagation();
-          toggleToothSelection(toothNumber, null);
+          toggleToothSelection(
+            toothNumber,
+            null,
+            Boolean(event.ctrlKey || event.metaKey || event.shiftKey)
+          );
           render(readAnchorPoints());
         });
       }

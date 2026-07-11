@@ -351,6 +351,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $selectedTeethNumbers = json_decode($selectedTeeth, true);
         $selectedTeethNumbers = is_array($selectedTeethNumbers) ? array_map('intval', $selectedTeethNumbers) : [];
         $selectedPosteriorTeeth = array_values(array_intersect($selectedTeethNumbers, [4, 13]));
+        $toothOffsets = trim((string)($options['tooth_offsets'] ?? '{}'));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
         $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? 'front'));
@@ -582,6 +583,9 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         if ($selectedTeeth !== '') {
             $promptParts[] = 'Selected teeth for this correction: ' . $selectedTeeth . '.';
         }
+        if ($toothOffsets !== '' && $toothOffsets !== '{}') {
+            $promptParts[] = 'Manual selected-tooth target displacement in image percentage points (positive x is right, positive y is down): ' . $toothOffsets . '. Move only the corresponding selected teeth toward these target positions.';
+        }
 
         if ($primaryChanges === [] && $customRequest === '') {
             $promptParts[] = $isDiagnosticPreview
@@ -722,6 +726,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $selectedTeethNumbers = json_decode($selectedTeeth, true);
         $selectedTeethNumbers = is_array($selectedTeethNumbers) ? array_map('intval', $selectedTeethNumbers) : [];
         $selectedPosteriorTeeth = array_values(array_intersect($selectedTeethNumbers, [4, 13]));
+        $toothOffsets = trim((string)($options['tooth_offsets'] ?? '{}'));
         $anchorPointsRaw = trim((string)($options['anchor_points'] ?? ($options['precision_controls']['anchor_points'] ?? '')));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
@@ -864,6 +869,9 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         }
         if ($shadeBrightnessDelta !== 0) {
             $promptParts[] = 'Shade/brightness adjustment: increase or reduce veneer brightness by about ' . $shadeBrightnessDelta . ' points while preserving porcelain texture and incisal translucency.';
+        }
+        if ($toothOffsets !== '' && $toothOffsets !== '{}') {
+            $promptParts[] = 'Manual selected-tooth target displacement in image percentage points (positive x is right, positive y is down): ' . $toothOffsets . '. Move only the corresponding selected teeth toward these target positions.';
         }
         if ($anchorPointsRaw !== '') {
             $promptParts[] = 'Anchor guidance: use the provided edit anchors only for local constraint and deformation distribution, without changing unrelated non-dental regions. ' . $anchorPointsRaw . '.';

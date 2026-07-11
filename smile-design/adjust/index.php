@@ -3209,22 +3209,82 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (!Array.isArray(points) || points.length < 5 || amount <= 0) {
           return Array.isArray(points) ? points : [];
         }
-        const passes = Math.min(4, 1 + Math.floor(amount / 34));
-        const neighborWeight = 0.07 + ((amount / 100) * 0.13);
-        let smoothed = points.map(function (point) {
-          return { x: point.x, y: point.y };
+        const cleaned = [];
+        points.forEach(function (point) {
+          const previous = cleaned.length ? cleaned[cleaned.length - 1] : null;
+          if (previous && Math.abs(previous.x - point.x) < 0.015 && Math.abs(previous.y - point.y) < 0.015) return;
+          cleaned.push({ x: point.x, y: point.y });
         });
+        if (cleaned.length < 5) return points;
+
+        const resampleClosed = function (source, targetCount) {
+          const segments = [];
+          let perimeter = 0;
+          for (let index = 0; index < source.length; index += 1) {
+            const start = source[index];
+            const end = source[(index + 1) % source.length];
+            const length = Math.hypot(end.x - start.x, end.y - start.y);
+            segments.push({ start, end, length, from: perimeter });
+            perimeter += length;
+          }
+          if (perimeter <= 0) return source;
+          const output = [];
+          let segmentIndex = 0;
+          for (let sample = 0; sample < targetCount; sample += 1) {
+            const distance = (sample / targetCount) * perimeter;
+            while (segmentIndex < segments.length - 1 && distance > segments[segmentIndex].from + segments[segmentIndex].length) {
+              segmentIndex += 1;
+            }
+            const segment = segments[segmentIndex];
+            const ratio = segment.length > 0 ? normalize((distance - segment.from) / segment.length, 0, 1) : 0;
+            output.push(clampPoint({
+              x: segment.start.x + ((segment.end.x - segment.start.x) * ratio),
+              y: segment.start.y + ((segment.end.y - segment.start.y) * ratio)
+            }));
+          }
+          return output;
+        };
+
+        const sampleCount = Math.min(64, Math.max(32, Math.round(cleaned.length * 0.42)));
+        const baseline = resampleClosed(cleaned, sampleCount);
+        const passes = Math.min(4, 1 + Math.floor(amount / 28));
+        let curved = baseline;
         for (let pass = 0; pass < passes; pass += 1) {
-          smoothed = smoothed.map(function (point, index) {
-            const previous = smoothed[(index - 1 + smoothed.length) % smoothed.length];
-            const next = smoothed[(index + 1) % smoothed.length];
-            return clampPoint({
-              x: (previous.x * neighborWeight) + (point.x * (1 - (neighborWeight * 2))) + (next.x * neighborWeight),
-              y: (previous.y * neighborWeight) + (point.y * (1 - (neighborWeight * 2))) + (next.y * neighborWeight)
-            });
-          });
+          const next = [];
+          for (let index = 0; index < curved.length; index += 1) {
+            const current = curved[index];
+            const following = curved[(index + 1) % curved.length];
+            next.push(clampPoint({
+              x: (current.x * 0.75) + (following.x * 0.25),
+              y: (current.y * 0.75) + (following.y * 0.25)
+            }));
+            next.push(clampPoint({
+              x: (current.x * 0.25) + (following.x * 0.75),
+              y: (current.y * 0.25) + (following.y * 0.75)
+            }));
+          }
+          curved = resampleClosed(next, sampleCount);
         }
-        return smoothed;
+
+        let closestIndex = 0;
+        let closestDistance = Number.POSITIVE_INFINITY;
+        curved.forEach(function (point, index) {
+          const distance = Math.hypot(point.x - baseline[0].x, point.y - baseline[0].y);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+          }
+        });
+        curved = curved.slice(closestIndex).concat(curved.slice(0, closestIndex));
+
+        const blend = 0.35 + ((amount / 100) * 0.65);
+        return baseline.map(function (point, index) {
+          const smoothPoint = curved[index] || point;
+          return clampPoint({
+            x: point.x + ((smoothPoint.x - point.x) * blend),
+            y: point.y + ((smoothPoint.y - point.y) * blend)
+          });
+        });
       }
 
       function applyPrecisionToToothSelection(selection) {

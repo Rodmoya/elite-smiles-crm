@@ -2154,7 +2154,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const leftCenterRatio = visibleUpperTeeth.slice(0, centerBoundaryIndex).reduce(function (sum, toothNumber) {
           return sum + ratios[toothNumber];
         }, 0);
-        const expectedCenter = smileBounds.minX + (ratioUnit * leftCenterRatio);
+        const proportionalCenter = smileBounds.minX + (ratioUnit * leftCenterRatio);
+        const facialCenter = normalize(width * 0.5, smileBounds.minX, smileBounds.maxX);
+        const expectedCenter = (facialCenter * 0.72) + (proportionalCenter * 0.28);
         const centerWidth = ratioUnit * ((ratios[8] + ratios[9]) / 2);
         boundaries[centerBoundaryIndex] = findBestContrastSeparator(
           separatorScores,

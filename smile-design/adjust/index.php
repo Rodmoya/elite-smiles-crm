@@ -1982,7 +1982,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           });
           if (seeds.length < 8) return null;
 
-          window.cv.watershed(rgb, markers);
           const output = {};
           seeds.forEach(function (seed) {
             const toothMask = new Uint8Array(width * height);
@@ -1994,7 +1993,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
               const rightLimit = rightCurve ? rightCurve[y] - 1 : upperBand.maxX;
               for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
                 const index = (y * width) + x;
-                if (markers.data32S[index] !== seed.label || !allowedRegion.data[index]) continue;
+                if (!allowedRegion.data[index]) continue;
                 if (x < leftLimit || x > rightLimit) continue;
                 toothMask[index] = 1;
                 count += 1;

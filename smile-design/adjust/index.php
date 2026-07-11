@@ -78,6 +78,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         <input type="hidden" name="editor_mode" value="automatic">
         <input type="hidden" name="selected_teeth" value="[8]">
         <input type="hidden" name="tooth_offsets" value="{}">
+        <input type="hidden" name="tooth_adjustments" value="{}">
         <input type="hidden" name="precision_mode" value="balanced">
 
         <aside class="flex min-h-0 flex-col border-r border-white/10 bg-white">
@@ -395,6 +396,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       let selectedTeeth = new Set([8]);
       let toothSeedPoints = {};
       let toothManualOffsets = {};
+      let toothPrecisionAdjustments = {};
       let draggingTooth = null;
       let suppressToothClick = false;
       let detectedTeethBounds = null;
@@ -661,6 +663,44 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         if (input) input.value = JSON.stringify(toothManualOffsets);
       }
 
+      function getToothAdjustment(toothNumber) {
+        const normalized = normalizeToothNumber(toothNumber);
+        const stored = normalized !== null && toothPrecisionAdjustments[normalized]
+          ? toothPrecisionAdjustments[normalized]
+          : {};
+        return {
+          shape_scale_delta: Number(stored.shape_scale_delta || 0),
+          smile_length_delta: Number(stored.smile_length_delta || 0),
+          smile_width_delta: Number(stored.smile_width_delta || 0),
+          shade_brightness_delta: Number(stored.shade_brightness_delta || 0)
+        };
+      }
+
+      function writeToothAdjustments() {
+        const input = form.querySelector('input[name="tooth_adjustments"]');
+        if (input) input.value = JSON.stringify(toothPrecisionAdjustments);
+      }
+
+      function syncPrecisionControlsForActiveTooth() {
+        const activeTooth = getSelectedToothNumber();
+        const values = getToothAdjustment(activeTooth);
+        document.querySelectorAll('[data-adjust-range]').forEach(function (range) {
+          const key = range.getAttribute('data-adjust-range');
+          if (!key || !Object.prototype.hasOwnProperty.call(values, key)) return;
+          const value = String(values[key]);
+          range.value = value;
+          const config = getRangeConfig(key);
+          if (!config) return;
+          const label = document.getElementById(config.label);
+          if (label) label.textContent = value + config.suffix;
+        });
+        const useLegacyValues = getSelectedTeethArray().length === 1;
+        Object.keys(values).forEach(function (key) {
+          const hidden = form.querySelector('input[name="' + key + '"]');
+          if (hidden) hidden.value = useLegacyValues ? String(values[key]) : '0';
+        });
+      }
+
       function updateToothMapUi() {
         const current = getSelectedToothNumber();
         if (selectedToothLabel) {
@@ -686,6 +726,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         toggleToothSelection(toothNumber, null, additive);
         autoToothSelection = null;
         updateToothMapUi();
+        syncPrecisionControlsForActiveTooth();
         render(readAnchorPoints());
       }
 
@@ -3196,9 +3237,10 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             return { x: targetLeft + ((targetRight - targetLeft) * xRatio), y: point.y };
           });
         }
-        const shapeDelta = readDelta('shape_scale_delta') / 100;
-        const lengthDelta = readDelta('smile_length_delta') / 100;
-        const widthDelta = readDelta('smile_width_delta') / 100;
+        const toothAdjustment = getToothAdjustment(toothNumber);
+        const shapeDelta = toothAdjustment.shape_scale_delta / 100;
+        const lengthDelta = toothAdjustment.smile_length_delta / 100;
+        const widthDelta = toothAdjustment.smile_width_delta / 100;
         const bounds = getPointBounds(sourcePolygon);
         const centerX = (bounds.left + bounds.right) / 2;
         const centerY = (bounds.top + bounds.bottom) / 2;
@@ -3534,6 +3576,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           writeSelectionMode('auto_single_tooth');
           writeSelectedTeeth(getSelectedTeethPayload());
           writeToothOffsets();
+          writeToothAdjustments();
           writeContourPoints(selectedToothList.length === 1 && activeSelection ? activeSelection.polygon : []);
         } else {
           autoToothSelection = activeSelection;
@@ -3889,9 +3932,9 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       function getRangeConfig(key) {
         const configs = {
-          shape_scale_delta: { label: 'adjust-shape-value', input: 'shape_scale_delta', suffix: '%' },
-          smile_length_delta: { label: 'adjust-length-value', input: 'smile_length_delta', suffix: '%' },
-          smile_width_delta: { label: 'adjust-width-value', input: 'smile_width_delta', suffix: '%' },
+          shape_scale_delta: { label: 'adjust-shape-value', input: 'shape_scale_delta', suffix: '' },
+          smile_length_delta: { label: 'adjust-length-value', input: 'smile_length_delta', suffix: '' },
+          smile_width_delta: { label: 'adjust-width-value', input: 'smile_width_delta', suffix: '' },
           shade_brightness_delta: { label: 'adjust-shade-value', input: 'shade_brightness_delta', suffix: '' }
         };
         return configs[key] || null;
@@ -3899,18 +3942,23 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
 
       document.querySelectorAll('[data-adjust-range]').forEach(function (range) {
         const apply = function () {
-          const config = getRangeConfig(range.getAttribute('data-adjust-range'));
+          const key = range.getAttribute('data-adjust-range');
+          const config = getRangeConfig(key);
           if (!config) return;
-          const value = String(range.value || '0');
+          const value = Number(range.value || 0);
+          const activeTooth = getSelectedToothNumber();
+          const next = getToothAdjustment(activeTooth);
+          next[key] = value;
+          toothPrecisionAdjustments[activeTooth] = next;
           const label = document.getElementById(config.label);
-          const hidden = form.querySelector('input[name="' + config.input + '"]');
-          if (label) label.textContent = value + config.suffix;
-          if (hidden) hidden.value = value;
-          applyPrecisionPreview();
+          if (label) label.textContent = String(value) + config.suffix;
+          writeToothAdjustments();
+          syncPrecisionControlsForActiveTooth();
+          render(baseAnchorPoints.length ? clonePoints(baseAnchorPoints) : readAnchorPoints());
         };
-        apply();
         range.addEventListener('input', apply);
       });
+      syncPrecisionControlsForActiveTooth();
 
       if (zoomRange) {
         zoomRange.addEventListener('input', function () {
@@ -4156,6 +4204,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             null,
             Boolean(event.ctrlKey || event.metaKey || event.shiftKey)
           );
+          syncPrecisionControlsForActiveTooth();
           render(readAnchorPoints());
         });
       }

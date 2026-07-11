@@ -68,6 +68,7 @@ $brushOverlayData = trim((string)post('brush_overlay_data', ''));
 $editorMode = trim((string)post('editor_mode', 'automatic'));
 $selectedTeeth = trim((string)post('selected_teeth', ''));
 $toothOffsets = trim((string)post('tooth_offsets', '{}'));
+$toothAdjustments = trim((string)post('tooth_adjustments', '{}'));
 $precisionMode = trim((string)post('precision_mode', 'balanced'));
 if (smile_design_procedure_mode($procedureLabel) === 'lip_repositioning') {
     $lviStyleKey = '';
@@ -113,6 +114,7 @@ try {
         'editor_mode' => $editorMode,
         'selected_teeth' => $selectedTeeth,
         'tooth_offsets' => $toothOffsets,
+        'tooth_adjustments' => $toothAdjustments,
         'shape_scale_delta' => (int)$shapeScaleDelta,
         'smile_length_delta' => (int)$smileLengthDelta,
         'smile_width_delta' => (int)$smileWidthDelta,

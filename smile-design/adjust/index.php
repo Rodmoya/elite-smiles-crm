@@ -1687,25 +1687,37 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       function buildConnectedToothSlotMask(hardMask, softMask, width, height, bounds) {
-        const minX = Math.max(0, Math.floor(bounds.minX));
-        const maxX = Math.min(width - 1, Math.ceil(bounds.maxX));
+        const slotMinX = Math.max(0, Math.floor(bounds.minX));
+        const slotMaxX = Math.min(width - 1, Math.ceil(bounds.maxX));
         const minY = Math.max(0, Math.floor(bounds.minY));
         const maxY = Math.min(height - 1, Math.ceil(bounds.maxY));
+        const slotWidth = Math.max(2, slotMaxX - slotMinX + 1);
+        const minX = Math.max(0, Math.floor(slotMinX - (slotWidth * 0.42)));
+        const maxX = Math.min(width - 1, Math.ceil(slotMaxX + (slotWidth * 0.42)));
         const output = new Uint8Array(width * height);
         const queued = new Uint8Array(width * height);
         const queue = [];
+        const targetX = (slotMinX + slotMaxX) / 2;
+        const targetY = minY + ((maxY - minY) * 0.48);
+        let seed = null;
+        let seedDistance = Number.POSITIVE_INFINITY;
         for (let y = minY; y <= maxY; y += 1) {
-          for (let x = minX; x <= maxX; x += 1) {
+          for (let x = slotMinX; x <= slotMaxX; x += 1) {
             const index = (y * width) + x;
             if (!hardMask[index]) continue;
-            output[index] = 1;
-            queued[index] = 1;
-            queue.push(index);
+            const distance = ((x - targetX) * (x - targetX)) + (((y - targetY) * 0.7) * ((y - targetY) * 0.7));
+            if (distance < seedDistance) {
+              seedDistance = distance;
+              seed = { x, y, index };
+            }
           }
         }
-        if (!queue.length) {
+        if (!seed) {
           return hardMask;
         }
+        output[seed.index] = 1;
+        queued[seed.index] = 1;
+        queue.push(seed.index);
         let head = 0;
         while (head < queue.length) {
           const index = queue[head++];
@@ -1833,7 +1845,14 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             hitCount += colHits[x] || 0;
           }
           const connectedSlotMask = buildConnectedToothSlotMask(mask, softMask, width, height, segmentBounds);
-          const segment = buildToothSegment(connectedSlotMask, width, height, upperBand, segmentBounds, hitCount);
+          const segmentWidth = Math.max(2, segmentBounds.maxX - segmentBounds.minX + 1);
+          const contourBounds = {
+            minX: Math.max(upperBand.minX, segmentBounds.minX - (segmentWidth * 0.42)),
+            maxX: Math.min(upperBand.maxX, segmentBounds.maxX + (segmentWidth * 0.42)),
+            minY: segmentBounds.minY,
+            maxY: segmentBounds.maxY
+          };
+          const segment = buildToothSegment(connectedSlotMask, width, height, upperBand, contourBounds, hitCount);
           if (!segment || !Array.isArray(segment.contour) || segment.contour.length < 8) return;
           slots[toothNumber] = {
             number: toothNumber,

@@ -13,7 +13,18 @@ function loadOpenCv() {
         resolve(self.cv);
         return;
       }
-      reject(new Error('OpenCV did not initialize.'));
+      const deadline = Date.now() + 30000;
+      const poll = self.setInterval(function () {
+        if (self.cv && typeof self.cv.Mat === 'function') {
+          self.clearInterval(poll);
+          resolve(self.cv);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          self.clearInterval(poll);
+          reject(new Error('OpenCV initialization timed out.'));
+        }
+      }, 50);
     } catch (error) {
       reject(error);
     }

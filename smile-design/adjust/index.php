@@ -1888,11 +1888,16 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
               if (!result.key || !result.contours) return;
               openCvContourCache = { key: result.key, contours: result.contours };
               openCvRequestKey = '';
+              if (autoToothRegion) {
+                autoToothRegion.dataset.segmentation = Object.keys(result.contours).length >= 8 ? 'opencv' : 'fallback';
+                autoToothRegion.dataset.segmentationCount = String(Object.keys(result.contours).length);
+              }
               detectedTeethBounds = null;
               render(readAnchorPoints(), baseContourPoints);
             });
             openCvWorker.addEventListener('error', function () {
               openCvRequestKey = '';
+              if (autoToothRegion) autoToothRegion.dataset.segmentation = 'error';
             });
           }
           const imageCopy = new Uint8ClampedArray(data);
@@ -1909,6 +1914,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             boundaries: boundaries,
             teeth: visibleUpperTeeth
           }, [imageCopy.buffer, hardCopy.buffer, softCopy.buffer]);
+          if (autoToothRegion) autoToothRegion.dataset.segmentation = 'loading';
         } catch (error) {
           openCvRequestKey = '';
         }

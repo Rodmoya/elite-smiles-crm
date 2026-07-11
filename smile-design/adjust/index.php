@@ -2017,6 +2017,20 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           });
           if (seeds.length < 8) return null;
 
+          const enamelTop = [];
+          const enamelBottom = [];
+          for (let x = upperBand.minX; x <= upperBand.maxX; x += 1) {
+            let top = -1;
+            let bottom = -1;
+            for (let y = upperBand.minY; y <= upperBand.maxY; y += 1) {
+              if (!closedEnamel.data[(y * width) + x]) continue;
+              if (top < 0) top = y;
+              bottom = y;
+            }
+            enamelTop[x] = top;
+            enamelBottom[x] = bottom;
+          }
+
           const output = {};
           seeds.forEach(function (seed) {
             const toothMask = new Uint8Array(width * height);
@@ -2030,6 +2044,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                 const index = (y * width) + x;
                 if (!allowedRegion.data[index]) continue;
                 if (x < leftLimit || x > rightLimit) continue;
+                if (enamelTop[x] < 0 || y < enamelTop[x] || y > enamelBottom[x]) continue;
                 toothMask[index] = 1;
                 count += 1;
               }

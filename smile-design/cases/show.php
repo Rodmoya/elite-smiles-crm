@@ -392,45 +392,53 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         <p class="text-slate-500">Notes</p>
                         <p class="mt-1 whitespace-pre-wrap leading-6 text-slate-700"><?= e((string)($case['notes'] ?: 'No intake notes yet.')) ?></p>
                     </div>
-                    <div class="rounded-md bg-slate-50 p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="text-slate-500">AI case analysis</p>
-                                <p class="mt-1 font-semibold">
-                                    <?php if (($caseAnalysis['status'] ?? '') === 'completed'): ?>
-                                        Ready
-                                    <?php elseif (($caseAnalysis['status'] ?? '') === 'processing'): ?>
-                                        Processing
-                                    <?php elseif (($caseAnalysis['status'] ?? '') === 'failed'): ?>
-                                        Failed
-                                    <?php else: ?>
-                                        Not run yet
+                    <details class="rounded-md bg-slate-50 p-4">
+                        <summary class="cursor-pointer list-none">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-slate-500">AI case analysis</p>
+                                    <p class="mt-1 font-semibold">
+                                        <?php if (($caseAnalysis['status'] ?? '') === 'completed'): ?>
+                                            Ready
+                                        <?php elseif (($caseAnalysis['status'] ?? '') === 'processing'): ?>
+                                            Processing
+                                        <?php elseif (($caseAnalysis['status'] ?? '') === 'failed'): ?>
+                                            Failed
+                                        <?php else: ?>
+                                            Not run yet
+                                        <?php endif; ?>
+                                    </p>
+                                    <p class="mt-1 text-sm leading-6 text-slate-600"><?= e((string)($caseAnalysis['summary'] ?? 'Run analysis so generation follows the actual dental case instead of a generic makeover.')) ?></p>
+                                </div>
+                                <span class="mt-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Show details</span>
+                            </div>
+                        </summary>
+                        <div class="mt-4 border-t border-slate-200 pt-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="text-xs text-slate-500">Expanded analysis details and the re-run action live here when you need them.</div>
+                                <form method="POST" action="<?= e(base_url('app/actions/smile_design_ai_analyze.php')) ?>">
+                                    <?= csrf_input() ?>
+                                    <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
+                                    <input type="hidden" name="before_photo_id" value="<?= e((string)($displayBeforePhoto['id'] ?? 0)) ?>">
+                                    <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit"><?= in_array((string)($caseAnalysis['status'] ?? ''), ['completed', 'failed', 'processing'], true) ? 'Re-run Analysis' : 'Analyze Case' ?></button>
+                                </form>
+                            </div>
+                            <?php if (!empty($caseAnalysis['analysis']) && is_array($caseAnalysis['analysis'])): ?>
+                                <div class="mt-3 grid gap-2 text-xs text-slate-600">
+                                    <div><span class="font-semibold text-slate-800">Case type:</span> <?= e((string)($caseAnalysis['analysis']['case_type'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Clinical direction:</span> <?= e((string)($caseAnalysis['analysis']['clinical_direction'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Preview suitability:</span> <?= e((string)($caseAnalysis['analysis']['preview_suitability'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Recommended procedure:</span> <?= e((string)($caseAnalysis['analysis']['recommended_procedure'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Scope:</span> <?= e((string)($caseAnalysis['analysis']['smile_scope'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Missing teeth:</span> <?= e((string)($caseAnalysis['analysis']['missing_or_compromised_teeth'] ?? '')) ?></div>
+                                    <div><span class="font-semibold text-slate-800">Focus:</span> <?= e((string)($caseAnalysis['analysis']['recommended_generation_focus'] ?? '')) ?></div>
+                                    <?php if (!empty($caseAnalysis['analysis']['doctor_review_notes']) && is_array($caseAnalysis['analysis']['doctor_review_notes'])): ?>
+                                        <div><span class="font-semibold text-slate-800">Doctor review notes:</span> <?= e(implode(' | ', array_map('strval', $caseAnalysis['analysis']['doctor_review_notes']))) ?></div>
                                     <?php endif; ?>
-                                </p>
-                                <p class="mt-1 text-sm leading-6 text-slate-600"><?= e((string)($caseAnalysis['summary'] ?? 'Run analysis so generation follows the actual dental case instead of a generic makeover.')) ?></p>
-                            </div>
-                            <form method="POST" action="<?= e(base_url('app/actions/smile_design_ai_analyze.php')) ?>">
-                                <?= csrf_input() ?>
-                                <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
-                                <input type="hidden" name="before_photo_id" value="<?= e((string)($displayBeforePhoto['id'] ?? 0)) ?>">
-                                <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit"><?= in_array((string)($caseAnalysis['status'] ?? ''), ['completed', 'failed', 'processing'], true) ? 'Re-run Analysis' : 'Analyze Case' ?></button>
-                            </form>
+                                </div>
+                            <?php endif; ?>
                         </div>
-                        <?php if (!empty($caseAnalysis['analysis']) && is_array($caseAnalysis['analysis'])): ?>
-                            <div class="mt-3 grid gap-2 text-xs text-slate-600">
-                                <div><span class="font-semibold text-slate-800">Case type:</span> <?= e((string)($caseAnalysis['analysis']['case_type'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Clinical direction:</span> <?= e((string)($caseAnalysis['analysis']['clinical_direction'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Preview suitability:</span> <?= e((string)($caseAnalysis['analysis']['preview_suitability'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Recommended procedure:</span> <?= e((string)($caseAnalysis['analysis']['recommended_procedure'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Scope:</span> <?= e((string)($caseAnalysis['analysis']['smile_scope'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Missing teeth:</span> <?= e((string)($caseAnalysis['analysis']['missing_or_compromised_teeth'] ?? '')) ?></div>
-                                <div><span class="font-semibold text-slate-800">Focus:</span> <?= e((string)($caseAnalysis['analysis']['recommended_generation_focus'] ?? '')) ?></div>
-                                <?php if (!empty($caseAnalysis['analysis']['doctor_review_notes']) && is_array($caseAnalysis['analysis']['doctor_review_notes'])): ?>
-                                    <div><span class="font-semibold text-slate-800">Doctor review notes:</span> <?= e(implode(' | ', array_map('strval', $caseAnalysis['analysis']['doctor_review_notes']))) ?></div>
-                                <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                    </details>
                 </div>
             </div>
         </section>

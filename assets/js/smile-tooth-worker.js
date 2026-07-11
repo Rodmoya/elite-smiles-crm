@@ -6,7 +6,7 @@ function loadOpenCv() {
     try {
       importScripts('../vendor/opencv.js');
       if (self.cv && typeof self.cv.then === 'function') {
-        self.cv.then(resolve).catch(reject);
+        self.cv.then(resolve, reject);
         return;
       }
       if (self.cv && typeof self.cv.Mat === 'function') {

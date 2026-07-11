@@ -1723,7 +1723,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return bestX;
       }
 
-      function findBestContrastSeparator(separatorScores, expectedX, minX, maxX, windowSize) {
+      function findBestContrastSeparator(separatorScores, expectedX, minX, maxX, windowSize, distanceWeight) {
         const searchMin = Math.max(minX, Math.round(expectedX - windowSize));
         const searchMax = Math.min(maxX, Math.round(expectedX + windowSize));
         if (searchMax <= searchMin) {
@@ -1738,12 +1738,13 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           return Math.round(normalize(expectedX, searchMin, searchMax));
         }
 
+        const positionWeight = Number.isFinite(distanceWeight) ? distanceWeight : 0.58;
         let bestX = Math.round(normalize(expectedX, searchMin, searchMax));
         let bestScore = Number.NEGATIVE_INFINITY;
         for (let x = searchMin; x <= searchMax; x += 1) {
           const contrast = (separatorScores[x] || 0) / peakScore;
           const distance = Math.abs(x - expectedX) / Math.max(1, windowSize);
-          const score = contrast - (distance * 0.18);
+          const score = contrast - (distance * positionWeight);
           if (score > bestScore) {
             bestScore = score;
             bestX = x;
@@ -2160,7 +2161,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           expectedCenter,
           Math.round(smileBounds.minX + (smileWidth * 0.38)),
           Math.round(smileBounds.minX + (smileWidth * 0.62)),
-          Math.max(6, centerWidth * 0.58)
+          Math.max(5, centerWidth * 0.32),
+          0.86
         );
 
         for (let boundaryIndex = centerBoundaryIndex - 1; boundaryIndex >= 1; boundaryIndex -= 1) {
@@ -2174,7 +2176,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             expectedX,
             minX,
             maxX,
-            Math.max(5, expectedWidth * 0.42)
+            Math.max(4, expectedWidth * 0.30),
+            0.62
           );
         }
 
@@ -2190,7 +2193,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             expectedX,
             minX,
             maxX,
-            Math.max(5, expectedWidth * 0.42)
+            Math.max(4, expectedWidth * 0.30),
+            0.62
           );
         }
 

@@ -1313,7 +1313,7 @@ if (!function_exists('patient_experience_session_by_kiosk_token')) {
     function patient_experience_session_by_kiosk_token(string $kioskToken): ?array
     {
         $token = trim($kioskToken);
-        if (!preg_match('/^[a-f0-9]{64}$/i', $token)) {
+        if ($token === '') {
             return null;
         }
         patient_experience_ensure_schema();

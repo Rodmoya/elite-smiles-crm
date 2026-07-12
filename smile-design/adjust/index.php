@@ -158,7 +158,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                 </div>
                 <label class="flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold">
                     <span>Zoom</span>
-                    <input id="adjust-zoom-range" type="range" min="100" max="260" step="5" value="150" class="w-40 accent-white">
+                    <input id="adjust-zoom-range" type="range" min="100" max="600" step="5" value="150" class="w-40 accent-white">
                     <span id="adjust-zoom-value" class="min-w-[48px] text-right">150%</span>
                 </label>
             </div>
@@ -3420,18 +3420,21 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       }
 
       function setToothEdgeTool(tool) {
-        toothEdgeTool = toothEdgeTool === tool ? '' : tool;
+        toothEdgeTool = tool === 'erase' || tool === 'smooth' ? tool : '';
         draggingTooth = null;
         toothEdgeDrawing = false;
         if (toothSelectLayer) toothSelectLayer.style.cursor = toothEdgeTool ? 'none' : '';
         if (!toothEdgeTool && toothEdgeCursor) toothEdgeCursor.classList.add('hidden');
+        document.body.dataset.toothEdgeTool = toothEdgeTool;
         if (toothEdgeEraserButton) {
           toothEdgeEraserButton.classList.toggle('bg-rose-400/30', toothEdgeTool === 'erase');
           toothEdgeEraserButton.classList.toggle('border-rose-200/50', toothEdgeTool === 'erase');
+          toothEdgeEraserButton.setAttribute('aria-pressed', toothEdgeTool === 'erase' ? 'true' : 'false');
         }
         if (toothEdgeSmootherButton) {
           toothEdgeSmootherButton.classList.toggle('bg-rose-400/30', toothEdgeTool === 'smooth');
           toothEdgeSmootherButton.classList.toggle('border-rose-200/50', toothEdgeTool === 'smooth');
+          toothEdgeSmootherButton.setAttribute('aria-pressed', toothEdgeTool === 'smooth' ? 'true' : 'false');
         }
       }
 
@@ -3805,7 +3808,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       function syncZoom(points) {
         if (!workStage || !workFrame) return;
         ensureBrushLayer();
-        const zoom = zoomRange ? normalize(zoomRange.value, 100, 260) : defaultZoom;
+        const zoom = zoomRange ? normalize(zoomRange.value, 100, 600) : defaultZoom;
         const scale = zoom / 100;
         let center = centroid(points);
         const teethBounds = detectedTeethBounds && detectedTeethBounds.slots ? detectedTeethBounds : null;

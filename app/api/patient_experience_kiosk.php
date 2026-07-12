@@ -26,11 +26,12 @@ if (!is_array($payload)) {
 $action = trim((string)($payload['action'] ?? ''));
 $kioskToken = trim((string)($payload['kiosk_token'] ?? ''));
 $deviceToken = trim((string)($payload['device_token'] ?? ''));
+$directMode = trim((string)($payload['direct_mode'] ?? '')) === '1';
 
 if ($action !== '' && $kioskToken === '') {
     json_response(['ok' => false, 'message' => 'This check-in session is no longer active.'], 400);
 }
-if (in_array($action, ['begin', 'save_step', 'complete', 'cancel'], true) && $deviceToken === '') {
+if (in_array($action, ['begin', 'save_step', 'complete', 'cancel'], true) && $deviceToken === '' && !$directMode) {
     json_response(['ok' => false, 'message' => 'This kiosk is not registered.'], 403);
 }
 

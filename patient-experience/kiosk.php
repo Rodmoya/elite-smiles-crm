@@ -94,12 +94,15 @@ $setupHintUrl = base_url('patient-experience.php');
             const progressBar = document.getElementById('progress-bar');
             const progressLabel = document.getElementById('progress-label');
             const deviceTokenStorageKey = 'patient_experience_device_token';
-            const autoBeginForms = (new URLSearchParams(window.location.search).get('auto_begin') || '') === '1';
+            const urlParams = new URLSearchParams(window.location.search);
+            const autoBeginForms = (urlParams.get('auto_begin') || '') === '1';
+            const directMode = (urlParams.get('direct') || '') === '1';
+            const directKioskToken = urlParams.get('kiosk_token') || '';
             let kioskToken = window.sessionStorage.getItem('patient_experience_kiosk_token') || '';
             let currentSessionId = Number(window.sessionStorage.getItem('patient_experience_session_id') || 0);
             let deviceToken = '';
             let currentDevice = null;
-            let polling = true;
+            let polling = !directMode;
             let autoBeginTriggered = false;
 
             function readCookie(name) {
@@ -139,6 +142,10 @@ $setupHintUrl = base_url('patient-experience.php');
             }
             if (deviceToken) {
                 setDeviceToken(deviceToken);
+            }
+            if (directMode && directKioskToken) {
+                kioskToken = directKioskToken;
+                currentSessionId = 0;
             }
 
             function escapeHtml(value) {
@@ -615,13 +622,13 @@ $setupHintUrl = base_url('patient-experience.php');
                     credentials: 'same-origin',
                     cache: 'no-store',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify(Object.assign({ action: action, kiosk_token: kioskToken, device_token: deviceToken }, body || {}))
+                    body: JSON.stringify(Object.assign({ action: action, kiosk_token: kioskToken, device_token: deviceToken, direct_mode: directMode ? 1 : 0 }, body || {}))
                 });
                 return response.json();
             }
 
             async function beginSession() {
-                if (!deviceToken) {
+                if (!deviceToken && !directMode) {
                     renderSetupRequired('This iPad is not registered. Open the setup QR code first.');
                     return;
                 }
@@ -636,7 +643,7 @@ $setupHintUrl = base_url('patient-experience.php');
             }
 
             async function saveStep(stepKey) {
-                if (!deviceToken) {
+                if (!deviceToken && !directMode) {
                     renderSetupRequired('This iPad is not registered. Open the setup QR code first.');
                     return;
                 }
@@ -660,7 +667,7 @@ $setupHintUrl = base_url('patient-experience.php');
             }
 
             async function cancelSession() {
-                if (!deviceToken) {
+                if (!deviceToken && !directMode) {
                     renderSetupRequired('This iPad is not registered. Open the setup QR code first.');
                     return;
                 }
@@ -670,6 +677,9 @@ $setupHintUrl = base_url('patient-experience.php');
 
             async function poll() {
                 if (!polling) {
+                    return;
+                }
+                if (directMode) {
                     return;
                 }
                 try {
@@ -714,8 +724,12 @@ $setupHintUrl = base_url('patient-experience.php');
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register(serviceWorkerUrl).catch(function () {});
             }
-            poll();
-            window.setInterval(poll, 3000);
+            if (directMode && kioskToken) {
+                window.setTimeout(beginSession, 60);
+            } else {
+                poll();
+                window.setInterval(poll, 3000);
+            }
         })();
     </script>
 </body>

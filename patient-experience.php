@@ -150,15 +150,13 @@ $kioskDevices = patient_experience_kiosk_devices();
 $registeredDeviceOptions = patient_experience_registered_device_options();
 $testKioskSetup = patient_experience_ensure_test_kiosk_setup(auth_user_id());
 $testKioskSetupUrl = (string)($testKioskSetup['setup_url'] ?? '');
-$testKioskDirectFormsUrl = $testKioskSetupUrl !== '' ? $testKioskSetupUrl . (str_contains($testKioskSetupUrl, '?') ? '&' : '?') . 'auto_begin=1' : '';
-$testKioskDirectFormsQrUrl = $testKioskDirectFormsUrl !== ''
-    ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($testKioskDirectFormsUrl)
-    : '';
+$testKioskDirectFormsUrl = base_url('patient-experience/kiosk/?direct=1');
+$testKioskDirectFormsQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($testKioskDirectFormsUrl);
 $directTestToken = trim((string)get('direct_test_token', ''));
 $directTestPatientName = trim((string)get('direct_test_patient_name', ''));
 $directTestUrl = $directTestToken !== ''
     ? base_url('patient-experience/kiosk/?direct=1&kiosk_token=' . rawurlencode($directTestToken))
-    : '';
+    : $testKioskDirectFormsUrl;
 $directTestQrUrl = $directTestUrl !== ''
     ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($directTestUrl)
     : '';

@@ -642,6 +642,19 @@ $setupHintUrl = base_url('patient-experience.php');
                 polling = true;
             }
 
+            async function beginDirectSession() {
+                polling = false;
+                const data = await post('direct_begin', { patient_name: 'Test Patient' });
+                if (data.ok) {
+                    data.session = data.session || {};
+                    data.session.kiosk_token = data.kiosk_token || '';
+                    renderForm(data);
+                } else {
+                    renderIdle();
+                }
+                polling = true;
+            }
+
             async function saveStep(stepKey) {
                 if (!deviceToken && !directMode) {
                     renderSetupRequired('This iPad is not registered. Open the setup QR code first.');
@@ -724,8 +737,8 @@ $setupHintUrl = base_url('patient-experience.php');
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register(serviceWorkerUrl).catch(function () {});
             }
-            if (directMode && kioskToken) {
-                window.setTimeout(beginSession, 60);
+            if (directMode) {
+                window.setTimeout(kioskToken ? beginSession : beginDirectSession, 60);
             } else {
                 poll();
                 window.setInterval(poll, 3000);

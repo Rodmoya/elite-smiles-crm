@@ -28,7 +28,7 @@ $kioskToken = trim((string)($payload['kiosk_token'] ?? ''));
 $deviceToken = trim((string)($payload['device_token'] ?? ''));
 $directMode = trim((string)($payload['direct_mode'] ?? '')) === '1';
 
-if ($action !== '' && $kioskToken === '') {
+if ($action !== '' && $kioskToken === '' && !($directMode && $action === 'direct_begin')) {
     json_response(['ok' => false, 'message' => 'This check-in session is no longer active.'], 400);
 }
 if (in_array($action, ['begin', 'save_step', 'complete', 'cancel'], true) && $deviceToken === '' && !$directMode) {
@@ -37,6 +37,23 @@ if (in_array($action, ['begin', 'save_step', 'complete', 'cancel'], true) && $de
 
 if ($action === 'begin') {
     json_response(patient_experience_begin_session($kioskToken, $deviceToken));
+}
+
+if ($action === 'direct_begin') {
+    $patientName = trim((string)($payload['patient_name'] ?? ''));
+    if ($patientName === '') {
+        $patientName = 'Test Patient';
+    }
+    $session = patient_experience_start_placeholder_session(null, $patientName, null, null);
+    if (!empty($session['error'])) {
+        json_response(['ok' => false, 'message' => (string)$session['error']], 400);
+    }
+    $began = patient_experience_begin_session((string)($session['token'] ?? ''), '');
+    if (empty($began['ok'])) {
+        json_response($began, 400);
+    }
+    $began['kiosk_token'] = (string)($session['token'] ?? '');
+    json_response($began);
 }
 
 if ($action === 'save_step') {

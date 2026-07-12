@@ -486,8 +486,23 @@ $directTestQrUrl = $directTestUrl !== ''
                             Completion <?= e((string)$review['progress']['percent_complete']) ?>% · Review status <?= e((string)($review['session']['review_status'] ?? 'pending')) ?>
                         </p>
                     </div>
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                        <?= trim((string)($review['session']['reviewed_at'] ?? '')) !== '' ? 'Reviewed ' . e(format_datetime((string)$review['session']['reviewed_at'])) : 'Not reviewed yet' ?>
+                    <div class="space-y-2 text-sm">
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
+                            <?= trim((string)($review['session']['reviewed_at'] ?? '')) !== '' ? 'Reviewed ' . e(format_datetime((string)$review['session']['reviewed_at'])) : 'Not reviewed yet' ?>
+                        </div>
+                        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+                            <?php if (!empty($review['signed_packet'])): ?>
+                                <div class="font-semibold">Signed packet saved in database</div>
+                                <div class="mt-1 text-xs text-emerald-800">
+                                    <?= e((string)($review['signed_packet']['packet_title'] ?? 'Patient Packet')) ?> ·
+                                    <?= e((string)($review['signed_packet']['signature_count'] ?? 0)) ?> signatures ·
+                                    <?= e(format_datetime((string)($review['signed_packet']['signed_at'] ?? ''))) ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="font-semibold">Signed packet not saved yet</div>
+                                <div class="mt-1 text-xs text-emerald-800">It will appear here after the patient finishes the consent flow.</div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
 

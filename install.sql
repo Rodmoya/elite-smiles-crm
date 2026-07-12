@@ -591,6 +591,25 @@ CREATE TABLE IF NOT EXISTS `patient_experience_signatures` (
   KEY `idx_patient_exp_signatures_signed` (`signed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `patient_experience_signed_packets` (
+  `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `checkin_session_id`  INT UNSIGNED NOT NULL,
+  `packet_key`          VARCHAR(120) NOT NULL,
+  `packet_version`      INT UNSIGNED NOT NULL DEFAULT 1,
+  `packet_title`        VARCHAR(190) NOT NULL,
+  `patient_name`        VARCHAR(190) NOT NULL DEFAULT '',
+  `snapshot_hash`       CHAR(64) NOT NULL,
+  `snapshot_json`       LONGTEXT NOT NULL,
+  `signature_count`     INT UNSIGNED NOT NULL DEFAULT 0,
+  `signed_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME              DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_patient_exp_signed_packet_session` (`checkin_session_id`),
+  KEY `idx_patient_exp_signed_packet_signed` (`signed_at`),
+  KEY `idx_patient_exp_signed_packet_key` (`packet_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `patient_experience_generated_files` (
   `id`                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `checkin_session_id`   INT UNSIGNED NOT NULL,

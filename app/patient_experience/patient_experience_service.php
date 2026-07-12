@@ -169,6 +169,24 @@ if (!function_exists('patient_experience_ensure_schema')) {
             KEY idx_patient_exp_signatures_signed (signed_at)
         ) {$charset}");
 
+        db_query("CREATE TABLE IF NOT EXISTS patient_experience_signed_packets (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            checkin_session_id INT UNSIGNED NOT NULL,
+            packet_key VARCHAR(120) NOT NULL,
+            packet_version INT UNSIGNED NOT NULL DEFAULT 1,
+            packet_title VARCHAR(190) NOT NULL,
+            patient_name VARCHAR(190) NOT NULL DEFAULT '',
+            snapshot_hash CHAR(64) NOT NULL,
+            snapshot_json LONGTEXT NOT NULL,
+            signature_count INT UNSIGNED NOT NULL DEFAULT 0,
+            signed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_patient_exp_signed_packet_session (checkin_session_id),
+            KEY idx_patient_exp_signed_packet_signed (signed_at),
+            KEY idx_patient_exp_signed_packet_key (packet_key)
+        ) {$charset}");
+
         db_query("CREATE TABLE IF NOT EXISTS patient_experience_generated_files (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             checkin_session_id INT UNSIGNED NOT NULL,
@@ -1432,6 +1450,25 @@ if (!function_exists('patient_experience_signatures_for_session')) {
     }
 }
 
+if (!function_exists('patient_experience_signed_packet_for_session')) {
+    function patient_experience_signed_packet_for_session(int $sessionId): ?array
+    {
+        $row = db_one(
+            'SELECT *
+             FROM patient_experience_signed_packets
+             WHERE checkin_session_id = :session_id
+             ORDER BY signed_at DESC, id DESC
+             LIMIT 1',
+            ['session_id' => $sessionId]
+        );
+        if (!$row) {
+            return null;
+        }
+        $row['snapshot'] = json_decode((string)($row['snapshot_json'] ?? ''), true) ?: [];
+        return $row;
+    }
+}
+
 if (!function_exists('patient_experience_signature_summary')) {
     function patient_experience_signature_summary(int $sessionId): array
     {
@@ -1445,6 +1482,90 @@ if (!function_exists('patient_experience_signature_summary')) {
             'total' => (int)($row['total'] ?? 0),
             'latest_signed_at' => (string)($row['latest_signed_at'] ?? ''),
         ];
+    }
+}
+
+if (!function_exists('patient_experience_signed_packet_snapshot')) {
+    function patient_experience_signed_packet_snapshot(array $session): array
+    {
+        $sessionId = (int)($session['id'] ?? 0);
+        $definition = patient_experience_packet_definition();
+        $answers = patient_experience_answers_for_session($sessionId);
+        $signatures = patient_experience_signatures_for_session($sessionId);
+        $review = patient_experience_patient_review_payload($session, $answers);
+        return [
+            'packet' => [
+                'key' => (string)($definition['packet_key'] ?? patient_experience_active_packet_key()),
+                'version' => (int)($definition['version'] ?? 1),
+                'title' => (string)($definition['title'] ?? 'Patient Packet'),
+            ],
+            'session' => [
+                'id' => $sessionId,
+                'patient_name' => (string)($session['patient_name'] ?? ''),
+                'lead_id' => (int)($session['lead_id'] ?? 0),
+                'status' => (string)($session['status'] ?? ''),
+                'completed_at' => (string)($session['completed_at'] ?? ''),
+                'current_step_key' => (string)($session['current_step_key'] ?? ''),
+                'progress_percent' => (int)($session['progress_percent'] ?? 0),
+            ],
+            'answers' => $answers,
+            'signatures' => $signatures,
+            'review' => $review,
+            'signed_at' => date('c'),
+        ];
+    }
+}
+
+if (!function_exists('patient_experience_store_signed_packet')) {
+    function patient_experience_store_signed_packet(int $sessionId): bool
+    {
+        $session = patient_experience_session_by_id($sessionId);
+        if (!$session) {
+            return false;
+        }
+
+        $snapshot = patient_experience_signed_packet_snapshot($session);
+        $snapshotJson = json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($snapshotJson) || $snapshotJson === '') {
+            return false;
+        }
+
+        $packet = $snapshot['packet'] ?? [];
+        $hash = hash('sha256', $snapshotJson);
+        $signatureCount = count((array)($snapshot['signatures'] ?? []));
+        db_execute(
+            'INSERT INTO patient_experience_signed_packets
+                (checkin_session_id, packet_key, packet_version, packet_title, patient_name, snapshot_hash, snapshot_json, signature_count, signed_at, created_at)
+             VALUES
+                (:session_id, :packet_key, :packet_version, :packet_title, :patient_name, :snapshot_hash, :snapshot_json, :signature_count, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                packet_key = VALUES(packet_key),
+                packet_version = VALUES(packet_version),
+                packet_title = VALUES(packet_title),
+                patient_name = VALUES(patient_name),
+                snapshot_hash = VALUES(snapshot_hash),
+                snapshot_json = VALUES(snapshot_json),
+                signature_count = VALUES(signature_count),
+                signed_at = VALUES(signed_at),
+                updated_at = NOW()',
+            [
+                'session_id' => $sessionId,
+                'packet_key' => (string)($packet['key'] ?? patient_experience_active_packet_key()),
+                'packet_version' => (int)($packet['version'] ?? 1),
+                'packet_title' => (string)($packet['title'] ?? 'Patient Packet'),
+                'patient_name' => (string)($session['patient_name'] ?? ''),
+                'snapshot_hash' => $hash,
+                'snapshot_json' => $snapshotJson,
+                'signature_count' => $signatureCount,
+            ]
+        );
+
+        patient_experience_audit('signed_packet_saved', [
+            'snapshot_hash' => $hash,
+            'signature_count' => $signatureCount,
+        ], $sessionId, (int)($session['lead_id'] ?? 0) ?: null);
+
+        return true;
     }
 }
 
@@ -1760,6 +1881,7 @@ if (!function_exists('patient_experience_complete_session')) {
              WHERE id = :id",
             ['id' => (int)$session['id']]
         );
+        patient_experience_store_signed_packet((int)$session['id']);
         patient_experience_audit('session_completed', [], (int)$session['id'], (int)($session['lead_id'] ?? 0) ?: null);
         return ['ok' => true, 'message' => 'Check-in completed.'];
     }
@@ -1905,6 +2027,7 @@ if (!function_exists('patient_experience_staff_review_context')) {
             ],
             'photo_permissions' => $photoPermissions,
             'audit_timeline' => patient_experience_session_audit_timeline($sessionId),
+            'signed_packet' => patient_experience_signed_packet_for_session($sessionId),
         ];
     }
 }

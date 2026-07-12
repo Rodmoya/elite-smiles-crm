@@ -1325,7 +1325,7 @@ if (!function_exists('patient_experience_session_by_kiosk_token')) {
                AND status IN ('waiting', 'in_progress')
                AND expires_at > NOW()
              LIMIT 1",
-            ['token' => strtolower($token)]
+            ['token' => patient_experience_token_hash($token)]
         );
         return $session ?: null;
     }

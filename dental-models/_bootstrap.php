@@ -34,6 +34,7 @@ function dental_models_internal_boot(string $pageTitle = 'Dental Models'): array
 
 function dental_models_render_shell_start(string $title): void
 {
+    $fullscreen = !empty($GLOBALS['dentalModelsFullscreenShell']);
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -44,25 +45,28 @@ function dental_models_render_shell_start(string $title): void
         <script src="https://cdn.tailwindcss.com"></script>
         <meta name="robots" content="noindex,nofollow">
     </head>
-    <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <body class="<?= $fullscreen ? 'h-screen overflow-hidden bg-slate-950 text-slate-100 antialiased' : 'min-h-screen bg-slate-50 text-slate-900 antialiased' ?>">
+    <?php if (!$fullscreen): ?>
         <?php require ROOT_PATH . '/app/partials/crm_sidebar.php'; ?>
         <main class="px-4 py-6 sm:px-6 lg:pl-80 lg:pr-8 lg:py-8">
             <?php if (($message = flash_get('success'))): ?>
                 <div class="mb-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                    <?= e((string)$message) ?>
+                    <?= e((string) $message) ?>
                 </div>
             <?php endif; ?>
 
             <?php if (($message = flash_get('error'))): ?>
                 <div class="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    <?= e((string)$message) ?>
+                    <?= e((string) $message) ?>
                 </div>
             <?php endif; ?>
+
             <?php if (($message = flash_get('info'))): ?>
                 <div class="mb-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    <?= e((string)$message) ?>
+                    <?= e((string) $message) ?>
                 </div>
             <?php endif; ?>
+
             <section class="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
@@ -76,15 +80,35 @@ function dental_models_render_shell_start(string $title): void
                         Status: <span class="font-semibold text-slate-900">V1 Preview Mode</span>
                     </div>
                 </div>
-            <div class="mt-5 flex flex-wrap gap-2">
-                <a class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white" href="<?= e(base_url('dental-models/new')) ?>">
-                    New Upload
-                </a>
-                <a class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700" href="<?= e(base_url('dental-models')) ?>">
-                    All Models
-                </a>
-            </div>
-        </section>
+                <div class="mt-5 flex flex-wrap gap-2">
+                    <a class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white" href="<?= e(base_url('dental-models/new')) ?>">
+                        New Upload
+                    </a>
+                    <a class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700" href="<?= e(base_url('dental-models')) ?>">
+                        All Models
+                    </a>
+                </div>
+            </section>
+    <?php else: ?>
+        <main class="flex h-screen min-h-0 flex-col overflow-hidden">
+            <?php if (($message = flash_get('success'))): ?>
+                <div class="mx-4 mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                    <?= e((string) $message) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (($message = flash_get('error'))): ?>
+                <div class="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    <?= e((string) $message) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (($message = flash_get('info'))): ?>
+                <div class="mx-4 mt-4 rounded-2xl border border-slate-500/30 bg-slate-500/10 px-4 py-3 text-sm text-slate-100">
+                    <?= e((string) $message) ?>
+                </div>
+            <?php endif; ?>
+    <?php endif; ?>
 <?php
 }
 

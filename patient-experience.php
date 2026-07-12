@@ -5,6 +5,7 @@ require_once __DIR__ . '/app/config/config.php';
 require_once __DIR__ . '/app/core/helpers.php';
 require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
+require_once __DIR__ . '/app/core/twilio.php';
 require_once __DIR__ . '/app/patient_experience/patient_experience_service.php';
 
 require_auth();
@@ -110,6 +111,75 @@ if (is_post() && post('action') === 'start_direct_test_intake') {
     redirect(base_url('patient-experience.php?direct_test_token=' . rawurlencode((string)($session['token'] ?? '')) . '&direct_test_patient_name=' . rawurlencode($patientName)));
 }
 
+if (is_post() && post('action') === 'send_secure_consent_link') {
+    require_csrf();
+    $patientName = trim((string)post('secure_patient_name', ''));
+    if ($patientName === '') {
+        $patientName = 'Patient';
+    }
+    $leadId = (int)post('lead_id', '0');
+    $phone = trim((string)post('secure_phone', ''));
+    $email = trim((string)post('secure_email', ''));
+    $session = patient_experience_start_placeholder_session($leadId > 0 ? $leadId : null, $patientName, auth_user_id(), null);
+    if (!empty($session['error'])) {
+        flash_set('error', (string)$session['error']);
+        redirect(base_url('patient-experience.php?tab=secure'));
+    }
+
+    $token = (string)($session['token'] ?? '');
+    $secureLink = base_url('patient-experience/kiosk/?direct=1&kiosk_token=' . rawurlencode($token));
+    $channels = [];
+    $issues = [];
+
+    if ($phone !== '') {
+        $smsBody = 'Elite Smiles secure consent link for ' . $patientName . ': ' . $secureLink;
+        $smsResult = elite_twilio_send_sms($phone, $smsBody, ['source' => 'patient_experience_secure_consent']);
+        if (!empty($smsResult['ok'])) {
+            $channels[] = 'text';
+        } else {
+            $issues[] = 'SMS: ' . (string)($smsResult['message'] ?? 'Not sent');
+        }
+    }
+
+    if ($email !== '') {
+        $emailSubject = 'Your secure Elite Smiles consent link';
+        $emailBody = "Hi {$patientName},\n\nUse this secure link to complete your consent forms:\n\n{$secureLink}\n\nIf you were not expecting this message, please ignore it.\n\nElite Smiles";
+        $emailSent = elite_send_mail($email, $emailSubject, $emailBody);
+        if ($emailSent) {
+            $channels[] = 'email';
+        } else {
+            $issues[] = 'Email not sent';
+        }
+    }
+
+    patient_experience_audit('secure_consent_link_sent', [
+        'channels' => $channels,
+        'secure_link' => $secureLink,
+        'has_phone' => $phone !== '',
+        'has_email' => $email !== '',
+    ], (int)($session['id'] ?? 0), $leadId > 0 ? $leadId : null, auth_user_id());
+
+    $redirectParams = [
+        'tab' => 'secure',
+        'secure_consent_token' => $token,
+        'secure_consent_patient_name' => $patientName,
+        'secure_consent_phone' => $phone,
+        'secure_consent_email' => $email,
+    ];
+    if ($issues === []) {
+        $message = $channels ? ('Secure consent link sent by ' . implode(' and ', $channels) . '.') : 'Secure consent link created.';
+        flash_set('success', $message);
+    } else {
+        $message = 'Secure consent link created.';
+        if ($channels) {
+            $message .= ' Sent by ' . implode(' and ', $channels) . '.';
+        }
+        $message .= ' ' . implode(' ', $issues);
+        flash_set('success', $message);
+    }
+    redirect(base_url('patient-experience.php?' . http_build_query($redirectParams)));
+}
+
 if (is_post() && post('action') === 'regenerate_setup_token') {
     require_csrf();
     $deviceId = (int)post('device_id', '0');
@@ -160,8 +230,18 @@ $directTestUrl = $directTestToken !== ''
 $directTestQrUrl = $directTestUrl !== ''
     ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($directTestUrl)
     : '';
+$secureConsentToken = trim((string)get('secure_consent_token', ''));
+$secureConsentPatientName = trim((string)get('secure_consent_patient_name', ''));
+$secureConsentPhone = trim((string)get('secure_consent_phone', ''));
+$secureConsentEmail = trim((string)get('secure_consent_email', ''));
+$secureConsentUrl = $secureConsentToken !== ''
+    ? base_url('patient-experience/kiosk/?direct=1&kiosk_token=' . rawurlencode($secureConsentToken))
+    : '';
+$secureConsentQrUrl = $secureConsentUrl !== ''
+    ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($secureConsentUrl)
+    : '';
 $activeTab = strtolower(trim((string)get('tab', 'patients')));
-if (!in_array($activeTab, ['setup', 'patients'], true)) {
+if (!in_array($activeTab, ['setup', 'patients', 'secure'], true)) {
     $activeTab = 'patients';
 }
 if ($selectedReview) {
@@ -251,9 +331,10 @@ $tabUrl = static function (string $tab, array $query = []): string {
         </section>
 
         <div class="mb-8 rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm">
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid gap-2 sm:grid-cols-3">
                 <a href="<?= e($tabUrl('patients', $selectedReview ? ['session_id' => (int)$selectedReview['session']['id']] : [])) ?>" class="rounded-[1.5rem] px-5 py-4 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100' ?>">Patients</a>
                 <a href="<?= e($tabUrl('setup')) ?>" class="rounded-[1.5rem] px-5 py-4 text-center text-sm font-semibold transition <?= $activeTab === 'setup' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100' ?>">Setup</a>
+                <a href="<?= e($tabUrl('secure')) ?>" class="rounded-[1.5rem] px-5 py-4 text-center text-sm font-semibold transition <?= $activeTab === 'secure' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100' ?>">Secure Link</a>
             </div>
         </div>
 
@@ -351,7 +432,7 @@ $tabUrl = static function (string $tab, array $query = []): string {
                     </div>
                 </div>
             </section>
-        <?php else: ?>
+        <?php elseif ($activeTab === 'setup'): ?>
             <section class="mb-8 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Kiosk Setup</p>
@@ -491,6 +572,70 @@ $tabUrl = static function (string $tab, array $query = []): string {
                     </div>
                 </div>
                 <p class="mt-4 text-xs leading-6 text-slate-500">Use this only for testing. The normal kiosk flow above still works the old way.</p>
+            </section>
+        <?php else: ?>
+            <section class="mb-8 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Secure Link</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Send consent online</h2>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Create a secure patient consent link and send it by text or email. The patient can open it on any device and finish the forms online.</p>
+                    <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="action" value="send_secure_consent_link">
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-patient-name">Patient name</label>
+                            <input id="secure-patient-name" name="secure_patient_name" value="<?= e($secureConsentPatientName !== '' ? $secureConsentPatientName : '') ?>" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: Maria Lopez">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-lead-id">Lead ID optional</label>
+                            <input id="secure-lead-id" name="lead_id" inputmode="numeric" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: 131">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-phone">Text message phone</label>
+                            <input id="secure-phone" name="secure_phone" value="<?= e($secureConsentPhone) ?>" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: (801) 555-0100">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-email">Email</label>
+                            <input id="secure-email" name="secure_email" value="<?= e($secureConsentEmail) ?>" type="email" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Example: patient@email.com">
+                        </div>
+                        <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Send secure link</button>
+                    </form>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Secure link preview</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">What the patient receives</h2>
+                        <?php if ($secureConsentUrl !== ''): ?>
+                            <div class="mt-4 flex flex-col gap-4 md:flex-row md:items-center">
+                                <img src="<?= e($secureConsentQrUrl) ?>" alt="Secure consent link QR code" class="h-44 w-44 rounded-2xl border border-slate-200 bg-white p-2">
+                                <div class="min-w-0 flex-1 space-y-3">
+                                    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                                        <div class="font-semibold">Secure consent link ready</div>
+                                        <div class="mt-1 text-xs text-emerald-800">Patient: <?= e($secureConsentPatientName !== '' ? $secureConsentPatientName : 'Patient') ?></div>
+                                    </div>
+                                    <div class="flex flex-col gap-2">
+                                        <input value="<?= e($secureConsentUrl) ?>" readonly class="min-h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-xs text-slate-700 outline-none">
+                                        <button type="button" class="copy-setup-link min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100" data-copy-value="<?= e($secureConsentUrl) ?>">Copy secure link</button>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                                Fill out the form on the left to create a secure patient consent link.
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Notes</p>
+                        <ul class="mt-4 space-y-3 text-sm leading-6 text-slate-600">
+                            <li>The link opens the same consent packet used on the iPad.</li>
+                            <li>The patient session stays stored in CRM so staff can review it later.</li>
+                            <li>You can send by text, email, or both.</li>
+                        </ul>
+                    </div>
+                </div>
             </section>
         <?php endif; ?>
 

@@ -3411,8 +3411,8 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
             });
           }
           return clampPoint({
-            x: point.x + ((contourCenter.x - point.x) * influence * 0.18),
-            y: point.y + ((contourCenter.y - point.y) * influence * 0.18)
+            x: point.x + ((contourCenter.x - point.x) * influence * 0.34),
+            y: point.y + ((contourCenter.y - point.y) * influence * 0.34)
           });
         });
         toothContourOverrides[toothNumber] = next;

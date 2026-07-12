@@ -210,6 +210,27 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                                 </div>
                                 <p class="text-[10px] leading-4 text-white/50">Front view: #8 and #9 are the two center teeth. Drag a highlighted tooth to refine its target position.</p>
                             </div>
+                            <div class="grid gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/8 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-100">Edge tools</p>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button id="tooth-edge-eraser" type="button" class="rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white">Eraser</button>
+                                    <button id="tooth-edge-smoother" type="button" class="rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white">Smoother</button>
+                                </div>
+                                <label class="text-xs font-semibold text-white">
+                                    Eraser size: <span id="tooth-edge-size-value" class="font-bold">10</span>px
+                                    <input id="tooth-edge-size" type="range" min="3" max="20" value="10" class="mt-1 w-full accent-rose-300">
+                                </label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button id="tooth-edge-undo" type="button" class="rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">Undo</button>
+                                    <button id="tooth-edge-reset" type="button" class="rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">Reset</button>
+                                </div>
+                                <label class="text-xs font-semibold text-white">
+                                    Edge smoothing: <span id="adjust-smoothing-value" class="font-bold">45</span>%
+                                    <input type="range" min="0" max="100" value="45" class="mt-1 w-full accent-rose-300" data-adjust-range="edge_smoothing">
+                                </label>
+                            </div>
                             <label class="text-xs font-semibold text-white">
                                 Shape shift: <span id="adjust-shape-value" class="font-bold">0</span>%
                                 <input type="range" min="-30" max="30" value="0" class="mt-1 w-full accent-white" data-adjust-range="shape_scale_delta">
@@ -221,10 +242,6 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                             <label class="text-xs font-semibold text-white">
                                 Smile width: <span id="adjust-width-value" class="font-bold">0</span>%
                                 <input type="range" min="-40" max="40" value="0" class="mt-1 w-full accent-white" data-adjust-range="smile_width_delta">
-                            </label>
-                            <label class="text-xs font-semibold text-white">
-                                Edge smoothing: <span id="adjust-smoothing-value" class="font-bold">45</span>%
-                                <input type="range" min="0" max="100" value="45" class="mt-1 w-full accent-white" data-adjust-range="edge_smoothing">
                             </label>
                             <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-[11px] leading-5 text-white/60">
                                 AI changes are saved as a new version. External edits are also saved as a new version, so the current result is never overwritten.
@@ -381,6 +398,12 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       const brushSizeRange = document.getElementById('adjust-brush-size');
       const brushSizeValue = document.getElementById('adjust-brush-size-value');
       const brushSizePreview = document.getElementById('adjust-brush-size-preview');
+      const toothEdgeEraserButton = document.getElementById('tooth-edge-eraser');
+      const toothEdgeSmootherButton = document.getElementById('tooth-edge-smoother');
+      const toothEdgeUndoButton = document.getElementById('tooth-edge-undo');
+      const toothEdgeResetButton = document.getElementById('tooth-edge-reset');
+      const toothEdgeSizeRange = document.getElementById('tooth-edge-size');
+      const toothEdgeSizeValue = document.getElementById('tooth-edge-size-value');
       const brushMaskInput = form ? form.querySelector('input[name="brush_mask_data"]') : null;
       const loader = document.getElementById('smile-action-loader');
       const loaderLabel = document.getElementById('smile-action-loader-label');
@@ -392,11 +415,17 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       let brushDrawing = false;
       let editorMode = 'automatic';
       let autoToothSelection = null;
+      let currentSelectedToothRegions = [];
       let selectedToothNumber = 8;
       let selectedTeeth = new Set([8]);
       let toothSeedPoints = {};
       let toothManualOffsets = {};
       let toothPrecisionAdjustments = {};
+      let toothContourOverrides = {};
+      let toothContourHistory = {};
+      let toothEraseStrokes = {};
+      let toothEdgeTool = '';
+      let toothEdgeDrawing = false;
       let draggingTooth = null;
       let suppressToothClick = false;
       let detectedTeethBounds = null;
@@ -3287,25 +3316,102 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
+      function prepareActiveToothForEdgeEditing() {
+        const toothNumber = getSelectedToothNumber();
+        if (!Array.isArray(toothContourOverrides[toothNumber]) && autoToothSelection && Array.isArray(autoToothSelection.polygon)) {
+          toothContourOverrides[toothNumber] = clonePlainPoints(autoToothSelection.polygon);
+          toothPrecisionAdjustments[toothNumber] = {
+            shape_scale_delta: 0,
+            smile_length_delta: 0,
+            smile_width_delta: 0,
+            edge_smoothing: 0
+          };
+          delete toothManualOffsets[toothNumber];
+          writeToothOffsets();
+          writeToothAdjustments();
+          syncPrecisionControlsForActiveTooth();
+        }
+        return toothNumber;
+      }
+
+      function saveToothEdgeHistory(toothNumber) {
+        if (!toothContourHistory[toothNumber]) toothContourHistory[toothNumber] = [];
+        const current = Array.isArray(toothContourOverrides[toothNumber])
+          ? clonePlainPoints(toothContourOverrides[toothNumber])
+          : null;
+        toothContourHistory[toothNumber].push(current);
+        if (toothContourHistory[toothNumber].length > 30) toothContourHistory[toothNumber].shift();
+      }
+
+      function applyToothEdgeBrush(clientX, clientY) {
+        const toothNumber = getSelectedToothNumber();
+        const contour = toothContourOverrides[toothNumber];
+        if (!Array.isArray(contour) || contour.length < 5 || !toothEdgeTool) return;
+        const imageRect = getVisibleImageRect();
+        if (!imageRect || imageRect.width <= 0 || imageRect.height <= 0) return;
+        const brushPixels = toothEdgeSizeRange ? Number(toothEdgeSizeRange.value || 10) : 10;
+        const radiusX = Math.max(0.15, (brushPixels / imageRect.width) * 100);
+        const radiusY = Math.max(0.15, (brushPixels / imageRect.height) * 100);
+        const target = displayPointToImage(clientX, clientY);
+        const contourCenter = centroid(contour);
+        const source = clonePlainPoints(contour);
+        const next = source.map(function (point, index) {
+          const dx = (point.x - target.x) / radiusX;
+          const dy = (point.y - target.y) / radiusY;
+          const distance = Math.sqrt((dx * dx) + (dy * dy));
+          if (distance > 1.35) return point;
+          const influence = Math.pow(1 - normalize(distance / 1.35, 0, 1), 1.4);
+          if (toothEdgeTool === 'smooth') {
+            const previous = source[(index - 2 + source.length) % source.length];
+            const nextPoint = source[(index + 2) % source.length];
+            const averageX = (previous.x + point.x + nextPoint.x) / 3;
+            const averageY = (previous.y + point.y + nextPoint.y) / 3;
+            return clampPoint({
+              x: point.x + ((averageX - point.x) * influence * 0.72),
+              y: point.y + ((averageY - point.y) * influence * 0.72)
+            });
+          }
+          return clampPoint({
+            x: point.x + ((contourCenter.x - point.x) * influence * 0.18),
+            y: point.y + ((contourCenter.y - point.y) * influence * 0.18)
+          });
+        });
+        toothContourOverrides[toothNumber] = next;
+        render(baseAnchorPoints.length ? clonePoints(baseAnchorPoints) : readAnchorPoints());
+      }
+
+      function setToothEdgeTool(tool) {
+        toothEdgeTool = toothEdgeTool === tool ? '' : tool;
+        if (toothEdgeEraserButton) {
+          toothEdgeEraserButton.classList.toggle('bg-rose-400/30', toothEdgeTool === 'erase');
+          toothEdgeEraserButton.classList.toggle('border-rose-200/50', toothEdgeTool === 'erase');
+        }
+        if (toothEdgeSmootherButton) {
+          toothEdgeSmootherButton.classList.toggle('bg-rose-400/30', toothEdgeTool === 'smooth');
+          toothEdgeSmootherButton.classList.toggle('border-rose-200/50', toothEdgeTool === 'smooth');
+        }
+      }
+
       function applyPrecisionToToothSelection(selection) {
         if (!selection || !Array.isArray(selection.polygon) || selection.polygon.length < 3) {
           return selection;
         }
         const toothNumber = Number(selection.number || 0);
         const teethBounds = getDetectedTeethBounds();
-        let sourcePolygon = selection.polygon.map(function (point) {
+        const contourOverride = Array.isArray(toothContourOverrides[toothNumber]) ? toothContourOverrides[toothNumber] : null;
+        let sourcePolygon = (contourOverride || selection.polygon).map(function (point) {
           return { x: point.x, y: point.y };
         });
         const neighborSlot = teethBounds && teethBounds.slots
           ? (toothNumber === 4 ? teethBounds.slots[5] : (toothNumber === 13 ? teethBounds.slots[12] : null))
           : null;
-        if (neighborSlot && Array.isArray(neighborSlot.contour) && neighborSlot.contour.length >= 8) {
+        if (!contourOverride && neighborSlot && Array.isArray(neighborSlot.contour) && neighborSlot.contour.length >= 8) {
           sourcePolygon = neighborSlot.contour.map(function (point) {
             return { x: point.x, y: point.y };
           });
         }
         const originalBounds = getPointBounds(sourcePolygon);
-        if (neighborSlot && (toothNumber === 4 || toothNumber === 13)) {
+        if (!contourOverride && neighborSlot && (toothNumber === 4 || toothNumber === 13)) {
           const originalWidth = Math.max(0.2, originalBounds.right - originalBounds.left);
           const neighborWidth = Math.max(0.8, neighborSlot.right - neighborSlot.left);
           const targetWidth = Math.max(0.9, neighborWidth * 0.86);
@@ -3456,6 +3562,47 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         return {
           mask: maskCanvas.toDataURL('image/png'),
           overlay: overlayCanvas.toDataURL('image/png')
+        };
+      }
+
+      function buildAutomaticToothMaskExports() {
+        if (!workPreview || !workPreview.naturalWidth || !workPreview.naturalHeight || !currentSelectedToothRegions.length) {
+          return { mask: '', overlay: '' };
+        }
+        const scale = Math.min(1, 1200 / Math.max(workPreview.naturalWidth, workPreview.naturalHeight));
+        const width = Math.max(1, Math.round(workPreview.naturalWidth * scale));
+        const height = Math.max(1, Math.round(workPreview.naturalHeight * scale));
+        const maskCanvas = document.createElement('canvas');
+        const overlayCanvas = document.createElement('canvas');
+        maskCanvas.width = overlayCanvas.width = width;
+        maskCanvas.height = overlayCanvas.height = height;
+        const maskContext = maskCanvas.getContext('2d');
+        const overlayContext = overlayCanvas.getContext('2d');
+        if (!maskContext || !overlayContext) return { mask: '', overlay: '' };
+        overlayContext.drawImage(workPreview, 0, 0, width, height);
+
+        const drawPolygon = function (context, polygon) {
+          if (!Array.isArray(polygon) || polygon.length < 3) return;
+          context.beginPath();
+          polygon.forEach(function (point, index) {
+            const x = (point.x / 100) * width;
+            const y = (point.y / 100) * height;
+            if (index === 0) context.moveTo(x, y);
+            else context.lineTo(x, y);
+          });
+          context.closePath();
+          context.fill();
+        };
+
+        maskContext.fillStyle = '#ffffff';
+        overlayContext.fillStyle = 'rgba(244,63,94,0.58)';
+        currentSelectedToothRegions.forEach(function (selection) {
+          drawPolygon(maskContext, selection.polygon);
+          drawPolygon(overlayContext, selection.polygon);
+        });
+        return {
+          mask: maskCanvas.toDataURL('image/png'),
+          overlay: overlayCanvas.toDataURL('image/jpeg', 0.90)
         };
       }
 
@@ -3666,6 +3813,7 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         const selectedToothRegions = selectedToothList.length
           ? buildSelectedToothSelections(points, maskPolygon)
           : [];
+        currentSelectedToothRegions = selectedToothRegions;
         const activeSelection = selectedToothList.length
           ? (selectedToothRegions.find(function (selection) {
               return Number(selection.number) === Number(activeToothNumber);
@@ -4235,6 +4383,45 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
       }
 
+      if (toothEdgeEraserButton) {
+        toothEdgeEraserButton.addEventListener('click', function () {
+          setToothEdgeTool('erase');
+        });
+      }
+      if (toothEdgeSmootherButton) {
+        toothEdgeSmootherButton.addEventListener('click', function () {
+          setToothEdgeTool('smooth');
+        });
+      }
+      if (toothEdgeSizeRange) {
+        toothEdgeSizeRange.addEventListener('input', function () {
+          if (toothEdgeSizeValue) toothEdgeSizeValue.textContent = String(toothEdgeSizeRange.value || 10);
+        });
+      }
+      if (toothEdgeUndoButton) {
+        toothEdgeUndoButton.addEventListener('click', function () {
+          const toothNumber = getSelectedToothNumber();
+          const history = toothContourHistory[toothNumber] || [];
+          if (!history.length) return;
+          const previous = history.pop();
+          if (Array.isArray(previous)) {
+            toothContourOverrides[toothNumber] = previous;
+          } else {
+            delete toothContourOverrides[toothNumber];
+          }
+          render(baseAnchorPoints.length ? clonePoints(baseAnchorPoints) : readAnchorPoints());
+        });
+      }
+      if (toothEdgeResetButton) {
+        toothEdgeResetButton.addEventListener('click', function () {
+          const toothNumber = getSelectedToothNumber();
+          delete toothContourOverrides[toothNumber];
+          delete toothContourHistory[toothNumber];
+          setToothEdgeTool('');
+          render(baseAnchorPoints.length ? clonePoints(baseAnchorPoints) : readAnchorPoints());
+        });
+      }
+
       if (toothSelectLayer) {
         toothSelectLayer.addEventListener('pointerdown', function (event) {
           if (editorMode !== 'automatic') return;
@@ -4247,6 +4434,15 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
           if (!imageRect || imageRect.width <= 0 || imageRect.height <= 0) return;
           event.preventDefault();
           event.stopPropagation();
+          if (toothEdgeTool) {
+            setSelectedTeeth(getSelectedTeethArray(), toothNumber);
+            prepareActiveToothForEdgeEditing();
+            saveToothEdgeHistory(toothNumber);
+            toothEdgeDrawing = true;
+            suppressToothClick = true;
+            applyToothEdgeBrush(event.clientX, event.clientY);
+            return;
+          }
           const existing = toothManualOffsets[toothNumber] || { x: 0, y: 0 };
           draggingTooth = {
             number: toothNumber,
@@ -4261,6 +4457,11 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
 
         window.addEventListener('pointermove', function (event) {
+          if (toothEdgeDrawing && toothEdgeTool && editorMode === 'automatic') {
+            event.preventDefault();
+            applyToothEdgeBrush(event.clientX, event.clientY);
+            return;
+          }
           if (!draggingTooth || editorMode !== 'automatic') return;
           const deltaX = ((event.clientX - draggingTooth.startClientX) / Math.max(1, draggingTooth.imageWidth)) * 100;
           const deltaY = ((event.clientY - draggingTooth.startClientY) / Math.max(1, draggingTooth.imageHeight)) * 100;
@@ -4275,6 +4476,16 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
         });
 
         window.addEventListener('pointerup', function () {
+          if (toothEdgeDrawing) {
+            toothEdgeDrawing = false;
+            writeToothAdjustments();
+            writeToothOffsets();
+            suppressToothClick = true;
+            window.setTimeout(function () {
+              suppressToothClick = false;
+            }, 0);
+            return;
+          }
           if (!draggingTooth) return;
           suppressToothClick = Boolean(draggingTooth.moved);
           draggingTooth = null;
@@ -4314,6 +4525,12 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
       form.addEventListener('submit', function () {
         if (editorMode === 'manual' && brushCanvas) {
           commitBrushSelection();
+        } else if (editorMode === 'automatic') {
+          const automaticPayload = buildAutomaticToothMaskExports();
+          writeBrushPayload(automaticPayload.mask, automaticPayload.overlay);
+          writeSelectionMode(automaticPayload.mask ? 'brush' : 'auto_single_tooth');
+          writeSelectedTeeth(getSelectedTeethPayload());
+          writeContourPoints(getSelectedTeethArray().length === 1 && autoToothSelection ? autoToothSelection.polygon : []);
         } else {
           writeBrushPayload('', '');
           writeSelectionMode(editorMode === 'manual' ? 'manual_single_tooth' : 'auto_single_tooth');

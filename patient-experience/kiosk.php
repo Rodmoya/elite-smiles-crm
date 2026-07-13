@@ -329,6 +329,25 @@ $setupHintUrl = base_url('patient-experience.php');
                 return html + '</div></div>';
             }
 
+            function normalizedOptions(options) {
+                if (Array.isArray(options)) {
+                    return options.reduce(function (result, option) {
+                        if (typeof option === 'string') {
+                            result[option] = option;
+                            return result;
+                        }
+                        if (option && typeof option === 'object') {
+                            const value = String(option.value || option.label || '');
+                            if (value) {
+                                result[value] = String(option.label || option.value || '');
+                            }
+                        }
+                        return result;
+                    }, {});
+                }
+                return options && typeof options === 'object' ? options : {};
+            }
+
             function renderField(field, value, answers) {
                 const key = escapeHtml(field.key || '');
                 const label = escapeHtml(field.label || '');
@@ -342,7 +361,7 @@ $setupHintUrl = base_url('patient-experience.php');
                     return wrapperStart + '<h2 class="text-2xl font-semibold tracking-tight text-slate-950">' + label + '</h2>' + wrapperEnd;
                 }
                 if (type === 'paragraph' || type === 'text_block') {
-                    return wrapperStart + '<div class="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-lg leading-8 text-slate-800">' + escapeHtml(field.body || '') + '</div>' + wrapperEnd;
+                    return wrapperStart + '<div class="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-lg leading-8 text-slate-800">' + escapeHtml(field.body || field.label || '') + '</div>' + wrapperEnd;
                 }
                 if (type === 'divider') {
                     return wrapperStart + '<div class="h-px bg-slate-200"></div>' + wrapperEnd;
@@ -365,14 +384,15 @@ $setupHintUrl = base_url('patient-experience.php');
                 if (type === 'checkbox_group' || type === 'multi_select') {
                     let html = wrapperStart + '<fieldset><legend class="kiosk-label">' + label + '</legend><div class="grid gap-3 sm:grid-cols-2">';
                     const selected = Array.isArray(value) ? value : [];
-                    Object.keys(field.options || {}).forEach(function (optionKey) {
-                        html += '<label class="kiosk-option flex cursor-pointer items-center gap-3"><input class="h-6 w-6" type="checkbox" name="' + key + '" value="' + escapeHtml(optionKey) + '"' + (selected.includes(optionKey) ? ' checked' : '') + '><span>' + escapeHtml(field.options[optionKey]) + '</span></label>';
+                    const options = normalizedOptions(field.options);
+                    Object.keys(options).forEach(function (optionKey) {
+                        html += '<label class="kiosk-option flex cursor-pointer items-center gap-3"><input class="h-6 w-6" type="checkbox" name="' + key + '" value="' + escapeHtml(optionKey) + '"' + (selected.includes(optionKey) ? ' checked' : '') + '><span>' + escapeHtml(options[optionKey]) + '</span></label>';
                     });
                     return html + '</div></fieldset>' + wrapperEnd;
                 }
                 if (type === 'yes_no' || type === 'radio') {
                     let html = wrapperStart + '<fieldset><legend class="kiosk-label">' + label + '</legend><div class="grid gap-3 sm:grid-cols-3">';
-                    const options = field.options || { yes: 'Yes', no: 'No' };
+                    const options = normalizedOptions(field.options || { yes: 'Yes', no: 'No' });
                     Object.keys(options).forEach(function (optionKey) {
                         html += '<label class="kiosk-option flex cursor-pointer items-center gap-3"><input class="h-6 w-6" type="radio" name="' + key + '" value="' + escapeHtml(optionKey) + '"' + (String(value || '') === optionKey ? ' checked' : '') + required + '><span>' + escapeHtml(options[optionKey]) + '</span></label>';
                     });
@@ -381,8 +401,9 @@ $setupHintUrl = base_url('patient-experience.php');
                 if (type === 'dropdown') {
                     let html = wrapperStart + '<div><label class="kiosk-label" for="' + key + '">' + label + '</label><select id="' + key + '" name="' + key + '" class="kiosk-input"' + required + '>';
                     html += '<option value="">Select an option</option>';
-                    Object.keys(field.options || {}).forEach(function (optionKey) {
-                        html += '<option value="' + escapeHtml(optionKey) + '"' + (String(value || '') === optionKey ? ' selected' : '') + '>' + escapeHtml(field.options[optionKey]) + '</option>';
+                    const options = normalizedOptions(field.options);
+                    Object.keys(options).forEach(function (optionKey) {
+                        html += '<option value="' + escapeHtml(optionKey) + '"' + (String(value || '') === optionKey ? ' selected' : '') + '>' + escapeHtml(options[optionKey]) + '</option>';
                     });
                     return html + '</select></div>' + wrapperEnd;
                 }

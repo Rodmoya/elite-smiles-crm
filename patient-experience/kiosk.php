@@ -169,6 +169,11 @@ $setupHintUrl = base_url('patient-experience.php');
                 return '<button type="button" class="' + className + '">' + label + '</button>';
             }
 
+            function isInactiveSessionMessage(message) {
+                const text = String(message || '').toLowerCase();
+                return text.includes('no longer active') || text.includes('not active') || text.includes('session expired');
+            }
+
             function answerValue(answers, key) {
                 if (!answers || !key || !Object.prototype.hasOwnProperty.call(answers, key)) {
                     return null;
@@ -639,6 +644,8 @@ $setupHintUrl = base_url('patient-experience.php');
                 const data = await post('begin');
                 if (data.ok) {
                     renderForm(data);
+                } else if (directMode && isInactiveSessionMessage(data.message)) {
+                    await beginDirectSession();
                 } else {
                     renderIdle();
                 }
@@ -652,6 +659,8 @@ $setupHintUrl = base_url('patient-experience.php');
                     data.session = data.session || {};
                     data.session.kiosk_token = data.kiosk_token || '';
                     renderForm(data);
+                } else if (isInactiveSessionMessage(data.message)) {
+                    renderIdle();
                 } else {
                     renderIdle();
                 }
@@ -669,6 +678,10 @@ $setupHintUrl = base_url('patient-experience.php');
                 }
                 const data = await post('save_step', { step_key: stepKey, answers: collectAnswers() });
                 if (!data.ok) {
+                    if (directMode && isInactiveSessionMessage(data.message)) {
+                        await beginDirectSession();
+                        return;
+                    }
                     if (error) {
                         error.textContent = data.message || 'Please review this step.';
                         error.classList.remove('hidden');
@@ -687,7 +700,11 @@ $setupHintUrl = base_url('patient-experience.php');
                     renderSetupRequired('This iPad is not registered. Open the setup QR code first.');
                     return;
                 }
-                await post('cancel');
+                const data = await post('cancel');
+                if (directMode && data && !data.ok && isInactiveSessionMessage(data.message)) {
+                    await beginDirectSession();
+                    return;
+                }
                 renderIdle();
             }
 

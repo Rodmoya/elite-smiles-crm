@@ -260,10 +260,15 @@ $tabUrl = static function (string $tab, array $query = []): string {
         <?php endif; ?>
 
         <section class="mb-6 no-print">
-            <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient Experience</p>
-                <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Intake and consent forms</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-600">Send a patient their intake link, review signed forms, or set up the waiting-room iPad.</p>
+            <div class="flex flex-col gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between lg:p-8">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient Experience</p>
+                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Intake and consent forms</h1>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Review patient records, signed forms, and consent history.</p>
+                </div>
+                <?php if ($activeTab === 'patients'): ?>
+                    <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Send intake link</button>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -275,11 +280,18 @@ $tabUrl = static function (string $tab, array $query = []): string {
         </div>
 
         <?php if ($activeTab === 'patients'): ?>
-            <section class="mb-8 grid gap-5 xl:grid-cols-[0.75fr_1.25fr] no-print">
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Manual intake</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-900">Send intake link</h2>
-                    <p class="mt-2 text-sm text-slate-600">Enter a name and send by text, email, or copy the secure link.</p>
+            <section class="mb-8 no-print">
+                <div id="intake-modal" class="fixed inset-0 z-[90] <?= $secureConsentUrl !== '' ? '' : 'hidden' ?> items-center justify-center overflow-y-auto p-4 sm:p-6" aria-hidden="<?= $secureConsentUrl !== '' ? 'false' : 'true' ?>">
+                    <button type="button" data-intake-modal-close class="absolute inset-0 h-full w-full bg-slate-950/60 backdrop-blur-sm" aria-label="Close send intake modal"></button>
+                    <div role="dialog" aria-modal="true" aria-labelledby="intake-modal-title" class="relative mx-auto my-8 w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl sm:p-7">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Manual intake</p>
+                                <h2 id="intake-modal-title" class="mt-2 text-2xl font-semibold text-slate-900">Send intake link</h2>
+                                <p class="mt-2 text-sm text-slate-600">Send by text, email, or create a secure link to copy.</p>
+                            </div>
+                            <button type="button" data-intake-modal-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-xl text-slate-600 hover:bg-slate-100" aria-label="Close">×</button>
+                        </div>
                     <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
                             <?= csrf_input() ?>
                             <input type="hidden" name="action" value="send_secure_consent_link">
@@ -308,6 +320,7 @@ $tabUrl = static function (string $tab, array $query = []): string {
                                 </div>
                             </div>
                         <?php endif; ?>
+                    </div>
                 </div>
 
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -319,9 +332,9 @@ $tabUrl = static function (string $tab, array $query = []): string {
                         <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"><?= e((string)count($recentSessions)) ?> records</span>
                     </div>
 
-                    <div class="mt-5 divide-y divide-slate-100">
+                    <div class="mt-5 grid gap-4 md:grid-cols-2">
                         <?php if (!$recentSessions): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No patient intake records yet.</div>
+                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 md:col-span-2">No patient intake records yet.</div>
                         <?php else: ?>
                             <?php foreach ($recentSessions as $session): ?>
                                 <?php
@@ -335,7 +348,7 @@ $tabUrl = static function (string $tab, array $query = []): string {
                                 $signatureCount = (int)($signedPacket['signature_count'] ?? 0);
                                 $isSigned = $signedPacket && $signatureCount > 0;
                                 ?>
-                                <div class="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 md:flex-row md:items-center md:justify-between">
+                                <div class="flex min-h-40 flex-col justify-between gap-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                                     <div class="min-w-0">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <p class="font-semibold text-slate-900"><?= e($patientName) ?></p>
@@ -575,6 +588,39 @@ $tabUrl = static function (string $tab, array $query = []): string {
                 }
             });
         });
+        const intakeModal = document.getElementById('intake-modal');
+        const openIntakeModal = document.getElementById('open-intake-modal');
+        const setIntakeModalOpen = function (isOpen) {
+            if (!intakeModal) {
+                return;
+            }
+            intakeModal.classList.toggle('hidden', !isOpen);
+            intakeModal.classList.toggle('flex', isOpen);
+            intakeModal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+            document.body.classList.toggle('overflow-hidden', isOpen);
+            if (isOpen) {
+                window.setTimeout(function () {
+                    document.getElementById('secure-patient-name')?.focus();
+                }, 0);
+            }
+        };
+        openIntakeModal?.addEventListener('click', function () {
+            setIntakeModalOpen(true);
+        });
+        document.querySelectorAll('[data-intake-modal-close]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                setIntakeModalOpen(false);
+            });
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && intakeModal && !intakeModal.classList.contains('hidden')) {
+                setIntakeModalOpen(false);
+            }
+        });
+        if (intakeModal && !intakeModal.classList.contains('hidden')) {
+            intakeModal.classList.add('flex');
+            document.body.classList.add('overflow-hidden');
+        }
         <?php if ($selectedReview && !empty($selectedReview['signed_packet']) && get('print') === '1'): ?>
         window.addEventListener('load', function () {
             window.print();

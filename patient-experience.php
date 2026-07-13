@@ -348,104 +348,93 @@ $tabUrl = static function (string $tab, array $query = []): string {
         </div>
 
         <?php if ($activeTab === 'patients'): ?>
-            <section class="mb-6 grid gap-4 md:grid-cols-4">
-                <?php foreach ([['Waiting', 'waiting'], ['In Progress', 'in_progress'], ['Completed', 'completed'], ['Inactive', 'cancelled_expired']] as $item): ?>
-                    <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"><?= e($item[0]) ?></p>
-                        <p class="mt-3 text-3xl font-semibold text-slate-950"><?= e((string)($stats[$item[1]] ?? 0)) ?></p>
+            <section class="mb-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patients</p>
+                        <h2 class="mt-2 text-2xl font-semibold text-slate-950">List and send link</h2>
                     </div>
-                <?php endforeach; ?>
-            </section>
+                    <div class="flex flex-wrap gap-3">
+                        <a href="<?= e($kioskUrl) ?>" target="_blank" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Open kiosk</a>
+                        <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="action" value="expire_stale">
+                            <button type="submit" class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Expire stale</button>
+                        </form>
+                    </div>
+                </div>
 
-            <section class="mb-8 grid gap-6 xl:grid-cols-[0.86fr_1.14fr]">
-                <div class="space-y-6">
-                    <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                        <div class="flex items-center justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Send consent link</p>
-                                <h2 class="mt-2 text-xl font-semibold text-slate-950">Text or email patient</h2>
-                            </div>
-                            <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">New link</span>
-                        </div>
-                        <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
+                <div class="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Send link</p>
+                        <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-4 space-y-3">
                             <?= csrf_input() ?>
                             <input type="hidden" name="action" value="send_secure_consent_link">
-                            <div class="grid gap-4 sm:grid-cols-2">
-                                <div>
-                                    <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-patient-name">Patient name</label>
-                                    <input id="secure-patient-name" name="secure_patient_name" value="<?= e($secureConsentPatientName) ?>" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Maria Lopez">
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-lead-id">Patient # / Lead ID</label>
-                                    <input id="secure-lead-id" name="lead_id" inputmode="numeric" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Optional">
-                                </div>
+                            <div>
+                                <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-patient-name">Patient name</label>
+                                <input id="secure-patient-name" name="secure_patient_name" value="<?= e($secureConsentPatientName) ?>" class="min-h-11 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Maria Lopez">
                             </div>
-                            <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="grid gap-3 sm:grid-cols-2">
                                 <div>
-                                    <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-phone">Text message</label>
-                                    <input id="secure-phone" name="secure_phone" value="<?= e($secureConsentPhone) ?>" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="(801) 555-0100">
+                                    <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-phone">Text</label>
+                                    <input id="secure-phone" name="secure_phone" value="<?= e($secureConsentPhone) ?>" class="min-h-11 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="(801) 555-0100">
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-email">Email</label>
-                                    <input id="secure-email" name="secure_email" value="<?= e($secureConsentEmail) ?>" type="email" class="min-h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="patient@email.com">
+                                    <input id="secure-email" name="secure_email" value="<?= e($secureConsentEmail) ?>" type="email" class="min-h-11 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="patient@email.com">
                                 </div>
                             </div>
-                            <button class="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Send link</button>
+                            <div>
+                                <label class="mb-1 block text-xs font-semibold text-slate-600" for="secure-lead-id">Patient # / Lead ID</label>
+                                <input id="secure-lead-id" name="lead_id" inputmode="numeric" class="min-h-11 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="Optional">
+                            </div>
+                            <button class="min-h-11 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Send link</button>
                         </form>
                         <?php if ($secureConsentUrl !== ''): ?>
-                            <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Last generated link</p>
-                                <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-                                    <input value="<?= e($secureConsentUrl) ?>" readonly class="min-h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-xs text-slate-700 outline-none">
-                                    <button type="button" class="copy-setup-link min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100" data-copy-value="<?= e($secureConsentUrl) ?>">Copy</button>
+                            <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Last link</p>
+                                <div class="mt-2 flex flex-col gap-2">
+                                    <input value="<?= e($secureConsentUrl) ?>" readonly class="min-h-11 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-xs text-slate-700 outline-none">
+                                    <button type="button" class="copy-setup-link min-h-11 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100" data-copy-value="<?= e($secureConsentUrl) ?>">Copy</button>
                                 </div>
                             </div>
                         <?php endif; ?>
                     </div>
 
-                    <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                        <div class="flex items-center justify-between gap-4">
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5">
+                        <div class="flex items-center justify-between gap-3">
                             <div>
-                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient list</p>
-                                <h2 class="mt-2 text-xl font-semibold text-slate-950">Open a record and start</h2>
+                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient list</p>
+                                <h3 class="mt-1 text-lg font-semibold text-slate-950">Open and continue</h3>
                             </div>
                             <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Latest 30</span>
                         </div>
-                        <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                        <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
                             <table class="min-w-full divide-y divide-slate-200 text-sm">
                                 <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
                                     <tr>
                                         <th class="px-4 py-3">Patient</th>
                                         <th class="px-4 py-3">Status</th>
-                                        <th class="px-4 py-3">Record</th>
                                         <th class="px-4 py-3">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100 bg-white">
                                     <?php if (!$recentSessions): ?>
-                                        <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">No patients yet.</td></tr>
+                                        <tr><td colspan="3" class="px-4 py-8 text-center text-slate-500">No patients yet.</td></tr>
                                     <?php else: ?>
                                         <?php foreach ($recentSessions as $session): ?>
                                             <?php
                                             $sessionId = (int)$session['id'];
-                                            $signatureSummary = patient_experience_signature_summary($sessionId);
                                             $patientNumber = $formatPatientNumber($sessionId);
                                             $status = ucwords(str_replace('_', ' ', (string)($session['status'] ?? '')));
                                             ?>
                                             <tr>
-                                                <td class="px-4 py-3 font-semibold text-slate-950">
-                                                    <?= e($patientNumber) ?>
-                                                    <div class="mt-1 text-xs font-normal text-slate-500"><?= e(trim((string)$session['patient_name']) !== '' ? (string)$session['patient_name'] : 'No name yet') ?></div>
+                                                <td class="px-4 py-3">
+                                                    <div class="font-semibold text-slate-950"><?= e($patientNumber) ?></div>
+                                                    <div class="mt-1 text-xs text-slate-500"><?= e(trim((string)$session['patient_name']) !== '' ? (string)$session['patient_name'] : 'No name yet') ?></div>
                                                 </td>
                                                 <td class="px-4 py-3">
                                                     <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"><?= e($status !== '' ? $status : 'Unknown') ?></span>
-                                                    <div class="mt-1 text-xs text-slate-500"><?= e((string)($session['progress_percent'] ?? 0)) ?>% complete</div>
-                                                </td>
-                                                <td class="px-4 py-3 text-slate-500">
-                                                    <?= e(format_datetime((string)($session['created_at'] ?? ''))) ?>
-                                                    <div class="mt-1 text-xs text-slate-500">
-                                                        <?= ((int)$signatureSummary['total'] > 0) ? 'Signed ' . e(format_datetime((string)$signatureSummary['latest_signed_at'])) : 'No signature yet' ?>
-                                                    </div>
                                                 </td>
                                                 <td class="px-4 py-3">
                                                     <a href="<?= e(base_url('patient-experience.php?tab=patients&session_id=' . $sessionId)) ?>" class="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">Open</a>
@@ -458,44 +447,10 @@ $tabUrl = static function (string $tab, array $query = []): string {
                         </div>
                     </div>
                 </div>
-
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Current flow</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Active patient</h2>
-                    <?php if ($activeSession): ?>
-                        <div class="mt-5 space-y-4">
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient</div>
-                                <div class="mt-1 text-lg font-semibold text-slate-950"><?= e($formatPatientNumber((int)$activeSession['id'])) ?></div>
-                                <div class="mt-1 text-sm text-slate-600"><?= e((string)$activeSession['patient_name']) ?></div>
-                            </div>
-                            <div class="grid gap-3 sm:grid-cols-2">
-                                <div class="rounded-2xl bg-slate-50 p-4">
-                                    <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step</div>
-                                    <div class="mt-1 text-sm font-semibold text-slate-950"><?= e(ucwords(str_replace('_', ' ', (string)$activeProgress['current_step']))) ?></div>
-                                </div>
-                                <div class="rounded-2xl bg-slate-50 p-4">
-                                    <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Signature</div>
-                                    <div class="mt-1 text-sm font-semibold text-slate-950"><?= ((int)$activeSignatureSummary['total'] > 0) ? 'Captured' : 'Pending' ?></div>
-                                </div>
-                            </div>
-                            <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>">
-                                <?= csrf_input() ?>
-                                <input type="hidden" name="action" value="cancel_session">
-                                <input type="hidden" name="session_id" value="<?= e((string)$activeSession['id']) ?>">
-                                <button type="submit" class="min-h-12 w-full rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 hover:bg-red-100">Cancel active</button>
-                            </form>
-                        </div>
-                    <?php else: ?>
-                        <div class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-                            No active patient right now.
-                        </div>
-                    <?php endif; ?>
-                </div>
             </section>
         <?php elseif ($activeTab === 'setup'): ?>
-            <section class="mb-8 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <section class="mb-8 max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
                     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Setup</p>
                     <h2 class="mt-2 text-xl font-semibold text-slate-950">Kiosk setup</h2>
                     <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
@@ -526,39 +481,6 @@ $tabUrl = static function (string $tab, array $query = []): string {
                             </div>
                         </div>
                     <?php endif; ?>
-                </div>
-
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Kiosk list</p>
-                    <div class="mt-5 space-y-4">
-                        <?php if (!$kioskDevices): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No kiosks saved yet.</div>
-                        <?php else: ?>
-                            <?php foreach ($kioskDevices as $device): ?>
-                                <?php
-                                $deviceId = (int)$device['id'];
-                                $isRegistered = patient_experience_kiosk_device_registered($device);
-                                ?>
-                                <div class="rounded-[1.5rem] border border-slate-200 p-5">
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div>
-                                            <h3 class="text-lg font-semibold text-slate-950"><?= e((string)$device['device_label']) ?></h3>
-                                            <p class="mt-1 text-sm text-slate-500"><?= e((string)$device['location_label']) ?></p>
-                                        </div>
-                                        <span class="rounded-full border px-3 py-1 text-xs font-semibold <?= $isRegistered ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700' ?>"><?= e($isRegistered ? 'Installed' : 'Pending') ?></span>
-                                    </div>
-                                    <div class="mt-4 flex flex-wrap gap-3">
-                                        <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>">
-                                            <?= csrf_input() ?>
-                                            <input type="hidden" name="action" value="regenerate_setup_token">
-                                            <input type="hidden" name="device_id" value="<?= e((string)$deviceId) ?>">
-                                            <button type="submit" class="min-h-11 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"><?= $isRegistered ? 'Regenerate QR' : 'Generate QR' ?></button>
-                                        </form>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
                 </div>
             </section>
 

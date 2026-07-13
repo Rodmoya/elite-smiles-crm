@@ -149,6 +149,11 @@ $setupHintUrl = base_url('patient-experience.php');
             if (directMode && directKioskToken) {
                 kioskToken = directKioskToken;
                 currentSessionId = 0;
+            } else if (directMode && !deviceToken) {
+                kioskToken = '';
+                currentSessionId = 0;
+                window.sessionStorage.removeItem('patient_experience_kiosk_token');
+                window.sessionStorage.removeItem('patient_experience_session_id');
             }
 
             function escapeHtml(value) {
@@ -665,8 +670,6 @@ $setupHintUrl = base_url('patient-experience.php');
                 const data = await post('begin');
                 if (data.ok) {
                     renderForm(data);
-                } else if (directMode && isInactiveSessionMessage(data.message)) {
-                    await beginDirectSession();
                 } else {
                     renderIdle();
                 }
@@ -700,7 +703,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 const data = await post('save_step', { step_key: stepKey, answers: collectAnswers() });
                 if (!data.ok) {
                     if (directMode && isInactiveSessionMessage(data.message)) {
-                        await beginDirectSession();
+                        renderIdle();
                         return;
                     }
                     if (error) {
@@ -723,7 +726,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 }
                 const data = await post('cancel');
                 if (directMode && data && !data.ok && isInactiveSessionMessage(data.message)) {
-                    await beginDirectSession();
+                    renderIdle();
                     return;
                 }
                 renderIdle();
@@ -779,7 +782,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 navigator.serviceWorker.register(serviceWorkerUrl).catch(function () {});
             }
             if (directMode) {
-                window.setTimeout(kioskToken ? beginSession : beginDirectSession, 60);
+                window.setTimeout(kioskToken ? beginSession : renderIdle, 60);
             } else {
                 poll();
                 window.setInterval(poll, 3000);

@@ -1487,13 +1487,57 @@ if (!function_exists('patient_experience_signature_summary')) {
     }
 }
 
+if (!function_exists('patient_experience_signature_snapshot_rows')) {
+    function patient_experience_signature_snapshot_rows(int $sessionId): array
+    {
+        $rows = db_all(
+            'SELECT s.packet_section_id,
+                    s.template_version_id,
+                    s.signer_name,
+                    s.signer_relationship,
+                    s.signature_storage_key,
+                    s.signature_hash,
+                    s.signed_at,
+                    ps.section_key,
+                    ps.title AS section_title
+             FROM patient_experience_signatures s
+             LEFT JOIN patient_experience_packet_sections ps ON ps.id = s.packet_section_id
+             WHERE s.checkin_session_id = :session_id
+             ORDER BY s.signed_at ASC, s.id ASC',
+            ['session_id' => $sessionId]
+        );
+
+        $allowedPrefix = 'patient-experience/signatures/session-' . $sessionId . '/';
+        foreach ($rows as &$row) {
+            $row['image_data_url'] = '';
+            $storageKey = (string)($row['signature_storage_key'] ?? '');
+            if ($storageKey === '' || !str_starts_with($storageKey, $allowedPrefix)) {
+                unset($row['signature_storage_key']);
+                continue;
+            }
+            $filePath = storage_path($storageKey);
+            $fileSize = is_file($filePath) ? (int)filesize($filePath) : 0;
+            if ($fileSize > 0 && $fileSize <= 1500000) {
+                $binary = file_get_contents($filePath);
+                if (is_string($binary) && $binary !== '') {
+                    $row['image_data_url'] = 'data:image/png;base64,' . base64_encode($binary);
+                }
+            }
+            unset($row['signature_storage_key']);
+        }
+        unset($row);
+
+        return $rows;
+    }
+}
+
 if (!function_exists('patient_experience_signed_packet_snapshot')) {
     function patient_experience_signed_packet_snapshot(array $session): array
     {
         $sessionId = (int)($session['id'] ?? 0);
         $definition = patient_experience_packet_definition();
         $answers = patient_experience_answers_for_session($sessionId);
-        $signatures = patient_experience_signatures_for_session($sessionId);
+        $signatures = patient_experience_signature_snapshot_rows($sessionId);
         $review = patient_experience_patient_review_payload($session, $answers);
         return [
             'packet' => [
@@ -1778,6 +1822,7 @@ if (!function_exists('patient_experience_save_step')) {
 
         patient_experience_audit('step_saved', ['step_key' => $stepKey], (int)$session['id'], (int)($session['lead_id'] ?? 0) ?: null);
         if ($isComplete) {
+            patient_experience_store_signed_packet((int)$session['id']);
             patient_experience_audit('session_completed', [], (int)$session['id'], (int)($session['lead_id'] ?? 0) ?: null);
             return ['ok' => true, 'completed' => true, 'message' => 'Check-in completed.'];
         }
@@ -1973,13 +2018,26 @@ if (!function_exists('patient_experience_staff_review_context')) {
             }
         }
 
+        $firstName = (string)(patient_experience_answer_value($answers, 'patient_first_name') ?: patient_experience_answer_value($answers, 'legal_first_name'));
+        $lastName = (string)(patient_experience_answer_value($answers, 'patient_last_name') ?: patient_experience_answer_value($answers, 'legal_last_name'));
+        $addressParts = array_filter([
+            (string)patient_experience_answer_value($answers, 'patient_address'),
+            (string)patient_experience_answer_value($answers, 'patient_city'),
+            (string)patient_experience_answer_value($answers, 'patient_state'),
+            (string)patient_experience_answer_value($answers, 'patient_zip'),
+        ], static fn(string $part): bool => trim($part) !== '');
+        $emergencyParts = array_filter([
+            (string)patient_experience_answer_value($answers, 'emergency_contact_name'),
+            (string)patient_experience_answer_value($answers, 'emergency_contact_relationship'),
+            (string)patient_experience_answer_value($answers, 'emergency_contact_phone'),
+        ], static fn(string $part): bool => trim($part) !== '');
         $patientSummary = [
-            'Patient name' => trim(trim((string)patient_experience_answer_value($answers, 'legal_first_name')) . ' ' . trim((string)patient_experience_answer_value($answers, 'legal_last_name'))),
-            'Preferred name' => (string)patient_experience_answer_value($answers, 'preferred_name'),
-            'Date of birth' => (string)patient_experience_answer_value($answers, 'date_of_birth'),
-            'Phone' => (string)patient_experience_answer_value($answers, 'mobile_phone'),
-            'Email' => (string)patient_experience_answer_value($answers, 'email'),
-            'Preferred contact' => (string)patient_experience_answer_value($answers, 'preferred_contact_method'),
+            'Patient name' => trim($firstName . ' ' . $lastName),
+            'Date of birth' => (string)(patient_experience_answer_value($answers, 'patient_dob') ?: patient_experience_answer_value($answers, 'date_of_birth')),
+            'Phone' => (string)(patient_experience_answer_value($answers, 'patient_phone') ?: patient_experience_answer_value($answers, 'mobile_phone')),
+            'Email' => (string)(patient_experience_answer_value($answers, 'patient_email') ?: patient_experience_answer_value($answers, 'email')),
+            'Address' => implode(', ', $addressParts),
+            'Emergency contact' => implode(' | ', $emergencyParts),
         ];
 
         $photoPermissions = [
@@ -1999,17 +2057,17 @@ if (!function_exists('patient_experience_staff_review_context')) {
             'medical_alerts' => array_values(array_filter([
                 patient_experience_answer_label(patient_experience_answer_value($answers, 'medical_conditions')),
                 patient_experience_answer_label(patient_experience_answer_value($answers, 'allergies')),
-                patient_experience_answer_label(patient_experience_answer_value($answers, 'medications')),
+                patient_experience_answer_label(patient_experience_answer_value($answers, 'current_medications') ?: patient_experience_answer_value($answers, 'medications')),
                 (string)patient_experience_answer_value($answers, 'pregnancy_follow_up'),
             ], static fn(string $item): bool => trim($item) !== '')),
-            'medications' => (array)(patient_experience_answer_value($answers, 'medications') ?: []),
+            'medications' => (array)(patient_experience_answer_value($answers, 'current_medications') ?: patient_experience_answer_value($answers, 'medications') ?: []),
             'allergies' => (array)(patient_experience_answer_value($answers, 'allergies') ?: []),
             'insurance' => [
                 'Has insurance' => (string)patient_experience_answer_value($answers, 'has_insurance'),
-                'Provider' => (string)patient_experience_answer_value($answers, 'insurance_information_provider'),
-                'Subscriber' => (string)patient_experience_answer_value($answers, 'insurance_information_subscriber_name'),
-                'Member ID' => (string)patient_experience_answer_value($answers, 'insurance_information_member_id'),
-                'Group number' => (string)patient_experience_answer_value($answers, 'insurance_information_group_number'),
+                'Provider' => (string)(patient_experience_answer_value($answers, 'primary_insurance_provider') ?: patient_experience_answer_value($answers, 'insurance_information_provider')),
+                'Subscriber' => (string)(patient_experience_answer_value($answers, 'primary_insurance_subscriber_name') ?: patient_experience_answer_value($answers, 'insurance_information_subscriber_name')),
+                'Member ID' => (string)(patient_experience_answer_value($answers, 'primary_insurance_member_id') ?: patient_experience_answer_value($answers, 'insurance_information_member_id')),
+                'Group number' => (string)(patient_experience_answer_value($answers, 'primary_insurance_group_number') ?: patient_experience_answer_value($answers, 'insurance_information_group_number')),
             ],
             'interested_services' => (array)(patient_experience_answer_value($answers, 'interested_services') ?: []),
             'financing_interest' => (string)patient_experience_answer_value($answers, 'financing_interest'),
@@ -2021,15 +2079,25 @@ if (!function_exists('patient_experience_staff_review_context')) {
             'missing_fields' => array_values(array_unique(array_filter($missingFields))),
             'missing_signatures' => array_values(array_unique(array_filter($missingSignatures))),
             'consent_status' => [
-                'Consent to proceed' => (string)patient_experience_answer_value($answers, 'consent_to_proceed_ack'),
-                'HIPAA' => (string)patient_experience_answer_value($answers, 'hipaa_acknowledged'),
-                'Financial policy' => (string)patient_experience_answer_value($answers, 'financial_policy_ack'),
-                'No recording' => (string)patient_experience_answer_value($answers, 'no_recording_acknowledged'),
-                'Final review' => (string)patient_experience_answer_value($answers, 'final_review_ack'),
+                'Insurance authorization' => (string)patient_experience_answer_value($answers, 'authorization_acknowledgement'),
+                'Consent to proceed' => (string)(patient_experience_answer_value($answers, 'proceed_acknowledgement') ?: patient_experience_answer_value($answers, 'consent_to_proceed_ack')),
+                'HIPAA' => (string)(patient_experience_answer_value($answers, 'hipaa_acknowledgement_checkbox') ?: patient_experience_answer_value($answers, 'hipaa_acknowledged')),
+                'Office and financial policy' => (string)(patient_experience_answer_value($answers, 'office_policy_acknowledgement') ?: patient_experience_answer_value($answers, 'financial_policy_ack')),
+                'No recording' => (string)(patient_experience_answer_value($answers, 'recording_acknowledgement') ?: patient_experience_answer_value($answers, 'no_recording_acknowledged')),
             ],
-            'photo_permissions' => $photoPermissions,
+            'photo_permissions' => [
+                'Photo/image preference' => (string)patient_experience_answer_value($answers, 'photo_permission'),
+                'Selected image uses' => patient_experience_answer_label(patient_experience_answer_value($answers, 'photo_image_types')),
+            ] + $photoPermissions,
             'audit_timeline' => patient_experience_session_audit_timeline($sessionId),
-            'signed_packet' => patient_experience_signed_packet_for_session($sessionId),
+            'signed_packet' => (function () use ($sessionId, $session): ?array {
+                $signedPacket = patient_experience_signed_packet_for_session($sessionId);
+                if (!$signedPacket && (string)($session['status'] ?? '') === 'completed') {
+                    patient_experience_store_signed_packet($sessionId);
+                    $signedPacket = patient_experience_signed_packet_for_session($sessionId);
+                }
+                return $signedPacket;
+            })(),
         ];
     }
 }

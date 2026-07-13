@@ -411,7 +411,6 @@ $tabUrl = static function (string $tab, array $query = []): string {
         <?php if ($selectedReview): ?>
             <?php
             $review = $selectedReview;
-            $signatureImage = (string)patient_experience_answer_value((array)$review['answers'], 'patient_signature');
             $signatureRecords = (array)($review['signed_packet']['snapshot']['signatures'] ?? []);
             $hasSignedPacket = !empty($review['signed_packet']);
             $reviewIsComplete = (string)($review['session']['status'] ?? '') === 'completed';
@@ -524,18 +523,22 @@ $tabUrl = static function (string $tab, array $query = []): string {
                         </div>
 
                         <div class="rounded-2xl border border-slate-200 p-4">
-                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Patient Signature</h3>
-                            <?php if (strpos($signatureImage, 'data:image/') === 0): ?>
-                                <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                                    <img src="<?= e($signatureImage) ?>" alt="Patient signature" class="mx-auto max-h-36 max-w-full">
-                                </div>
-                            <?php else: ?>
-                                <p class="mt-3 text-sm text-slate-500">No signature image is available for this record.</p>
+                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Patient Signatures</h3>
+                            <?php if (!$signatureRecords): ?>
+                                <p class="mt-3 text-sm text-slate-500">No signature images are available for this record.</p>
                             <?php endif; ?>
                             <?php foreach ($signatureRecords as $signature): ?>
-                                <div class="mt-3 flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-3 text-sm text-slate-700">
-                                    <span>Signed by <strong><?= e((string)($signature['signer_name'] ?? 'Patient')) ?></strong></span>
-                                    <span><?= e(format_datetime((string)($signature['signed_at'] ?? ''))) ?></span>
+                                <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="flex flex-wrap justify-between gap-2 text-sm text-slate-700">
+                                        <span class="font-semibold"><?= e((string)($signature['section_title'] ?? 'Patient consent')) ?></span>
+                                        <span><?= e(format_datetime((string)($signature['signed_at'] ?? ''))) ?></span>
+                                    </div>
+                                    <?php if (strpos((string)($signature['image_data_url'] ?? ''), 'data:image/') === 0): ?>
+                                        <div class="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+                                            <img src="<?= e((string)$signature['image_data_url']) ?>" alt="<?= e((string)($signature['section_title'] ?? 'Patient')) ?> signature" class="mx-auto max-h-32 max-w-full">
+                                        </div>
+                                    <?php endif; ?>
+                                    <p class="mt-3 text-xs text-slate-500">Signed by <?= e((string)($signature['signer_name'] ?? 'Patient')) ?></p>
                                 </div>
                             <?php endforeach; ?>
                         </div>

@@ -352,6 +352,7 @@ if (!function_exists('patient_experience_seed_templates')) {
     function patient_experience_seed_templates(): void
     {
         $packet = patient_experience_packet_definition();
+        $versionNumber = max(1, (int)($packet['version'] ?? 1));
         $templates = [];
         foreach ((array)($packet['sections'] ?? []) as $section) {
             $templateKey = trim((string)($section['template_key'] ?? $section['section_key'] ?? ''));
@@ -390,17 +391,18 @@ if (!function_exists('patient_experience_seed_templates')) {
             }
 
             $hasVersion = db_value(
-                'SELECT id FROM patient_experience_form_template_versions WHERE template_id = :template_id AND version_number = 1 LIMIT 1',
-                ['template_id' => (int)$existingId]
+                'SELECT id FROM patient_experience_form_template_versions WHERE template_id = :template_id AND version_number = :version_number LIMIT 1',
+                ['template_id' => (int)$existingId, 'version_number' => $versionNumber]
             );
             if (!$hasVersion) {
                 db_insert(
                     'INSERT INTO patient_experience_form_template_versions (template_id, version_number, schema_json, consent_text, effective_at, created_at)
-                     VALUES (:template_id, 1, :schema_json, :consent_text, NOW(), NOW())',
+                     VALUES (:template_id, :version_number, :schema_json, :consent_text, NOW(), NOW())',
                     [
                         'template_id' => (int)$existingId,
+                        'version_number' => $versionNumber,
                         'schema_json' => $template['schema_json'],
-                        'consent_text' => 'Digital forms engine template version 1.',
+                        'consent_text' => 'Elite Smiles patient forms version ' . $versionNumber . '.',
                     ]
                 );
             } else {
@@ -412,7 +414,7 @@ if (!function_exists('patient_experience_seed_templates')) {
                     [
                         'id' => (int)$hasVersion,
                         'schema_json' => $template['schema_json'],
-                        'consent_text' => 'Digital forms engine template version 1.',
+                        'consent_text' => 'Elite Smiles patient forms version ' . $versionNumber . '.',
                     ]
                 );
             }

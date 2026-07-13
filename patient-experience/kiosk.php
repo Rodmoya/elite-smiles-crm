@@ -96,7 +96,7 @@ $setupHintUrl = base_url('patient-experience.php');
             const deviceTokenStorageKey = 'patient_experience_device_token';
             const urlParams = new URLSearchParams(window.location.search);
             const autoBeginForms = (urlParams.get('auto_begin') || '') === '1';
-            const directMode = (urlParams.get('direct') || '') === '1';
+            let directMode = (urlParams.get('direct') || '') === '1';
             const directKioskToken = urlParams.get('kiosk_token') || '';
             let kioskToken = window.sessionStorage.getItem('patient_experience_kiosk_token') || '';
             let currentSessionId = Number(window.sessionStorage.getItem('patient_experience_session_id') || 0);
@@ -142,6 +142,9 @@ $setupHintUrl = base_url('patient-experience.php');
             }
             if (deviceToken) {
                 setDeviceToken(deviceToken);
+            }
+            if (!directMode && !deviceToken) {
+                directMode = true;
             }
             if (directMode && directKioskToken) {
                 kioskToken = directKioskToken;

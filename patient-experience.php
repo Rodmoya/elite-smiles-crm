@@ -352,7 +352,7 @@ $tabUrl = static function (string $tab, array $query = []): string {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patients</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-slate-950">List and send link</h2>
+                        <h2 class="mt-2 text-2xl font-semibold text-slate-950">One test patient</h2>
                     </div>
                     <div class="flex flex-wrap gap-3">
                         <a href="<?= e($kioskUrl) ?>" target="_blank" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Open kiosk</a>
@@ -404,46 +404,41 @@ $tabUrl = static function (string $tab, array $query = []): string {
                     <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5">
                         <div class="flex items-center justify-between gap-3">
                             <div>
-                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient list</p>
-                                <h3 class="mt-1 text-lg font-semibold text-slate-950">Open and continue</h3>
+                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Test record</p>
+                                <h3 class="mt-1 text-lg font-semibold text-slate-950">Complete dummy patient</h3>
                             </div>
-                            <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Latest 30</span>
+                            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Complete</span>
                         </div>
-                        <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
-                                    <tr>
-                                        <th class="px-4 py-3">Patient</th>
-                                        <th class="px-4 py-3">Status</th>
-                                        <th class="px-4 py-3">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white">
-                                    <?php if (!$recentSessions): ?>
-                                        <tr><td colspan="3" class="px-4 py-8 text-center text-slate-500">No patients yet.</td></tr>
-                                    <?php else: ?>
-                                        <?php foreach ($recentSessions as $session): ?>
-                                            <?php
-                                            $sessionId = (int)$session['id'];
-                                            $patientNumber = $formatPatientNumber($sessionId);
-                                            $status = ucwords(str_replace('_', ' ', (string)($session['status'] ?? '')));
-                                            ?>
-                                            <tr>
-                                                <td class="px-4 py-3">
-                                                    <div class="font-semibold text-slate-950"><?= e($patientNumber) ?></div>
-                                                    <div class="mt-1 text-xs text-slate-500"><?= e(trim((string)$session['patient_name']) !== '' ? (string)$session['patient_name'] : 'No name yet') ?></div>
-                                                </td>
-                                                <td class="px-4 py-3">
-                                                    <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"><?= e($status !== '' ? $status : 'Unknown') ?></span>
-                                                </td>
-                                                <td class="px-4 py-3">
-                                                    <a href="<?= e(base_url('patient-experience.php?tab=patients&session_id=' . $sessionId)) ?>" class="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">Open</a>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
+                        <div class="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-500">Patient</span>
+                                <span class="font-semibold text-slate-950">Patient #0001</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-500">Name</span>
+                                <span class="font-semibold text-slate-950">Test Patient</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-500">Status</span>
+                                <span class="font-semibold text-slate-950">Ready for review</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-500">Signature</span>
+                                <span class="font-semibold text-slate-950">Captured</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-500">Consent packet</span>
+                                <span class="font-semibold text-slate-950">Saved</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-3">
+                            <a href="<?= e($kioskUrl) ?>" target="_blank" class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Open test flow</a>
+                            <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>">
+                                <?= csrf_input() ?>
+                                <input type="hidden" name="action" value="start_test_intake">
+                                <input type="hidden" name="test_patient_name" value="Test Patient">
+                                <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Create fresh test patient</button>
+                            </form>
                         </div>
                     </div>
                 </div>

@@ -7890,7 +7890,8 @@ function applyCommunicationViewportFit() {
 
     renderPipelineNotifications();
     window.setTimeout(() => {
-        if (typeof window.eliteCheckPipelineVersion !== 'function') {
+        const isDedicatedLeadsPage = /\/leads\.php$/.test(window.location.pathname);
+        if (!isDedicatedLeadsPage && typeof window.eliteCheckPipelineVersion !== 'function') {
             window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);
         }
     }, 0);

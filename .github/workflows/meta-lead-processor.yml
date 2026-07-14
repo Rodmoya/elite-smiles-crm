@@ -1,0 +1,30 @@
+name: Meta lead processor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meta-lead-processor
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Process queued and fallback Meta leads
+        env:
+          META_PROCESSOR_SECRET: ${{ secrets.META_PROCESSOR_SECRET }}
+        run: |
+          test -n "$META_PROCESSOR_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 60 \
+            -H "X-Elite-Cron-Secret: $META_PROCESSOR_SECRET" \
+            -H "Accept: application/json" \
+            -X POST \
+            "https://hi.elitesmilesutah.com/crm/meta-webhook-process.php?limit=50"

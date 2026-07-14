@@ -629,6 +629,63 @@ if (!function_exists('elite_ai_notification_rows')) {
         }
 
         try {
+            $newLeads = db_all(
+                "SELECT
+                    l.id AS lead_id,
+                    l.full_name,
+                    l.status,
+                    l.source,
+                    l.source_type,
+                    l.created_at,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM lead_activities reviewed
+                        WHERE reviewed.lead_id = l.id
+                          AND reviewed.type = 'operator_notification_reviewed'
+                          AND reviewed.created_at >= l.created_at
+                    ) THEN 0 ELSE 1 END AS is_new
+                 FROM leads l
+                 WHERE l.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
+                 ORDER BY l.created_at DESC, l.id DESC
+                 LIMIT {$activityLimit}"
+            );
+
+            foreach ($newLeads as $row) {
+                $leadId = (int) ($row['lead_id'] ?? 0);
+                $leadName = trim((string) ($row['full_name'] ?? 'Lead'));
+                $dedupeKey = 'new_lead:' . $leadId;
+                if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
+                    continue;
+                }
+                $dedupeKeys[$dedupeKey] = true;
+                $isUnread = !empty($row['is_new']);
+                $source = trim((string) ($row['source'] ?? ''));
+                $sourceType = trim((string) ($row['source_type'] ?? ''));
+                $sourceLabel = $sourceType === 'meta_instant_form'
+                    ? 'Meta Lead Form'
+                    : ($source !== '' ? ucwords(str_replace('_', ' ', $source)) : 'CRM');
+                $assistantCard = elite_ai_notification_action_card($row, 'lead_created');
+
+                $notifications[] = [
+                    'id' => 'lead-' . $leadId,
+                    'type' => 'new_lead',
+                    'priority' => $isUnread ? 'high' : 'normal',
+                    'is_new' => $isUnread,
+                    'title' => 'New lead: ' . $leadName . ' - Lead #' . $leadId,
+                    'message' => 'New lead received from ' . $sourceLabel . '.',
+                    'created_at' => (string) ($row['created_at'] ?? ''),
+                    'lead_id' => $leadId,
+                    'lead_name' => $leadName,
+                    'status' => trim((string) ($row['status'] ?? '')),
+                    'suggested_action' => 'Open the lead and review first-touch status.',
+                    'assistant_card' => $assistantCard,
+                ];
+            }
+        } catch (Throwable $e) {
+            esm_log('elite_ai', 'Could not load new-lead notifications.', ['error' => $e->getMessage()]);
+        }
+
+        try {
             $activities = db_all(
                 "SELECT
                     la.id,
@@ -640,7 +697,7 @@ if (!function_exists('elite_ai_notification_rows')) {
                     l.status
                  FROM lead_activities la
                  INNER JOIN leads l ON l.id = la.lead_id
-                 WHERE la.type IN ('lead_created', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
+                 WHERE la.type IN ('consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
                    AND la.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
                  ORDER BY la.created_at DESC, la.id DESC
                  LIMIT {$activityLimit}"
@@ -919,6 +976,12 @@ if (!function_exists('elite_ai_notifications_payload')) {
             }
             if (function_exists('lead_comm_update_rollup')) {
                 lead_comm_update_rollup($leadId);
+            }
+            if (($notification['type'] ?? '') === 'new_lead' && function_exists('lead_comm_insert_activity')) {
+                lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'New-lead notification marked read when the notification list was opened.', [
+                    'source' => 'pipeline_notifications',
+                    'notification_type' => 'new_lead',
+                ], 'System');
             }
             $notification['is_new'] = false;
             $reviewedLeadIds[] = $leadId;

@@ -229,6 +229,9 @@ $stageLabel = $stageLabels[$legacyStageKey] ?? ucwords(str_replace('_', ' ', $le
 
 $displaySource = lead_card_source_label($leadSource, $leadLandingPage);
 $displaySourceType = lead_card_source_type_label($leadSourceType);
+if ($leadLandingPage === '' && strtolower(trim($leadSource)) === 'manual' && strtolower(trim($leadSourceType)) === 'meta_instant_form') {
+    $displaySource = $displaySourceType;
+}
 $displayValue = lead_card_money($leadValue);
 $leadInitials = lead_card_initials($leadName);
 $lastTouchLabel = $leadLastInboundAt !== ''

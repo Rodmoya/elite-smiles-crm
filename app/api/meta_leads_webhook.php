@@ -339,7 +339,7 @@ if (!in_array($financingNeeded, ['yes', 'no', 'unsure'], true)) {
 
 $consultationStatus = meta_leads_value($payload, [
     'consultation_status',
-]);
+], 'requested');
 
 $notes = meta_leads_build_notes($payload);
 

@@ -408,7 +408,7 @@ if (!function_exists('meta_lead_prepare_input')) {
             'status' => 'new_lead',
             'financing_needed' => 'unsure',
             'financing_option' => 'none',
-            'consultation_status' => $howSoon !== '' ? 'requested' : '',
+            'consultation_status' => 'requested',
             'notes' => $notes,
             'lead_value' => (string) number_format((float)lead_default_opportunity_value(), 2, '.', ''),
             'refresh_duplicate' => true,

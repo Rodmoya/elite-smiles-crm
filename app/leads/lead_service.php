@@ -1330,8 +1330,16 @@ if (!function_exists('lead_create_minimal')) {
             return;
         }
 
+        if ($source === '' || $source === 'manual') {
+            $data['source'] = 'meta_lead_form';
+        }
+
         if (trim((string)($data['preferred_contact'] ?? '')) === '') {
             $data['preferred_contact'] = 'Text';
+        }
+
+        if (trim((string)($data['consultation_status'] ?? '')) === '') {
+            $data['consultation_status'] = 'requested';
         }
 
         if (trim((string)($data['procedure_interest'] ?? '')) === '') {

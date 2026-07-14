@@ -1335,7 +1335,7 @@ if (!function_exists('lead_create_minimal')) {
         }
 
         if (trim((string)($data['preferred_contact'] ?? '')) === '') {
-            $data['preferred_contact'] = 'Text';
+            $data['preferred_contact'] = 'text';
         }
 
         if (trim((string)($data['consultation_status'] ?? '')) === '') {
@@ -1374,7 +1374,7 @@ if (!function_exists('lead_create_minimal')) {
         $data['source_medium'] = trim((string)($data['source_medium'] ?? ''));
         $data['source_type'] = trim((string)($data['source_type'] ?? ''));
         if (trim((string)($data['preferred_contact'] ?? '')) === '') {
-            $data['preferred_contact'] = 'Text';
+            $data['preferred_contact'] = 'text';
         }
         lead_enforce_meta_defaults($data);
         $data['procedure_interest'] = trim((string)($data['procedure_interest'] ?? ''));
@@ -1388,7 +1388,7 @@ if (!function_exists('lead_create_minimal')) {
         $data['assigned_to'] = trim((string)($data['assigned_to'] ?? lead_default_assigned_to($user)));
         $data['financing_needed'] = trim((string)($data['financing_needed'] ?? 'unsure'));
         $data['financing_option'] = trim((string)($data['financing_option'] ?? 'none'));
-        $data['preferred_contact'] = trim((string)($data['preferred_contact'] ?? 'Text'));
+        $data['preferred_contact'] = trim((string)($data['preferred_contact'] ?? 'text'));
         $data['consultation_status'] = trim((string)($data['consultation_status'] ?? 'requested'));
         $data['consultation_date'] = trim((string)($data['consultation_date'] ?? ''));
         if ($data['consultation_date'] !== '') {
@@ -1505,14 +1505,14 @@ if (!function_exists('lead_create_minimal')) {
 
         $preferredContact = strtolower((string)$data['preferred_contact']);
         if (!in_array($preferredContact, ['text', 'sms', 'call', 'phone', 'email'], true)) {
-            $data['preferred_contact'] = 'Text';
+            $data['preferred_contact'] = 'text';
         } else {
             $data['preferred_contact'] = match ($preferredContact) {
-                'sms', 'text' => 'Text',
-                'phone'       => 'Call',
-                'call'        => 'Call',
-                'email'       => 'Email',
-                default       => 'Text',
+                'sms', 'text' => 'text',
+                'phone'       => 'call',
+                'call'        => 'call',
+                'email'       => 'email',
+                default       => 'text',
             };
         }
 

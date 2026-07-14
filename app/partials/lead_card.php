@@ -179,7 +179,14 @@ $leadFinancingOption = lead_card_value($lead, 'financing_option', 'none');
 $leadValue = lead_card_value($lead, 'lead_value');
 $leadLostReason = lead_card_value($lead, 'lost_reason');
 $leadPreferredContact = lead_card_value($lead, 'preferred_contact');
-$leadPreferredContactText = $leadPreferredContact !== '' ? $leadPreferredContact : 'Text';
+$leadPreferredContactText = match (strtolower($leadPreferredContact)) {
+    'call', 'phone' => 'Call',
+    'email' => 'Email',
+    'instagram_dm' => 'Instagram DM',
+    'facebook_message' => 'Facebook Message',
+    'whatsapp' => 'WhatsApp',
+    default => 'Text',
+};
 $leadConsultText = $leadConsult !== '' ? $leadConsult : 'requested';
 $leadInsuranceStatus = lead_card_value($lead, 'insurance_status');
 $leadIntentType = lead_card_value($lead, 'intent_type');

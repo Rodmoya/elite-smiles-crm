@@ -401,7 +401,7 @@ if (!function_exists('meta_lead_prepare_input')) {
             'source' => $leadSource,
             'source_medium' => 'social',
             'source_type' => 'meta_instant_form',
-            'preferred_contact' => 'Text',
+            'preferred_contact' => 'text',
             'landing_page' => trim((string)meta_lead_value($normalized, ['page_url', 'source_url', 'landing_page'])),
             'campaign' => $campaign,
             'external_lead_id' => trim((string)meta_lead_value($normalized, ['leadgen_id', 'lead_id', 'meta_lead_id', 'id'])),

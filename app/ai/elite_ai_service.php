@@ -908,6 +908,23 @@ if (!function_exists('elite_ai_notifications_payload')) {
     function elite_ai_notifications_payload(): array
     {
         $notifications = elite_ai_notification_rows(5);
+        $reviewedLeadIds = [];
+        foreach ($notifications as &$notification) {
+            $leadId = (int)($notification['lead_id'] ?? 0);
+            if ($leadId <= 0 || empty($notification['is_new'])) {
+                continue;
+            }
+            if (function_exists('lead_comm_mark_read')) {
+                lead_comm_mark_read($leadId);
+            }
+            if (function_exists('lead_comm_update_rollup')) {
+                lead_comm_update_rollup($leadId);
+            }
+            $notification['is_new'] = false;
+            $reviewedLeadIds[] = $leadId;
+        }
+        unset($notification);
+        $reviewedLeadIds = array_values(array_unique($reviewedLeadIds));
         $cards = [[
             'title' => 'Latest notifications',
             'items' => array_map(static function (array $row): string {
@@ -918,27 +935,13 @@ if (!function_exists('elite_ai_notifications_payload')) {
                 return $state . ': ' . $summary . ' - ' . $next;
             }, $notifications),
         ]];
-        $actions = [];
-        foreach ($notifications as $row) {
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            if ($leadId <= 0 || empty($row['is_new'])) {
-                continue;
-            }
-            $leadName = trim((string) ($row['lead_name'] ?? 'Lead'));
-            $actions[] = [
-                'type' => 'mark_reviewed',
-                'label' => 'Clear #' . $leadId,
-                'help' => 'Mark active inbound notifications reviewed for ' . ($leadName !== '' ? $leadName : 'this lead') . '.',
-                'lead_id' => $leadId,
-            ];
-        }
-
         return [
             'answer' => $notifications
-                ? 'Here are the latest notifications. I show the last 5 by default, but if more than 5 are unread I show all unread first. Unread items are the ones to act on.'
+                ? 'Here are the latest notifications.' . ($reviewedLeadIds ? ' Opening this list marked the unread items as read.' : '')
                 : 'There are no notification items to review right now.',
             'cards' => $notifications ? $cards : [],
-            'actions' => $actions,
+            'actions' => [],
+            'reviewed_lead_ids' => $reviewedLeadIds,
             'tools_used' => ['notifications'],
         ];
     }

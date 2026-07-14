@@ -1179,6 +1179,11 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             }
             const assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
             assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, assistantActions);
+            if ((quickAction || '') === 'notifications' && Array.isArray(data.reviewed_lead_ids)) {
+                window.dispatchEvent(new CustomEvent('crm:notifications-read', {
+                    detail: { leadIds: data.reviewed_lead_ids }
+                }));
+            }
         } catch (error) {
             if (loading) loading.remove();
             assistantBubble('Elite AI', 'I hit an assistant error while loading CRM context. Please try again.', 'assistant');
@@ -1231,6 +1236,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             const prompt = aiInput.value;
             aiInput.value = '';
             runAssistant(prompt, '');
+        });
+    }
+
+    if (aiNotifications) {
+        aiNotifications.addEventListener('click', function () {
+            runAssistant('', 'notifications');
         });
     }
 

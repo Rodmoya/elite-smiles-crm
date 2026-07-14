@@ -3140,6 +3140,59 @@ $consultationOptions = [
             pipelineNotificationsList.appendChild(button);
         });
     }
+
+    async function markPipelineNotificationsReadOnOpen() {
+        const unreadItems = pipelineNotificationItems().filter((item) => item.isNew && Number(item.leadId || item.card?.dataset?.leadId || 0) > 0);
+        if (unreadItems.length === 0) return;
+
+        const assistantPanel = document.getElementById('crm-ai-panel');
+        if (!assistantPanel?.dataset?.endpoint) return;
+
+        const token = String(assistantPanel.dataset.authToken || '').trim();
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        if (token) headers['X-Elite-AI-Token'] = token;
+
+        try {
+            const response = await fetch(assistantPanel.dataset.endpoint, {
+                method: 'POST',
+                credentials: 'include',
+                cache: 'no-store',
+                headers,
+                body: JSON.stringify({
+                    surface: 'desktop',
+                    assistant_token: token,
+                    quick_action: 'notifications',
+                    context: {
+                        page: 'leads',
+                        page_title: 'Leads',
+                        current_url: window.location.href
+                    }
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok || !Array.isArray(data.reviewed_lead_ids)) return;
+
+            const reviewed = new Set(data.reviewed_lead_ids.map((leadId) => Number(leadId)));
+            pipelineNotificationSeed.forEach((item) => {
+                if (reviewed.has(Number(item.lead_id || 0))) item.is_new = false;
+            });
+            reviewed.forEach((leadId) => {
+                const card = board?.querySelector('.lead-card[data-lead-id="' + leadId + '"]');
+                if (!card) return;
+                card.dataset.leadUnreadMessageCount = '0';
+                card.querySelectorAll('.lead-unread-badge').forEach((badge) => badge.remove());
+            });
+            renderPipelineNotifications();
+            window.dispatchEvent(new CustomEvent('crm:notifications-read', {
+                detail: { leadIds: Array.from(reviewed) }
+            }));
+        } catch (error) {
+            // Leave unread state intact if the acknowledgement request fails.
+        }
+    }
     function setText(id, value, fallback = '-') {
 
         const el = document.getElementById(id);
@@ -7808,6 +7861,9 @@ function applyCommunicationViewportFit() {
             renderPipelineNotifications();
             const isHidden = pipelineNotificationsMenu.classList.toggle('hidden');
             pipelineNotificationsButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+            if (!isHidden) {
+                markPipelineNotificationsReadOnOpen();
+            }
         });
 
         document.addEventListener('click', (event) => {
@@ -7833,6 +7889,11 @@ function applyCommunicationViewportFit() {
     }
 
     renderPipelineNotifications();
-    window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);})();
+    window.setTimeout(() => {
+        if (typeof window.eliteCheckPipelineVersion !== 'function') {
+            window.setInterval(requestPipelineRefresh, pipelineAutoRefreshMs);
+        }
+    }, 0);
+})();
 
 </script>

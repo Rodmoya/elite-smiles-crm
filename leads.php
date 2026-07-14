@@ -186,6 +186,8 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             }
         };
 
+        window.eliteCheckPipelineVersion = checkPipelineVersion;
+
         window.addEventListener('crm:notifications-read', (event) => {
             const leadIds = Array.isArray(event.detail?.leadIds) ? event.detail.leadIds : [];
             leadIds.forEach((leadId) => {

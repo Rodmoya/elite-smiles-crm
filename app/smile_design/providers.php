@@ -316,6 +316,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $shadeDetail = function_exists('smile_design_shade_detail')
             ? smile_design_shade_detail((string)($options['shade_goal'] ?? $case['shade_goal'] ?? ''), $normalizedStyleKey)
             : ['label' => 'Chromascop 210', 'title' => 'Bright White', 'description' => 'Premium bright white.', 'prompt' => 'Chromascop 210 bright white porcelain shade.'];
+        $shadeScreenContract = trim((string)($shadeDetail['screen_contract'] ?? ''));
         $treatmentScope = function_exists('smile_design_normalize_treatment_scope')
             ? smile_design_normalize_treatment_scope((string)($options['treatment_scope'] ?? $case['treatment_scope'] ?? ''), $procedure)
             : 'upper';
@@ -489,6 +490,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             ($styleReferenceCount > 0 ? 'The last ' . $styleReferenceCount . ' reference image(s) are LVI ' . $styleName . ' sample smiles. Use them only for tooth anatomy, incisal step, embrasures, line angles, canine character, and smile-width expression. Do not copy the reference patient, lips, gingiva, face, lighting, or camera treatment.' : ''),
             ($porcelainFinishReferenceIncluded ? 'One additional reference image shows the desired final veneer material finish. Use it only for the porcelain surface quality: flawless brand-new veneers, clean bright white body shade, glossy ceramic depth, no yellow pigment, no stains, no mottling, and subtle translucent incisal edge only at the bottom tips. Do not copy that reference image crop, lips, skin, gums, smile shape, lighting, or face.' : ''),
             ($porcelainFinishReferenceIncluded ? 'Shade hierarchy rule: when the selected shade is Chromascop 110, match the porcelain reference brightness closely. For every other Chromascop shade, keep the same flawless porcelain material but reduce brightness according to the selected shade target. Do not let the material reference force every shade to 110.' : ''),
+            ($isVeneerSimulation && $shadeScreenContract !== '' ? $shadeScreenContract : ''),
             $isLipRepositionOnly ? 'No LVI tooth style applies because this is Lip Repositioning only.' : 'Target smile style: ' . $styleName . '.',
             (!$isLipRepositionOnly && $styleCategory !== '' ? 'LVI style category: ' . $styleCategory . '.' : ''),
             (!$isLipRepositionOnly && $styleDescription !== '' ? 'LVI style guidance: ' . $styleDescription : ''),
@@ -502,6 +504,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             (!$isLipRepositionOnly ? 'Selected smile width goal: ' . $smileWidthLabel . '.' : ''),
             (!$isLipRepositionOnly && $smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
             ($isVeneerSimulation ? 'Selected veneer shade target: ' . (string)$shadeDetail['prompt'] : ''),
+            ($isVeneerSimulation ? 'Shade enforcement: the selected shade is a finished porcelain target, not a filter over the original teeth. Replace the old tooth value entirely. Chromascop 110 must be the brightest and cleanest result in the whole shade system; all other shades step down from that anchor while remaining stain-free porcelain.' : ''),
             ($isVeneerSimulation ? 'Veneer transformation strength: the after must look like new ceramic veneers were placed, not like the original teeth were simply cleaned. The visible treated teeth should be at least two obvious screen-value steps whiter than the before photo while still retaining porcelain dimension and highlights.' : ''),
             ($isVeneerSimulation ? 'Brand-new veneer finish target: the finished veneers must look clean and perfect like newly seated cosmetic porcelain. The main body shade should be luminous neutral white with no cream, no yellow, and no natural-tooth discoloration. Keep translucency delicate and limited to the incisal/bottom edge so the teeth stay dimensional without looking stained.' : ''),
             ($isVeneerSimulation ? 'For veneers, the visible anterior tooth surfaces must read as complete porcelain restorations in the selected shade. Do not leave behind natural yellowing, original tooth color, craze lines, mottling, stains, chips, asymmetry, uneven incisal edges, or patchy enamel bleed-through.' : ''),

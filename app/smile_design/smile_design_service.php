@@ -667,8 +667,46 @@ function smile_design_shade_detail(string $shadeGoal, string $style = 'natural')
     $relativeValue = $valueStep === 0
         ? 'This is the maximum-value anchor and should visually match the flawless veneer material reference body shade.'
         : 'Render this as exactly ' . $valueStep . ' controlled brightness step' . ($valueStep === 1 ? '' : 's') . ' below Chromascop 110, reducing value gradually from the material reference without adding stain, mottling, or old-enamel yellow.';
-    $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Digital screen reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). ' . $relativeValue . ' The shade selector controls brightness and warmth; the porcelain material reference controls finish only. Keep the veneer body clean and uniform in this selected shade, with subtle incisal translucency only at the bottom edge. For on-screen consultation previews, the result must still read as polished high-end porcelain rather than cleaned natural teeth.';
+    $detail['screen_contract'] = smile_design_shade_screen_contract($detail);
+    $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Digital screen reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). ' . $relativeValue . ' ' . $detail['screen_contract'] . ' The shade selector controls brightness and warmth; the porcelain material reference controls finish only. Keep the veneer body clean and uniform in this selected shade, with subtle incisal translucency only at the bottom edge. For on-screen consultation previews, the result must still read as polished high-end porcelain rather than cleaned natural teeth.';
     return $detail;
+}
+
+function smile_design_shade_screen_contract(array $detail): string
+{
+    $code = (string)($detail['code'] ?? '');
+    $valueStep = (int)($detail['value_step'] ?? 0);
+
+    if ($code === '110' || $valueStep <= 0) {
+        return implode(' ', [
+            'SCREEN SHADE CONTRACT: Chromascop 110 / Hollywood White is the master visual anchor.',
+            'It should render brighter on screen than a conservative physical shade tab: ultra clean bleach-white porcelain, high luminous value, zero yellow cast, zero beige/cream body, and zero natural enamel discoloration.',
+            'The body of the veneer should visually match a flawless brand-new porcelain sample under bright consult-room display lighting, with only delicate translucent depth at the incisal edge.',
+            'Do not average this shade back toward the original tooth color, skin warmth, room lighting, camera white balance, or natural enamel.',
+        ]);
+    }
+
+    if ($valueStep <= 3) {
+        return implode(' ', [
+            'SCREEN SHADE CONTRACT: this is still in the bleach-white group and must remain obviously bright porcelain.',
+            'Use Chromascop 110 as the anchor, then reduce value only ' . $valueStep . ' controlled step' . ($valueStep === 1 ? '' : 's') . '.',
+            'It may be slightly softer than Hollywood 110, but it must never look yellow, beige, grey, stained, mottled, or like warmed natural enamel.',
+        ]);
+    }
+
+    if ($valueStep <= 7) {
+        return implode(' ', [
+            'SCREEN SHADE CONTRACT: this is a natural-white porcelain group, not natural tooth color.',
+            'Render it clearly whiter and cleaner than the before photo, with a controlled step-down from Chromascop 110 rather than a return to yellow enamel.',
+            'Warmth is allowed only as a subtle porcelain undertone; visible yellow pigment, stain, cream patches, and old-tooth coloration are not allowed.',
+        ]);
+    }
+
+    return implode(' ', [
+        'SCREEN SHADE CONTRACT: this is a lower-value restorative blend, but it must still read as clean finished porcelain.',
+        'Reduce brightness from Chromascop 110 according to the shade step while preserving a polished, uniform, stain-free ceramic surface.',
+        'Do not let age-aware warmth become yellowing, mottling, or old enamel bleed-through.',
+    ]);
 }
 
 function smile_design_treatment_scope_options(): array
@@ -3653,12 +3691,15 @@ Pass criteria:
 - Face, lips, gums, identity, lighting, and camera setup remain essentially the same.
 - The result stays inside veneer scope: no fantasy orthodontics, no implant replacement, no jaw surgery, and no unrelated beauty retouching.
 - The veneers should look bright, flawless, and polished but still dimensional, with a clean neutral-white body shade, believable porcelain gloss, and subtle translucency only at the incisal/bottom edge.
+- For Chromascop 110 / Hollywood White, the after must be the brightest clean-white shade in the system and must look clearly whiter than the before photo on screen.
+- For lower Chromascop shades, the after may step down in value from 110, but it must still look like clean finished porcelain rather than yellow natural enamel.
 
 Fail criteria:
 - The after still looks like natural teeth with whitening instead of veneers.
 - Before-photo discoloration, cracks, chips, or defects remain visibly present on the veneered teeth.
 - The shade is materially darker, yellower, patchier, flatter, chalkier, or grayer than the selected target.
 - The veneer body shade still looks cream/yellow, stained, mottled, or natural-tooth colored, even if the incisal edge has some translucency.
+- Chromascop 110 does not look like a high-value Hollywood-white porcelain anchor, or any lower shade uses yellow/cream as a substitute for controlled warmth.
 - The LVI style is too weak or the tooth anatomy does not reflect the requested style.
 - The teeth barely changed, the result looks like mild whitening, or the after is not clearly brighter and more ideal than the before.
 - The face, gums, lips, or identity changed materially.
@@ -3672,6 +3713,7 @@ PROMPT;
         'Requested LVI style: ' . (string)($styleDetail['title'] ?? 'Natural') . '.',
         smile_design_style_generation_guidance($styleKey),
         'Selected veneer shade target: ' . (string)$shadeDetail['prompt'],
+        trim((string)($shadeDetail['screen_contract'] ?? '')),
         'Reject the preview if the result still looks like natural teeth with whitening, if the veneer body shade is yellow/cream/mottled instead of clean bright white porcelain, if the before and after teeth look too similar, or if before-photo defects still show through instead of a full porcelain replacement look.',
         'Set score from 0 to 10 where 10 is an excellent veneer simulation.',
     ]);

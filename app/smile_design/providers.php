@@ -405,6 +405,17 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         if ($isVeneerSimulation && $targetPhotoType !== 'front') {
             $veneerAngleGuidance = 'For this angled veneer view, keep the visible laterals and canines in the same porcelain shade family and brightness level as the front view. Do not let side-angle shadow, perspective, or natural tooth warmth make the visible veneers look yellower, greyer, duller, or less finished. The side view must preserve the same premium bright-white impression as the front view, especially across the visible canine-to-canine segment.';
         }
+        $widerSmileFrontGuidance = '';
+        if ($isVeneerSimulation && $targetPhotoType === 'front' && smile_design_normalize_smile_width_goal($smileWidthGoal) === 'wider_smile') {
+            $widerSmileFrontGuidance = implode(' ', [
+                'Front-view wider-smile enforcement:',
+                'the after must reduce the black buccal corridor shadows at both mouth corners.',
+                'Extend the visible porcelain presence laterally with broader, better-supported canines and premolars so the last visible side teeth sit closer to the inner mouth corners.',
+                'Use the Luke Thornberg-style failure case as the thing to avoid: do not leave dark holes or empty side spaces between the side veneers and the inside corners of the mouth.',
+                'Make teeth #4 and #13, plus adjacent premolars where visible, read more exposed and more substantial without changing the lips, jaw, face width, or camera crop.',
+                'If the front after still has obvious dark side gaps beside the posterior veneers, the wider-smile instruction has failed.',
+            ]);
+        }
         $brushMaskPath = '';
         $brushOverlayPath = '';
         $refinedSelectionPrompt = '';
@@ -503,6 +514,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             (!$isLipRepositionOnly && $treatmentScopeGuidance !== '' ? $treatmentScopeGuidance : ''),
             (!$isLipRepositionOnly ? 'Selected smile width goal: ' . $smileWidthLabel . '.' : ''),
             (!$isLipRepositionOnly && $smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
+            ($widerSmileFrontGuidance !== '' ? $widerSmileFrontGuidance : ''),
             ($isVeneerSimulation ? 'Selected veneer shade target: ' . (string)$shadeDetail['prompt'] : ''),
             ($isVeneerSimulation ? 'Shade enforcement: the selected shade is a finished porcelain target, not a filter over the original teeth. Replace the old tooth value entirely. Chromascop 110 must be the brightest and cleanest result in the whole shade system; all other shades step down from that anchor while remaining stain-free porcelain.' : ''),
             ($isVeneerSimulation ? 'Veneer transformation strength: the after must look like new ceramic veneers were placed, not like the original teeth were simply cleaned. The visible treated teeth should be at least two obvious screen-value steps whiter than the before photo while still retaining porcelain dimension and highlights.' : ''),
@@ -729,6 +741,9 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $smileLengthDelta = (int)($options['smile_length_delta'] ?? ($options['precision_controls']['smile_length_delta'] ?? 0));
         $smileWidthDelta = (int)($options['smile_width_delta'] ?? ($options['precision_controls']['smile_width_delta'] ?? 0));
         $shadeBrightnessDelta = (int)($options['shade_brightness_delta'] ?? ($options['precision_controls']['shade_brightness_delta'] ?? 0));
+        $smileWidthGoal = function_exists('smile_design_normalize_smile_width_goal')
+            ? smile_design_normalize_smile_width_goal((string)($options['smile_width_goal'] ?? $case['smile_width_goal'] ?? ''))
+            : 'keep_current';
         $selectedTeeth = smile_design_normalize_selected_teeth(trim((string)($options['selected_teeth'] ?? '')));
         $selectedTeethNumbers = json_decode($selectedTeeth, true);
         $selectedTeethNumbers = is_array($selectedTeethNumbers) ? array_map('intval', $selectedTeethNumbers) : [];
@@ -779,6 +794,17 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         if ($isVeneerSimulation && $targetPhotoType !== 'front') {
             $veneerAngleGuidance = 'For this angled veneer view, keep the visible laterals and canines in the same porcelain shade family and brightness level as the front view. Do not let side-angle shadow, perspective, or natural tooth warmth make the visible veneers look yellower, greyer, duller, or less finished. The side view must preserve the same premium bright-white impression as the front view, especially across the visible canine-to-canine segment.';
         }
+        $widerSmileFrontGuidance = '';
+        if ($isVeneerSimulation && $targetPhotoType === 'front' && $smileWidthGoal === 'wider_smile') {
+            $widerSmileFrontGuidance = implode(' ', [
+                'Front-view wider-smile enforcement:',
+                'reduce the black buccal corridor shadows at both mouth corners.',
+                'Broaden the canine and premolar veneer presence so the smile fills the visible mouth opening from corner to corner.',
+                'Do not leave dark empty spaces between the last visible side teeth and the inner corners of the mouth.',
+                'Teeth #4/#5 and #12/#13 should read more present when visible, especially #4 and #13 as the outer smile-width supports.',
+                'Do not change the lips, jaw, face width, crop, or camera angle to accomplish this; solve it through believable veneer arch fullness and posterior crown visibility.',
+            ]);
+        }
 
         $promptParts = [
             'Create a realistic cosmetic smile design preview from this patient photo for an Elite Smiles consultation.',
@@ -817,6 +843,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             ($isVeneerSimulation ? 'Bias veneer previews toward premium cosmetic brightness rather than conservative blending. Natural and Enhanced styles should still read as clearly white veneers on screen, just with different shape language than Hollywood.' : ''),
             ($isVeneerSimulation ? 'The brightness increase must be obvious on screen and in the Zoom view. If the after only looks a little cleaner than the before, it is not enough. Make the veneers visibly whiter and more luminous while still dimensional and natural-looking.' : ''),
             ($isVeneerSimulation ? 'If the model must choose between slightly too natural and slightly too white, choose the whiter result as long as it still looks like dimensional porcelain rather than flat paint.' : ''),
+            ($widerSmileFrontGuidance !== '' ? $widerSmileFrontGuidance : ''),
             ($veneerAngleGuidance !== '' ? $veneerAngleGuidance : ''),
             ($procedureGuidance !== '' ? $procedureGuidance : ''),
             'Procedure realism rules are binding: stay inside the selected treatment scope, do not add unsupported procedures, and do not create a fantasy smile that could not plausibly be treated from this case.',

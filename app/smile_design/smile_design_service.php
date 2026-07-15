@@ -784,7 +784,7 @@ function smile_design_smile_width_label(string $goal): string
 function smile_design_smile_width_prompt_guidance(string $goal): string
 {
     return match (smile_design_normalize_smile_width_goal($goal)) {
-        'wider_smile' => 'Smile width goal: create a visibly fuller, wider veneer smile by increasing posterior crown presence and reducing dark buccal corridors where clinically believable. Make the premolar/canine area read broader and more supportive so the mouth looks fuller from corner to corner. This should be a noticeable smile-design improvement compared with the before photo, not a tiny preservation pass, while still avoiding fake orthodontic expansion or overbuilt teeth.',
+        'wider_smile' => 'Smile width goal: create a visibly fuller, wider veneer smile by increasing posterior crown presence and reducing dark buccal corridors where clinically believable. In the front view, the finished veneer arch should visually fill the smile from corner to corner: broaden the canine and premolar/cuspids-bicuspid area, make teeth #4/#5 and #12/#13 read more present when visible, and reduce black side gaps between the last visible side teeth and the inside corners of the mouth. The mouth should not have obvious dark empty corridors beside the veneers unless the lips physically block that space. This should be a noticeable smile-design improvement compared with the before photo, not a tiny preservation pass, while still avoiding fake orthodontic expansion, overbuilt teeth, or a changed jaw/lip shape.',
         default => 'Smile width goal: keep the patient\'s current smile width and arch fullness. Do not broaden the buccal corridor or create extra posterior fullness unless another instruction explicitly calls for it.',
     };
 }
@@ -2135,9 +2135,10 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
 
     $prompt = implode(' ', [
         'Create an 8-second silent controlled portrait smile reveal video for an internal cosmetic dentistry consultation.',
+        'ABSOLUTE AUDIO RULE: the generated video must contain no music track and no audio track of any kind.',
         'Use a tight head-and-shoulders portrait crop with a simple neutral background.',
         'Keep the scene limited to one consenting adult subject portrait only. Do not include hands, dental tools, props, office activity, other people, text, logos, or split screens.',
-        'No audio, no music, no voiceover, no sound effects, no spoken words, and no subtitles.',
+        'No audio, no music, no background score, no ambient sound, no room tone, no voiceover, no sound effects, no spoken words, and no subtitles.',
         'The subject must not talk, speak, mouth words, lip-sync, or move their mouth like they are saying anything.',
         'Mouth movement is limited to a natural transition from relaxed/closed lips into a clean smile reveal and then a steady held smile.',
         'Use the three reference images as the exact same consenting adult subject and final smile result: front, left 45, and right 45 after views.',
@@ -2158,6 +2159,7 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         'model' => defined('GOOGLE_GEMINI_VIDEO_MODEL') ? GOOGLE_GEMINI_VIDEO_MODEL : 'veo-3.1-generate-preview',
         'duration_seconds' => 8,
         'aspect_ratio' => '16:9',
+        'generate_audio' => false,
         'max_wait_seconds' => 480,
     ]);
     if (empty($result['ok'])) {
@@ -2168,10 +2170,18 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         return $result;
     }
 
+    $videoBinary = (string)$result['video_binary'];
+    $videoMimeType = (string)($result['mime_type'] ?? 'video/mp4');
+    $silentVideo = smile_design_strip_video_audio_binary($videoBinary, $videoMimeType);
+    if (!empty($silentVideo['ok'])) {
+        $videoBinary = (string)$silentVideo['binary'];
+        $videoMimeType = (string)($silentVideo['mime_type'] ?? 'video/mp4');
+    }
+
     $stored = smile_design_store_case_video_binary(
         $caseId,
-        (string)$result['video_binary'],
-        (string)($result['mime_type'] ?? 'video/mp4'),
+        $videoBinary,
+        $videoMimeType,
         [
             'video_title' => 'Smile Reveal Video',
             'source_type' => 'ai_reveal',
@@ -2445,6 +2455,50 @@ function smile_design_shell_command_exists(string $command): bool
 
     $path = @shell_exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null');
     return is_string($path) && trim($path) !== '';
+}
+
+function smile_design_strip_video_audio_binary(string $binary, string $mimeType = 'video/mp4'): array
+{
+    if ($binary === '' || !function_exists('shell_exec') || !smile_design_shell_command_exists('ffmpeg')) {
+        return ['ok' => false, 'message' => 'Silent video post-processing is not available.'];
+    }
+
+    $tmpBase = rtrim((string)sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'esm_silent_video_' . bin2hex(random_bytes(8));
+    $input = $tmpBase . '.input';
+    $output = $tmpBase . '.mp4';
+
+    try {
+        if (@file_put_contents($input, $binary) === false) {
+            return ['ok' => false, 'message' => 'Could not prepare generated video for audio removal.'];
+        }
+
+        $commands = [
+            'ffmpeg -y -i ' . escapeshellarg($input) . ' -map 0:v:0 -c:v copy -an ' . escapeshellarg($output),
+            'ffmpeg -y -i ' . escapeshellarg($input) . ' -map 0:v:0 -an -c:v libx264 -pix_fmt yuv420p ' . escapeshellarg($output),
+        ];
+
+        foreach ($commands as $command) {
+            if (is_file($output)) {
+                @unlink($output);
+            }
+            @shell_exec($command . ' 2>&1');
+            if (is_file($output) && (int)filesize($output) > 0) {
+                $silent = @file_get_contents($output);
+                if (is_string($silent) && $silent !== '') {
+                    return ['ok' => true, 'binary' => $silent, 'mime_type' => 'video/mp4'];
+                }
+            }
+        }
+
+        return ['ok' => false, 'message' => 'Could not remove audio from the generated video.'];
+    } finally {
+        if (is_file($input)) {
+            @unlink($input);
+        }
+        if (is_file($output)) {
+            @unlink($output);
+        }
+    }
 }
 
 function smile_design_converted_jpeg_result(string $target): array

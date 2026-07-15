@@ -629,6 +629,9 @@ if (!function_exists('elite_gemini_generate_video_from_references')) {
                 'personGeneration' => (string)($options['person_generation'] ?? 'allow_adult'),
             ],
         ];
+        if (array_key_exists('generate_audio', $options)) {
+            $payload['parameters']['generateAudio'] = (bool)$options['generate_audio'];
+        }
         if (!empty($options['resolution'])) {
             $payload['parameters']['resolution'] = (string)$options['resolution'];
         }

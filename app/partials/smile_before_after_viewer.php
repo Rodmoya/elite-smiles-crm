@@ -614,7 +614,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 <div class="sd-video-panel">
                     <?php if ($hasVideo): ?>
                         <div class="sd-video-ready">
-                            <video class="sd-video-player" src="<?= e($videoUrl) ?>" controls playsinline preload="metadata"></video>
+                            <video class="sd-video-player" src="<?= e($videoUrl) ?>" controls playsinline muted preload="metadata"></video>
                             <?php if ($canGenerateVideo || $canDeleteVideo): ?>
                                 <div class="sd-video-actions">
                                     <?php if ($canGenerateVideo): ?>

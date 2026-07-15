@@ -856,7 +856,10 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare</p>
                     <h2 class="mt-2 text-lg font-semibold">Review source and selected result</h2>
                 </div>
-                <p class="text-sm text-slate-500">Viewer modes: Input, Result, Compare, B/A, Opacity, Zoom, and Video.</p>
+                <div class="flex flex-col gap-2 sm:items-end">
+                    <a class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href="<?= e(base_url('smile-design/cases')) ?>">All Cases</a>
+                    <p class="text-sm text-slate-500">Viewer modes: Input, Result, Compare, B/A, Opacity, Zoom, and Video.</p>
+                </div>
             </div>
             <div class="mt-5 overflow-hidden rounded-md bg-black p-3">
                 <?php smile_before_after_viewer($beforeUrl, $afterUrl, [

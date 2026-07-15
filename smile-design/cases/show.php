@@ -205,6 +205,7 @@ $sectionLinks = [
     ['Activity', '#activity'],
     ['Versions', '#versions'],
 ];
+$casesListUrl = rtrim(base_url('smile-design/cases'), '/') . '/';
 
 smile_design_render_shell_start('Smile Case');
 smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case workspace for before photos, after versions, compare modes, doctor approval, and patient-ready sharing.');
@@ -238,7 +239,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
         <a class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700" href="<?= e($href) ?>"><?= e($label) ?></a>
     <?php endforeach; ?>
     <div class="ml-auto flex flex-wrap gap-2">
-        <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e(base_url('smile-design/cases/')) ?>">All Cases</a>
+        <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e($casesListUrl) ?>">All Cases</a>
         <a class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white" href="<?= e(base_url('smile-design/cases/' . $caseId . '/present')) ?>">Present</a>
         <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e($consultRoomCaseUrl) ?>">Consult Room</a>
         <form method="POST" action="<?= e(base_url('app/actions/smile_design_case_delete.php')) ?>" data-confirm="Delete this entire smile case? This will remove before photos, after versions, links, and activity for this case.">
@@ -857,7 +858,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <h2 class="mt-2 text-lg font-semibold">Review source and selected result</h2>
                 </div>
                 <div class="flex flex-col gap-2 sm:items-end">
-                    <a class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href="<?= e(base_url('smile-design/cases/')) ?>">All Cases</a>
+                    <a class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href="<?= e($casesListUrl) ?>">All Cases</a>
                     <p class="text-sm text-slate-500">Viewer modes: Input, Result, Compare, B/A, Opacity, Zoom, and Video.</p>
                 </div>
             </div>

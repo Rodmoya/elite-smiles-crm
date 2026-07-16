@@ -593,7 +593,8 @@ function smile_design_lvi_style_reference_assets(string $style, int $limit = 2):
 function smile_design_shade_catalog(): array
 {
     return [
-        '110' => ['group' => '100', 'label' => 'Chromascop 110', 'title' => 'Hollywood White', 'hex' => '#FFFFFF', 'rgb' => '255, 255, 255', 'value_step' => 0, 'description' => 'Anchor shade for the flawless veneer material sample: maximum clean Hollywood-white porcelain body, zero yellow, soft incisal translucency only at the bottom edge.'],
+        '100' => ['group' => 'Elite', 'label' => 'Elite Smiles 100', 'title' => 'Ultra White', 'hex' => '#FFFFFF', 'rgb' => '255, 255, 255', 'value_step' => -1, 'description' => 'Elite Smiles custom ultra-white veneer shade: the brightest screen-preview shade in the system, above Chromascop 110, maximum glossy bleach-white porcelain, zero yellow, zero cream warmth, and a dramatic new-veneer wow factor.'],
+        '110' => ['group' => '100', 'label' => 'Chromascop 110', 'title' => 'Hollywood White', 'hex' => '#FCFCFA', 'rgb' => '252, 252, 250', 'value_step' => 0, 'description' => 'Clinical Chromascop Hollywood White anchor: extremely bright bleach-white porcelain, brilliant high-value ceramic gloss, zero yellow, zero cream warmth, and only soft incisal translucency at the bottom edge.'],
         '120' => ['group' => '100', 'label' => 'Chromascop 120', 'title' => 'Bright Bleach White', 'hex' => '#FAF9F4', 'rgb' => '250, 249, 244', 'value_step' => 1, 'description' => 'One controlled step softer than 110 while still reading as bleach-white porcelain, clean and non-yellow.'],
         '130' => ['group' => '100', 'label' => 'Chromascop 130', 'title' => 'Soft Bleach White', 'hex' => '#F6F3EA', 'rgb' => '246, 243, 234', 'value_step' => 2, 'description' => 'Two controlled steps softer than 110, still bright cosmetic porcelain with only a gentle neutral warmth.'],
         '140' => ['group' => '100', 'label' => 'Chromascop 140', 'title' => 'Warm Bleach White', 'hex' => '#F1ECDD', 'rgb' => '241, 236, 221', 'value_step' => 3, 'description' => 'Three controlled steps softer than 110 with restrained warmth, not yellow or stained.'],
@@ -622,9 +623,9 @@ function smile_design_shade_options(): array
 function smile_design_default_shade_for_style(string $style): string
 {
     return match (strtolower(trim($style))) {
-        'hollywood', 'vigorous', 'aggressive' => '110',
+        'hollywood', 'vigorous', 'aggressive' => '100',
         'dominant' => '120',
-        'natural', 'enhanced', 'youthful', 'focused', 'doctor_selected' => '110',
+        'natural', 'enhanced', 'youthful', 'focused', 'doctor_selected' => '100',
         'oval', 'softened' => '220',
         'functional', 'mature' => '310',
         default => '210',
@@ -643,13 +644,13 @@ function smile_design_normalize_shade_goal(string $shadeGoal, string $style = 'n
         return $normalized;
     }
 
-    if (preg_match('/\b(110|120|130|140|210|220|230|240|310|320|330|340|410|510)\b/', $normalized, $matches)) {
+    if (preg_match('/\b(100|110|120|130|140|210|220|230|240|310|320|330|340|410|510)\b/', $normalized, $matches)) {
         return $matches[1];
     }
 
     return match ($normalized) {
         '', 'doctor consult', 'doctor selected', 'default' => smile_design_default_shade_for_style($style),
-        'bright white', 'brightwhite', 'natural bright', 'natural white', 'premium white' => '110',
+        'elite smiles ultra white', 'elite ultra white', 'ultra white', 'ultrawhite', 'bright white', 'brightwhite', 'natural bright', 'natural white', 'premium white' => '100',
         'warm natural white', 'warm white' => '220',
         'hollywood white', 'bleach white', 'bl1', 'bleach', 'hollywood bleach' => '110',
         'mature blend', 'restorative blend', 'functional blend' => '310',
@@ -664,9 +665,13 @@ function smile_design_shade_detail(string $shadeGoal, string $style = 'natural')
     $detail = $catalog[$code] ?? $catalog[smile_design_default_shade_for_style($style)];
     $detail['code'] = $code;
     $valueStep = (int)($detail['value_step'] ?? 0);
-    $relativeValue = $valueStep === 0
-        ? 'This is the maximum-value anchor and should visually match the flawless veneer material reference body shade.'
-        : 'Render this as exactly ' . $valueStep . ' controlled brightness step' . ($valueStep === 1 ? '' : 's') . ' below Chromascop 110, reducing value gradually from the material reference without adding stain, mottling, or old-enamel yellow.';
+    if ($code === '100') {
+        $relativeValue = 'This is the Elite Smiles custom ultra-white anchor: brighter and whiter than Chromascop 110 for maximum on-screen new-veneer wow factor.';
+    } elseif ($valueStep === 0) {
+        $relativeValue = 'This is the clinical Chromascop 110 maximum-value anchor and should visually match the flawless veneer material reference body shade.';
+    } else {
+        $relativeValue = 'Render this as exactly ' . $valueStep . ' controlled brightness step' . ($valueStep === 1 ? '' : 's') . ' below Chromascop 110, reducing value gradually from the material reference without adding stain, mottling, or old-enamel yellow.';
+    }
     $detail['screen_contract'] = smile_design_shade_screen_contract($detail);
     $detail['prompt'] = $detail['label'] . ' (' . $detail['title'] . '): ' . $detail['description'] . ' Digital screen reference ' . $detail['hex'] . ' / RGB(' . $detail['rgb'] . '). ' . $relativeValue . ' ' . $detail['screen_contract'] . ' The shade selector controls brightness and warmth; the porcelain material reference controls finish only. Keep the veneer body clean and uniform in this selected shade, with subtle incisal translucency only at the bottom edge. For on-screen consultation previews, the result must still read as polished high-end porcelain rather than cleaned natural teeth.';
     return $detail;
@@ -677,11 +682,24 @@ function smile_design_shade_screen_contract(array $detail): string
     $code = (string)($detail['code'] ?? '');
     $valueStep = (int)($detail['value_step'] ?? 0);
 
+    if ($code === '100') {
+        return implode(' ', [
+            'SCREEN SHADE CONTRACT: Elite Smiles 100 / Ultra White is the brightest custom house shade and sits above Chromascop 110.',
+            'It should render as the whitest and brightest possible new-veneer screen preview: maximum-value glossy bleach-white porcelain, brilliant ceramic highlights, zero yellow cast, zero beige/cream body, and zero natural enamel discoloration.',
+            'This shade is intentionally designed for wow factor on consultation displays. The body must look like flawless newly seated premium porcelain, not natural teeth that were whitened.',
+            'Use only delicate incisal translucency at the bottom edge so the veneers remain dimensional; never let translucency become gray, yellow, or dull.',
+            'This shade contract applies to every LVI style equally: Natural, Enhanced, Youthful, Hollywood, Vigorous, Mature, and Functional change tooth shape only, never the selected Elite Smiles Ultra White brightness target.',
+            'Do not average this shade back toward Chromascop 110, the original tooth color, skin warmth, room lighting, camera white balance, or natural enamel.',
+        ]);
+    }
+
     if ($code === '110' || $valueStep <= 0) {
         return implode(' ', [
             'SCREEN SHADE CONTRACT: Chromascop 110 / Hollywood White is the master visual anchor.',
-            'It should render brighter on screen than a conservative physical shade tab: ultra clean bleach-white porcelain, high luminous value, zero yellow cast, zero beige/cream body, and zero natural enamel discoloration.',
-            'The body of the veneer should visually match a flawless brand-new porcelain sample under bright consult-room display lighting, with only delicate translucent depth at the incisal edge.',
+            'It is the brightest clinical Chromascop option, sitting just below Elite Smiles 100 / Ultra White, and should render brighter on screen than a conservative physical shade tab: ultra clean bleach-white porcelain, very high luminous value, zero yellow cast, zero beige/cream body, and zero natural enamel discoloration.',
+            'The body of the veneer should visually match a flawless brand-new bleach porcelain sample under bright consult-room display lighting: brilliant white ceramic body, glossy specular highlights, smooth surface, and only delicate translucent depth at the incisal edge.',
+            'The result should feel like newly seated premium porcelain veneers with a clear wow factor, not natural teeth that were whitened.',
+            'This shade contract applies to every LVI style equally: Natural, Enhanced, Youthful, Hollywood, Vigorous, Mature, and Functional change tooth shape only, never the selected Chromascop brightness target.',
             'Do not average this shade back toward the original tooth color, skin warmth, room lighting, camera white balance, or natural enamel.',
         ]);
     }
@@ -690,6 +708,7 @@ function smile_design_shade_screen_contract(array $detail): string
         return implode(' ', [
             'SCREEN SHADE CONTRACT: this is still in the bleach-white group and must remain obviously bright porcelain.',
             'Use Chromascop 110 as the anchor, then reduce value only ' . $valueStep . ' controlled step' . ($valueStep === 1 ? '' : 's') . '.',
+            'This shade contract applies to every LVI style equally; the LVI style controls anatomy and personality, not whether the veneers become less white.',
             'It may be slightly softer than Hollywood 110, but it must never look yellow, beige, grey, stained, mottled, or like warmed natural enamel.',
         ]);
     }
@@ -698,6 +717,7 @@ function smile_design_shade_screen_contract(array $detail): string
         return implode(' ', [
             'SCREEN SHADE CONTRACT: this is a natural-white porcelain group, not natural tooth color.',
             'Render it clearly whiter and cleaner than the before photo, with a controlled step-down from Chromascop 110 rather than a return to yellow enamel.',
+            'This shade contract applies to every LVI style equally; do not make Natural or Mature styles yellower just because the shape language is softer.',
             'Warmth is allowed only as a subtle porcelain undertone; visible yellow pigment, stain, cream patches, and old-tooth coloration are not allowed.',
         ]);
     }
@@ -705,6 +725,7 @@ function smile_design_shade_screen_contract(array $detail): string
     return implode(' ', [
         'SCREEN SHADE CONTRACT: this is a lower-value restorative blend, but it must still read as clean finished porcelain.',
         'Reduce brightness from Chromascop 110 according to the shade step while preserving a polished, uniform, stain-free ceramic surface.',
+        'This shade contract applies to every LVI style equally; LVI style changes tooth form, while Chromascop controls color value.',
         'Do not let age-aware warmth become yellowing, mottling, or old enamel bleed-through.',
     ]);
 }
@@ -2915,6 +2936,8 @@ function smile_design_apply_porcelain_tooth_finish($image, string $photoType, st
     [$x1, $y1, $x2, $y2] = smile_design_rel_box_to_pixels($regions['teeth'], $width, $height);
     $shade = smile_design_normalize_shade_goal($shadeGoal);
     $target = match ($shade) {
+        '100' => [255, 255, 255],
+        '110' => [252, 252, 250],
         '120' => [248, 246, 238],
         '130' => [246, 243, 233],
         '140' => [244, 240, 229],
@@ -3745,7 +3768,8 @@ Pass criteria:
 - Face, lips, gums, identity, lighting, and camera setup remain essentially the same.
 - The result stays inside veneer scope: no fantasy orthodontics, no implant replacement, no jaw surgery, and no unrelated beauty retouching.
 - The veneers should look bright, flawless, and polished but still dimensional, with a clean neutral-white body shade, believable porcelain gloss, and subtle translucency only at the incisal/bottom edge.
-- For Chromascop 110 / Hollywood White, the after must be the brightest clean-white shade in the system and must look clearly whiter than the before photo on screen.
+- For Elite Smiles 100 / Ultra White, the after must be the brightest custom wow-factor shade in the system and must look like maximum-value new porcelain veneers on screen.
+- For Chromascop 110 / Hollywood White, the after must be a clinical high-value Hollywood-white shade just below Ultra White and must look clearly whiter than the before photo on screen.
 - For lower Chromascop shades, the after may step down in value from 110, but it must still look like clean finished porcelain rather than yellow natural enamel.
 
 Fail criteria:
@@ -3753,7 +3777,7 @@ Fail criteria:
 - Before-photo discoloration, cracks, chips, or defects remain visibly present on the veneered teeth.
 - The shade is materially darker, yellower, patchier, flatter, chalkier, or grayer than the selected target.
 - The veneer body shade still looks cream/yellow, stained, mottled, or natural-tooth colored, even if the incisal edge has some translucency.
-- Chromascop 110 does not look like a high-value Hollywood-white porcelain anchor, or any lower shade uses yellow/cream as a substitute for controlled warmth.
+- Elite Smiles 100 does not look like the brightest high-value ultra-white porcelain result, Chromascop 110 does not look like a high-value Hollywood-white porcelain anchor, or any lower shade uses yellow/cream as a substitute for controlled warmth.
 - The LVI style is too weak or the tooth anatomy does not reflect the requested style.
 - The teeth barely changed, the result looks like mild whitening, or the after is not clearly brighter and more ideal than the before.
 - The face, gums, lips, or identity changed materially.

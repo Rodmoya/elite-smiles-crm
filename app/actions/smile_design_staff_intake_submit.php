@@ -106,7 +106,7 @@ try {
         'phone' => $phone,
         'procedure_interest' => post('procedure_interest'),
         'selected_style' => post('selected_style', 'natural'),
-        'shade_goal' => post('shade_goal', '110'),
+        'shade_goal' => post('shade_goal', '100'),
         'treatment_scope' => post('treatment_scope', 'upper'),
         'smile_width_goal' => post('smile_width_goal', 'keep_current'),
         'notes' => post('notes'),

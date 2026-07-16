@@ -548,6 +548,54 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             'Keep the result realistic and consultation-grade.',
             'Do not add text, labels, watermarks, borders, split screens, or logos.',
         ];
+
+        if ($isVeneerSimulation && $brushMaskPath === '' && !$isLipRepositionOnly) {
+            $shadeCode = (string)($shadeDetail['code'] ?? '');
+            $shadePrompt = trim((string)($shadeDetail['prompt'] ?? ''));
+            $shadeName = trim((string)($shadeDetail['label'] ?? $shadeDetail['title'] ?? ''));
+            $selectedShadeInstruction = $shadeCode === '100'
+                ? 'Selected shade target: Elite Smiles 100 / Ultra White. Teeth must be pure clean neutral white, glossy, flawless, with no yellow, no cream, no stains, and no mottling. Make the veneer body visibly brighter than the input photo and brighter than Chromascop 110, with subtle incisal translucency only at the bottom edge.'
+                : 'Selected shade target: ' . ($shadePrompt !== '' ? $shadePrompt : $shadeName) . '. Follow this selected shade exactly; do not force Ultra White unless Elite Smiles 100 is selected. Keep the same flawless porcelain material while stepping brightness and warmth according to the chosen shade.';
+
+            $promptParts = [
+                'Edit only the visible teeth and smile in the first image.',
+                'Keep the same person, face, lips, gums except minimal tooth-contact blending, skin, hair, background, crop, lighting, camera angle, head size, and output aspect/resolution.',
+                'Do not retouch, smooth, relight, recolor, beautify, or reshape any non-dental region.',
+                'Replace the visible treated teeth with brand-new IPS e.max-style lithium disilicate porcelain veneers.',
+                $selectedShadeInstruction,
+                'Use glazed ceramic surface quality: clean high-value body shade, polished realistic highlights, enamel-like optical depth, smooth flawless finish, and delicate incisal translucency only at the lower edge. The result must not look like flat digital paint or ordinary whitening.',
+                ($porcelainFinishReferenceIncluded ? 'Use the porcelain reference image only for material finish. Do not copy its face, lips, gums, smile shape, crop, lighting, or color cast.' : ''),
+                'Selected LVI style: ' . $styleName . '. Use the LVI selection for tooth anatomy and shape language only; use the selected shade for color.',
+                ($styleReferenceCount > 0 ? 'The LVI reference image(s) are shape references only: line angles, incisal step, embrasures, central/lateral/canine proportions, canine character, and arch rhythm. Do not copy the reference patient, lips, gums, face, lighting, or camera treatment.' : ''),
+                ($styleCategory !== '' ? 'LVI style category: ' . $styleCategory . '.' : ''),
+                ($styleDescription !== '' ? 'LVI style guidance: ' . $styleDescription : ''),
+                ($styleMorphology !== '' ? 'LVI morphology target: ' . $styleMorphology : ''),
+                ($styleEffect !== '' ? 'Desired aesthetic effect: ' . $styleEffect : ''),
+                ($styleAnatomy !== '' ? 'LVI anatomy blueprint: ' . $styleAnatomy : ''),
+                'Apply the LVI style as an actual veneer-design change, not just a label. Change visible treated tooth forms to match the selected LVI morphology while preserving the patient identity and photo.',
+                'Selected treatment scope: ' . $treatmentScopeLabel . '.',
+                ($treatmentScopeGuidance !== '' ? $treatmentScopeGuidance : ''),
+                'Selected smile width goal: ' . $smileWidthLabel . '.',
+                ($smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
+                ($widerSmileFrontGuidance !== '' ? $widerSmileFrontGuidance : ''),
+                'The after must read like the exact same photo with only the smile edited. In before/after comparison, the face outside the mouth should align and appear unchanged.',
+                'The dental improvement must be obvious at normal screen viewing distance: cleaner porcelain shade, improved proportions, smoother incisal architecture, and selected LVI shape. If the teeth look almost the same as the input, the edit has failed.',
+                ($cameraMetadataSummary !== '' ? $cameraMetadataSummary : ''),
+                $sourceDimensionsInstruction,
+                'Target source angle for this generation: ' . $targetPhotoLabel . ' (' . $targetPhotoType . '). Keep the same angle, pose, crop, and lighting.',
+                'Requested procedure: ' . $procedure . '.',
+                ($procedureGuidance !== '' ? $procedureGuidance : ''),
+                ($veneerAngleGuidance !== '' ? $veneerAngleGuidance : ''),
+                ($recommendedProcedure !== '' ? 'Case analysis recommended procedure: ' . $recommendedProcedure . '.' : ''),
+                ($clinicalDirection !== '' ? 'Clinical direction from case analysis: ' . $clinicalDirection . '.' : ''),
+                ($analysisSummary !== '' ? 'Case analysis summary: ' . $analysisSummary : ''),
+                ($analysisFocus !== '' ? 'Generation focus: ' . $analysisFocus : ''),
+                ($identityInstructions !== '' ? 'Identity lock instructions: ' . $identityInstructions : ''),
+                ($doctorNotes !== [] ? 'Doctor review notes from case analysis: ' . implode('; ', $doctorNotes) . '.' : ''),
+                ($internalNotes !== '' ? 'Internal generation notes: ' . $internalNotes . '.' : ''),
+                'Return only one edited after photo. Do not add text, labels, watermarks, borders, split screens, or logos.',
+            ];
+        }
         if ($referenceVersion) {
             $promptParts[] = 'Use the current preview reference to keep the same overall treatment direction and revise only the requested mouth details.';
             if ($referenceTitle !== '') {

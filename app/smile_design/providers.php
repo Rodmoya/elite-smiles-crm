@@ -413,6 +413,9 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
                 'Extend the visible porcelain presence laterally with broader, better-supported canines and premolars so the last visible side teeth sit closer to the inner mouth corners.',
                 'Use the Luke Thornberg-style failure case as the thing to avoid: do not leave dark holes or empty side spaces between the side veneers and the inside corners of the mouth.',
                 'Make teeth #4 and #13, plus adjacent premolars where visible, read more exposed and more substantial without changing the lips, jaw, face width, or camera crop.',
+                'Make the visible upper smile clearly fuller by increasing canine and premolar facial display toward both smile corners inside the existing mouth opening.',
+                'Reduce dark buccal corridors by making the posterior veneer surfaces visibly broader and more present, not by stretching the lips or opening the mouth.',
+                'Do not widen the lips, do not stretch the mouth, do not open the mouth more, and do not reveal additional lower teeth just to create width.',
                 'If the front after still has obvious dark side gaps beside the posterior veneers, the wider-smile instruction has failed.',
             ]);
         }
@@ -518,8 +521,12 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             ($isVeneerSimulation ? 'Selected veneer shade target: ' . (string)$shadeDetail['prompt'] : ''),
             ($isVeneerSimulation ? 'Shade enforcement: the selected shade is a finished porcelain target, not a filter over the original teeth. Replace the old tooth value entirely. Elite Smiles 100 / Ultra White is the brightest and cleanest result in the whole shade system; Chromascop 110 is the clinical Hollywood-white anchor just below it; all other shades step down from those anchors while remaining stain-free porcelain.' : ''),
             ($isVeneerSimulation && (string)($shadeDetail['code'] ?? '') === '100' ? 'Elite Smiles 100 front-view pass/fail rule: the visible anterior veneers must be obviously whiter, brighter, and cleaner than the source teeth and than a conservative prior generated set. Do not leave the front smile at the same value. Push the veneer body to luminous neutral white with crisp glazed ceramic highlights, zero yellow, zero cream, and only delicate incisal translucency at the bottom edge.' : ''),
+            ($isVeneerSimulation && (string)($shadeDetail['code'] ?? '') === '110' ? 'Chromascop 110 front-view pass/fail rule: the visible anterior veneers must be a clean clinical Hollywood-white result, visibly brighter than a conservative natural set while staying one step below Elite Smiles Ultra White. Do not leave the smile at the same value as a prior Chromascop 110 pass if it still looks conservative. Push the veneer body to luminous high-value porcelain with crisp glazed ceramic highlights, zero yellow, zero cream, and only delicate incisal translucency at the bottom edge.' : ''),
             ($isVeneerSimulation ? 'Default veneer material: IPS e.max-style lithium disilicate glass-ceramic. The final teeth should show a glazed ceramic surface with realistic specular highlights, smooth polished body, enamel-like optical depth, and delicate incisal translucency, not flat digital paint or generic whitening.' : ''),
+            ($isVeneerSimulation ? 'External v2 stability rule: preserve the older stable structure behavior for the face, lips, mouth opening, lower facial expression, head size, and camera framing. Improve only the visible veneer surfaces and the dental arch inside the existing lip opening.' : ''),
+            ($isVeneerSimulation ? 'IPS e.max material rule: use lithium disilicate porcelain veneer finish with clean luminous body shade, glossy ceramic highlights, enamel-like optical depth, smooth polished finish, and subtle incisal translucency only at the very bottom edge. Absolutely zero yellow, cream, beige, gray, stains, mottling, patches, old enamel shadows, or natural-tooth color may remain on the visible veneer faces.' : ''),
             ($isVeneerSimulation ? 'Veneer transformation strength: the after must look like new ceramic veneers were placed, not like the original teeth were simply cleaned. The visible treated teeth should be at least two obvious screen-value steps whiter than the before photo while still retaining porcelain dimension and highlights.' : ''),
+            ($isVeneerSimulation ? 'Brightness failure rule: if the new veneers look almost the same brightness as the original teeth or a conservative prior generated set, the edit has failed. Increase the white porcelain value until the before/after difference is obvious at normal viewing distance, while keeping dimensional porcelain rather than flat paint.' : ''),
             ($isVeneerSimulation ? 'Brand-new veneer finish target: the finished veneers must look clean and perfect like newly seated cosmetic porcelain. The main body shade should be luminous neutral white with no cream, no yellow, and no natural-tooth discoloration. Keep translucency delicate and limited to the incisal/bottom edge so the teeth stay dimensional without looking stained.' : ''),
             ($isVeneerSimulation ? 'For veneers, the visible anterior tooth surfaces must read as complete porcelain restorations in the selected shade. Do not leave behind natural yellowing, original tooth color, craze lines, mottling, stains, chips, asymmetry, uneven incisal edges, or patchy enamel bleed-through.' : ''),
             ($isVeneerSimulation ? 'Before-vs-after mandate: compared with the original photo, the after must have a clearly improved smile silhouette, cleaner tooth proportions, smoother incisal architecture, more even spacing, and a clearly whiter porcelain shade. If the tooth shape or shade looks almost the same as the before, the edit has failed.' : ''),
@@ -549,55 +556,6 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             'Do not add text, labels, watermarks, borders, split screens, or logos.',
         ];
 
-        if ($isVeneerSimulation && $brushMaskPath === '' && !$isLipRepositionOnly) {
-            $shadeCode = (string)($shadeDetail['code'] ?? '');
-            $shadePrompt = trim((string)($shadeDetail['prompt'] ?? ''));
-            $shadeName = trim((string)($shadeDetail['label'] ?? $shadeDetail['title'] ?? ''));
-            $selectedShadeInstruction = $shadeCode === '100'
-                ? 'Selected shade target: Elite Smiles 100 / Ultra White. Teeth must be pure clean neutral white, glossy, flawless, with no yellow, no cream, no stains, and no mottling. Make the veneer body visibly brighter than the input photo and brighter than Chromascop 110, with subtle incisal translucency only at the bottom edge.'
-                : 'Selected shade target: ' . ($shadePrompt !== '' ? $shadePrompt : $shadeName) . '. Follow this selected shade exactly; do not force Ultra White unless Elite Smiles 100 is selected. Keep the same flawless porcelain material while stepping brightness and warmth according to the chosen shade.';
-
-            $promptParts = [
-                'Edit only the visible teeth and smile in the first image.',
-                'Keep the same person, face, lips, lip color, lip texture, lip outline, mouth corners, smile opening, gums except exact existing contact edges, skin, hair, background, crop, lighting, camera angle, head size, and output aspect/resolution.',
-                'Hard lip lock: do not enlarge, shrink, smooth, redraw, recolor, lift, lower, or reshape the lips. Do not change the smile aperture or mouth-corner position. The new veneers must fit behind the original lip opening and follow the exact existing lip boundary.',
-                'At the tooth-lip boundary, preserve the original lips as the foreground mask. If a veneer would require changing lip shape, reduce or hide that part of the veneer instead of changing the lips.',
-                'Do not retouch, smooth, relight, recolor, beautify, or reshape any non-dental region.',
-                'Replace the visible treated teeth with brand-new IPS e.max-style lithium disilicate porcelain veneers.',
-                $selectedShadeInstruction,
-                'Use glazed ceramic surface quality: clean high-value body shade, polished realistic highlights, enamel-like optical depth, smooth flawless finish, and delicate incisal translucency only at the lower edge. The result must not look like flat digital paint or ordinary whitening.',
-                ($porcelainFinishReferenceIncluded ? 'Use the porcelain reference image only for material finish. Do not copy its face, lips, gums, smile shape, crop, lighting, or color cast.' : ''),
-                'Selected LVI style: ' . $styleName . '. Use the LVI selection for tooth anatomy and shape language only; use the selected shade for color.',
-                ($styleReferenceCount > 0 ? 'The LVI reference image(s) are shape references only: line angles, incisal step, embrasures, central/lateral/canine proportions, canine character, and arch rhythm. Do not copy the reference patient, lips, gums, face, lighting, or camera treatment.' : ''),
-                ($styleCategory !== '' ? 'LVI style category: ' . $styleCategory . '.' : ''),
-                ($styleDescription !== '' ? 'LVI style guidance: ' . $styleDescription : ''),
-                ($styleMorphology !== '' ? 'LVI morphology target: ' . $styleMorphology : ''),
-                ($styleEffect !== '' ? 'Desired aesthetic effect: ' . $styleEffect : ''),
-                ($styleAnatomy !== '' ? 'LVI anatomy blueprint: ' . $styleAnatomy : ''),
-                'Apply the LVI style as an actual veneer-design change, not just a label. Change visible treated tooth forms to match the selected LVI morphology while preserving the patient identity and photo.',
-                'Selected treatment scope: ' . $treatmentScopeLabel . '.',
-                ($treatmentScopeGuidance !== '' ? $treatmentScopeGuidance : ''),
-                'Selected smile width goal: ' . $smileWidthLabel . '.',
-                ($smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
-                ($widerSmileFrontGuidance !== '' ? $widerSmileFrontGuidance : ''),
-                'The after must read like the exact same photo with only the teeth edited. In before/after comparison, the lips and face outside the teeth should align and appear unchanged.',
-                'The dental improvement must be obvious at normal screen viewing distance: cleaner porcelain shade, improved proportions, smoother incisal architecture, and selected LVI shape. If the teeth look almost the same as the input, the edit has failed.',
-                ($cameraMetadataSummary !== '' ? $cameraMetadataSummary : ''),
-                $sourceDimensionsInstruction,
-                'Target source angle for this generation: ' . $targetPhotoLabel . ' (' . $targetPhotoType . '). Keep the same angle, pose, crop, and lighting.',
-                'Requested procedure: ' . $procedure . '.',
-                ($procedureGuidance !== '' ? $procedureGuidance : ''),
-                ($veneerAngleGuidance !== '' ? $veneerAngleGuidance : ''),
-                ($recommendedProcedure !== '' ? 'Case analysis recommended procedure: ' . $recommendedProcedure . '.' : ''),
-                ($clinicalDirection !== '' ? 'Clinical direction from case analysis: ' . $clinicalDirection . '.' : ''),
-                ($analysisSummary !== '' ? 'Case analysis summary: ' . $analysisSummary : ''),
-                ($analysisFocus !== '' ? 'Generation focus: ' . $analysisFocus : ''),
-                ($identityInstructions !== '' ? 'Identity lock instructions: ' . $identityInstructions : ''),
-                ($doctorNotes !== [] ? 'Doctor review notes from case analysis: ' . implode('; ', $doctorNotes) . '.' : ''),
-                ($internalNotes !== '' ? 'Internal generation notes: ' . $internalNotes . '.' : ''),
-                'Return only one edited after photo. Do not add text, labels, watermarks, borders, split screens, or logos.',
-            ];
-        }
         if ($referenceVersion) {
             $promptParts[] = 'Use the current preview reference to keep the same overall treatment direction and revise only the requested mouth details.';
             if ($referenceTitle !== '') {
@@ -854,6 +812,9 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
                 'Broaden the canine and premolar veneer presence so the smile fills the visible mouth opening from corner to corner.',
                 'Do not leave dark empty spaces between the last visible side teeth and the inner corners of the mouth.',
                 'Teeth #4/#5 and #12/#13 should read more present when visible, especially #4 and #13 as the outer smile-width supports.',
+                'Make the visible upper smile clearly fuller by increasing canine and premolar facial display toward both smile corners inside the existing mouth opening.',
+                'Reduce dark buccal corridors by making posterior veneer surfaces visibly broader and more present, not by stretching the lips or opening the mouth.',
+                'Do not widen the lips, do not stretch the mouth, do not open the mouth more, and do not reveal additional lower teeth just to create width.',
                 'Do not change the lips, jaw, face width, crop, or camera angle to accomplish this; solve it through believable veneer arch fullness and posterior crown visibility.',
             ]);
         }
@@ -891,7 +852,9 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             ($isVeneerSimulation ? 'Shade-over-style rule: Chromascop controls the veneer color value for every LVI style. LVI Natural, Enhanced, Youthful, Hollywood, Vigorous, Mature, and Functional must all honor the selected shade exactly; only tooth anatomy, incisal shape, embrasures, and smile personality should change by style.' : ''),
             ($isVeneerSimulation ? 'When Elite Smiles 100 / Ultra White is selected, every LVI style must render as the whitest and brightest possible custom new-veneer result in this system: maximum-value bleach-white porcelain, glossy ceramic highlights, flawless clean body shade, zero yellow, zero cream warmth, and a dramatic wow factor. When Chromascop 110 is selected, render a clinical Hollywood-white porcelain shade just below Ultra White, still very bright and clearly whiter than the before teeth.' : ''),
             ($isVeneerSimulation && (string)($shadeDetail['code'] ?? '') === '100' ? 'Elite Smiles 100 front-view pass/fail rule: the corrected veneers must be visibly whiter and brighter than the current version being corrected. If the correction would look the same shade or darker, increase the porcelain value instead. Preserve face, lips, and lighting, but do not preserve the old tooth value.' : ''),
+            ($isVeneerSimulation && (string)($shadeDetail['code'] ?? '') === '110' ? 'Chromascop 110 front-view pass/fail rule: the corrected veneers must be a clean clinical Hollywood-white result, visibly brighter than a conservative natural set while staying one step below Elite Smiles Ultra White. If the correction still looks conservative or close to the old tooth value, increase the porcelain value.' : ''),
             ($isVeneerSimulation ? 'Default veneer material: IPS e.max-style lithium disilicate glass-ceramic. The final teeth should show a glazed ceramic surface with realistic specular highlights, smooth polished body, enamel-like optical depth, and delicate incisal translucency, not flat digital paint or generic whitening.' : ''),
+            ($isVeneerSimulation ? 'IPS e.max material rule: use lithium disilicate porcelain veneer finish with clean luminous body shade, glossy ceramic highlights, enamel-like optical depth, smooth polished finish, and subtle incisal translucency only at the very bottom edge. Absolutely zero yellow, cream, beige, gray, stains, mottling, patches, old enamel shadows, or natural-tooth color may remain on the visible veneer faces.' : ''),
             ($isVeneerSimulation ? 'For veneers, completely replace the visible anterior tooth surfaces with porcelain in the selected shade. Do not allow the original yellowing, original tooth color, dark fissures, cracks, stains, asymmetry, uneven incisal edges, or uneven enamel color to remain visible in the final result.' : ''),
             ($isVeneerSimulation ? 'Before-vs-after mandate: compared with the original photo, the after must have a clearly improved smile silhouette, cleaner tooth proportions, smoother incisal architecture, more even spacing, and a clearly whiter porcelain shade. If the tooth shape or shade looks almost the same as the before, the edit has failed.' : ''),
             ($isVeneerSimulation ? 'The result must read as polished porcelain veneers with consistent shade, clean value, natural incisal translucency, and realistic surface gloss. It must not look like simple whitening on the natural teeth.' : ''),

@@ -770,10 +770,10 @@ function smile_design_treatment_scope_label(string $scope, string $procedure = '
 function smile_design_treatment_scope_prompt_guidance(string $scope, string $procedure = ''): string
 {
     return match (smile_design_normalize_treatment_scope($scope, $procedure)) {
-        'upper' => 'Treatment scope: upper smile only. Redesign only the visible upper teeth or restorations. Do not alter lower teeth unless the selected procedure explicitly requires it and they are the treatment target.',
-        'lower' => 'Treatment scope: lower smile only. Redesign only the visible lower teeth or restorations. Keep the upper teeth unchanged unless they need to remain as untouched context.',
-        'both' => 'Treatment scope: upper and lower. If both arches are clearly visible, coordinate the shade, anatomy, and finish across both arches while keeping the result believable and proportional. If only one arch is visible, treat only what the photo actually shows.',
-        default => 'Treatment scope: upper smile only. Focus the treatment on the visible upper teeth and preserve untreated areas.',
+        'upper' => 'Treatment scope: upper smile only. Edit only the visible upper tooth surfaces or upper restorations. The lower teeth are locked reference anatomy: do not whiten, reshape, straighten, replace, expose, hide, enlarge, or otherwise change lower teeth. Do not increase the mouth opening or reveal lower teeth that were not visible in the source photo. Preserve the original upper-lip and lower-lip boundaries around the existing smile opening.',
+        'lower' => 'Treatment scope: lower smile only. Edit only the visible lower tooth surfaces or lower restorations. The upper teeth are locked reference anatomy: do not whiten, reshape, straighten, replace, expose, hide, enlarge, or otherwise change upper teeth. Do not increase the mouth opening or reveal upper teeth that were not visible in the source photo. Preserve the original upper-lip and lower-lip boundaries around the existing smile opening.',
+        'both' => 'Treatment scope: upper and lower. Treat only upper and lower tooth surfaces that are already visible in the source photo. Coordinate shade, anatomy, and finish across both visible arches, but do not increase the mouth opening, redraw lips, or reveal teeth that were not visible in the original expression.',
+        default => 'Treatment scope: upper smile only. Edit only the visible upper teeth and preserve lower teeth, lips, mouth opening, and untreated areas as locked context.',
     };
 }
 

@@ -686,6 +686,8 @@ function smile_design_shade_screen_contract(array $detail): string
         return implode(' ', [
             'SCREEN SHADE CONTRACT: Elite Smiles 100 / Ultra White is the brightest custom house shade and sits above Chromascop 110.',
             'It should render as the whitest and brightest possible new-veneer screen preview: maximum-value glossy bleach-white porcelain, brilliant ceramic highlights, zero yellow cast, zero beige/cream body, and zero natural enamel discoloration.',
+            'PASS/FAIL BRIGHTNESS RULE: the treated veneer body must be visibly brighter and cleaner than the original teeth and any prior generated set when viewed in the front Compare, B/A, and Zoom views. If the front teeth look equal to or darker than a previous set, the shade target has failed.',
+            'Do not preserve the original front-tooth value. Lift the veneer body toward luminous neutral white while keeping only realistic ceramic highlights and delicate incisal edge translucency.',
             'This shade is intentionally designed for wow factor on consultation displays. The body must look like flawless newly seated premium porcelain, not natural teeth that were whitened.',
             'Use only delicate incisal translucency at the bottom edge so the veneers remain dimensional; never let translucency become gray, yellow, or dull.',
             'This shade contract applies to every LVI style equally: Natural, Enhanced, Youthful, Hollywood, Vigorous, Mature, and Functional change tooth shape only, never the selected Elite Smiles Ultra White brightness target.',

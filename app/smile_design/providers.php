@@ -559,7 +559,9 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
 
             $promptParts = [
                 'Edit only the visible teeth and smile in the first image.',
-                'Keep the same person, face, lips, gums except minimal tooth-contact blending, skin, hair, background, crop, lighting, camera angle, head size, and output aspect/resolution.',
+                'Keep the same person, face, lips, lip color, lip texture, lip outline, mouth corners, smile opening, gums except exact existing contact edges, skin, hair, background, crop, lighting, camera angle, head size, and output aspect/resolution.',
+                'Hard lip lock: do not enlarge, shrink, smooth, redraw, recolor, lift, lower, or reshape the lips. Do not change the smile aperture or mouth-corner position. The new veneers must fit behind the original lip opening and follow the exact existing lip boundary.',
+                'At the tooth-lip boundary, preserve the original lips as the foreground mask. If a veneer would require changing lip shape, reduce or hide that part of the veneer instead of changing the lips.',
                 'Do not retouch, smooth, relight, recolor, beautify, or reshape any non-dental region.',
                 'Replace the visible treated teeth with brand-new IPS e.max-style lithium disilicate porcelain veneers.',
                 $selectedShadeInstruction,
@@ -578,7 +580,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
                 'Selected smile width goal: ' . $smileWidthLabel . '.',
                 ($smileWidthGuidance !== '' ? $smileWidthGuidance : ''),
                 ($widerSmileFrontGuidance !== '' ? $widerSmileFrontGuidance : ''),
-                'The after must read like the exact same photo with only the smile edited. In before/after comparison, the face outside the mouth should align and appear unchanged.',
+                'The after must read like the exact same photo with only the teeth edited. In before/after comparison, the lips and face outside the teeth should align and appear unchanged.',
                 'The dental improvement must be obvious at normal screen viewing distance: cleaner porcelain shade, improved proportions, smoother incisal architecture, and selected LVI shape. If the teeth look almost the same as the input, the edit has failed.',
                 ($cameraMetadataSummary !== '' ? $cameraMetadataSummary : ''),
                 $sourceDimensionsInstruction,

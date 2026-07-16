@@ -26,6 +26,7 @@ $crmNavItems = [
     ['key' => 'dental_models', 'label' => '3D Design', 'href' => base_url('dental-models'), 'icon' => 'M4 3h16v8H4zM4 13h16v8H4zm2 2h12M4 7h4v4M16 7h2M20 7h0M20 15h-2M4 16h3M4 20h3', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : false],
     ['key' => 'email_status', 'label' => 'Email Status', 'href' => base_url('email_status.php'), 'icon' => 'M4 6h16v12H4V6zm0 0 8 7 8-7', 'show' => true],
     ['key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php'), 'icon' => 'M12 21s7-4.4 7-11a7 7 0 0 0-14 0c0 6.6 7 11 7 11zM9 10h6M12 7v6', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : false],
+    ['key' => 'social_studio', 'label' => 'Social Studio', 'href' => base_url('social-studio.php'), 'icon' => 'M4 5h16v14H4zM8 9h8M8 13h5M16 17l4 4M17 14h3v3', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : true],
     ['key' => 'landing_pages', 'label' => 'Landing Pages', 'href' => base_url('landing_pages.php'), 'icon' => 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14H4V5zm4 3h8M8 12h8M8 16h5', 'show' => true],
     ['key' => 'users', 'label' => 'Users', 'href' => base_url('users.php'), 'icon' => 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', 'show' => function_exists('auth_has_role') ? auth_has_role('admin') : false],
 ];

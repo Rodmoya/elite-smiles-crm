@@ -2159,6 +2159,7 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         'model' => defined('GOOGLE_GEMINI_VIDEO_MODEL') ? GOOGLE_GEMINI_VIDEO_MODEL : 'veo-3.1-generate-preview',
         'duration_seconds' => 8,
         'aspect_ratio' => '16:9',
+        'resolution' => '1080p',
         'max_wait_seconds' => 480,
     ]);
     if (empty($result['ok'])) {

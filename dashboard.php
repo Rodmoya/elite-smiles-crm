@@ -16,6 +16,7 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/leads/lead_meta.php';
 require_once __DIR__ . '/app/leads/lead_service.php';
 require_once __DIR__ . '/app/leads/lead_communications.php';
+require_once __DIR__ . '/app/ai/elite_ai_service.php';
 
 require_auth();
 lead_comm_ensure_schema();
@@ -48,6 +49,11 @@ $landingPageTotals = db_one(
 $stats['active_pages'] = (int) ($landingPageTotals['active_pages'] ?? 0);
 $totalLandingPages = (int) ($landingPageTotals['total_pages'] ?? 0);
 $recentLeads = lead_recent_rows(8);
+$dashboardNotifications = function_exists('elite_ai_notification_rows') ? elite_ai_notification_rows(8) : [];
+$unreadNotificationCount = count(array_filter($dashboardNotifications, static fn(array $row): bool => !empty($row['is_new'])));
+$todayReplies = function_exists('elite_ai_replies_today') ? elite_ai_replies_today(4) : [];
+$followUpCandidates = function_exists('elite_ai_follow_up_candidates') ? elite_ai_follow_up_candidates(4) : [];
+$attentionTotal = $unreadNotificationCount + count($followUpCandidates) + count($todayReplies);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -89,7 +95,68 @@ $recentLeads = lead_recent_rows(8);
                         </p>
                     </div>
 
-                    <div class="flex flex-wrap gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="relative">
+                            <button
+                                type="button"
+                                id="dashboard-notifications-button"
+                                class="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                aria-haspopup="true"
+                                aria-expanded="false"
+                                aria-controls="dashboard-notifications-menu"
+                                title="Dashboard notifications"
+                            >
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M10.27 21a2 2 0 0 0 3.46 0"></path>
+                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                                </svg>
+                                <?php if ($unreadNotificationCount > 0): ?>
+                                    <span class="absolute -right-2 -top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white shadow-sm"><?= e($unreadNotificationCount > 99 ? '99+' : (string)$unreadNotificationCount) ?></span>
+                                <?php endif; ?>
+                            </button>
+                            <div
+                                id="dashboard-notifications-menu"
+                                class="hidden absolute right-0 top-14 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15"
+                            >
+                                <div class="border-b border-slate-100 px-4 py-3">
+                                    <p class="text-sm font-semibold text-slate-900">Notifications</p>
+                                    <p class="mt-1 text-xs text-slate-500">Replies, new leads, and follow-up alerts.</p>
+                                </div>
+                                <div class="max-h-96 overflow-y-auto p-2">
+                                    <?php if (empty($dashboardNotifications)): ?>
+                                        <div class="px-4 py-6 text-center text-sm text-slate-500">No notifications need review right now.</div>
+                                    <?php else: ?>
+                                        <?php foreach ($dashboardNotifications as $item): ?>
+                                            <?php
+                                            $leadId = (int)($item['lead_id'] ?? 0);
+                                            $isNew = !empty($item['is_new']);
+                                            $type = (string)($item['type'] ?? '');
+                                            $leadName = trim((string)($item['lead_name'] ?? 'Lead'));
+                                            $title = trim((string)($item['title'] ?? 'CRM notification'));
+                                            $message = trim((string)($item['message'] ?? $item['suggested_action'] ?? 'Review next step.'));
+                                            ?>
+                                            <a
+                                                href="<?= e(base_url('leads.php') . ($leadId > 0 ? '?lead_id=' . $leadId : '')) ?>"
+                                                class="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 <?= $isNew ? 'bg-white' : 'bg-slate-50 text-slate-400' ?>"
+                                            >
+                                                <span class="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full <?= $isNew ? ($type === 'reply' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700') : 'bg-slate-100 text-slate-400' ?>">
+                                                    <?= $type === 'reply' ? '!' : '+' ?>
+                                                </span>
+                                                <span class="min-w-0 flex-1">
+                                                    <span class="block truncate text-sm font-semibold <?= $isNew ? 'text-slate-900' : 'text-slate-400' ?>"><?= e($leadName) ?></span>
+                                                    <span class="mt-0.5 block truncate text-xs font-medium <?= $isNew ? 'text-slate-600' : 'text-slate-400' ?>"><?= e($title) ?></span>
+                                                    <span class="mt-1 block line-clamp-2 text-xs <?= $isNew ? 'text-slate-500' : 'text-slate-300' ?>"><?= e($message) ?></span>
+                                                    <span class="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] <?= $isNew ? 'text-blue-700' : 'text-slate-400' ?>"><?= $isNew ? 'Unread' : 'Read' ?><?= !empty($item['created_at']) ? ' - ' . e(format_datetime((string)$item['created_at'], 'M j g:i A')) : '' ?></span>
+                                                </span>
+                                            </a>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="border-t border-slate-100 p-3">
+                                    <a href="<?= e(base_url('leads.php')) ?>" class="block rounded-2xl bg-slate-950 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-slate-800">Open Leads Board</a>
+                                </div>
+                            </div>
+                        </div>
                         <a
                             href="<?= e(base_url('leads.php')) ?>"
                             class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -108,6 +175,24 @@ $recentLeads = lead_recent_rows(8);
         </section>
 
         <?php require __DIR__ . '/app/partials/dashboard_stats.php'; ?>
+
+        <section class="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Needs Attention</p>
+                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)$attentionTotal) ?></p>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Unread alerts, replies, and follow-ups.</p>
+            </div>
+            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Replies Today</p>
+                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)count($todayReplies)) ?></p>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Inbound messages ready for context review.</p>
+            </div>
+            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Follow-Up Queue</p>
+                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)count($followUpCandidates)) ?></p>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Leads most likely to need the next touch.</p>
+            </div>
+        </section>
 
         <section class="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_0.9fr]">
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -153,6 +238,45 @@ $recentLeads = lead_recent_rows(8);
 
             <div class="space-y-5">
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Action Queue</p>
+                            <h2 class="mt-2 text-xl font-semibold text-slate-900">What needs attention</h2>
+                        </div>
+                        <a href="<?= e(base_url('leads.php')) ?>" class="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">Review</a>
+                    </div>
+                    <div class="mt-5 space-y-3">
+                        <?php if (empty($dashboardNotifications) && empty($followUpCandidates)): ?>
+                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">Nothing urgent right now.</div>
+                        <?php endif; ?>
+                        <?php foreach (array_slice($dashboardNotifications, 0, 4) as $item): ?>
+                            <?php
+                            $leadId = (int)($item['lead_id'] ?? 0);
+                            $isNew = !empty($item['is_new']);
+                            ?>
+                            <a href="<?= e(base_url('leads.php') . ($leadId > 0 ? '?lead_id=' . $leadId : '')) ?>" class="block rounded-2xl border <?= $isNew ? 'border-blue-100 bg-blue-50/60' : 'border-slate-200 bg-slate-50' ?> px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-sm">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-semibold text-slate-900"><?= e((string)($item['title'] ?? 'CRM notification')) ?></p>
+                                        <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-600"><?= e((string)($item['suggested_action'] ?? $item['message'] ?? 'Review next step.')) ?></p>
+                                    </div>
+                                    <span class="shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] <?= $isNew ? 'border-blue-200 bg-white text-blue-700' : 'border-slate-200 text-slate-500' ?>"><?= $isNew ? 'New' : 'Review' ?></span>
+                                </div>
+                            </a>
+                        <?php endforeach; ?>
+                        <?php if (empty($dashboardNotifications)): ?>
+                            <?php foreach (array_slice($followUpCandidates, 0, 3) as $lead): ?>
+                                <?php $leadId = (int)($lead['id'] ?? $lead['lead_id'] ?? 0); ?>
+                                <a href="<?= e(base_url('leads.php') . ($leadId > 0 ? '?lead_id=' . $leadId : '')) ?>" class="block rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-sm">
+                                    <p class="truncate text-sm font-semibold text-slate-900"><?= e((string)($lead['full_name'] ?? 'Lead')) ?></p>
+                                    <p class="mt-1 text-xs leading-5 text-slate-600">Follow-up candidate. Review thread context before sending.</p>
+                                </a>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
                     <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Landing Workflow</p>
                     <h2 class="mt-2 text-xl font-semibold text-slate-900">Landing Pages</h2>
                     <p class="mt-3 text-sm leading-7 text-slate-600">
@@ -174,14 +298,40 @@ $recentLeads = lead_recent_rows(8);
                     <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kaizen Queue</p>
                     <h2 class="mt-2 text-xl font-semibold text-slate-900">Next Improvements</h2>
                     <div class="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Add Twilio reply inbox and unread badges.</div>
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Turn notes into an activity timeline.</div>
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Add follow-up due dates and no-touch filters.</div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Add Meta Ads Health cards once the Ads MCP connection is live.</div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Show lead flow: Meta received -> CRM created -> first touch sent.</div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">Add campaign spend and cost-per-lead alerts.</div>
                     </div>
                 </div>
             </div>
         </section>
     </main>
+    <script>
+    (function () {
+        const button = document.getElementById('dashboard-notifications-button');
+        const menu = document.getElementById('dashboard-notifications-menu');
+        if (!button || !menu) return;
+
+        button.addEventListener('click', function (event) {
+            event.stopPropagation();
+            const hidden = menu.classList.toggle('hidden');
+            button.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+        });
+
+        document.addEventListener('click', function (event) {
+            if (menu.classList.contains('hidden')) return;
+            if (menu.contains(event.target) || button.contains(event.target)) return;
+            menu.classList.add('hidden');
+            button.setAttribute('aria-expanded', 'false');
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') return;
+            menu.classList.add('hidden');
+            button.setAttribute('aria-expanded', 'false');
+        });
+    })();
+    </script>
 </body>
 </html>
 

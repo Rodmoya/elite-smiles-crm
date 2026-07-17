@@ -20,7 +20,7 @@ $stats = $stats ?? [
     'closed_value_total' => 0.00,
     'lost_value_total' => 0.00,
     'avg_lead_value' => 0.00,
-    'default_opportunity_value' => 10000.00,
+    'default_opportunity_value' => function_exists('lead_default_opportunity_value') ? lead_default_opportunity_value() : 15000.00,
 ];
 
 $statsVariant = $statsVariant ?? 'cards';
@@ -104,7 +104,7 @@ if ($statsVariant === 'compact') {
 
     <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Default Per Lead</p>
-        <p class="mt-3 text-2xl font-semibold leading-none text-slate-900"><?= e(elite_money((float)($stats['default_opportunity_value'] ?? 10000))) ?></p>
+        <p class="mt-3 text-2xl font-semibold leading-none text-slate-900"><?= e(elite_money((float)($stats['default_opportunity_value'] ?? (function_exists('lead_default_opportunity_value') ? lead_default_opportunity_value() : 15000)))) ?></p>
         <p class="mt-3 text-sm leading-6 text-slate-500">Starter opportunity amount</p>
     </div>
 </section>

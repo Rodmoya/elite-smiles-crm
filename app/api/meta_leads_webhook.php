@@ -359,7 +359,7 @@ $input = [
     'financing_needed' => $financingNeeded,
     'financing_option' => 'none',
     'consultation_status' => $consultationStatus,
-    'lead_value' => '10000',
+    'lead_value' => number_format(lead_default_opportunity_value(), 2, '.', ''),
     'notes' => $notes,
     'refresh_duplicate' => true,
 ];

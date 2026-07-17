@@ -904,7 +904,7 @@ $consultationOptions = [
 
                                         class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none"
 
-                                        value="10000"
+                                        value="15000"
 
                                     >
 
@@ -3209,7 +3209,7 @@ $consultationOptions = [
 
         const num = Number(value || 0);
 
-        if (!Number.isFinite(num) || num <= 0) return '$10,000';
+        if (!Number.isFinite(num) || num <= 0) return '$15,000';
 
         return '$' + Math.round(num).toLocaleString();
 
@@ -5817,7 +5817,7 @@ function applyCommunicationViewportFit() {
 
         if (newLeadFinancingOption) newLeadFinancingOption.value = 'none';
 
-        if (newLeadValue) newLeadValue.value = '10000';
+        if (newLeadValue) newLeadValue.value = '15000';
 
         if (newLeadStage) newLeadStage.value = 'new_lead';
 
@@ -5924,7 +5924,7 @@ function applyCommunicationViewportFit() {
 
         const financingOption = newLeadFinancingOption ? newLeadFinancingOption.value : 'none';
 
-        const leadValue = newLeadValue ? newLeadValue.value.trim() : '10000';
+        const leadValue = newLeadValue ? newLeadValue.value.trim() : '15000';
 
         const status = newLeadStage ? newLeadStage.value : 'new_lead';
 

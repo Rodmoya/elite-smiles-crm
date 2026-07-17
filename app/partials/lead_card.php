@@ -30,7 +30,7 @@ if (!function_exists('lead_card_value')) {
 if (!function_exists('lead_card_money')) {
     function lead_card_money($amount): string
     {
-        $value = 10000;
+        $value = function_exists('lead_default_opportunity_value') ? lead_default_opportunity_value() : 15000;
 
         if ($amount !== null && $amount !== '' && is_numeric($amount)) {
             $value = (float)$amount;

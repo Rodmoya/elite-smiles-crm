@@ -1505,7 +1505,7 @@ function smile_design_match_or_create_lead(array $data, array $user = []): int
         'campaign' => 'Smile Design Engine',
         'status' => 'new_lead',
         'consultation_status' => 'requested',
-        'lead_value' => '10000',
+        'lead_value' => number_format(lead_default_opportunity_value(), 2, '.', ''),
         'refresh_duplicate' => true,
         'notes' => trim((string)($data['notes'] ?? '')),
     ];

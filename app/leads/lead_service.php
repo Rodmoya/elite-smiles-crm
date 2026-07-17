@@ -25,7 +25,7 @@ require_once __DIR__ . '/lead_email.php';
 if (!function_exists('lead_default_opportunity_value')) {
     function lead_default_opportunity_value(): float
     {
-        return 10000.00;
+        return 15000.00;
     }
 }
 

@@ -40,7 +40,15 @@ if (!function_exists('lead_money_value')) {
             return lead_default_opportunity_value();
         }
 
-        return round((float)$value, 2);
+        $amount = round((float)$value, 2);
+
+        // Existing leads created before July 2026 used $10k as the default.
+        // Treat that legacy default as the current average unless a custom value is set.
+        if ($amount === 10000.00) {
+            return lead_default_opportunity_value();
+        }
+
+        return $amount;
     }
 }
 

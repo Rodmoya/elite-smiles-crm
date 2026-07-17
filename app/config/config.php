@@ -76,6 +76,8 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_CODEX_V1_REQUEST_TTL_SECONDS', is_numeric($_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS'] ?? null)
         ? max(30, min(300, (int)$_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS']))
         : 60);
+    define('ELITE_DENTRIX_WORKER_URL', $_ENV['ELITE_DENTRIX_WORKER_URL'] ?? '');
+    define('ELITE_DENTRIX_BRIDGE_SECRET', $_ENV['ELITE_DENTRIX_BRIDGE_SECRET'] ?? '');
 
     define('META_WEBHOOK_SECRET',          $_ENV['META_WEBHOOK_SECRET']          ?? '');
     define('META_VERIFY_TOKEN',            $_ENV['META_VERIFY_TOKEN']            ?? '');
@@ -185,6 +187,10 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'legacy_enabled' => ELITE_CODEX_LEGACY_API_ENABLED && ELITE_CODEX_API_TOKEN !== '',
             'trust_proxy_https' => ELITE_CODEX_TRUST_PROXY_HTTPS,
             'v1_request_ttl_seconds' => ELITE_CODEX_V1_REQUEST_TTL_SECONDS,
+        ],
+        'dentrix_bridge' => [
+            'worker_url_configured' => ELITE_DENTRIX_WORKER_URL !== '',
+            'secret_configured' => ELITE_DENTRIX_BRIDGE_SECRET !== '',
         ],
         'smtp' => [
             'host' => SMTP_HOST,

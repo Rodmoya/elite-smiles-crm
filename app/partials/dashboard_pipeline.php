@@ -41,10 +41,12 @@ $financingOptionLabels = function_exists('lead_financing_option_labels') ? lead_
 
 require_once dirname(__DIR__) . '/leads/lead_playbooks.php';
 require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
+require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 
 $smsTemplateOptions = function_exists('lead_playbook_sms_templates') ? lead_playbook_sms_templates() : [];
 $schedulingQuestions = function_exists('lead_playbook_scheduling_questions') ? lead_playbook_scheduling_questions() : [];
 $pipelineNotificationSeed = function_exists('elite_ai_notification_rows') ? elite_ai_notification_rows(5) : [];
+$dentrixCalendarSlots = $dentrixCalendarSlots ?? (function_exists('dentrix_bridge_calendar_slots') ? dentrix_bridge_calendar_slots() : []);
 
 
 $serviceNeededOptions = [
@@ -2803,6 +2805,7 @@ $consultationOptions = [
     const smsTemplates = <?= json_encode($smsTemplateOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const stageLabelMap = <?= json_encode($legacyStageMap) ?>;
     const pipelineNotificationSeed = <?= json_encode($pipelineNotificationSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const dentrixCalendarSlots = <?= json_encode($dentrixCalendarSlots, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const importLeadsButton = document.getElementById('open-import-leads-picker');
     const importLeadsFileInput = document.getElementById('import-leads-file');
     const importLeadsStatus = document.getElementById('import-leads-status');
@@ -3326,10 +3329,43 @@ $consultationOptions = [
                 name: card.dataset.leadName || 'Lead',
                 stage: card.dataset.leadStageLabel || 'Lead',
                 preferredContact: card.dataset.leadPreferredContact || '',
+                source: (card.dataset.leadDentrixAppointmentKey || card.dataset.leadAppointmentSource === 'dentrix') ? 'dentrix_lead' : 'crm_lead',
+                isDentrix: !!(card.dataset.leadDentrixAppointmentKey || card.dataset.leadAppointmentSource === 'dentrix'),
+                isExternalBlock: false,
                 date: parsed,
                 slotIndex,
                 phone: card.dataset.leadPhone || '',
                 timeLabel: formatAppointmentForCard(rawDate),
+                slotLabel: slots[Math.max(0, Math.min(slots.length - 1, slotIndex || 0))]?.label || '',
+            });
+        });
+
+        (Array.isArray(dentrixCalendarSlots) ? dentrixCalendarSlots : []).forEach((slot) => {
+            const parsed = parseConsultationDate(slot.startAt || slot.start_at || '');
+            if (!parsed) return;
+            const leadId = String(slot.leadId || slot.crm_lead_id || '');
+            if (leadId && safeCardLookupById(leadId)) {
+                return;
+            }
+
+            const dateKey = toDateKey(calendarDayStart(parsed));
+            const slotIndex = calendarSlotMinutesIndex(parsed);
+            if (!byDate.has(dateKey)) {
+                byDate.set(dateKey, []);
+            }
+
+            byDate.get(dateKey).push({
+                leadId,
+                name: slot.patientName || slot.title || 'Dentrix occupied',
+                stage: 'Dentrix',
+                preferredContact: slot.operatory || slot.provider || '',
+                source: slot.externalBlock ? 'dentrix_external' : 'dentrix_lead',
+                isDentrix: true,
+                isExternalBlock: !!slot.externalBlock,
+                date: parsed,
+                slotIndex,
+                phone: '',
+                timeLabel: formatAppointmentForCard(slot.startAt || slot.start_at || ''),
                 slotLabel: slots[Math.max(0, Math.min(slots.length - 1, slotIndex || 0))]?.label || '',
             });
         });
@@ -3402,7 +3438,7 @@ $consultationOptions = [
                         const body = dayItem.entries.map((entry) => `
                             <button
                                 type="button"
-                                class="mb-1 inline-flex w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-[11px]"
+                                class="mb-1 inline-flex w-full rounded-lg border ${entry.isExternalBlock ? 'border-slate-200 bg-slate-100 text-slate-600' : (entry.isDentrix ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-blue-50 text-blue-900')} px-2 py-1 text-left text-[11px]"
                                 data-calendar-lead-id="${entry.leadId}"
                             >
                                 <span class="truncate">${entry.timeLabel} · ${entry.name}</span>
@@ -3462,7 +3498,7 @@ $consultationOptions = [
                                         ${dayEntries.map((entry) => `
                                             <button
                                                 type="button"
-                                                class="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-[11px]"
+                                                class="w-full rounded-lg border ${entry.isExternalBlock ? 'border-slate-200 bg-slate-100 text-slate-600' : (entry.isDentrix ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-blue-50 text-blue-900')} px-2 py-1 text-left text-[11px]"
                                                 data-calendar-lead-id="${entry.leadId}"
                                             >
                                                 ${entry.name}
@@ -3495,7 +3531,7 @@ $consultationOptions = [
                                         ? rows.map((entry) => `
                                             <button
                                                 type="button"
-                                                class="inline-flex w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-sm"
+                                                class="inline-flex w-full rounded-lg border ${entry.isExternalBlock ? 'border-slate-200 bg-slate-100 text-slate-600' : (entry.isDentrix ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-blue-50 text-blue-900')} px-2 py-1 text-left text-sm"
                                                 data-calendar-lead-id="${entry.leadId}"
                                             >
                                                 <span class="font-semibold">${entry.timeLabel}</span>

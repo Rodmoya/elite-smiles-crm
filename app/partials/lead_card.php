@@ -224,6 +224,13 @@ $leadSchedulingPreferredDay = lead_card_value($lead, 'scheduling_preferred_day')
 $leadSchedulingPreferredTime = lead_card_value($lead, 'scheduling_preferred_time');
 $leadFollowUpStatus = lead_card_value($lead, 'follow_up_status', 'not_checked');
 $leadLastFollowUpCheckAt = lead_card_value($lead, 'last_follow_up_check_at');
+$leadDentrixSyncStatus = lead_card_value($lead, 'dentrix_sync_status');
+$leadDentrixPatientKey = lead_card_value($lead, 'dentrix_patient_key');
+$leadDentrixAppointmentKey = lead_card_value($lead, 'dentrix_appointment_key');
+$leadLastDentrixSyncAt = lead_card_value($lead, 'last_dentrix_sync_at');
+$leadAppointmentSource = lead_card_value($lead, 'appointment_source');
+$leadOccupiedSlotType = lead_card_value($lead, 'occupied_slot_type');
+$leadExternalCalendarBlock = lead_card_value($lead, 'external_calendar_block', '0');
 
 $financingOptionLabels = function_exists('lead_financing_option_labels') ? lead_financing_option_labels() : [];
 $leadFinancingOptionLabel = $financingOptionLabels[$leadFinancingOption]
@@ -246,6 +253,7 @@ $lastTouchLabel = $leadLastInboundAt !== ''
     : ($leadLastOutboundAt !== '' ? 'Texted ' . lead_card_short_datetime($leadLastOutboundAt) : '');
 $nextFollowUpLabel = $leadNextFollowUpAt !== '' ? 'Due ' . lead_card_short_datetime($leadNextFollowUpAt) : '';
 $appointmentLabel = $leadConsultationDate !== '' ? lead_card_appointment_datetime($leadConsultationDate) : '';
+$appointmentIsDentrix = $leadDentrixAppointmentKey !== '' || strtolower($leadAppointmentSource) === 'dentrix';
 
 $missingFields = [];
 if ($leadName === '' || strtolower($leadName) === 'unnamed lead') $missingFields[] = 'Name';
@@ -394,6 +402,13 @@ if ($leadHasBadPhone) {
     data-lead-scheduling-preferred-time="<?= e($leadSchedulingPreferredTime) ?>"
     data-lead-follow-up-status="<?= e($leadFollowUpStatus) ?>"
     data-lead-last-follow-up-check-at="<?= e($leadLastFollowUpCheckAt) ?>"
+    data-lead-dentrix-sync-status="<?= e($leadDentrixSyncStatus) ?>"
+    data-lead-dentrix-patient-key="<?= e($leadDentrixPatientKey) ?>"
+    data-lead-dentrix-appointment-key="<?= e($leadDentrixAppointmentKey) ?>"
+    data-lead-last-dentrix-sync-at="<?= e($leadLastDentrixSyncAt) ?>"
+    data-lead-appointment-source="<?= e($leadAppointmentSource) ?>"
+    data-lead-occupied-slot-type="<?= e($leadOccupiedSlotType) ?>"
+    data-lead-external-calendar-block="<?= e($leadExternalCalendarBlock) ?>"
 >
     <div class="border-b border-slate-100 pb-2">
         <div class="flex min-w-0 items-start gap-2">
@@ -494,10 +509,10 @@ if ($leadHasBadPhone) {
     </div>
 
     <?php if ($appointmentLabel !== ''): ?>
-        <div class="lead-card-appointment-preview mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
-            <p class="truncate text-[11px] font-semibold text-emerald-800">Appt: <?= e($appointmentLabel) ?></p>
+        <div class="lead-card-appointment-preview mt-2 rounded-lg border <?= $appointmentIsDentrix ? 'border-emerald-200 bg-emerald-50' : 'border-blue-200 bg-blue-50' ?> px-2.5 py-1.5">
+            <p class="truncate text-[11px] font-semibold <?= $appointmentIsDentrix ? 'text-emerald-800' : 'text-blue-800' ?>">Appt: <?= e($appointmentLabel) ?><?= $appointmentIsDentrix ? ' · Dentrix' : '' ?></p>
             <?php if ($leadConversionStageKey === 'consultation_booked' || $leadConversionStageKey === 'consult_completed'): ?>
-                <p class="mt-0.5 truncate text-[10px] font-medium text-emerald-700">
+                <p class="mt-0.5 truncate text-[10px] font-medium <?= $appointmentIsDentrix ? 'text-emerald-700' : 'text-blue-700' ?>">
                     <?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?>
                     <?php if ($leadDateOfBirth === ''): ?> - Needs DOB<?php endif; ?>
                     <?php if ($leadEmail === ''): ?> - Missing email<?php endif; ?>

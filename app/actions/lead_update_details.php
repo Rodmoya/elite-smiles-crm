@@ -149,6 +149,7 @@ require_once dirname(__DIR__) . '/leads/lead_service.php';
 
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
+require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 
 if (!function_exists('auth_check')) {
     lead_update_json_response(500, [
@@ -605,7 +606,17 @@ try {
             ]
         );
     }
-    lead_update_json_response(200, [
+    $dentrixBridge = null;
+    if ($consultationStatus === 'scheduled' && $consultationDate !== null && function_exists('dentrix_bridge_create_schedule_job')) {
+        $currentUser = auth_user();
+        $dentrixBridge = dentrix_bridge_create_schedule_job($leadId, [
+            'created_by' => (string)($currentUser['name'] ?? $currentUser['email'] ?? 'CRM'),
+            'consultation_date' => $consultationDate,
+            'date_of_birth' => $dateOfBirth,
+        ]);
+    }
+
+    lead_update_json_response(200, [
         'ok' => true,
         'message' => 'Lead details saved.',
         'lead_id' => $leadId,
@@ -622,8 +633,10 @@ try {
 
         'sms_opt_status' => $smsOptStatus,
 
+        'dentrix_bridge' => $dentrixBridge,
+
         'updated_fields' => array_keys($params),
-    ]);
+    ]);
 } catch (Throwable $e) {
     lead_update_json_response(500, [
         'ok' => false,

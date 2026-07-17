@@ -15,9 +15,11 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/leads/lead_meta.php';
 require_once __DIR__ . '/app/leads/lead_service.php';
 require_once __DIR__ . '/app/leads/lead_communications.php';
+require_once __DIR__ . '/app/dentrix/dentrix_bridge.php';
 
 require_auth();
 lead_comm_ensure_schema();
+dentrix_bridge_ensure_schema();
 
 if (!function_exists('lead_pipeline_version_snapshot')) {
     function lead_pipeline_version_snapshot(): array
@@ -69,6 +71,7 @@ $stageMap = function_exists('lead_pipeline_display_stage_map') ? lead_pipeline_d
 $pipelineCounts = lead_pipeline_counts();
 $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
+$dentrixCalendarSlots = dentrix_bridge_calendar_slots();
 $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
 ?>
 <!DOCTYPE html>

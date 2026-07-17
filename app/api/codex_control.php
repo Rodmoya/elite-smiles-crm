@@ -18,8 +18,12 @@ require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
 require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
 require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
+require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
+if (function_exists('dentrix_bridge_ensure_schema')) {
+    dentrix_bridge_ensure_schema();
+}
 if (defined('ELITE_CODEX_API_V1') && ELITE_CODEX_API_V1) {
     require_once dirname(__DIR__) . '/core/codex_api_security.php';
 }
@@ -302,6 +306,9 @@ if (!function_exists('codex_api_public_lead_fields')) {
             'last_inbound_at', 'last_outbound_at', 'unread_message_count',
             'next_follow_up_at', 'date_of_birth', 'scheduling_preferred_day',
             'scheduling_preferred_time', 'follow_up_status', 'last_follow_up_check_at',
+            'dentrix_sync_status', 'dentrix_patient_key', 'dentrix_appointment_key',
+            'last_dentrix_sync_at', 'appointment_source', 'occupied_slot_type',
+            'external_calendar_block',
             'created_at', 'updated_at',
         ];
     }
@@ -788,7 +795,9 @@ if (!function_exists('codex_api_merge_leads')) {
             'assigned_to', 'financing_needed', 'financing_option', 'consultation_status',
             'consultation_date', 'lead_value', 'lost_reason', 'next_follow_up_at',
             'date_of_birth', 'scheduling_preferred_day', 'scheduling_preferred_time',
-            'follow_up_status',
+            'follow_up_status', 'dentrix_sync_status', 'dentrix_patient_key',
+            'dentrix_appointment_key', 'last_dentrix_sync_at', 'appointment_source',
+            'occupied_slot_type', 'external_calendar_block',
         ];
 
         $updates = [];

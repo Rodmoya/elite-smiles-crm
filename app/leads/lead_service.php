@@ -744,6 +744,13 @@ if (!function_exists('lead_pipeline_rows')) {
             'scheduling_preferred_time',
             'follow_up_status',
             'last_follow_up_check_at',
+            'dentrix_sync_status',
+            'dentrix_patient_key',
+            'dentrix_appointment_key',
+            'last_dentrix_sync_at',
+            'appointment_source',
+            'occupied_slot_type',
+            'external_calendar_block',
             'pipeline_position',
             'created_at',
             'updated_at'

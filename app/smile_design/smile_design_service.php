@@ -1799,6 +1799,31 @@ function smile_design_patient_preview_version(int $caseId): ?array
     return db_one("SELECT * FROM smile_after_versions WHERE case_id = :case_id AND archived = 0 AND approved_for_patient_preview = 1 ORDER BY selected_by_doctor DESC, id DESC LIMIT 1", ['case_id' => $caseId]) ?: null;
 }
 
+function smile_design_patient_preview_share_version(int $caseId): ?array
+{
+    $frontApproved = db_one(
+        "SELECT *
+         FROM smile_after_versions
+         WHERE case_id = :case_id
+           AND archived = 0
+           AND approved_for_patient_preview = 1
+           AND photo_type = 'front'
+         ORDER BY selected_by_doctor DESC, id DESC
+         LIMIT 1",
+        ['case_id' => $caseId]
+    );
+    if ($frontApproved) {
+        return $frontApproved;
+    }
+
+    $frontSelected = smile_design_selected_after_version($caseId, 'front');
+    if ($frontSelected) {
+        return $frontSelected;
+    }
+
+    return smile_design_patient_preview_version($caseId) ?: smile_design_selected_after_version($caseId);
+}
+
 function smile_design_update_case_contact(int $caseId, array $data, ?int $userId = null): bool
 {
     $case = smile_design_case($caseId);

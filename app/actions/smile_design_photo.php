@@ -105,17 +105,23 @@ if ($variant === 'share' && $videoId <= 0 && str_starts_with($mime, 'image/') &&
     if ($sourceImage !== false) {
         $sourceWidth = imagesx($sourceImage);
         $sourceHeight = imagesy($sourceImage);
-        $maxSide = 900;
-        $scale = $sourceWidth > 0 && $sourceHeight > 0 ? min(1, $maxSide / max($sourceWidth, $sourceHeight)) : 1;
-        $targetWidth = max(1, (int)round($sourceWidth * $scale));
-        $targetHeight = max(1, (int)round($sourceHeight * $scale));
+        $targetWidth = 1200;
+        $targetHeight = 630;
         $targetImage = imagecreatetruecolor($targetWidth, $targetHeight);
         if ($targetImage !== false) {
-            $white = imagecolorallocate($targetImage, 255, 255, 255);
-            imagefill($targetImage, 0, 0, $white);
-            imagecopyresampled($targetImage, $sourceImage, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+            $background = imagecolorallocate($targetImage, 248, 247, 244);
+            imagefill($targetImage, 0, 0, $background);
+
+            $maxImageWidth = 1120;
+            $maxImageHeight = 590;
+            $scale = $sourceWidth > 0 && $sourceHeight > 0 ? min($maxImageWidth / $sourceWidth, $maxImageHeight / $sourceHeight) : 1;
+            $renderWidth = max(1, (int)round($sourceWidth * $scale));
+            $renderHeight = max(1, (int)round($sourceHeight * $scale));
+            $renderX = (int)floor(($targetWidth - $renderWidth) / 2);
+            $renderY = (int)floor(($targetHeight - $renderHeight) / 2);
+            imagecopyresampled($targetImage, $sourceImage, $renderX, $renderY, 0, 0, $renderWidth, $renderHeight, $sourceWidth, $sourceHeight);
             ob_start();
-            imagejpeg($targetImage, null, 82);
+            imagejpeg($targetImage, null, 88);
             $thumbBytes = (string)ob_get_clean();
             imagedestroy($targetImage);
             imagedestroy($sourceImage);

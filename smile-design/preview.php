@@ -15,6 +15,7 @@ smile_design_record_preview_view($link, $token);
 $caseId = (int)$link['case_id'];
 $photos = smile_design_case_photos($caseId);
 $approvedAfter = smile_design_patient_preview_version((int)$link['case_id']);
+$shareAfter = smile_design_patient_preview_share_version((int)$link['case_id']);
 $primaryBefore = smile_design_primary_before_photo($caseId);
 $displayBeforePhoto = smile_design_find_before_photo_by_type($caseId, 'front', true) ?: $primaryBefore;
 $selectedAfter = smile_design_selected_after_version($caseId);
@@ -84,16 +85,13 @@ $previewFirstName = $rawFirstName !== '' ? $rawFirstName : 'Your';
 $readyMessage = $previewFirstName . ', your before and after Smile is ready';
 $shareTitle = $readyMessage;
 $shareDescription = 'Open your private Elite Smiles consultation preview.';
-$shareImageUrl = $afterUrl !== '' ? $afterUrl : $beforeUrl;
+$shareImageUrl = $shareAfter ? smile_design_after_url((int)$shareAfter['id'], $token) : ($afterUrl !== '' ? $afterUrl : $beforeUrl);
 if ($shareImageUrl !== '') {
     $shareImageUrl .= (str_contains($shareImageUrl, '?') ? '&' : '?') . 'variant=share';
 }
-$sourceImageWidth = $displayAfter ? (int)($displayAfter['width'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['width'] ?? 0) : 0);
-$sourceImageHeight = $displayAfter ? (int)($displayAfter['height'] ?? 0) : ($frontViewerPhoto ? (int)($frontViewerPhoto['height'] ?? 0) : 0);
 $shareImageMime = 'image/jpeg';
-$shareImageScale = $sourceImageWidth > 0 && $sourceImageHeight > 0 ? min(1, 900 / max($sourceImageWidth, $sourceImageHeight)) : 1;
-$shareImageWidth = $sourceImageWidth > 0 ? max(1, (int)round($sourceImageWidth * $shareImageScale)) : 0;
-$shareImageHeight = $sourceImageHeight > 0 ? max(1, (int)round($sourceImageHeight * $shareImageScale)) : 0;
+$shareImageWidth = 1200;
+$shareImageHeight = 630;
 $canonicalPreviewUrl = smile_design_preview_link_url($link) ?: base_url('smile-design/preview/' . rawurlencode($token));
 $practicePhone = '(801) 572-6262';
 $practiceEmail = 'elitesmilesutah@gmail.com';

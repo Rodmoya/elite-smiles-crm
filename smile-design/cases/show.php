@@ -33,6 +33,18 @@ $activePreviewLink = smile_design_active_preview_link($caseId);
 $activePreviewUrl = $activePreviewLink ? smile_design_preview_link_url($activePreviewLink) : null;
 $hasLegacyActivePreview = $activePreviewLink && !$activePreviewUrl;
 $activePreviewQrUrl = $activePreviewUrl ? 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=' . rawurlencode($activePreviewUrl) : null;
+$previewShareAfter = smile_design_patient_preview_share_version($caseId);
+$activePreviewShareImageUrl = ($activePreviewUrl && $previewShareAfter)
+    ? smile_design_after_url((int)$previewShareAfter['id'], (string)($activePreviewLink['token_plaintext'] ?? '')) . '&variant=share'
+    : '';
+$caseFirstNameForShare = trim((string)($case['first_name'] ?? ''));
+if ($caseFirstNameForShare === '') {
+    $caseFirstNameForShare = trim(strtok(trim((string)($case['patient_name'] ?? '')), ' ') ?: '');
+}
+$caseFirstNameForShare = $caseFirstNameForShare !== '' ? $caseFirstNameForShare : 'there';
+$activePreviewMessage = $activePreviewUrl
+    ? 'Hi ' . $caseFirstNameForShare . ', your Elite Smiles before-and-after smile preview is ready:' . "\n" . $activePreviewUrl
+    : '';
 $activity = smile_design_case_activity($caseId, 20);
 $caseAnalysis = smile_design_case_analysis($caseId);
 $caseProcedureMode = smile_design_procedure_mode((string)($case['procedure_interest'] ?? ''));
@@ -959,6 +971,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             </div>
                             <div class="mt-3 flex flex-wrap gap-2">
                                 <a class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white" href="<?= e($activePreviewUrl) ?>" target="_blank" rel="noopener">Open Preview</a>
+                                <button type="button" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" data-copy-target="active-preview-message">Copy Patient Message</button>
                                 <form method="POST" action="<?= e(base_url('app/actions/smile_design_preview_link.php')) ?>" class="inline">
                                     <?= csrf_input() ?>
                                     <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
@@ -967,6 +980,13 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <button class="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700" type="submit" >Delete Link</button>
                                 </form>
                             </div>
+                            <textarea id="active-preview-message" readonly class="sr-only"><?= e($activePreviewMessage) ?></textarea>
+                            <?php if ($activePreviewShareImageUrl): ?>
+                                <div class="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                                    <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">iPhone link preview image</p>
+                                    <img class="mt-2 aspect-[1200/630] w-full rounded-md border border-slate-200 bg-stone-100 object-contain" src="<?= e($activePreviewShareImageUrl) ?>" alt="Patient preview share image">
+                                </div>
+                            <?php endif; ?>
                             <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                                 <div>Views: <span class="font-semibold text-slate-700"><?= e((string)($activePreviewLink['view_count'] ?? 0)) ?></span></div>
                                 <div>Expires: <span class="font-semibold text-slate-700"><?= e(!empty($activePreviewLink['expires_at']) ? format_datetime((string)$activePreviewLink['expires_at']) : 'No expiry') ?></span></div>

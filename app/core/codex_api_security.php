@@ -183,6 +183,7 @@ if (!function_exists('codex_security_action_scopes')) {
             'mark_notification_reviewed' => ['leads:write'],
             'move_stage' => ['stages:write'],
             'send_sms' => ['messages:send'],
+            'send_internal_sms' => ['messages:send'],
             'send_email' => ['messages:send'],
             'follow_up_lead' => ['messages:send'],
             'operator_follow_up' => ['messages:send'],

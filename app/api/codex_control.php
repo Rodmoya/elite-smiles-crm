@@ -21,6 +21,7 @@ require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
 require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
+require_once dirname(__DIR__) . '/notifications/internal_sms.php';
 if (function_exists('dentrix_bridge_ensure_schema')) {
     dentrix_bridge_ensure_schema();
 }
@@ -358,10 +359,11 @@ if (!function_exists('codex_api_capabilities')) {
                 'create_lead', 'import_meta_leads', 'add_note',
                 'mark_notification_reviewed', 'update_lead', 'move_stage',
                 'prepare_sms_followup', 'draft_email', 'send_sms',
-                'send_email', 'merge_leads',
+                'send_email', 'send_internal_sms', 'merge_leads',
             ],
             'approval_required' => [
                 'send_sms' => ['send_approved' => true],
+                'send_internal_sms' => ['send_approved' => true],
                 'send_email' => ['send_approved' => true],
                 'move_stage' => ['stage_approved' => true],
             ],
@@ -2008,6 +2010,53 @@ try {
         }
         lead_comm_update_rollup($leadId);
         codex_api_response(['ok' => true, 'message' => 'Email sent and logged.', 'lead_id' => $leadId, 'email_id' => (int)($result['email_id'] ?? 0), 'thread' => codex_api_timeline($leadId)]);
+    }
+
+    if ($action === 'send_internal_sms') {
+        $recipientKey = trim((string) codex_api_value('recipient_key', ''));
+        $message = trim((string) codex_api_value('message', codex_api_value('body', '')));
+
+        if ($recipientKey === '') {
+            codex_api_response(['ok' => false, 'message' => 'recipient_key is required.'], 422);
+        }
+        if ($message === '') {
+            codex_api_response(['ok' => false, 'message' => 'Message cannot be empty.'], 422);
+        }
+        if (!codex_api_has_explicit_send_approval(codex_api_body())) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Internal SMS send blocked until explicit send approval is provided.',
+                'approval_required' => 'send_approved',
+            ], 409);
+        }
+
+        $recipient = internal_sms_find_recipient($recipientKey);
+        if (!$recipient) {
+            codex_api_response(['ok' => false, 'message' => 'Internal SMS recipient was not found.'], 404);
+        }
+        if (empty($recipient['enabled'])) {
+            codex_api_response(['ok' => false, 'message' => 'Internal SMS recipient is disabled.'], 409);
+        }
+
+        $result = internal_sms_send($recipient, $message, 0);
+        if (empty($result['ok'])) {
+            codex_api_response([
+                'ok' => false,
+                'message' => (string)($result['message'] ?? 'Internal SMS failed.'),
+                'recipient_key' => $recipientKey,
+                'status_code' => $result['status_code'] ?? null,
+            ], 502);
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'message' => 'Internal SMS sent.',
+            'recipient_key' => $recipientKey,
+            'recipient_name' => (string)($recipient['name'] ?? ''),
+            'to' => (string)($result['to'] ?? ''),
+            'twilio_sid' => (string)($result['twilio_sid'] ?? ''),
+            'twilio_status' => (string)($result['twilio_status'] ?? ''),
+        ]);
     }
 
     if ($action === 'send_sms') {

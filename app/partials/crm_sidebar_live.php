@@ -28,6 +28,7 @@ $crmNavItems = [
     ['key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php'), 'icon' => 'M12 21s7-4.4 7-11a7 7 0 0 0-14 0c0 6.6 7 11 7 11zM9 10h6M12 7v6', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : false],
     ['key' => 'social_studio', 'label' => 'Social Studio', 'href' => base_url('social-studio.php'), 'icon' => 'M4 5h16v14H4zM8 9h8M8 13h5M16 17l4 4M17 14h3v3', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : true],
     ['key' => 'landing_pages', 'label' => 'Landing Pages', 'href' => base_url('landing_pages.php'), 'icon' => 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14H4V5zm4 3h8M8 12h8M8 16h5', 'show' => true],
+    ['key' => 'settings', 'label' => 'Settings', 'href' => base_url('crm-settings.php'), 'icon' => 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 12h2m12 0h2M12 4v2m0 12v2M6.3 6.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4m-8.6 8.6-1.4 1.4', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager') : false],
     ['key' => 'users', 'label' => 'Users', 'href' => base_url('users.php'), 'icon' => 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', 'show' => function_exists('auth_has_role') ? auth_has_role('admin') : false],
 ];
 $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): bool => !empty($item['show'])));

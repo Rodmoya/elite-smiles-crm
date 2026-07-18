@@ -872,6 +872,13 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
     function lead_ai_default_new_lead_sms(array $lead): string
     {
         $firstName = function_exists('lead_email_first_name') ? lead_email_first_name($lead) : '';
+        $notes = strtolower((string)($lead['notes'] ?? ''));
+        $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
+        if ($prefersSpanish) {
+            $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
+            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos sobre tu consulta de sonrisa. Ofrecemos una consulta gratis con Dr. Meden para revisar opciones y financiamiento. Que dia/hora te funciona mejor? Responde STOP para cancelar.';
+        }
+
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
 
         return $greeting . ' this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. We offer a complimentary consultation with Dr. Meden to review options and financing. What day/time works best for you? Reply STOP to opt out.';

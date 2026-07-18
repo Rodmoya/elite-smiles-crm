@@ -62,6 +62,7 @@ if (!function_exists('lp_handle_standard_post')) {
         $sf['financing_needed']   = trim((string) post('financing_needed', 'unsure'));
         $sf['preferred_contact']  = trim((string) post('preferred_contact'));
         $sf['sms_consent']        = post('sms_consent') === 'yes' ? 'yes' : '';
+        $sf['preferred_language']  = strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
 
         foreach ($ctx['quizSteps'] as $step) {
             $field = (string) ($step['field'] ?? '');
@@ -130,6 +131,7 @@ if (!function_exists('lp_handle_standard_post')) {
             $notes[] = 'Preferred contact: ' . $sf['preferred_contact'];
         }
         $notes[] = 'SMS consent: ' . ($sf['sms_consent'] === 'yes' ? 'yes' : 'no');
+        $notes[] = 'Preferred language: ' . ($sf['preferred_language'] === 'es' ? 'Spanish' : 'English');
         if ($notesContactWarning !== '') {
             $notes[] = $notesContactWarning;
         }
@@ -167,7 +169,9 @@ if (!function_exists('lp_handle_standard_post')) {
         lp_send_notifications($leadId, $fullName, $sf, $ctx, $notes);
 
         $result['success']        = true;
-        $result['successMessage'] = 'Thank you - we received your information. Rod with Elite Smiles will text or call you shortly.';
+        $result['successMessage'] = $sf['preferred_language'] === 'es'
+            ? 'Gracias - recibimos tu informacion. Rod de Elite Smiles te contactara pronto por texto o llamada.'
+            : 'Thank you - we received your information. Rod with Elite Smiles will text or call you shortly.';
         $result['submittedLeadId']= $leadId;
         $result['standardForm']   = lp_empty_standard_form($ctx['procedureLabel']);
         $result['detailsUrl']     = lp_post_submit_details_url($ctx, $leadId);
@@ -231,6 +235,7 @@ if (!function_exists('lp_handle_voucher_post')) {
         $vf['what_brings_you_in']= trim((string) post('what_brings_you_in'));
         $vf['start_timing']     = trim((string) post('start_timing'));
         $vf['preferred_contact']= trim((string) post('preferred_contact'));
+        $vf['preferred_language']= strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
 
         if ($vf['full_name'] === '') throw new RuntimeException('Please enter your full name.');
         if ($vf['phone'] === '')     throw new RuntimeException('Please enter your phone number.');
@@ -260,6 +265,7 @@ if (!function_exists('lp_handle_voucher_post')) {
             'What brings you in: ' . $vf['what_brings_you_in'],
             'When to start: '  . $vf['start_timing'],
             'Preferred contact: ' . $vf['preferred_contact'],
+            'Preferred language: ' . ($vf['preferred_language'] === 'es' ? 'Spanish' : 'English'),
         ];
         if ($ctx['queryCampaign']) $notes[] = 'Campaign: ' . $ctx['queryCampaign'];
         if ($ctx['queryKeyword'])  $notes[] = 'Trigger keyword: ' . $ctx['queryKeyword'];

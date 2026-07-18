@@ -182,6 +182,27 @@ if (!function_exists('lead_email_default_first_touch')) {
     function lead_email_default_first_touch(array $lead): array
     {
         $firstName = lead_email_first_name($lead);
+        $notes = strtolower((string)($lead['notes'] ?? ''));
+        $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
+        if ($prefersSpanish) {
+            $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
+            $procedure = trim((string)($lead['procedure_interest'] ?? ''));
+            $serviceLine = $procedure !== ''
+                ? 'Queria asegurarme de dar seguimiento a tu solicitud de consulta sobre ' . $procedure . '.'
+                : 'Queria asegurarme de dar seguimiento a tu solicitud de consulta de sonrisa.';
+
+            return [
+                'subject' => 'Seguimiento de tu consulta con Elite Smiles',
+                'body' => implode("\n\n", [
+                    $greeting,
+                    $serviceLine,
+                    'La consulta con Dr. Meden es gratis. Nos da la oportunidad de evaluar tu caso, revisar tus opciones y hablar sobre precio y financiamiento segun lo que realmente necesitas. Puede haber opciones al 0% para pacientes calificados.',
+                    'Te funciona mejor venir en la manana o en la tarde?',
+                    "Con gusto,\nEl equipo de Elite Smiles",
+                ]),
+            ];
+        }
+
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
         $procedure = trim((string)($lead['procedure_interest'] ?? ''));
         $serviceLine = $procedure !== ''

@@ -105,6 +105,16 @@ $textBlockSections = [
                 >
             </a>
 
+            <div class="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center">
+                <div class="inline-flex w-full items-center justify-center rounded-full border border-eliteBorder bg-white p-1 text-xs font-semibold uppercase tracking-[0.08em] shadow-sm sm:w-auto">
+                    <button type="button" data-language-toggle="en" aria-pressed="true" class="rounded-full bg-eliteInk px-3 py-1.5 text-white transition">
+                        English
+                    </button>
+                    <button type="button" data-language-toggle="es" aria-pressed="false" class="rounded-full bg-white px-3 py-1.5 text-eliteInk transition">
+                        Español
+                    </button>
+                </div>
+
             <?php if (!$miniLandingGate && !$submittedDetailsView): ?>
                 <button
                     type="button"
@@ -115,6 +125,7 @@ $textBlockSections = [
                     <?= e((string) ($landingView['header_cta_text'] ?? 'Reserve Your Private Consultation')) ?>
                 </button>
             <?php endif; ?>
+            </div>
         </div>
     </header>
 
@@ -213,6 +224,7 @@ $textBlockSections = [
     })();
     </script>
 <?php endif; ?>
+<?php require dirname(__DIR__) . '/partials/bilingual-toggle.php'; ?>
 <?php if ($detailsUrl !== ''): ?>
     <script>
     window.setTimeout(function () {

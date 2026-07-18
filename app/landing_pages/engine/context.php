@@ -179,6 +179,7 @@ if (!function_exists('lp_build_context')) {
         $queryMetaCampaignId = (string) ($runtime['queryMetaCampaignId'] ?? lp_context_query_value('campaign_id', 'utm_campaign_id'));
         $queryMetaPlacement = (string) ($runtime['queryMetaPlacement'] ?? lp_context_query_value('placement', 'utm_placement'));
         $queryEventId = (string) ($runtime['queryEventId'] ?? lp_context_query_value('event_id', 'conversion_event_id'));
+        $submittedLeadId = (string) ($runtime['submittedLeadId'] ?? lp_context_query_value('lead_id', 'submitted_lead_id'));
         $detailsMode = lp_context_query_value('details', 'show_details') === '1';
         $submittedDetailsView = lp_context_query_value('submitted') === '1';
         $miniLandingGate = $slug === 'veneers-draper-v1' && !$detailsMode;
@@ -256,6 +257,7 @@ if (!function_exists('lp_build_context')) {
             'queryMetaCampaignId' => $queryMetaCampaignId,
             'queryMetaPlacement' => $queryMetaPlacement,
             'queryEventId' => $queryEventId,
+            'submittedLeadId' => $submittedLeadId,
             'detailsMode' => $detailsMode,
             'submittedDetailsView' => $submittedDetailsView,
             'miniLandingGate' => $miniLandingGate,

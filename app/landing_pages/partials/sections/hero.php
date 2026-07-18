@@ -88,10 +88,6 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
                         <?php if (!is_scalar($attrValue)) continue; ?>
                         <input type="hidden" name="<?= e((string) $attrName) ?>" value="<?= e((string) $attrValue) ?>">
                     <?php endforeach; ?>
-                    <input type="hidden" name="fbp" value="">
-                    <input type="hidden" name="fbc" value="">
-                    <input type="hidden" name="fbclid" value="">
-                    <input type="hidden" name="event_id" value="">
                     <input type="hidden" name="procedure_interest" value="<?= e($quickProcedureLabel) ?>">
                     <?php foreach ($quickQuizSteps as $quickStep): ?>
                         <?php $quickField = (string) ($quickStep['field'] ?? ''); ?>

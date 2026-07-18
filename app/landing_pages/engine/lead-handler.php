@@ -87,6 +87,7 @@ if (!function_exists('lp_handle_standard_post')) {
         } else {
             $notesContactWarning = '';
         }
+        $smsOptStatus = $sf['sms_consent'] === 'yes' ? 'opted_in' : 'unknown';
 
         $fullName = trim($sf['first_name'] . ' ' . $sf['last_name']);
 
@@ -147,9 +148,11 @@ if (!function_exists('lp_handle_standard_post')) {
             'financing_needed'   => $sf['financing_needed'],
             'financing_option'   => 'none',
             'lead_value'         => '15000',
+            'sms_opt_status'     => $smsOptStatus,
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
             'suppress_notification_email' => true,
+            'suppress_first_touch_sms' => $sf['sms_consent'] !== 'yes',
         ];
 
         $crmResult = lead_create_minimal($leadPayload, []);
@@ -167,7 +170,7 @@ if (!function_exists('lp_handle_standard_post')) {
         $result['successMessage'] = 'Thank you - we received your information. Rod with Elite Smiles will text or call you shortly.';
         $result['submittedLeadId']= $leadId;
         $result['standardForm']   = lp_empty_standard_form($ctx['procedureLabel']);
-        $result['detailsUrl']     = lp_post_submit_details_url($ctx);
+        $result['detailsUrl']     = lp_post_submit_details_url($ctx, $leadId);
         return $result;
     }
 
@@ -175,7 +178,7 @@ if (!function_exists('lp_handle_standard_post')) {
 
 if (!function_exists('lp_post_submit_details_url')) {
 
-    function lp_post_submit_details_url(array $ctx): string
+    function lp_post_submit_details_url(array $ctx, string $leadId = ''): string
     {
         $base = rtrim((string) APP_URL, '/') . '/l/' . rawurlencode((string) $ctx['slug']);
         $params = [
@@ -186,6 +189,10 @@ if (!function_exists('lp_post_submit_details_url')) {
             'utm_campaign' => $ctx['queryCampaign'] ?: $ctx['slug'],
             'utm_content' => $ctx['queryType'] ?: 'quick_lead_form',
         ];
+        if (trim($leadId) !== '') {
+            $params['lead_id'] = trim($leadId);
+            $params['conversion'] = 'lead';
+        }
 
         foreach ([
             'utm_term' => 'queryKeyword',
@@ -282,9 +289,11 @@ if (!function_exists('lp_handle_voucher_post')) {
             'financing_needed'   => 'unsure',
             'financing_option'   => 'none',
             'lead_value'         => '15000',
+            'sms_opt_status'     => 'unknown',
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
             'suppress_notification_email' => true,
+            'suppress_first_touch_sms' => true,
         ];
 
         $crmResult = lead_create_minimal($leadPayload, []);

@@ -49,10 +49,6 @@
             ?>
             <input type="hidden" name="<?= e((string) $attrName) ?>" value="<?= e((string) $attrValue) ?>">
             <?php endforeach; ?>
-            <input type="hidden" name="fbp" value="">
-            <input type="hidden" name="fbc" value="">
-            <input type="hidden" name="fbclid" value="">
-            <input type="hidden" name="event_id" value="">
 
             <!-- Hidden fields for all quiz answers -->
             <?php foreach ($quizSteps as $step):
@@ -367,26 +363,13 @@
                 procedure_type: proc,
                 form_type: activeForm.getAttribute('data-track-form') || 'lead_form'
             });
-            trackEvent('form_submitted', conversionPayload);
-            trackEvent(googleAdsConversionEvent || 'submit_lead_form', conversionPayload);
+            trackEvent('form_submit_attempt', conversionPayload);
         });
     });
 
     <?php lp_tracking_page_view($ctx ?? []); ?>
 
     refreshAttributionFields();
-
-    if (submittedLeadId) {
-        const successPayload = Object.assign({}, attribution, {
-            landing_page: slug,
-            procedure_type: proc,
-            lead_id: submittedLeadId
-        });
-        trackEvent('lead_success', successPayload);
-        if (googleAdsConversionSendTo && typeof gtag === 'function') {
-            gtag('event', 'conversion', Object.assign({}, successPayload, { send_to: googleAdsConversionSendTo }));
-        }
-    }
 
     updateStep();
 })();

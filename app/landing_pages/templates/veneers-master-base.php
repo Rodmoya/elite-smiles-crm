@@ -182,6 +182,34 @@ $textBlockSections = [
     (function () {
         <?php lp_tracking_js_fn(); ?>
         <?php lp_tracking_page_view($ctx ?? []); ?>
+        const attribution = <?= json_encode($attribution ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}' ?>;
+        const submittedLeadId = <?= json_encode((string) ($submittedLeadId ?? ''), JSON_UNESCAPED_SLASHES) ?>;
+        const slug = <?= json_encode((string) ($pageSlug ?? $slug ?? ''), JSON_UNESCAPED_SLASHES) ?>;
+        const proc = <?= json_encode((string) ($procedureKey ?? ''), JSON_UNESCAPED_SLASHES) ?>;
+        const googleAdsConversionEvent = <?= json_encode((string) ($googleAdsConversionEvent ?? ''), JSON_UNESCAPED_SLASHES) ?>;
+        const googleAdsConversionSendTo = <?= json_encode((string) ($googleAdsConversionSendTo ?? ''), JSON_UNESCAPED_SLASHES) ?>;
+
+        if (submittedLeadId) {
+            const dedupeKey = 'elite_lead_conversion_' + submittedLeadId;
+            if (!window.sessionStorage || sessionStorage.getItem(dedupeKey) !== '1') {
+                if (window.sessionStorage) {
+                    sessionStorage.setItem(dedupeKey, '1');
+                }
+                const successPayload = Object.assign({}, attribution, {
+                    landing_page: slug,
+                    procedure_type: proc,
+                    lead_id: submittedLeadId
+                });
+                trackEvent('lead_success', successPayload);
+                trackEvent('generate_lead', successPayload);
+                if (googleAdsConversionEvent) {
+                    trackEvent(googleAdsConversionEvent, successPayload);
+                }
+                if (googleAdsConversionSendTo && typeof gtag === 'function') {
+                    gtag('event', 'conversion', Object.assign({}, successPayload, { send_to: googleAdsConversionSendTo }));
+                }
+            }
+        }
     })();
     </script>
 <?php endif; ?>

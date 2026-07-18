@@ -1432,6 +1432,10 @@ if (!function_exists('lead_create_minimal')) {
         $data['lead_value'] = trim((string)($data['lead_value'] ?? ''));
         $data['lost_reason'] = trim((string)($data['lost_reason'] ?? ''));
         $data['notes'] = trim((string)($data['notes'] ?? ''));
+        $data['sms_opt_status'] = strtolower(trim((string)($data['sms_opt_status'] ?? 'unknown')));
+        if (!in_array($data['sms_opt_status'], ['unknown', 'opted_in', 'opted_out'], true)) {
+            $data['sms_opt_status'] = 'unknown';
+        }
 
         if (!lead_is_min_capture_complete($data)) {
             return ['ok' => false, 'message' => 'Please provide at least a name, phone, or email.', 'lead_id' => 0];
@@ -1567,6 +1571,7 @@ if (!function_exists('lead_create_minimal')) {
             'intent_type' => $data['intent_type'] !== '' ? $data['intent_type'] : null,
             'lead_value' => $leadValue,
             'lost_reason' => $data['lost_reason'] !== '' ? $data['lost_reason'] : null,
+            'sms_opt_status' => $data['sms_opt_status'],
             'notes' => $data['notes'],
             'pipeline_position' => lead_pipeline_next_position($data['status']),
             'created_at' => now(),

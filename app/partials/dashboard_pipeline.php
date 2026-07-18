@@ -3103,6 +3103,21 @@ $consultationOptions = [
         window.setTimeout(() => openLeadModal(item.card, item.tab || 'communications'), 350);
     }
 
+    function clearPipelineLeadDeepLink() {
+        if (!window.history || !window.history.replaceState) {
+            return;
+        }
+
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('lead_id')) {
+            return;
+        }
+
+        url.searchParams.delete('lead_id');
+        const query = url.searchParams.toString();
+        window.history.replaceState(window.history.state, document.title, url.pathname + (query ? '?' + query : '') + url.hash);
+    }
+
     function renderPipelineNotifications() {
         if (!pipelineNotificationsButton || !pipelineNotificationsCount || !pipelineNotificationsList) {
             return;
@@ -7697,6 +7712,7 @@ function applyCommunicationViewportFit() {
 
     const initialLeadId = new URLSearchParams(window.location.search).get('lead_id');
     if (initialLeadId) {
+        clearPipelineLeadDeepLink();
         const initialCard = safeCardLookupById(initialLeadId);
         if (initialCard) {
             window.setTimeout(() => {

@@ -65,10 +65,21 @@ while (count($recipients) < 4) {
     $recipients[] = ['key' => '', 'name' => '', 'phone' => '', 'enabled' => true];
 }
 
-include __DIR__ . '/app/partials/crm_sidebar.php';
 ?>
 
-<main class="min-h-screen bg-slate-50 px-4 py-6 lg:px-8">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= e(APP_NAME) ?> | Settings</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="robots" content="noindex,nofollow">
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+<?php require __DIR__ . '/app/partials/crm_sidebar_live.php'; ?>
+
+<main class="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 lg:pl-80 lg:pr-8 lg:py-8">
     <div class="mx-auto max-w-5xl">
         <div class="mb-6">
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">CRM Settings</p>
@@ -136,3 +147,5 @@ include __DIR__ . '/app/partials/crm_sidebar.php';
         </section>
     </div>
 </main>
+</body>
+</html>

@@ -8,7 +8,6 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/mailings/mailing_service.php';
 
 require_auth();
-mailing_ensure_schema();
 
 if (is_post() && post('action') === 'logout') {
     require_csrf();
@@ -24,7 +23,25 @@ $pageTitle = 'Patient Mailings';
 $logoutAction = base_url('patient-mailings.php');
 $successMessage = flash_get('success') ?? '';
 $errorMessage = flash_get('error') ?? '';
-$data = mailing_dashboard_data();
+$mailingAvailable = true;
+
+try {
+    mailing_ensure_schema();
+    $data = mailing_dashboard_data();
+} catch (Throwable $e) {
+    $mailingAvailable = false;
+    $data = [
+        'counts' => ['contacts' => 0, 'unsubscribed' => 0, 'drafts' => 0, 'sent' => 0],
+        'campaigns' => [],
+        'contacts' => [],
+        'selected' => null,
+    ];
+    $message = 'Mailing campaigns are not available yet. Please verify mailing database tables and APP_KEY configuration.';
+    $errorMessage = trim($errorMessage) !== '' ? $errorMessage : $message;
+    if (function_exists('esm_log')) {
+        esm_log('mailings', 'Patient mailings page unavailable.', ['error' => $e->getMessage()]);
+    }
+}
 $counts = $data['counts'];
 $campaigns = $data['campaigns'];
 $contacts = $data['contacts'];
@@ -59,6 +76,11 @@ function mailing_badge_class(string $status): string
         <?php endif; ?>
         <?php if ($errorMessage !== ''): ?>
             <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><?= e((string)$errorMessage) ?></div>
+        <?php endif; ?>
+        <?php if (!$mailingAvailable): ?>
+            <div class="mb-6 rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-sm leading-7 text-amber-900">
+                Mailing Campaigns is installed in the CRM navigation, but the database setup is not ready on this server yet. The page is intentionally paused instead of throwing an error.
+            </div>
         <?php endif; ?>
 
         <section class="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">

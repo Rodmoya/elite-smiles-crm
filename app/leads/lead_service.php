@@ -910,6 +910,172 @@ if (!function_exists('lead_recent_rows')) {
     }
 }
 
+if (!function_exists('lead_action_queue_priority')) {
+    function lead_action_queue_priority(array $lead, array $summary): int
+    {
+        $action = (array)($summary['next_action'] ?? []);
+        $urgency = (array)($summary['urgency'] ?? []);
+        $actionKey = (string)($action['key'] ?? '');
+        $urgencyKey = (string)($urgency['key'] ?? '');
+
+        $score = match ($actionKey) {
+            'reply_needed' => 100,
+            'first_touch' => 95,
+            'overdue_follow_up' => 90,
+            'second_follow_up' => 82,
+            'reschedule' => 78,
+            'confirm_appointment' => 74,
+            'ask_dob' => 68,
+            'close_consult_status' => 62,
+            'bad_phone' => 58,
+            default => 0,
+        };
+
+        if ($urgencyKey === 'reply_now') {
+            $score += 8;
+        } elseif ($urgencyKey === 'overdue_3d') {
+            $score += 6;
+        } elseif ($urgencyKey === 'due_48h') {
+            $score += 4;
+        }
+
+        $unread = (int)($lead['unread_message_count'] ?? 0);
+        if ($unread > 0) {
+            $score += min(10, $unread * 2);
+        }
+
+        return $score;
+    }
+}
+
+if (!function_exists('lead_action_queue_reason')) {
+    function lead_action_queue_reason(array $lead, array $summary): string
+    {
+        $actionKey = (string)($summary['next_action']['key'] ?? '');
+        $stageLabel = (string)($summary['stage_label'] ?? 'Lead');
+        $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
+        $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+        $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+
+        return match ($actionKey) {
+            'reply_needed' => $lastInbound !== ''
+                ? 'Patient replied after the last outbound touch. Review the thread and answer in context.'
+                : 'Inbound reply needs review before the next step.',
+            'first_touch' => 'New lead is ready for first contact.',
+            'overdue_follow_up' => 'Follow-up is overdue. Re-engage with a short, specific message.',
+            'second_follow_up' => $nextFollowUp !== ''
+                ? 'Follow-up is due from the saved next-follow-up time.'
+                : 'Last outbound touch is more than 24 hours old with no newer reply.',
+            'reschedule' => 'No-show or missed consult needs a reschedule attempt.',
+            'confirm_appointment' => 'Consult is tomorrow. Confirm appointment details.',
+            'ask_dob' => 'Scheduling data is missing DOB for the Dentrix-ready package.',
+            'close_consult_status' => 'Lead is in consult completed stage, but consultation status still needs to be closed.',
+            'bad_phone' => 'Phone looks invalid or placeholder. Clean contact info before texting.',
+            default => 'Review next step in ' . $stageLabel . '.',
+        };
+    }
+}
+
+if (!function_exists('lead_action_queue_tab')) {
+    function lead_action_queue_tab(array $summary): string
+    {
+        $actionKey = (string)($summary['next_action']['key'] ?? '');
+        return match ($actionKey) {
+            'bad_phone', 'ask_dob', 'close_consult_status' => 'details',
+            default => 'communications',
+        };
+    }
+}
+
+if (!function_exists('lead_action_queue_rows')) {
+    function lead_action_queue_rows(int $limit = 12): array
+    {
+        $limit = max(1, min(50, $limit));
+        $groupedRows = lead_pipeline_rows(1000);
+        $rows = [];
+
+        foreach ($groupedRows as $stageRows) {
+            if (!is_array($stageRows)) {
+                continue;
+            }
+
+            foreach ($stageRows as $lead) {
+                if (!is_array($lead) || !function_exists('lead_conversion_summary')) {
+                    continue;
+                }
+
+                $summary = lead_conversion_summary($lead);
+                $priority = lead_action_queue_priority($lead, $summary);
+                if ($priority <= 0) {
+                    continue;
+                }
+
+                $touchDate = lead_conversion_last_touch_datetime($lead);
+                $lead['_action_queue'] = [
+                    'priority' => $priority,
+                    'action_key' => (string)($summary['next_action']['key'] ?? ''),
+                    'action_label' => (string)($summary['next_action']['label'] ?? 'Review next step'),
+                    'action_tone' => (string)($summary['next_action']['tone'] ?? 'slate'),
+                    'stage_key' => (string)($summary['stage_key'] ?? ''),
+                    'stage_label' => (string)($summary['stage_label'] ?? ''),
+                    'urgency_label' => (string)($summary['urgency']['label'] ?? ''),
+                    'urgency_tone' => (string)($summary['urgency']['tone'] ?? 'slate'),
+                    'reason' => lead_action_queue_reason($lead, $summary),
+                    'tab' => lead_action_queue_tab($summary),
+                    'source_label' => function_exists('lead_operator_source_label') ? lead_operator_source_label($lead) : trim((string)($lead['source'] ?? '')),
+                    'last_touch_at' => $touchDate ? $touchDate->format('Y-m-d H:i:s') : '',
+                    'sort_at' => $touchDate ? $touchDate->getTimestamp() : 0,
+                ];
+
+                $rows[] = $lead;
+            }
+        }
+
+        usort($rows, static function (array $a, array $b): int {
+            $aQueue = (array)($a['_action_queue'] ?? []);
+            $bQueue = (array)($b['_action_queue'] ?? []);
+            $priorityDiff = (int)($bQueue['priority'] ?? 0) <=> (int)($aQueue['priority'] ?? 0);
+            if ($priorityDiff !== 0) {
+                return $priorityDiff;
+            }
+            return (int)($bQueue['sort_at'] ?? 0) <=> (int)($aQueue['sort_at'] ?? 0);
+        });
+
+        return array_slice($rows, 0, $limit);
+    }
+}
+
+if (!function_exists('lead_action_queue_summary')) {
+    function lead_action_queue_summary(array $rows): array
+    {
+        $summary = [
+            'total' => count($rows),
+            'reply_needed' => 0,
+            'first_touch' => 0,
+            'follow_up' => 0,
+            'schedule' => 0,
+            'cleanup' => 0,
+        ];
+
+        foreach ($rows as $lead) {
+            $actionKey = (string)($lead['_action_queue']['action_key'] ?? '');
+            if ($actionKey === 'reply_needed') {
+                $summary['reply_needed']++;
+            } elseif ($actionKey === 'first_touch') {
+                $summary['first_touch']++;
+            } elseif (in_array($actionKey, ['overdue_follow_up', 'second_follow_up'], true)) {
+                $summary['follow_up']++;
+            } elseif (in_array($actionKey, ['reschedule', 'confirm_appointment', 'ask_dob'], true)) {
+                $summary['schedule']++;
+            } elseif (in_array($actionKey, ['bad_phone', 'close_consult_status'], true)) {
+                $summary['cleanup']++;
+            }
+        }
+
+        return $summary;
+    }
+}
+
 if (!function_exists('lead_duplicate_normalize_phone')) {
     function lead_duplicate_normalize_phone(string $phone): string
     {

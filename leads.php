@@ -71,6 +71,8 @@ $stageMap = function_exists('lead_pipeline_display_stage_map') ? lead_pipeline_d
 $pipelineCounts = lead_pipeline_counts();
 $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
+$actionQueueRows = lead_action_queue_rows(50);
+$actionQueueSummary = lead_action_queue_summary($actionQueueRows);
 $dentrixCalendarSlots = dentrix_bridge_calendar_slots();
 $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
 ?>
@@ -114,6 +116,13 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                 ?>
             </div>
         </section>
+
+        <?php
+            $actionQueueCompact = true;
+            $actionQueueDisplayLimit = 12;
+            require __DIR__ . '/app/partials/dashboard_action_queue.php';
+            unset($actionQueueCompact, $actionQueueDisplayLimit);
+        ?>
 
         <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
     </main>

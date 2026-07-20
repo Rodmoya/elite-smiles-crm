@@ -51,9 +51,8 @@ $totalLandingPages = (int) ($landingPageTotals['total_pages'] ?? 0);
 $recentLeads = lead_recent_rows(8);
 $dashboardNotifications = function_exists('elite_ai_notification_rows') ? elite_ai_notification_rows(8) : [];
 $unreadNotificationCount = count(array_filter($dashboardNotifications, static fn(array $row): bool => !empty($row['is_new'])));
-$todayReplies = function_exists('elite_ai_replies_today') ? elite_ai_replies_today(4) : [];
-$followUpCandidates = function_exists('elite_ai_follow_up_candidates') ? elite_ai_follow_up_candidates(4) : [];
-$attentionTotal = $unreadNotificationCount + count($followUpCandidates) + count($todayReplies);
+$actionQueueRows = function_exists('lead_action_queue_rows') ? lead_action_queue_rows(50) : [];
+$actionQueueSummary = function_exists('lead_action_queue_summary') ? lead_action_queue_summary($actionQueueRows) : ['total' => count($actionQueueRows)];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -176,23 +175,7 @@ $attentionTotal = $unreadNotificationCount + count($followUpCandidates) + count(
 
         <?php require __DIR__ . '/app/partials/dashboard_stats.php'; ?>
 
-        <section class="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Needs Attention</p>
-                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)$attentionTotal) ?></p>
-                <p class="mt-2 text-sm leading-6 text-slate-500">Unread alerts, replies, and follow-ups.</p>
-            </div>
-            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Replies Today</p>
-                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)count($todayReplies)) ?></p>
-                <p class="mt-2 text-sm leading-6 text-slate-500">Inbound messages ready for context review.</p>
-            </div>
-            <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">Follow-Up Queue</p>
-                <p class="mt-3 text-3xl font-semibold leading-none text-slate-900"><?= e((string)count($followUpCandidates)) ?></p>
-                <p class="mt-2 text-sm leading-6 text-slate-500">Leads most likely to need the next touch.</p>
-            </div>
-        </section>
+        <?php require __DIR__ . '/app/partials/dashboard_action_queue.php'; ?>
 
         <section class="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_0.9fr]">
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -237,45 +220,6 @@ $attentionTotal = $unreadNotificationCount + count($followUpCandidates) + count(
             </div>
 
             <div class="space-y-5">
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Action Queue</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-900">What needs attention</h2>
-                        </div>
-                        <a href="<?= e(base_url('leads.php')) ?>" class="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">Review</a>
-                    </div>
-                    <div class="mt-5 space-y-3">
-                        <?php if (empty($dashboardNotifications) && empty($followUpCandidates)): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">Nothing urgent right now.</div>
-                        <?php endif; ?>
-                        <?php foreach (array_slice($dashboardNotifications, 0, 4) as $item): ?>
-                            <?php
-                            $leadId = (int)($item['lead_id'] ?? 0);
-                            $isNew = !empty($item['is_new']);
-                            ?>
-                            <a href="<?= e(base_url('leads.php') . ($leadId > 0 ? '?lead_id=' . $leadId : '')) ?>" class="block rounded-2xl border <?= $isNew ? 'border-blue-100 bg-blue-50/60' : 'border-slate-200 bg-slate-50' ?> px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-sm">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <p class="truncate text-sm font-semibold text-slate-900"><?= e((string)($item['title'] ?? 'CRM notification')) ?></p>
-                                        <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-600"><?= e((string)($item['suggested_action'] ?? $item['message'] ?? 'Review next step.')) ?></p>
-                                    </div>
-                                    <span class="shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] <?= $isNew ? 'border-blue-200 bg-white text-blue-700' : 'border-slate-200 text-slate-500' ?>"><?= $isNew ? 'New' : 'Review' ?></span>
-                                </div>
-                            </a>
-                        <?php endforeach; ?>
-                        <?php if (empty($dashboardNotifications)): ?>
-                            <?php foreach (array_slice($followUpCandidates, 0, 3) as $lead): ?>
-                                <?php $leadId = (int)($lead['id'] ?? $lead['lead_id'] ?? 0); ?>
-                                <a href="<?= e(base_url('leads.php') . ($leadId > 0 ? '?lead_id=' . $leadId : '')) ?>" class="block rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-sm">
-                                    <p class="truncate text-sm font-semibold text-slate-900"><?= e((string)($lead['full_name'] ?? 'Lead')) ?></p>
-                                    <p class="mt-1 text-xs leading-5 text-slate-600">Follow-up candidate. Review thread context before sending.</p>
-                                </a>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
                     <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Landing Workflow</p>
                     <h2 class="mt-2 text-xl font-semibold text-slate-900">Landing Pages</h2>

@@ -7527,6 +7527,26 @@ function applyCommunicationViewportFit() {
     if (deleteLeadButton) deleteLeadButton.addEventListener('click', requestDeleteLead);
 
 
+    document.addEventListener('click', function (event) {
+        const queueButton = event.target.closest('[data-open-action-lead]');
+        if (!queueButton || !board) return;
+
+        const leadId = queueButton.dataset.openActionLead || '';
+        const card = safeCardLookupById(leadId);
+        if (!card) return;
+
+        event.preventDefault();
+        card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        card.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        window.setTimeout(() => {
+            card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+        }, 1800);
+        window.setTimeout(() => {
+            openLeadModal(card, queueButton.dataset.openActionTab || 'communications');
+        }, 250);
+    });
+
+
 
     board.addEventListener('click', function (event) {
         const openButton = event.target.closest('[data-open-lead-modal]');

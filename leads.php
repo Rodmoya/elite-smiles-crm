@@ -117,16 +117,83 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             </div>
         </section>
 
-        <?php
-            $actionQueueCompact = true;
-            $actionQueueDisplayLimit = 12;
-            require __DIR__ . '/app/partials/dashboard_action_queue.php';
-            unset($actionQueueCompact, $actionQueueDisplayLimit);
-        ?>
+        <section class="mb-4">
+            <div class="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-1 shadow-sm sm:w-auto">
+                <button
+                    type="button"
+                    class="lead-view-tab inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition sm:flex-none"
+                    data-lead-view-tab="pipeline"
+                    aria-pressed="true"
+                >
+                    Pipeline Board
+                </button>
+                <button
+                    type="button"
+                    class="lead-view-tab inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 sm:flex-none"
+                    data-lead-view-tab="attention"
+                    aria-pressed="false"
+                >
+                    Needs Attention Today
+                    <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                        <?= e((string)count($actionQueueRows)) ?>
+                    </span>
+                </button>
+            </div>
+        </section>
 
-        <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
+        <div data-lead-view-panel="pipeline">
+            <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
+        </div>
+
+        <div data-lead-view-panel="attention" class="hidden">
+            <?php
+                $actionQueueCompact = true;
+                $actionQueueDisplayLimit = 12;
+                require __DIR__ . '/app/partials/dashboard_action_queue.php';
+                unset($actionQueueCompact, $actionQueueDisplayLimit);
+            ?>
+        </div>
     </main>
     <script>
+    (() => {
+        const tabs = Array.from(document.querySelectorAll('[data-lead-view-tab]'));
+        const panels = Array.from(document.querySelectorAll('[data-lead-view-panel]'));
+        const activeClasses = ['bg-slate-950', 'text-white'];
+        const inactiveClasses = ['text-slate-600', 'hover:bg-slate-50'];
+
+        const setLeadView = (view) => {
+            const nextView = view === 'attention' ? 'attention' : 'pipeline';
+            tabs.forEach((tab) => {
+                const isActive = tab.dataset.leadViewTab === nextView;
+                tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                tab.classList.toggle(activeClasses[0], isActive);
+                tab.classList.toggle(activeClasses[1], isActive);
+                tab.classList.toggle(inactiveClasses[0], !isActive);
+                tab.classList.toggle(inactiveClasses[1], !isActive);
+            });
+            panels.forEach((panel) => {
+                panel.classList.toggle('hidden', panel.dataset.leadViewPanel !== nextView);
+            });
+            if (window.history && window.history.replaceState) {
+                const url = new URL(window.location.href);
+                if (nextView === 'attention') {
+                    url.hash = 'attention';
+                } else if (url.hash === '#attention') {
+                    url.hash = '';
+                }
+                window.history.replaceState(window.history.state, document.title, url.pathname + url.search + url.hash);
+            }
+        };
+
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => setLeadView(tab.dataset.leadViewTab || 'pipeline'));
+        });
+
+        if (window.location.hash === '#attention') {
+            setLeadView('attention');
+        }
+    })();
+
     (() => {
         const refreshMs = 10000;
         const quietMs = 2000;

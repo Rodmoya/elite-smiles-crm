@@ -36,8 +36,6 @@ try {
         'contacts' => [],
         'selected' => null,
     ];
-    $message = 'Mailing campaigns are not available yet. Please verify mailing database tables and APP_KEY configuration.';
-    $errorMessage = trim($errorMessage) !== '' ? $errorMessage : $message;
     if (function_exists('esm_log')) {
         esm_log('mailings', 'Patient mailings page unavailable.', ['error' => $e->getMessage()]);
     }

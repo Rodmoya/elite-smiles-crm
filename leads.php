@@ -73,6 +73,8 @@ $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
 $actionQueueRows = lead_action_queue_rows(50);
 $actionQueueSummary = lead_action_queue_summary($actionQueueRows);
+$leadAttentionDisplayLimit = 12;
+$leadAttentionVisibleCount = min($leadAttentionDisplayLimit, count($actionQueueRows));
 $dentrixCalendarSlots = dentrix_bridge_calendar_slots();
 $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
 ?>
@@ -117,7 +119,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             </div>
         </section>
 
-        <section class="mb-4">
+        <section class="mb-4" data-lead-view-tabs>
             <div class="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-1 shadow-sm sm:w-auto">
                 <button
                     type="button"
@@ -135,7 +137,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                 >
                     Needs Attention Today
                     <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                        <?= e((string)count($actionQueueRows)) ?>
+                        <?= e((string)$leadAttentionVisibleCount) ?>
                     </span>
                 </button>
             </div>
@@ -148,7 +150,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
         <div data-lead-view-panel="attention" class="hidden">
             <?php
                 $actionQueueCompact = true;
-                $actionQueueDisplayLimit = 12;
+                $actionQueueDisplayLimit = $leadAttentionDisplayLimit;
                 require __DIR__ . '/app/partials/dashboard_action_queue.php';
                 unset($actionQueueCompact, $actionQueueDisplayLimit);
             ?>
@@ -158,10 +160,11 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
     (() => {
         const tabs = Array.from(document.querySelectorAll('[data-lead-view-tab]'));
         const panels = Array.from(document.querySelectorAll('[data-lead-view-panel]'));
+        const tabStrip = document.querySelector('[data-lead-view-tabs]');
         const activeClasses = ['bg-slate-950', 'text-white'];
         const inactiveClasses = ['text-slate-600', 'hover:bg-slate-50'];
 
-        const setLeadView = (view) => {
+        const setLeadView = (view, shouldScroll = false) => {
             const nextView = view === 'attention' ? 'attention' : 'pipeline';
             tabs.forEach((tab) => {
                 const isActive = tab.dataset.leadViewTab === nextView;
@@ -183,10 +186,15 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                 }
                 window.history.replaceState(window.history.state, document.title, url.pathname + url.search + url.hash);
             }
+            if (shouldScroll && tabStrip) {
+                window.requestAnimationFrame(() => {
+                    tabStrip.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }
         };
 
         tabs.forEach((tab) => {
-            tab.addEventListener('click', () => setLeadView(tab.dataset.leadViewTab || 'pipeline'));
+            tab.addEventListener('click', () => setLeadView(tab.dataset.leadViewTab || 'pipeline', true));
         });
 
         if (window.location.hash === '#attention') {

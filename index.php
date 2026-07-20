@@ -6,7 +6,7 @@ declare(strict_types=1);
  * File: /index.php
  *
  * Main entry point.
- * Routes guest users to login and authenticated users to dashboard.
+ * Routes guest users to login and authenticated users to leads.
  */
 
 require_once __DIR__ . '/app/config/config.php';
@@ -28,7 +28,7 @@ $dbOnline = db_test_connection();
 |--------------------------------------------------------------------------
 */
 if (auth_check()) {
-    header('Location: ' . base_url('dashboard.php'));
+    header('Location: ' . base_url('leads.php'));
     exit;
 }
 

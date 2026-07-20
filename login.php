@@ -15,7 +15,7 @@ require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
 
 if (auth_check()) {
-    redirect(base_url('dashboard.php'));
+    redirect(base_url('leads.php'));
 }
 
 $errorMessage = flash_get('error') ?? '';
@@ -36,7 +36,7 @@ if (is_post()) {
     } else {
         if (auth_attempt($email, $password)) {
             flash_set('success', 'Welcome back.');
-            redirect(base_url('dashboard.php'));
+            redirect(base_url('leads.php'));
         }
 
         $errorMessage = 'Invalid credentials or inactive account.';

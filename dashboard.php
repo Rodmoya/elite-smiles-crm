@@ -32,7 +32,7 @@ $user = auth_user();
 $firstName = $user['first_name'] ?? 'User';
 $logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $currentPage = 'dashboard';
-$pageTitle = 'Home';
+$pageTitle = 'Command Center';
 $logoutAction = base_url('dashboard.php');
 
 $successMessage = flash_get('success') ?? '';
@@ -60,7 +60,7 @@ $attentionTotal = $unreadNotificationCount + count($followUpCandidates) + count(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e(APP_NAME) ?> | Home</title>
+    <title><?= e(APP_NAME) ?> | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <meta name="robots" content="noindex,nofollow">
 </head>

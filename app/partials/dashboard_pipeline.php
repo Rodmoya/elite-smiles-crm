@@ -373,6 +373,7 @@ $consultationOptions = [
                             $stageBadgeClass = function_exists('lead_conversion_stage_badge_class')
                                 ? lead_conversion_stage_badge_class((string)$stageKey)
                                 : lead_stage_badge_class($legacyDropStageKey);
+                            $isDynamicQueue = $legacyDropStageKey !== (string)$stageKey;
                         ?>
 
 
@@ -404,6 +405,9 @@ $consultationOptions = [
                                         </span>
 
                                         lead<?= ((int)($pipelineCounts[$stageKey] ?? 0) === 1 ? '' : 's') ?>
+                                        <?php if ($isDynamicQueue): ?>
+                                            <span class="ml-1 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-slate-500 ring-1 ring-slate-200">Live queue</span>
+                                        <?php endif; ?>
 
                                     </p>
 
@@ -5672,9 +5676,9 @@ function applyCommunicationViewportFit() {
 
         setText('modal-lead-created', card.dataset.leadCreated || '');
 
-        setText('modal-lead-source-medium', card.dataset.leadSourceMedium || '');
+        setText('modal-lead-source-medium', card.dataset.leadDisplaySource || card.dataset.leadSourceMedium || '');
 
-        setText('modal-lead-source-type', card.dataset.leadSourceType || '');
+        setText('modal-lead-source-type', card.dataset.leadDisplaySourceType || card.dataset.leadSourceType || '');
 
         setText('modal-lead-instagram-username', card.dataset.leadInstagramUsername ? '@' + card.dataset.leadInstagramUsername : '');
 

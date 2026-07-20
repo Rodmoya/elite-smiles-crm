@@ -382,10 +382,29 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
         $rows = function_exists('lead_pipeline_rows')
             ? lead_pipeline_rows($limit)
             : db_all('SELECT ' . codex_api_select_fields() . ' FROM leads ORDER BY updated_at DESC, id DESC LIMIT ' . $limit);
+        $firstRow = is_array($rows) ? reset($rows) : null;
+        $rowsAreFlat = is_array($firstRow) && array_key_exists('id', $firstRow);
+        if ($rows && !$rowsAreFlat) {
+            $flattenedRows = [];
+            foreach ($rows as $stageRows) {
+                if (!is_array($stageRows)) {
+                    continue;
+                }
+                foreach ($stageRows as $stageRow) {
+                    if (is_array($stageRow) && array_key_exists('id', $stageRow)) {
+                        $flattenedRows[] = $stageRow;
+                    }
+                }
+            }
+            $rows = $flattenedRows;
+        }
 
         $legacyStages = lead_stage_labels();
         $stageCounts = [];
         $conversionCounts = [];
+        $sourceCounts = [];
+        $actionCounts = [];
+        $dataQualityFlags = [];
         $latestByConversionStage = [];
 
         foreach ($rows as $row) {
@@ -393,12 +412,28 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
             $stageLabel = $legacyStages[$stage] ?? ($stage !== '' ? $stage : 'Unstaged');
             $stageCounts[$stageLabel] = ($stageCounts[$stageLabel] ?? 0) + 1;
 
-            $conversion = function_exists('lead_meta_conversion_stage') ? lead_meta_conversion_stage($row) : ['label' => $stageLabel];
-            $conversionLabel = trim((string) ($conversion['label'] ?? $stageLabel));
+            $conversion = function_exists('lead_conversion_summary')
+                ? lead_conversion_summary($row)
+                : ['stage_label' => $stageLabel, 'next_action' => ['label' => 'Review next step']];
+            $conversionLabel = trim((string) ($conversion['stage_label'] ?? $conversion['label'] ?? $stageLabel));
             if ($conversionLabel === '') {
                 $conversionLabel = $stageLabel;
             }
             $conversionCounts[$conversionLabel] = ($conversionCounts[$conversionLabel] ?? 0) + 1;
+
+            $sourceLabel = function_exists('lead_operator_source_label') ? lead_operator_source_label($row) : trim((string)($row['source'] ?? 'Unknown'));
+            $sourceLabel = $sourceLabel !== '' ? $sourceLabel : 'Unknown';
+            $sourceCounts[$sourceLabel] = ($sourceCounts[$sourceLabel] ?? 0) + 1;
+
+            $nextAction = (array)($conversion['next_action'] ?? []);
+            $actionLabel = trim((string)($nextAction['label'] ?? 'Review next step'));
+            $actionCounts[$actionLabel] = ($actionCounts[$actionLabel] ?? 0) + 1;
+
+            if (function_exists('lead_operator_data_quality_flags')) {
+                foreach (lead_operator_data_quality_flags($row) as $flag) {
+                    $dataQualityFlags[$flag] = ($dataQualityFlags[$flag] ?? 0) + 1;
+                }
+            }
 
             if (!isset($latestByConversionStage[$conversionLabel])) {
                 $latestByConversionStage[$conversionLabel] = [];
@@ -415,16 +450,25 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
                     'last_inbound_at' => (string) ($row['last_inbound_at'] ?? ''),
                     'last_outbound_at' => (string) ($row['last_outbound_at'] ?? ''),
                     'unread_message_count' => (int) ($row['unread_message_count'] ?? 0),
+                    'source_label' => $sourceLabel,
+                    'next_action' => $actionLabel,
                 ];
             }
         }
+        arsort($sourceCounts);
+        arsort($actionCounts);
+        arsort($dataQualityFlags);
 
         codex_api_response([
             'ok' => true,
             'generated_at' => now(),
             'limit' => $limit,
+            'row_count' => count($rows),
             'legacy_stage_counts' => $stageCounts,
             'conversion_stage_counts' => $conversionCounts,
+            'source_counts' => $sourceCounts,
+            'next_action_counts' => $actionCounts,
+            'data_quality_flags' => $dataQualityFlags,
             'latest_by_conversion_stage' => $latestByConversionStage,
             'safety_note' => 'Read-only snapshot. No lead status was changed.',
         ]);

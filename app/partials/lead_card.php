@@ -241,8 +241,12 @@ $legacyStageKey = lead_card_value($lead, 'status', $boardStageKey);
 $stageLabels = function_exists('lead_stage_labels') ? lead_stage_labels() : [];
 $stageLabel = $stageLabels[$legacyStageKey] ?? ucwords(str_replace('_', ' ', $legacyStageKey));
 
-$displaySource = lead_card_source_label($leadSource, $leadLandingPage);
-$displaySourceType = lead_card_source_type_label($leadSourceType);
+$displaySource = function_exists('lead_operator_source_label')
+    ? lead_operator_source_label($lead)
+    : lead_card_source_label($leadSource, $leadLandingPage);
+$displaySourceType = function_exists('lead_operator_source_type_label')
+    ? lead_operator_source_type_label($lead)
+    : lead_card_source_type_label($leadSourceType);
 if ($leadLandingPage === '' && strtolower(trim($leadSource)) === 'manual' && strtolower(trim($leadSourceType)) === 'meta_instant_form') {
     $displaySource = $displaySourceType;
 }
@@ -360,8 +364,10 @@ if ($leadHasBadPhone) {
     data-lead-email="<?= e($leadEmail) ?>"
     data-lead-procedure="<?= e($leadProcedure) ?>"
     data-lead-source="<?= e($leadSource) ?>"
+    data-lead-display-source="<?= e($displaySource) ?>"
     data-lead-source-medium="<?= e($leadSourceMedium) ?>"
     data-lead-source-type="<?= e($leadSourceType) ?>"
+    data-lead-display-source-type="<?= e($displaySourceType) ?>"
     data-lead-landing-page="<?= e($leadLandingPage) ?>"
     data-lead-assigned="<?= e($leadAssigned) ?>"
     data-lead-notes="<?= e($leadNotes) ?>"

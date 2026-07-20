@@ -141,7 +141,100 @@ if (!function_exists('lead_lost_reason_options')) {
     }
 }
 
-if (!function_exists('lead_default_stage')) {
+if (!function_exists('lead_operator_source_type_label')) {
+    function lead_operator_source_type_label(array $lead): string
+    {
+        $sourceType = strtolower(trim((string)($lead['source_type'] ?? '')));
+
+        if ($sourceType === '' || preg_match('/^\d{6,}$/', $sourceType)) {
+            return '';
+        }
+
+        return match ($sourceType) {
+            'meta_instant_form' => 'Meta Instant Form',
+            'instagram_instant_form' => 'Instagram Instant Form',
+            'facebook_instant_form' => 'Facebook Instant Form',
+            'paid_social' => 'Paid Social',
+            'website_form' => 'Website Form',
+            'quiz_form' => 'Landing Quiz',
+            'manual_entry' => 'Manual Entry',
+            'inbound_sms' => 'Inbound SMS',
+            'smile_design' => 'Smile Design',
+            'internal' => 'Internal',
+            default => ucwords(str_replace('_', ' ', $sourceType)),
+        };
+    }
+}
+
+if (!function_exists('lead_operator_source_label')) {
+    function lead_operator_source_label(array $lead): string
+    {
+        $source = strtolower(trim((string)($lead['source'] ?? '')));
+        $sourceType = strtolower(trim((string)($lead['source_type'] ?? '')));
+        $landingPage = trim((string)($lead['landing_page'] ?? ''));
+        $campaign = trim((string)($lead['source_campaign'] ?? ($lead['campaign'] ?? '')));
+
+        if (in_array($sourceType, ['meta_instant_form', 'instagram_instant_form', 'facebook_instant_form'], true)) {
+            return $landingPage !== '' ? 'Meta Form: ' . $landingPage : 'Meta Instant Form';
+        }
+        if (in_array($source, ['meta', 'meta_lead_form', 'facebook', 'instagram'], true)) {
+            return $campaign !== '' ? 'Meta: ' . $campaign : match ($source) {
+                'instagram' => 'Instagram',
+                'facebook' => 'Facebook',
+                default => 'Meta',
+            };
+        }
+        if (in_array($source, ['google', 'google_ads'], true)) {
+            return $landingPage !== '' ? 'Google: ' . $landingPage : 'Google Ads';
+        }
+        if ($source === 'website' || $sourceType === 'website_form') {
+            return $landingPage !== '' ? 'Website: ' . $landingPage : 'Website';
+        }
+        if ($source === 'smile_design_intake' || $sourceType === 'smile_design') {
+            return 'Smile Design';
+        }
+        if ($landingPage !== '') {
+            return $landingPage;
+        }
+
+        return match ($source) {
+            'landing_page' => 'Landing Page',
+            'ringcentral' => 'RingCentral',
+            'referral' => 'Referral',
+            'walk_in' => 'Walk-In',
+            'twilio_sms' => 'Inbound SMS',
+            'manual' => 'Manual',
+            '' => 'Unknown',
+            default => ucwords(str_replace('_', ' ', $source)),
+        };
+    }
+}
+
+if (!function_exists('lead_operator_data_quality_flags')) {
+    function lead_operator_data_quality_flags(array $lead): array
+    {
+        $flags = [];
+        if (lead_conversion_bad_phone($lead)) {
+            $flags[] = 'bad_phone';
+        }
+        if (lead_conversion_missing_email($lead)) {
+            $flags[] = 'missing_email';
+        }
+        if (trim((string)($lead['source'] ?? '')) === 'manual'
+            && in_array(strtolower(trim((string)($lead['source_type'] ?? ''))), ['meta_instant_form', 'instagram_instant_form', 'paid_social'], true)
+        ) {
+            $flags[] = 'source_needs_normalization';
+        }
+        if (trim((string)($lead['status'] ?? '')) === 'consult_completed'
+            && trim((string)($lead['consultation_status'] ?? '')) !== 'completed'
+        ) {
+            $flags[] = 'consult_status_mismatch';
+        }
+        return array_values(array_unique($flags));
+    }
+}
+
+if (!function_exists('lead_default_stage')) {
     function lead_default_stage(): string
     {
         return 'new_lead';
@@ -596,6 +689,9 @@ if (!function_exists('lead_conversion_next_action')) {
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
             return ['key' => 'dnd', 'label' => 'Do not text', 'tone' => 'slate'];
         }
+        if ($status === 'consult_completed' && !lead_conversion_consult_completed($lead)) {
+            return ['key' => 'close_consult_status', 'label' => 'Close consult status', 'tone' => 'amber'];
+        }
         if ($status === 'consultation_booked' && lead_conversion_needs_dob($lead)) {
             return ['key' => 'ask_dob', 'label' => 'Ask DOB', 'tone' => 'amber'];
         }
@@ -603,7 +699,7 @@ if (!function_exists('lead_conversion_next_action')) {
             return ['key' => 'reschedule', 'label' => 'Reschedule', 'tone' => 'orange'];
         }
         if (lead_conversion_reply_needed($lead)) {
-            return ['key' => 'reply_needed', 'label' => 'Reply needed', 'tone' => 'blue'];
+            return ['key' => 'reply_needed', 'label' => 'Reply / set next step', 'tone' => 'blue'];
         }
         if (lead_conversion_appointment_tomorrow($lead)) {
             return ['key' => 'confirm_appointment', 'label' => 'Confirm appt', 'tone' => 'emerald'];
@@ -639,7 +735,7 @@ if (!function_exists('lead_conversion_next_action')) {
             return ['key' => 'review_treatment_plan', 'label' => 'Review treatment', 'tone' => 'indigo'];
         }
         if ($status === 'no_answer') {
-            return ['key' => 'nurture_review', 'label' => 'Nurture review', 'tone' => 'amber'];
+            return ['key' => 'nurture_reactivate', 'label' => 'Nurture / reactivate', 'tone' => 'slate'];
         }
         if (in_array($status, ['lost_lead', 'opted_out'], true)) {
             return ['key' => 'lost_review', 'label' => 'Review reason', 'tone' => 'rose'];
@@ -694,7 +790,7 @@ if (!function_exists('lead_conversion_badges')) {
             $badges[] = ['key' => 'no_show_reschedule', 'label' => 'No Show', 'tone' => 'orange'];
         }
         if (trim((string)($lead['status'] ?? '')) === 'no_answer') {
-            $badges[] = ['key' => 'no_answer_5_plus', 'label' => 'No Answer 5+', 'tone' => 'amber'];
+            $badges[] = ['key' => 'no_answer', 'label' => 'No Answer', 'tone' => 'slate'];
         }
         if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out' || trim((string)($lead['status'] ?? '')) === 'opted_out') {
             $badges[] = ['key' => 'dnd_opted_out', 'label' => 'DND / Opted Out', 'tone' => 'slate'];

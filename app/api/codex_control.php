@@ -1117,6 +1117,9 @@ if (!function_exists('codex_api_follow_up_lead')) {
                     'source' => 'codex_operator_api',
                 ], $createdBy);
                 lead_comm_update_rollup($leadId);
+                if (function_exists('lead_comm_clear_follow_up_attention')) {
+                    lead_comm_clear_follow_up_attention($leadId);
+                }
                 codex_api_record_outbound_note($leadId, 'sms', '', $sentBody, $createdBy, [
                     'message_id' => $messageRecordId,
                     'twilio_sid' => $sendResult['twilio_sid'] ?? '',
@@ -2165,6 +2168,9 @@ try {
             ], 'Codex');
         }
         lead_comm_update_rollup($leadId);
+        if (function_exists('lead_comm_clear_follow_up_attention')) {
+            lead_comm_clear_follow_up_attention($leadId);
+        }
         codex_api_response(['ok' => true, 'message' => 'SMS sent and logged.', 'lead_id' => $leadId, 'thread' => codex_api_timeline($leadId)]);
     }
 

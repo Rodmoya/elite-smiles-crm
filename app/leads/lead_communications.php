@@ -301,6 +301,49 @@ if (!function_exists('lead_comm_update_rollup')) {
     }
 }
 
+if (!function_exists('lead_comm_clear_follow_up_attention')) {
+    function lead_comm_clear_follow_up_attention(int $leadId): void
+    {
+        if ($leadId <= 0 || !function_exists('leads_has_column')) {
+            return;
+        }
+
+        $setParts = [];
+        $params = ['id' => $leadId];
+
+        if (leads_has_column('follow_up_status')) {
+            $setParts[] = "follow_up_status = 'not_checked'";
+        }
+
+        if (leads_has_column('next_follow_up_at')) {
+            $setParts[] = 'next_follow_up_at = NULL';
+        }
+
+        if (leads_has_column('last_follow_up_check_at')) {
+            $setParts[] = 'last_follow_up_check_at = :last_follow_up_check_at';
+            $params['last_follow_up_check_at'] = now();
+        }
+
+        if (leads_has_column('updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = now();
+        }
+
+        if (!$setParts) {
+            return;
+        }
+
+        try {
+            db_query('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
+        } catch (Throwable $e) {
+            esm_log('lead_communications', 'Could not clear follow-up attention after outbound touch', [
+                'lead_id' => $leadId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+
 if (!function_exists('lead_comm_recent_messages')) {
     function lead_comm_recent_messages(int $leadId, int $limit = 50): array
     {

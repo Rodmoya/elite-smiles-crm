@@ -166,6 +166,9 @@ lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult
     'twilio_status' => $sendResult['twilio_status'] ?? '',
 ]);
 lead_comm_update_rollup($leadId);
+if (function_exists('lead_comm_clear_follow_up_attention')) {
+    lead_comm_clear_follow_up_attention($leadId);
+}
 
 $aiNoteResult = function_exists('lead_ai_create_outbound_note')
     ? lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [

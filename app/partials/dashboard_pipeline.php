@@ -253,6 +253,40 @@ $consultationOptions = [
         </div>
 
 
+        <div class="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <label for="pipeline-lead-search" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Find lead
+                </label>
+                <div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center lg:max-w-3xl">
+                    <div class="relative min-w-0 flex-1">
+                        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.3-4.3"></path>
+                            </svg>
+                        </span>
+                        <input
+                            type="search"
+                            id="pipeline-lead-search"
+                            class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Search name, phone, email, source, notes..."
+                            autocomplete="off"
+                        >
+                    </div>
+                    <button
+                        type="button"
+                        id="pipeline-lead-search-clear"
+                        class="hidden h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                    >
+                        Clear
+                    </button>
+                    <p id="pipeline-lead-search-status" class="min-w-[8rem] text-xs font-medium text-slate-500 sm:text-right"></p>
+                </div>
+            </div>
+        </div>
+
+
 
         <div
             id="pipeline-calendar-overlay"
@@ -2474,6 +2508,9 @@ $consultationOptions = [
     const board = document.getElementById('lead-pipeline-board');
 
     const viewport = document.getElementById('pipeline-board-viewport');
+    const pipelineLeadSearch = document.getElementById('pipeline-lead-search');
+    const pipelineLeadSearchClear = document.getElementById('pipeline-lead-search-clear');
+    const pipelineLeadSearchStatus = document.getElementById('pipeline-lead-search-status');
     const pipelineNotificationsButton = document.getElementById('pipeline-notifications-button');
     const pipelineNotificationsCount = document.getElementById('pipeline-notifications-count');
     const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
@@ -2948,13 +2985,91 @@ $consultationOptions = [
     }
 
 
+    function normalizeLeadSearchText(value) {
+        return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function leadCardSearchText(card) {
+        const fields = [
+            card.dataset.leadId,
+            card.dataset.leadName,
+            card.dataset.leadPhone,
+            card.dataset.leadEmail,
+            card.dataset.leadProcedure,
+            card.dataset.leadSource,
+            card.dataset.leadDisplaySource,
+            card.dataset.leadSourceMedium,
+            card.dataset.leadSourceType,
+            card.dataset.leadDisplaySourceType,
+            card.dataset.leadCampaign,
+            card.dataset.leadSourceCampaign,
+            card.dataset.leadSourceAdSet,
+            card.dataset.leadSourceAdName,
+            card.dataset.leadExternalLeadId,
+            card.dataset.leadInstagramUsername,
+            card.dataset.leadTriggerKeyword,
+            card.dataset.leadNotes,
+            card.textContent,
+        ];
+
+        return normalizeLeadSearchText(fields.filter(Boolean).join(' '));
+    }
+
+    function visibleLeadCards() {
+        return board ? Array.from(board.querySelectorAll('.lead-card:not(.pipeline-search-hidden)')) : [];
+    }
+
+    function applyPipelineLeadSearch() {
+        if (!board || !pipelineLeadSearch) return;
+
+        const query = normalizeLeadSearchText(pipelineLeadSearch.value);
+        const cards = Array.from(board.querySelectorAll('.lead-card'));
+        let matches = 0;
+
+        cards.forEach((card) => {
+            const isMatch = query === '' || leadCardSearchText(card).includes(query);
+            card.classList.toggle('pipeline-search-hidden', !isMatch);
+            card.classList.toggle('hidden', !isMatch);
+            if (isMatch) matches += 1;
+        });
+
+        if (pipelineLeadSearchClear) {
+            pipelineLeadSearchClear.classList.toggle('hidden', query === '');
+            pipelineLeadSearchClear.classList.toggle('inline-flex', query !== '');
+        }
+
+        if (pipelineLeadSearchStatus) {
+            pipelineLeadSearchStatus.textContent = query === ''
+                ? ''
+                : `${matches} lead${matches === 1 ? '' : 's'} found`;
+        }
+
+        updateColumnCounts();
+    }
+
+    function openFirstPipelineSearchMatch() {
+        const firstMatch = visibleLeadCards()[0] || null;
+        const openButton = firstMatch ? firstMatch.querySelector('[data-open-lead-modal]') : null;
+        if (openButton) {
+            openButton.click();
+            return;
+        }
+        if (firstMatch) {
+            firstMatch.click();
+        }
+    }
+
+
     function updateColumnCounts() {
 
         document.querySelectorAll('.pipeline-column').forEach((column) => {
 
             const countEl = column.querySelector('.pipeline-count');
 
-            const cards = column.querySelectorAll('.lead-card').length;
+            const searchActive = !!(pipelineLeadSearch && normalizeLeadSearchText(pipelineLeadSearch.value) !== '');
+            const cards = searchActive
+                ? column.querySelectorAll('.lead-card:not(.pipeline-search-hidden)').length
+                : column.querySelectorAll('.lead-card').length;
 
 
 
@@ -2969,6 +3084,9 @@ $consultationOptions = [
 
 
             let emptyState = dropzone.querySelector('.empty-state');
+            const emptyStateHtml = searchActive
+                ? '<p class="text-sm font-medium text-slate-700">No matches here</p><p class="mt-1 text-xs text-slate-500">Try another search.</p>'
+                : '<p class="text-sm font-medium text-slate-700">No leads here</p><p class="mt-1 text-xs text-slate-500">Drop a lead here.</p>';
 
 
 
@@ -2978,10 +3096,14 @@ $consultationOptions = [
 
                 emptyState.className = 'empty-state rounded-[1.5rem] border border-dashed border-slate-300 bg-white/70 p-5 text-center';
 
-                emptyState.innerHTML = '<p class="text-sm font-medium text-slate-700">No leads here</p><p class="mt-1 text-xs text-slate-500">Drop a lead here.</p>';
+                emptyState.innerHTML = emptyStateHtml;
 
                 dropzone.appendChild(emptyState);
 
+            }
+
+            if (cards === 0 && emptyState) {
+                emptyState.innerHTML = emptyStateHtml;
             }
 
 
@@ -7315,6 +7437,30 @@ function applyCommunicationViewportFit() {
     setAiInstructionCollapsed(true);
     refreshComposerSafetyCue();
     applyPipelineBoardMobileMode();
+    applyPipelineLeadSearch();
+
+    if (pipelineLeadSearch) {
+        pipelineLeadSearch.addEventListener('input', applyPipelineLeadSearch);
+        pipelineLeadSearch.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                pipelineLeadSearch.value = '';
+                applyPipelineLeadSearch();
+                pipelineLeadSearch.blur();
+            }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                openFirstPipelineSearchMatch();
+            }
+        });
+    }
+
+    if (pipelineLeadSearchClear && pipelineLeadSearch) {
+        pipelineLeadSearchClear.addEventListener('click', function () {
+            pipelineLeadSearch.value = '';
+            applyPipelineLeadSearch();
+            pipelineLeadSearch.focus();
+        });
+    }
 
     if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
     if (saveButtonNotesSmall) saveButtonNotesSmall.addEventListener('click', saveLeadDetails);

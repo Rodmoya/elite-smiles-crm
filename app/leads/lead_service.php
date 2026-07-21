@@ -917,6 +917,17 @@ if (!function_exists('lead_action_queue_priority')) {
         $urgency = (array)($summary['urgency'] ?? []);
         $actionKey = (string)($action['key'] ?? '');
         $urgencyKey = (string)($urgency['key'] ?? '');
+        $status = trim((string)($lead['status'] ?? ''));
+        $stageKey = (string)($summary['stage_key'] ?? '');
+        $smsOptStatus = trim((string)($lead['sms_opt_status'] ?? 'unknown'));
+
+        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'treatment_accepted'], true)) {
+            return 0;
+        }
+
+        if ($stageKey === 'nurture_lost' || $status === 'no_answer') {
+            return 0;
+        }
 
         $score = match ($actionKey) {
             'reply_needed' => 100,

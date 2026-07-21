@@ -921,11 +921,11 @@ if (!function_exists('lead_action_queue_priority')) {
         $stageKey = (string)($summary['stage_key'] ?? '');
         $smsOptStatus = trim((string)($lead['sms_opt_status'] ?? 'unknown'));
 
-        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'treatment_accepted'], true)) {
+        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'consult_completed', 'treatment_accepted'], true)) {
             return 0;
         }
 
-        if ($stageKey === 'nurture_lost' || $status === 'no_answer') {
+        if (in_array($stageKey, ['consult_completed', 'treatment_accepted', 'nurture_lost'], true) || $status === 'no_answer') {
             return 0;
         }
 

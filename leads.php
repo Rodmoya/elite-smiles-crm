@@ -143,10 +143,6 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             </div>
         </section>
 
-        <div data-lead-view-panel="pipeline">
-            <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
-        </div>
-
         <div data-lead-view-panel="attention" class="hidden">
             <?php
                 $actionQueueCompact = true;
@@ -154,6 +150,10 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                 require __DIR__ . '/app/partials/dashboard_action_queue.php';
                 unset($actionQueueCompact, $actionQueueDisplayLimit);
             ?>
+        </div>
+
+        <div data-lead-view-panel="pipeline">
+            <?php require __DIR__ . '/app/partials/dashboard_pipeline.php'; ?>
         </div>
     </main>
     <script>

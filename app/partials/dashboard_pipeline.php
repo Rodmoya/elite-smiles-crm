@@ -273,6 +273,10 @@ $consultationOptions = [
                             placeholder="Search name, phone, email, source, notes..."
                             autocomplete="off"
                         >
+                        <div
+                            id="pipeline-lead-search-results"
+                            class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 hidden max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                        ></div>
                     </div>
                     <button
                         type="button"
@@ -2511,6 +2515,7 @@ $consultationOptions = [
     const pipelineLeadSearch = document.getElementById('pipeline-lead-search');
     const pipelineLeadSearchClear = document.getElementById('pipeline-lead-search-clear');
     const pipelineLeadSearchStatus = document.getElementById('pipeline-lead-search-status');
+    const pipelineLeadSearchResults = document.getElementById('pipeline-lead-search-results');
     const pipelineNotificationsButton = document.getElementById('pipeline-notifications-button');
     const pipelineNotificationsCount = document.getElementById('pipeline-notifications-count');
     const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
@@ -3015,23 +3020,72 @@ $consultationOptions = [
         return normalizeLeadSearchText(fields.filter(Boolean).join(' '));
     }
 
-    function visibleLeadCards() {
-        return board ? Array.from(board.querySelectorAll('.lead-card:not(.pipeline-search-hidden)')) : [];
+    function leadCardSearchTitle(card) {
+        return card.dataset.leadName
+            || card.querySelector('.lead-card-name')?.textContent?.trim()
+            || card.textContent.trim().split('\n').map((line) => line.trim()).filter(Boolean)[0]
+            || 'Unnamed lead';
+    }
+
+    function leadCardSearchMeta(card) {
+        const stage = card.closest('[data-stage-key]')?.dataset.displayStageLabel
+            || card.closest('[data-stage-key]')?.dataset.stageLabel
+            || card.closest('.pipeline-column')?.querySelector('h3, .pipeline-column-title')?.textContent?.trim()
+            || '';
+        const details = [
+            card.dataset.leadPhone,
+            card.dataset.leadEmail,
+            card.dataset.leadProcedure,
+            stage,
+        ].filter(Boolean);
+        return details.join(' / ');
+    }
+
+    function pipelineSearchMatches(query) {
+        if (!board || query === '') return [];
+
+        return Array.from(board.querySelectorAll('.lead-card'))
+            .map((card) => ({
+                card,
+                title: leadCardSearchTitle(card),
+                meta: leadCardSearchMeta(card),
+                stage: card.closest('[data-stage-key]')?.dataset.stageKey || '',
+                searchText: leadCardSearchText(card),
+            }))
+            .filter((entry) => entry.searchText.includes(query))
+            .slice(0, 12);
+    }
+
+    function pipelineSearchMatchCount(query) {
+        if (!board || query === '') return 0;
+        return Array.from(board.querySelectorAll('.lead-card'))
+            .filter((card) => leadCardSearchText(card).includes(query))
+            .length;
+    }
+
+    function openPipelineLeadCard(card) {
+        if (!card) return;
+        const openButton = card.querySelector('[data-open-lead-modal]');
+        if (openButton) {
+            openButton.click();
+            return;
+        }
+        card.click();
+    }
+
+    function hidePipelineSearchResults() {
+        if (pipelineLeadSearchResults) {
+            pipelineLeadSearchResults.classList.add('hidden');
+            pipelineLeadSearchResults.innerHTML = '';
+        }
     }
 
     function applyPipelineLeadSearch() {
         if (!board || !pipelineLeadSearch) return;
 
         const query = normalizeLeadSearchText(pipelineLeadSearch.value);
-        const cards = Array.from(board.querySelectorAll('.lead-card'));
-        let matches = 0;
-
-        cards.forEach((card) => {
-            const isMatch = query === '' || leadCardSearchText(card).includes(query);
-            card.classList.toggle('pipeline-search-hidden', !isMatch);
-            card.classList.toggle('hidden', !isMatch);
-            if (isMatch) matches += 1;
-        });
+        const matches = pipelineSearchMatches(query);
+        const matchCount = pipelineSearchMatchCount(query);
 
         if (pipelineLeadSearchClear) {
             pipelineLeadSearchClear.classList.toggle('hidden', query === '');
@@ -3041,22 +3095,81 @@ $consultationOptions = [
         if (pipelineLeadSearchStatus) {
             pipelineLeadSearchStatus.textContent = query === ''
                 ? ''
-                : `${matches} lead${matches === 1 ? '' : 's'} found`;
+                : `${matchCount} lead${matchCount === 1 ? '' : 's'} found`;
         }
 
+        if (!pipelineLeadSearchResults) {
+            updateColumnCounts();
+            return;
+        }
+
+        pipelineLeadSearchResults.innerHTML = '';
+
+        if (query === '') {
+            hidePipelineSearchResults();
+            updateColumnCounts();
+            return;
+        }
+
+        if (matches.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'rounded-xl px-3 py-4 text-center text-sm text-slate-500';
+            empty.textContent = 'No leads found.';
+            pipelineLeadSearchResults.appendChild(empty);
+            pipelineLeadSearchResults.classList.remove('hidden');
+            updateColumnCounts();
+            return;
+        }
+
+        matches.forEach((entry) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-slate-50 focus:bg-blue-50 focus:outline-none';
+            button.dataset.searchLeadId = entry.card.dataset.leadId || '';
+
+            const initials = document.createElement('span');
+            initials.className = 'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700';
+            initials.textContent = entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'L';
+
+            const body = document.createElement('span');
+            body.className = 'min-w-0 flex-1';
+
+            const title = document.createElement('span');
+            title.className = 'block truncate text-sm font-semibold text-slate-950';
+            title.textContent = entry.title;
+
+            const meta = document.createElement('span');
+            meta.className = 'mt-0.5 block truncate text-xs text-slate-500';
+            meta.textContent = entry.meta || 'Open lead';
+
+            body.appendChild(title);
+            body.appendChild(meta);
+            button.appendChild(initials);
+            button.appendChild(body);
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => {
+                openPipelineLeadCard(entry.card);
+                hidePipelineSearchResults();
+            });
+            pipelineLeadSearchResults.appendChild(button);
+        });
+
+        if (matchCount > matches.length) {
+            const note = document.createElement('div');
+            note.className = 'px-3 pb-1 pt-2 text-[11px] font-medium text-slate-400';
+            note.textContent = 'Showing first 12 matches. Keep typing to narrow it down.';
+            pipelineLeadSearchResults.appendChild(note);
+        }
+
+        pipelineLeadSearchResults.classList.remove('hidden');
         updateColumnCounts();
     }
 
     function openFirstPipelineSearchMatch() {
-        const firstMatch = visibleLeadCards()[0] || null;
-        const openButton = firstMatch ? firstMatch.querySelector('[data-open-lead-modal]') : null;
-        if (openButton) {
-            openButton.click();
-            return;
-        }
-        if (firstMatch) {
-            firstMatch.click();
-        }
+        const query = pipelineLeadSearch ? normalizeLeadSearchText(pipelineLeadSearch.value) : '';
+        const firstMatch = pipelineSearchMatches(query)[0]?.card || null;
+        openPipelineLeadCard(firstMatch);
+        hidePipelineSearchResults();
     }
 
 
@@ -3066,10 +3179,7 @@ $consultationOptions = [
 
             const countEl = column.querySelector('.pipeline-count');
 
-            const searchActive = !!(pipelineLeadSearch && normalizeLeadSearchText(pipelineLeadSearch.value) !== '');
-            const cards = searchActive
-                ? column.querySelectorAll('.lead-card:not(.pipeline-search-hidden)').length
-                : column.querySelectorAll('.lead-card').length;
+            const cards = column.querySelectorAll('.lead-card').length;
 
 
 
@@ -3084,9 +3194,7 @@ $consultationOptions = [
 
 
             let emptyState = dropzone.querySelector('.empty-state');
-            const emptyStateHtml = searchActive
-                ? '<p class="text-sm font-medium text-slate-700">No matches here</p><p class="mt-1 text-xs text-slate-500">Try another search.</p>'
-                : '<p class="text-sm font-medium text-slate-700">No leads here</p><p class="mt-1 text-xs text-slate-500">Drop a lead here.</p>';
+            const emptyStateHtml = '<p class="text-sm font-medium text-slate-700">No leads here</p><p class="mt-1 text-xs text-slate-500">Drop a lead here.</p>';
 
 
 
@@ -7441,6 +7549,7 @@ function applyCommunicationViewportFit() {
 
     if (pipelineLeadSearch) {
         pipelineLeadSearch.addEventListener('input', applyPipelineLeadSearch);
+        pipelineLeadSearch.addEventListener('focus', applyPipelineLeadSearch);
         pipelineLeadSearch.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
                 pipelineLeadSearch.value = '';
@@ -7461,6 +7570,15 @@ function applyCommunicationViewportFit() {
             pipelineLeadSearch.focus();
         });
     }
+
+    document.addEventListener('click', function (event) {
+        if (!pipelineLeadSearchResults || !pipelineLeadSearch) return;
+        const target = event.target;
+        if (target instanceof Node && (pipelineLeadSearch.contains(target) || pipelineLeadSearchResults.contains(target))) {
+            return;
+        }
+        hidePipelineSearchResults();
+    });
 
     if (saveButtonNotes) saveButtonNotes.addEventListener('click', saveLeadDetails);
     if (saveButtonNotesSmall) saveButtonNotesSmall.addEventListener('click', saveLeadDetails);

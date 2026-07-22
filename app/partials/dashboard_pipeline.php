@@ -7273,7 +7273,7 @@ function applyCommunicationViewportFit() {
             }
 
             if (attentionReviewResult) attentionReviewResult.classList.remove('hidden');
-            if (attentionReviewStatus) attentionReviewStatus.textContent = 'Draft ready. Approve to open the composer with this action preloaded.';
+            if (attentionReviewStatus) attentionReviewStatus.textContent = 'Draft ready. Approve to send it now.';
             if (attentionReviewApproveAction) {
                 attentionReviewApproveAction.disabled = false;
                 attentionReviewApproveAction.classList.remove('hidden');
@@ -7291,35 +7291,62 @@ function applyCommunicationViewportFit() {
         }
     }
 
-    function approveAttentionReviewDraft() {
+    async function approveAttentionReviewDraft() {
         if (!pendingAttentionDraft || !board) return false;
 
         const card = safeCardLookupById(pendingAttentionDraft.leadId || '');
         if (!card) return false;
 
+        if (attentionReviewApproveAction) {
+            attentionReviewApproveAction.disabled = true;
+            attentionReviewApproveAction.textContent = 'Sending...';
+        }
+        if (attentionReviewStatus) attentionReviewStatus.textContent = 'Sending approved draft...';
+
+        const draftToSend = pendingAttentionDraft;
+
         closeAttentionReviewModal();
         card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-        openLeadModal(card, pendingAttentionDraft.tab || 'communications');
+        openLeadModal(card, draftToSend.tab || 'communications');
 
-        if (pendingAttentionDraft.sms && smsInput) {
-            smsInput.value = pendingAttentionDraft.sms.reply || '';
+        if (draftToSend.sms && smsInput) {
+            smsInput.value = draftToSend.sms.reply || '';
             setComposerDraftSource('sms', 'ai');
-            if (smsStatus) smsStatus.textContent = 'SMS draft loaded from attention review. Review before sending.';
         }
 
-        if (pendingAttentionDraft.email) {
-            if (emailSubjectInput) emailSubjectInput.value = pendingAttentionDraft.email.subject || '';
-            if (emailBodyInput) emailBodyInput.value = pendingAttentionDraft.email.body || '';
+        if (draftToSend.email) {
+            if (emailSubjectInput) emailSubjectInput.value = draftToSend.email.subject || '';
+            if (emailBodyInput) emailBodyInput.value = draftToSend.email.body || '';
             setComposerDraftSource('email', 'ai');
-            if (emailStatus) emailStatus.textContent = 'Email draft loaded from attention review. Review before sending.';
         }
 
         setActiveTab('communications');
         setComposerCollapsed(false);
         refreshComposerSafetyCue();
-        setAiStatusMessage('Attention draft loaded. Review and send when ready.');
+
+        const results = [];
+        let ok = true;
+        if (draftToSend.sms) {
+            const sentSms = await sendLeadSms();
+            results.push(sentSms ? 'SMS sent' : 'SMS failed');
+            ok = ok && sentSms;
+        }
+        if (draftToSend.email) {
+            const sentEmail = await sendLeadEmail();
+            results.push(sentEmail ? 'Email sent' : 'Email failed');
+            ok = ok && sentEmail;
+        }
+
         pendingAttentionDraft = null;
-        return true;
+        setAiStatusMessage(ok
+            ? 'Approved action sent. Review the thread for confirmation.'
+            : 'Approved action could not fully send. Review the composer status before retrying.'
+        );
+        if (attentionReviewApproveAction) {
+            attentionReviewApproveAction.disabled = false;
+            attentionReviewApproveAction.textContent = 'Approve & Send';
+        }
+        return ok;
     }
 
     async function runActionQueueAi(button) {

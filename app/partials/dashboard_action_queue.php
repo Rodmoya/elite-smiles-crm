@@ -290,7 +290,7 @@ if (!function_exists('lead_action_queue_link')) {
                     id="attention-review-approve-action"
                     class="hidden h-11 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Approve & Open Composer
+                    Approve & Send
                 </button>
             </div>
         </div>

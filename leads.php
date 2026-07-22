@@ -103,7 +103,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             </div>
         <?php endif; ?>
 
-        <section class="mb-4">
+        <section class="mb-4 hidden sm:block">
             <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] xl:items-end">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Lead Flow</p>

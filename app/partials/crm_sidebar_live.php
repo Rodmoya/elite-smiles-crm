@@ -152,9 +152,11 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         </div>
     </aside>
 
+    <?php require __DIR__ . '/crm_mobile_nav.php'; ?>
+
     <aside
         id="crm-ai-panel"
-        class="pointer-events-none fixed top-4 z-[70] hidden w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:flex"
+        class="pointer-events-none fixed inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[70] flex max-h-[calc(100dvh-6rem)] overflow-hidden rounded-[22px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:inset-x-auto lg:bottom-auto lg:top-4 lg:w-[380px] lg:max-w-[calc(100vw-2rem)] lg:rounded-[26px]"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
         data-page="<?= e((string) $currentPage) ?>"
@@ -209,62 +211,6 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         </div>
     </aside>
 
-    <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur lg:hidden">
-        <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <a href="<?= e(base_url('leads.php')) ?>" class="shrink-0">
-                <img src="<?= e((string)$logoUrl) ?>" alt="Elite Smiles" class="h-auto w-[150px] max-w-full">
-            </a>
-            <div class="ml-auto lg:hidden"></div>
-            <button
-                type="button"
-                id="crm-mobile-nav-toggle"
-                class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-700"
-                aria-controls="crm-mobile-nav"
-                aria-expanded="false"
-                aria-label="Open navigation"
-            >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                    <path d="M4 7h16M4 12h16M4 17h16"></path>
-                </svg>
-            </button>
-        </div>
-        <nav id="crm-mobile-nav" class="hidden border-t border-slate-200 bg-white px-4 py-3" aria-label="Mobile CRM navigation">
-            <div class="grid gap-2">
-                <?php $previousGroup = ''; ?>
-                <?php foreach ($crmNavItems as $item): ?>
-                    <?php $isActive = $currentPage === $item['key']; ?>
-                    <?php $group = (string)($item['group'] ?? ''); ?>
-                    <?php if ($group !== '' && $group !== $previousGroup): ?>
-                        <p class="px-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400"><?= e($group) ?></p>
-                    <?php endif; ?>
-                    <?php $previousGroup = $group; ?>
-                    <a
-                        href="<?= e($item['href']) ?>"
-                        class="<?= $isActive
-                            ? 'rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white'
-                            : 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700'
-                        ?>"
-                        <?= $isActive ? 'aria-current="page"' : '' ?>
-                    >
-                        <?= e($item['label']) ?>
-                    </a>
-                <?php endforeach; ?>
-                <div class="mt-2 border-t border-slate-200 pt-3">
-                    <div class="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="text-[11px] font-semibold leading-tight text-slate-900"><?= e($firstName) ?></p>
-                        <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-slate-500"><?= e($role) ?></p>
-                    </div>
-                    <form method="POST" action="<?= e((string)$logoutAction) ?>">
-                        <?= csrf_input() ?>
-                        <input type="hidden" name="action" value="logout">
-                        <button type="submit" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100">
-                            Logout
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </nav>
-    </header>
 </div>
 
 <script>

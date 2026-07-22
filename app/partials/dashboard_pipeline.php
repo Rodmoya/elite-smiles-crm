@@ -145,15 +145,46 @@ $consultationOptions = [
 
 ?>
 
+<style>
+@media (max-width: 767px) {
+    .pipeline-mobile-priority { margin-bottom: 1rem; border: 0; border-radius: 0; padding: 0; box-shadow: none; background: transparent; }
+    #pipeline-board-viewport { border: 0; border-radius: 0; padding-bottom: 0; background: transparent; overflow: visible; }
+    #lead-pipeline-board { display: block; padding: 0; }
+    #lead-pipeline-board .pipeline-column { height: auto; min-height: 0; border-radius: 1rem; padding: .75rem; background: #f8fafc; }
+    #lead-pipeline-board .pipeline-dropzone { max-height: none; overflow: visible; padding-right: 0; }
+    #lead-pipeline-board .lead-open-modal { width: 44px !important; height: 44px !important; border: 1px solid #e2e8f0; background: #fff; border-radius: .75rem; }
+    #lead-pipeline-board .lead-card-bottom-row { align-items: flex-start; }
+    #lead-pipeline-board .lead-card-bottom-row > div { width: 100%; margin-left: 0; margin-top: .5rem; justify-content: flex-start; gap: .5rem; }
+    #lead-detail-modal { background: #fff; }
+    #lead-detail-modal, #new-lead-modal, #pipeline-calendar-overlay { z-index: 90 !important; }
+    #lead-detail-modal > div, #lead-detail-modal > div > div { height: 100dvh !important; min-height: 100dvh !important; }
+    #lead-detail-header { display: grid !important; grid-template-columns: minmax(0,1fr) auto; gap: .75rem !important; padding: .75rem 1rem !important; }
+    #lead-detail-header > div:first-child { display: contents; }
+    #lead-detail-header > div:first-child > div { min-width: 0; grid-column: 1; grid-row: 1; }
+    #lead-detail-header > div:first-child > nav { grid-column: 1 / -1; grid-row: 2; width: calc(100vw - 2rem); margin-top: .25rem; gap: .25rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; }
+    #lead-detail-header > div:first-child > nav .workspace-tab-button { min-height: 44px; flex: 0 0 auto; border-radius: .75rem; padding: 0 .9rem; }
+    #lead-detail-header > div:last-child { grid-column: 2; grid-row: 1; align-self: start; gap: .5rem; }
+    #workspace-smile-design-intake, #workspace-ai-button, #lead-delete-button { display: none !important; }
+    #workspace-save-main, #lead-detail-close { width: 44px !important; height: 44px !important; }
+    #lead-detail-body { padding: 1rem !important; padding-bottom: calc(6rem + env(safe-area-inset-bottom)) !important; overflow-y: auto !important; overscroll-behavior: contain; }
+    #workspace-tab-details > div:first-child { position: sticky; top: -.25rem; z-index: 10; flex-wrap: nowrap; overflow-x: auto; border-radius: .875rem; padding: .5rem; scrollbar-width: none; }
+    #workspace-tab-details .lead-detail-window-button { min-height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; }
+    #lead-communications-grid { display: flex !important; height: auto !important; flex-direction: column; gap: 1rem !important; }
+    #lead-unified-timeline-panel, #lead-activity-panel { height: auto !important; min-height: 0 !important; }
+    #modal-unified-timeline, #modal-activity-feed, #modal-email-history, #modal-message-thread { max-height: none !important; overflow: visible !important; }
+    #lead-communication-composer-panel { position: sticky; bottom: calc(.25rem + env(safe-area-inset-bottom)); z-index: 20; order: -1; width: 100% !important; height: auto !important; min-height: 190px; max-height: 48dvh !important; box-shadow: 0 -12px 30px rgba(15,23,42,.12); }
+}
+</style>
 
 
-<section class="mb-8">
 
-    <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+<section class="pipeline-mobile-priority mb-8">
+
+    <div class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
 
         <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 
-            <div>
+            <div class="hidden sm:block">
 
                 <p class="text-[11px] uppercase tracking-[0.22em] text-slate-500">Lead Flow</p>
 
@@ -169,7 +200,7 @@ $consultationOptions = [
                     <button
                         type="button"
                         id="pipeline-notifications-button"
-                        class="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         aria-haspopup="true"
                         aria-expanded="false"
                         title="Pipeline notifications"
@@ -195,7 +226,7 @@ $consultationOptions = [
                 <button
                     type="button"
                     id="open-new-lead-modal"
-                    class="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                    class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                 >
                     + New Lead
                 </button>
@@ -203,7 +234,7 @@ $consultationOptions = [
                 <button
                     type="button"
                     id="open-import-leads-picker"
-                    class="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                    class="hidden h-11 items-center justify-center whitespace-nowrap rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 sm:inline-flex"
                 >
                     Import Leads
                 </button>
@@ -217,7 +248,7 @@ $consultationOptions = [
                 <button
                     type="button"
                     id="pipeline-calendar-button"
-                    class="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
+                    class="hidden h-11 items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 sm:inline-flex"
                     title="View appointments calendar"
                 >
                     Calendar
@@ -226,16 +257,16 @@ $consultationOptions = [
                 <button
                     type="button"
                     id="run-followup-check"
-                    class="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="hidden h-11 items-center justify-center whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
                 >
                     Check Follow-Ups
                 </button>
 
-                <div class="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:hidden">
-                    <label for="pipeline-mobile-stage-filter" class="mr-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Mobile stage list</label>
+                <div class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 sm:hidden">
+                    <label for="pipeline-mobile-stage-filter" class="mr-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Lead stage</label>
                     <select
                         id="pipeline-mobile-stage-filter"
-                        class="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 outline-none"
+                        class="mt-2 block h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base font-semibold text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                     >
                         <option value="__all__">All stages</option>
                         <?php foreach ($stageMap as $stageFilterKey => $stageFilterLabel): ?>
@@ -253,7 +284,7 @@ $consultationOptions = [
         </div>
 
 
-        <div class="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+        <div id="pipeline-search" class="mb-4 scroll-mt-20 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <label for="pipeline-lead-search" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Find lead
@@ -5786,6 +5817,41 @@ function applyCommunicationViewportFit() {
                 messageThread.style.overflowY = '';
             }
 
+            return;
+        }
+
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            leadDetailBody.style.maxHeight = '';
+            leadDetailBody.style.height = '';
+            leadDetailBody.style.overflowY = 'auto';
+
+            if (leadCommunicationGrid) {
+                leadCommunicationGrid.style.height = '';
+                leadCommunicationGrid.style.gridTemplateColumns = '';
+                leadCommunicationGrid.style.gridTemplateRows = '';
+                leadCommunicationGrid.style.alignItems = '';
+                leadCommunicationGrid.style.columnGap = '';
+                leadCommunicationGrid.style.rowGap = '';
+            }
+
+            [leadUnifiedTimelinePanel, leadActivityPanel, leadCommunicationComposerPanel].forEach((panel) => {
+                if (!panel) return;
+                panel.style.gridColumn = '';
+                panel.style.gridRow = '';
+                panel.style.height = '';
+                panel.style.minHeight = '';
+                panel.style.width = '';
+                panel.style.alignSelf = '';
+            });
+            if (leadCommunicationComposerPanel) {
+                leadCommunicationComposerPanel.style.maxHeight = '';
+                leadCommunicationComposerPanel.style.overflowY = '';
+            }
+            [unifiedTimeline, activityFeed, emailHistory, messageThread].forEach((list) => {
+                if (!list) return;
+                list.style.maxHeight = '';
+                list.style.overflowY = '';
+            });
             return;
         }
 

@@ -15,6 +15,25 @@ $mobilePrimaryItems = array_values(array_filter(
     #crm-mobile-drawer[aria-hidden="false"] { opacity: 1; pointer-events: auto; }
     #crm-mobile-drawer[aria-hidden="false"] .crm-mobile-drawer-panel { transform: translateX(0); }
 }
+@media (max-width: 640px) {
+    #pipeline-notifications-menu,
+    #dashboard-notifications-menu {
+        position: fixed !important;
+        top: var(--crm-notifications-top, 4.5rem) !important;
+        right: 1rem !important;
+        left: 1rem !important;
+        z-index: 85 !important;
+        width: auto !important;
+        max-width: none !important;
+        max-height: calc(100dvh - var(--crm-notifications-top, 4.5rem) - 5.5rem);
+        overflow: hidden;
+    }
+    #pipeline-notifications-list,
+    #dashboard-notifications-menu > div:last-child {
+        max-height: calc(100dvh - var(--crm-notifications-top, 4.5rem) - 10rem) !important;
+        overscroll-behavior: contain;
+    }
+}
 </style>
 
 <header class="fixed inset-x-0 top-0 z-[60] flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur lg:hidden">
@@ -82,4 +101,26 @@ $mobilePrimaryItems = array_values(array_filter(
     document.querySelectorAll('[data-crm-mobile-ai]').forEach((button) => button.addEventListener('click', () => { if (window.eliteAiSetOpen) window.eliteAiSetOpen(true); }));
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
 })();
+
+document.addEventListener('DOMContentLoaded', () => {
+    const pairs = [
+        ['pipeline-notifications-button', 'pipeline-notifications-menu'],
+        ['dashboard-notifications-button', 'dashboard-notifications-menu'],
+    ];
+    const positionMenu = (button, menu) => {
+        if (window.innerWidth > 640) {
+            menu.style.removeProperty('--crm-notifications-top');
+            return;
+        }
+        const rect = button.getBoundingClientRect();
+        menu.style.setProperty('--crm-notifications-top', `${Math.round(rect.bottom + 8)}px`);
+    };
+    pairs.forEach(([buttonId, menuId]) => {
+        const button = document.getElementById(buttonId);
+        const menu = document.getElementById(menuId);
+        if (!button || !menu) return;
+        button.addEventListener('click', () => positionMenu(button, menu), { capture: true });
+        window.addEventListener('resize', () => positionMenu(button, menu), { passive: true });
+    });
+});
 </script>

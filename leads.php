@@ -146,9 +146,10 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
         <div data-lead-view-panel="attention" class="hidden">
             <?php
                 $actionQueueCompact = true;
+                $actionQueueAiEnabled = true;
                 $actionQueueDisplayLimit = $leadAttentionDisplayLimit;
                 require __DIR__ . '/app/partials/dashboard_action_queue.php';
-                unset($actionQueueCompact, $actionQueueDisplayLimit);
+                unset($actionQueueCompact, $actionQueueAiEnabled, $actionQueueDisplayLimit);
             ?>
         </div>
 

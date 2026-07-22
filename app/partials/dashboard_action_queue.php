@@ -14,10 +14,11 @@ declare(strict_types=1);
 $actionQueueRows = $actionQueueRows ?? (function_exists('lead_action_queue_rows') ? lead_action_queue_rows(12) : []);
 $actionQueueSummary = $actionQueueSummary ?? (function_exists('lead_action_queue_summary') ? lead_action_queue_summary($actionQueueRows) : ['total' => count($actionQueueRows)]);
 $actionQueueCompact = !empty($actionQueueCompact);
+$actionQueueAiEnabled = !empty($actionQueueAiEnabled);
 $actionQueueDisplayLimit = isset($actionQueueDisplayLimit) ? max(1, (int)$actionQueueDisplayLimit) : ($actionQueueCompact ? 12 : 9);
 $actionQueueDisplayRows = array_slice($actionQueueRows, 0, $actionQueueDisplayLimit);
 $actionQueueTitle = $actionQueueTitle ?? 'Needs Attention Today';
-$actionQueueSubtitle = $actionQueueSubtitle ?? 'Open CRM and start here: replies, due follow-ups, scheduling recovery, and cleanup items.';
+$actionQueueSubtitle = $actionQueueSubtitle ?? 'One clean worklist. Use AI Action to review why the lead is late, draft the next move, then approve before sending.';
 
 $queueMetricItems = [
     ['label' => 'Reply', 'value' => (int)($actionQueueSummary['reply_needed'] ?? 0), 'class' => 'border-blue-200 bg-blue-50 text-blue-700'],
@@ -77,7 +78,7 @@ if (!function_exists('lead_action_queue_link')) {
                 Nothing urgent right now. The pipeline is clean for the moment.
             </div>
         <?php else: ?>
-            <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+            <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
                 <?php foreach ($actionQueueDisplayRows as $lead): ?>
                     <?php
                     $queue = (array)($lead['_action_queue'] ?? []);
@@ -93,12 +94,24 @@ if (!function_exists('lead_action_queue_link')) {
                     $contactLine = lead_action_queue_contact_line($lead);
                     $lastTouch = trim((string)($queue['last_touch_at'] ?? ''));
                     $link = lead_action_queue_link($leadId);
+                    $urgencyLabel = (string)($queue['urgency_label'] ?? '');
+                    $aiInstruction = implode(' ', array_filter([
+                        'Analyze this lead because it is in Need Attention Today.',
+                        'Lead: ' . $leadName . '.',
+                        $actionLabel !== '' ? 'Needed action: ' . $actionLabel . '.' : '',
+                        $reason !== '' ? 'Why it is late/flagged: ' . $reason : '',
+                        $stageLabel !== '' ? 'Current workflow stage: ' . $stageLabel . '.' : '',
+                        $urgencyLabel !== '' ? 'Urgency: ' . $urgencyLabel . '.' : '',
+                        'Review the communication thread and CRM notes first.',
+                        'Draft the next best patient-facing follow-up focused on scheduling or rescuing the consult.',
+                        'Do not send anything. Put the draft in the composer for human approval.',
+                    ]));
                     $badgeClass = function_exists('lead_conversion_badge_class')
                         ? lead_conversion_badge_class($actionTone)
                         : 'border-slate-200 bg-slate-50 text-slate-600';
                     ?>
-                    <article class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition hover:border-slate-300 hover:bg-white hover:shadow-sm">
-                        <div class="flex items-start justify-between gap-3">
+                    <article class="border-b border-slate-200 bg-white px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_auto] lg:items-center">
                             <div class="min-w-0">
                                 <a
                                     href="<?= e($link) ?>"
@@ -112,50 +125,50 @@ if (!function_exists('lead_action_queue_link')) {
                                     <p class="mt-1 truncate text-xs text-slate-500"><?= e($contactLine) ?></p>
                                 <?php endif; ?>
                             </div>
-                            <span class="shrink-0 rounded-md border <?= e($badgeClass) ?> px-2 py-1 text-[10px] font-bold">
-                                <?= e($actionLabel) ?>
-                            </span>
-                        </div>
 
-                        <p class="mt-3 line-clamp-2 text-xs leading-5 text-slate-600"><?= e($reason) ?></p>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="shrink-0 rounded-md border <?= e($badgeClass) ?> px-2 py-1 text-[10px] font-bold">
+                                        <?= e($actionLabel) ?>
+                                    </span>
+                                    <?php if ($stageLabel !== ''): ?>
+                                        <span class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600"><?= e($stageLabel) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <p class="mt-2 line-clamp-2 text-xs leading-5 text-slate-600"><?= e($reason) ?></p>
+                            </div>
 
-                        <div class="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                            <?php if ($stageLabel !== ''): ?>
-                                <span class="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600"><?= e($stageLabel) ?></span>
-                            <?php endif; ?>
-                            <?php if ($sourceLabel !== ''): ?>
-                                <span class="max-w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1"><?= e($sourceLabel) ?></span>
-                            <?php endif; ?>
-                            <?php if ($lastTouch !== ''): ?>
-                                <span class="rounded-md border border-slate-200 bg-white px-2 py-1">Last <?= e(format_datetime($lastTouch, 'M j g:i A')) ?></span>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="mt-4 grid grid-cols-3 gap-2">
-                            <a
-                                href="<?= e($link) ?>"
-                                class="inline-flex h-10 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
-                                data-open-action-lead="<?= e((string)$leadId) ?>"
-                                data-open-action-tab="<?= e($tab) ?>"
-                            >
-                                Open
-                            </a>
-                            <a
-                                href="<?= e($link) ?>"
-                                class="inline-flex h-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                data-open-action-lead="<?= e((string)$leadId) ?>"
-                                data-open-action-tab="communications"
-                            >
-                                Text
-                            </a>
-                            <a
-                                href="<?= e($link) ?>"
-                                class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-                                data-open-action-lead="<?= e((string)$leadId) ?>"
-                                data-open-action-tab="details"
-                            >
-                                Details
-                            </a>
+                            <div class="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
+                                <div class="min-w-0 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 lg:max-w-[18rem] lg:justify-end">
+                                    <?php if ($sourceLabel !== ''): ?>
+                                        <span class="max-w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1"><?= e($sourceLabel) ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($lastTouch !== ''): ?>
+                                        <span class="rounded-md border border-slate-200 bg-white px-2 py-1">Last <?= e(format_datetime($lastTouch, 'M j g:i A')) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="flex shrink-0 gap-2">
+                                    <?php if ($actionQueueAiEnabled): ?>
+                                        <button
+                                            type="button"
+                                            class="inline-flex h-10 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                            data-ai-action-lead="<?= e((string)$leadId) ?>"
+                                            data-open-action-tab="<?= e($tab) ?>"
+                                            data-ai-action-instruction="<?= e($aiInstruction) ?>"
+                                        >
+                                            AI Action
+                                        </button>
+                                    <?php endif; ?>
+                                    <a
+                                        href="<?= e($link) ?>"
+                                        class="inline-flex h-10 items-center justify-center rounded-xl <?= $actionQueueAiEnabled ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus:ring-slate-400' : 'bg-slate-950 text-white hover:bg-slate-800 focus:ring-slate-900' ?> px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2"
+                                        data-open-action-lead="<?= e((string)$leadId) ?>"
+                                        data-open-action-tab="<?= e($tab) ?>"
+                                    >
+                                        Open
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </article>
                 <?php endforeach; ?>

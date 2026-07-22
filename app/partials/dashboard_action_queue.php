@@ -238,6 +238,31 @@ if (!function_exists('lead_action_queue_link')) {
                         AI will read the lead thread and notes, suggest the next action, and place the draft in the composer. You still approve before anything is sent.
                     </p>
                 </div>
+
+                <div id="attention-review-loader" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center gap-3">
+                        <span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-950"></span>
+                        <p class="text-sm font-semibold text-slate-800">AI is reading the lead and drafting the next action...</p>
+                    </div>
+                </div>
+
+                <div id="attention-review-result" class="hidden space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">Suggested next action</p>
+                        <p id="attention-review-suggestion" class="mt-2 text-sm font-semibold leading-6 text-emerald-950">Review draft.</p>
+                    </div>
+                    <div id="attention-review-sms-wrap" class="hidden rounded-xl border border-white/70 bg-white p-3">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">SMS draft</p>
+                        <p id="attention-review-sms-draft" class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800"></p>
+                    </div>
+                    <div id="attention-review-email-wrap" class="hidden rounded-xl border border-white/70 bg-white p-3">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Email draft</p>
+                        <p id="attention-review-email-subject" class="mt-2 text-sm font-semibold text-slate-900"></p>
+                        <p id="attention-review-email-body" class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800"></p>
+                    </div>
+                </div>
+
+                <p id="attention-review-status" class="min-h-5 text-sm text-slate-500"></p>
             </div>
 
             <div class="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
@@ -259,6 +284,13 @@ if (!function_exists('lead_action_queue_link')) {
                     data-ai-action-instruction=""
                 >
                     AI Action
+                </button>
+                <button
+                    type="button"
+                    id="attention-review-approve-action"
+                    class="hidden h-11 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    Approve & Open Composer
                 </button>
             </div>
         </div>

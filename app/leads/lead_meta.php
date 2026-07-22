@@ -426,12 +426,12 @@ if (!function_exists('lead_conversion_datetime')) {
 if (!function_exists('lead_conversion_reply_needed')) {
     function lead_conversion_reply_needed(array $lead): bool
     {
-        if ((int)($lead['unread_message_count'] ?? 0) > 0) {
-            return true;
-        }
         $lastInbound = lead_conversion_datetime($lead['last_inbound_at'] ?? '');
         $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
-        return $lastInbound !== null && ($lastOutbound === null || $lastInbound > $lastOutbound);
+        if ($lastInbound !== null) {
+            return $lastOutbound === null || $lastInbound > $lastOutbound;
+        }
+        return (int)($lead['unread_message_count'] ?? 0) > 0;
     }
 }
 

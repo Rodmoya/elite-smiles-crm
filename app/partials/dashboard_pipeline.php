@@ -2562,6 +2562,16 @@ $consultationOptions = [
     const attentionReviewLastTouch = document.getElementById('attention-review-last-touch');
     const attentionReviewAiAction = document.getElementById('attention-review-ai-action');
     const attentionReviewOpenLead = document.getElementById('attention-review-open-lead');
+    const attentionReviewApproveAction = document.getElementById('attention-review-approve-action');
+    const attentionReviewLoader = document.getElementById('attention-review-loader');
+    const attentionReviewResult = document.getElementById('attention-review-result');
+    const attentionReviewSuggestion = document.getElementById('attention-review-suggestion');
+    const attentionReviewSmsWrap = document.getElementById('attention-review-sms-wrap');
+    const attentionReviewSmsDraft = document.getElementById('attention-review-sms-draft');
+    const attentionReviewEmailWrap = document.getElementById('attention-review-email-wrap');
+    const attentionReviewEmailSubject = document.getElementById('attention-review-email-subject');
+    const attentionReviewEmailBody = document.getElementById('attention-review-email-body');
+    const attentionReviewStatus = document.getElementById('attention-review-status');
 
     const modal = document.getElementById('lead-detail-modal');
 
@@ -2844,6 +2854,7 @@ $consultationOptions = [
         email: 'manual',
         note: 'manual',
     };
+    let pendingAttentionDraft = null;
     const calendarStateStorageKey = 'elite-smiles-calendar-panel-state-v1';
     const calendarStateFromStorage = (() => {
         try {
@@ -7072,6 +7083,23 @@ function applyCommunicationViewportFit() {
         attentionReviewModal.setAttribute('aria-hidden', 'true');
     }
 
+    function resetAttentionReviewDraftUi() {
+        pendingAttentionDraft = null;
+        if (attentionReviewLoader) attentionReviewLoader.classList.add('hidden');
+        if (attentionReviewResult) attentionReviewResult.classList.add('hidden');
+        if (attentionReviewSmsWrap) attentionReviewSmsWrap.classList.add('hidden');
+        if (attentionReviewEmailWrap) attentionReviewEmailWrap.classList.add('hidden');
+        if (attentionReviewSmsDraft) attentionReviewSmsDraft.textContent = '';
+        if (attentionReviewEmailSubject) attentionReviewEmailSubject.textContent = '';
+        if (attentionReviewEmailBody) attentionReviewEmailBody.textContent = '';
+        if (attentionReviewSuggestion) attentionReviewSuggestion.textContent = 'Review draft.';
+        if (attentionReviewStatus) attentionReviewStatus.textContent = '';
+        if (attentionReviewApproveAction) {
+            attentionReviewApproveAction.classList.add('hidden');
+            attentionReviewApproveAction.disabled = true;
+        }
+    }
+
     function openAttentionReviewModal(trigger) {
         if (!trigger || !attentionReviewModal) return false;
 
@@ -7108,8 +7136,139 @@ function applyCommunicationViewportFit() {
             attentionReviewOpenLead.dataset.openActionTab = tab;
         }
 
+        resetAttentionReviewDraftUi();
         attentionReviewModal.classList.remove('hidden');
         attentionReviewModal.setAttribute('aria-hidden', 'false');
+        return true;
+    }
+
+    function attentionReviewDraftSuggestion(smsData, emailData) {
+        const notes = [
+            smsData?.draft?.note || '',
+            emailData?.draft?.note || '',
+        ].map((value) => String(value || '').trim()).filter(Boolean);
+        if (notes.length > 0) {
+            return notes[0];
+        }
+        if (smsData && emailData) {
+            return 'Send the SMS and email draft after review, then keep the next follow-up time updated.';
+        }
+        if (smsData) {
+            return 'Send the SMS draft after review, then watch for a reply or schedule response.';
+        }
+        if (emailData) {
+            return 'Send the email draft after review, then add SMS only if a valid opted-in phone is available.';
+        }
+        return 'Review the lead details before taking action.';
+    }
+
+    async function runAttentionReviewAiPreview(button) {
+        if (!button || !board) return false;
+
+        const leadId = button.dataset.aiActionLead || '';
+        const card = safeCardLookupById(leadId);
+        if (!card) return false;
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Analyzing...';
+        if (attentionReviewLoader) attentionReviewLoader.classList.remove('hidden');
+        if (attentionReviewResult) attentionReviewResult.classList.add('hidden');
+        if (attentionReviewStatus) attentionReviewStatus.textContent = '';
+        if (attentionReviewApproveAction) {
+            attentionReviewApproveAction.classList.add('hidden');
+            attentionReviewApproveAction.disabled = true;
+        }
+
+        try {
+            const instruction = String(button.dataset.aiActionInstruction || '').trim();
+            const hasPhone = !!(card.dataset.leadPhone || '').trim();
+            const hasEmail = !!(card.dataset.leadEmail || '').trim();
+            const smsOptedOut = String(card.dataset.leadSmsOptStatus || 'unknown').toLowerCase() === 'opted_out';
+
+            let smsData = null;
+            let emailData = null;
+
+            if (hasPhone && !smsOptedOut) {
+                smsData = await requestSmsDraft(leadId, instruction, 'operator_follow_up_sms');
+            }
+            if (hasEmail) {
+                emailData = await requestEmailDraft(leadId, instruction, 'operator_follow_up_email');
+            }
+
+            if (!smsData && !emailData) {
+                throw new Error('AI needs a usable phone or email before it can draft the next action.');
+            }
+
+            pendingAttentionDraft = {
+                leadId,
+                tab: button.dataset.openActionTab || 'communications',
+                sms: smsData?.draft || null,
+                email: emailData?.draft || null,
+            };
+
+            if (attentionReviewSuggestion) {
+                attentionReviewSuggestion.textContent = attentionReviewDraftSuggestion(smsData, emailData);
+            }
+
+            if (smsData?.draft?.reply && attentionReviewSmsWrap && attentionReviewSmsDraft) {
+                attentionReviewSmsDraft.textContent = smsData.draft.reply;
+                attentionReviewSmsWrap.classList.remove('hidden');
+            }
+
+            if (emailData?.draft && attentionReviewEmailWrap) {
+                if (attentionReviewEmailSubject) attentionReviewEmailSubject.textContent = emailData.draft.subject || '(No subject)';
+                if (attentionReviewEmailBody) attentionReviewEmailBody.textContent = emailData.draft.body || '';
+                attentionReviewEmailWrap.classList.remove('hidden');
+            }
+
+            if (attentionReviewResult) attentionReviewResult.classList.remove('hidden');
+            if (attentionReviewStatus) attentionReviewStatus.textContent = 'Draft ready. Approve to open the composer with this action preloaded.';
+            if (attentionReviewApproveAction) {
+                attentionReviewApproveAction.disabled = false;
+                attentionReviewApproveAction.classList.remove('hidden');
+            }
+
+            return true;
+        } catch (error) {
+            pendingAttentionDraft = null;
+            if (attentionReviewStatus) attentionReviewStatus.textContent = error.message || 'AI action failed.';
+            return false;
+        } finally {
+            if (attentionReviewLoader) attentionReviewLoader.classList.add('hidden');
+            button.disabled = false;
+            button.textContent = originalText || 'AI Action';
+        }
+    }
+
+    function approveAttentionReviewDraft() {
+        if (!pendingAttentionDraft || !board) return false;
+
+        const card = safeCardLookupById(pendingAttentionDraft.leadId || '');
+        if (!card) return false;
+
+        closeAttentionReviewModal();
+        card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        openLeadModal(card, pendingAttentionDraft.tab || 'communications');
+
+        if (pendingAttentionDraft.sms && smsInput) {
+            smsInput.value = pendingAttentionDraft.sms.reply || '';
+            setComposerDraftSource('sms', 'ai');
+            if (smsStatus) smsStatus.textContent = 'SMS draft loaded from attention review. Review before sending.';
+        }
+
+        if (pendingAttentionDraft.email) {
+            if (emailSubjectInput) emailSubjectInput.value = pendingAttentionDraft.email.subject || '';
+            if (emailBodyInput) emailBodyInput.value = pendingAttentionDraft.email.body || '';
+            setComposerDraftSource('email', 'ai');
+            if (emailStatus) emailStatus.textContent = 'Email draft loaded from attention review. Review before sending.';
+        }
+
+        setActiveTab('communications');
+        setComposerCollapsed(false);
+        refreshComposerSafetyCue();
+        setAiStatusMessage('Attention draft loaded. Review and send when ready.');
+        pendingAttentionDraft = null;
         return true;
     }
 
@@ -7993,12 +8152,23 @@ function applyCommunicationViewportFit() {
         });
     }
 
+    if (attentionReviewApproveAction) {
+        attentionReviewApproveAction.addEventListener('click', function (event) {
+            event.preventDefault();
+            approveAttentionReviewDraft();
+        });
+    }
+
 
     document.addEventListener('click', function (event) {
         const aiQueueButton = event.target.closest('[data-ai-action-lead]');
         if (aiQueueButton) {
             event.preventDefault();
-            runActionQueueAi(aiQueueButton);
+            if (aiQueueButton.closest('#attention-review-modal')) {
+                runAttentionReviewAiPreview(aiQueueButton);
+            } else {
+                runActionQueueAi(aiQueueButton);
+            }
             return;
         }
 

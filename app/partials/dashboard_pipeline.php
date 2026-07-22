@@ -2552,6 +2552,16 @@ $consultationOptions = [
     const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
     const pipelineNotificationsList = document.getElementById('pipeline-notifications-list');
     const pipelineMobileStageFilter = document.getElementById('pipeline-mobile-stage-filter');
+    const attentionReviewModal = document.getElementById('attention-review-modal');
+    const attentionReviewClose = document.getElementById('attention-review-close');
+    const attentionReviewLeadName = document.getElementById('attention-review-lead-name');
+    const attentionReviewStage = document.getElementById('attention-review-stage');
+    const attentionReviewIssue = document.getElementById('attention-review-issue');
+    const attentionReviewReason = document.getElementById('attention-review-reason');
+    const attentionReviewSource = document.getElementById('attention-review-source');
+    const attentionReviewLastTouch = document.getElementById('attention-review-last-touch');
+    const attentionReviewAiAction = document.getElementById('attention-review-ai-action');
+    const attentionReviewOpenLead = document.getElementById('attention-review-open-lead');
 
     const modal = document.getElementById('lead-detail-modal');
 
@@ -7050,6 +7060,59 @@ function applyCommunicationViewportFit() {
 
     }
 
+    function setAttentionReviewText(element, value, fallback = '-') {
+        if (!element) return;
+        const text = String(value || '').trim();
+        element.textContent = text !== '' ? text : fallback;
+    }
+
+    function closeAttentionReviewModal() {
+        if (!attentionReviewModal) return;
+        attentionReviewModal.classList.add('hidden');
+        attentionReviewModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function openAttentionReviewModal(trigger) {
+        if (!trigger || !attentionReviewModal) return false;
+
+        const leadId = trigger.dataset.attentionLeadId || trigger.dataset.openActionLead || '';
+        const card = safeCardLookupById(leadId);
+        if (!card) return false;
+
+        const tab = trigger.dataset.openActionTab || 'communications';
+        const leadName = trigger.dataset.attentionLeadName || card.dataset.leadName || 'Lead';
+        const stage = trigger.dataset.attentionStageLabel || card.dataset.leadConversionStageLabel || card.dataset.leadStage || 'Review';
+        const issue = trigger.dataset.attentionActionLabel || card.dataset.leadNextAction || 'Review next step';
+        const reason = trigger.dataset.attentionReason || card.dataset.leadNextAction || 'Review this lead before taking action.';
+        const source = trigger.dataset.attentionSourceLabel || card.dataset.leadSource || card.dataset.leadCampaign || '-';
+        const lastTouch = trigger.dataset.attentionLastTouch || card.dataset.leadLastOutboundAt || card.dataset.leadLastInboundAt || '-';
+        const instruction = trigger.dataset.attentionAiInstruction || trigger.dataset.aiActionInstruction || '';
+
+        setAttentionReviewText(attentionReviewLeadName, leadName, 'Lead');
+        setAttentionReviewText(attentionReviewStage, stage);
+        setAttentionReviewText(attentionReviewIssue, issue, 'Review next step');
+        setAttentionReviewText(attentionReviewReason, reason, 'Review this lead before taking action.');
+        setAttentionReviewText(attentionReviewSource, source);
+        setAttentionReviewText(attentionReviewLastTouch, lastTouch);
+
+        if (attentionReviewAiAction) {
+            attentionReviewAiAction.dataset.aiActionLead = leadId;
+            attentionReviewAiAction.dataset.openActionTab = tab;
+            attentionReviewAiAction.dataset.aiActionInstruction = instruction;
+            attentionReviewAiAction.disabled = false;
+            attentionReviewAiAction.textContent = 'AI Action';
+        }
+
+        if (attentionReviewOpenLead) {
+            attentionReviewOpenLead.dataset.openActionLead = leadId;
+            attentionReviewOpenLead.dataset.openActionTab = tab;
+        }
+
+        attentionReviewModal.classList.remove('hidden');
+        attentionReviewModal.setAttribute('aria-hidden', 'false');
+        return true;
+    }
+
     async function runActionQueueAi(button) {
         if (!button || !board) return false;
 
@@ -7063,6 +7126,7 @@ function applyCommunicationViewportFit() {
 
         try {
             const preferredTab = button.dataset.openActionTab || 'communications';
+            closeAttentionReviewModal();
             card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
             card.classList.add('ring-2', 'ring-amber-500', 'ring-offset-2');
             window.setTimeout(() => {
@@ -7917,12 +7981,31 @@ function applyCommunicationViewportFit() {
 
     if (deleteLeadButton) deleteLeadButton.addEventListener('click', requestDeleteLead);
 
+    if (attentionReviewClose) {
+        attentionReviewClose.addEventListener('click', closeAttentionReviewModal);
+    }
+
+    if (attentionReviewModal) {
+        attentionReviewModal.addEventListener('click', function (event) {
+            if (event.target === attentionReviewModal) {
+                closeAttentionReviewModal();
+            }
+        });
+    }
+
 
     document.addEventListener('click', function (event) {
         const aiQueueButton = event.target.closest('[data-ai-action-lead]');
         if (aiQueueButton) {
             event.preventDefault();
             runActionQueueAi(aiQueueButton);
+            return;
+        }
+
+        const attentionReviewButton = event.target.closest('[data-open-attention-review]');
+        if (attentionReviewButton) {
+            event.preventDefault();
+            openAttentionReviewModal(attentionReviewButton);
             return;
         }
 
@@ -7934,6 +8017,7 @@ function applyCommunicationViewportFit() {
         if (!card) return;
 
         event.preventDefault();
+        closeAttentionReviewModal();
         card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
         card.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
         window.setTimeout(() => {
@@ -8183,6 +8267,14 @@ function applyCommunicationViewportFit() {
     document.addEventListener('keydown', function (event) {
 
         if (event.key !== 'Escape') return;
+
+        if (attentionReviewModal && !attentionReviewModal.classList.contains('hidden')) {
+
+            closeAttentionReviewModal();
+
+            return;
+
+        }
 
 
 

@@ -18,7 +18,7 @@ $actionQueueAiEnabled = !empty($actionQueueAiEnabled);
 $actionQueueDisplayLimit = isset($actionQueueDisplayLimit) ? max(1, (int)$actionQueueDisplayLimit) : ($actionQueueCompact ? 12 : 9);
 $actionQueueDisplayRows = array_slice($actionQueueRows, 0, $actionQueueDisplayLimit);
 $actionQueueTitle = $actionQueueTitle ?? 'Needs Attention Today';
-$actionQueueSubtitle = $actionQueueSubtitle ?? 'One clean worklist. Use AI Action to review why the lead is late, draft the next move, then approve before sending.';
+$actionQueueSubtitle = $actionQueueSubtitle ?? 'One clean worklist. Open a lead to review the issue, then let AI propose the next move for approval.';
 
 $queueMetricItems = [
     ['label' => 'Reply', 'value' => (int)($actionQueueSummary['reply_needed'] ?? 0), 'class' => 'border-blue-200 bg-blue-50 text-blue-700'],
@@ -116,8 +116,16 @@ if (!function_exists('lead_action_queue_link')) {
                                 <a
                                     href="<?= e($link) ?>"
                                     class="block truncate text-sm font-semibold text-slate-950 hover:text-blue-700"
-                                    data-open-action-lead="<?= e((string)$leadId) ?>"
+                                    <?= $actionQueueAiEnabled ? 'data-open-attention-review="1"' : 'data-open-action-lead="' . e((string)$leadId) . '"' ?>
                                     data-open-action-tab="<?= e($tab) ?>"
+                                    data-attention-lead-id="<?= e((string)$leadId) ?>"
+                                    data-attention-lead-name="<?= e($leadName) ?>"
+                                    data-attention-action-label="<?= e($actionLabel) ?>"
+                                    data-attention-stage-label="<?= e($stageLabel) ?>"
+                                    data-attention-source-label="<?= e($sourceLabel) ?>"
+                                    data-attention-reason="<?= e($reason) ?>"
+                                    data-attention-last-touch="<?= e($lastTouch !== '' ? format_datetime($lastTouch, 'M j g:i A') : '') ?>"
+                                    data-attention-ai-instruction="<?= e($aiInstruction) ?>"
                                 >
                                     <?= e($leadName) ?>
                                 </a>
@@ -148,22 +156,19 @@ if (!function_exists('lead_action_queue_link')) {
                                     <?php endif; ?>
                                 </div>
                                 <div class="flex shrink-0 gap-2">
-                                    <?php if ($actionQueueAiEnabled): ?>
-                                        <button
-                                            type="button"
-                                            class="inline-flex h-10 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                            data-ai-action-lead="<?= e((string)$leadId) ?>"
-                                            data-open-action-tab="<?= e($tab) ?>"
-                                            data-ai-action-instruction="<?= e($aiInstruction) ?>"
-                                        >
-                                            AI Action
-                                        </button>
-                                    <?php endif; ?>
                                     <a
                                         href="<?= e($link) ?>"
-                                        class="inline-flex h-10 items-center justify-center rounded-xl <?= $actionQueueAiEnabled ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus:ring-slate-400' : 'bg-slate-950 text-white hover:bg-slate-800 focus:ring-slate-900' ?> px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2"
-                                        data-open-action-lead="<?= e((string)$leadId) ?>"
+                                        class="inline-flex h-10 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                                        <?= $actionQueueAiEnabled ? 'data-open-attention-review="1"' : 'data-open-action-lead="' . e((string)$leadId) . '"' ?>
                                         data-open-action-tab="<?= e($tab) ?>"
+                                        data-attention-lead-id="<?= e((string)$leadId) ?>"
+                                        data-attention-lead-name="<?= e($leadName) ?>"
+                                        data-attention-action-label="<?= e($actionLabel) ?>"
+                                        data-attention-stage-label="<?= e($stageLabel) ?>"
+                                        data-attention-source-label="<?= e($sourceLabel) ?>"
+                                        data-attention-reason="<?= e($reason) ?>"
+                                        data-attention-last-touch="<?= e($lastTouch !== '' ? format_datetime($lastTouch, 'M j g:i A') : '') ?>"
+                                        data-attention-ai-instruction="<?= e($aiInstruction) ?>"
                                     >
                                         Open
                                     </a>
@@ -176,3 +181,86 @@ if (!function_exists('lead_action_queue_link')) {
         <?php endif; ?>
     </div>
 </section>
+
+<?php if ($actionQueueAiEnabled): ?>
+    <div
+        id="attention-review-modal"
+        class="fixed inset-0 z-[80] hidden bg-slate-950/55 p-4 backdrop-blur-sm"
+        aria-hidden="true"
+    >
+        <div class="mx-auto mt-8 flex max-h-[calc(100vh-4rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div class="min-w-0">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Attention Review</p>
+                    <h3 id="attention-review-lead-name" class="mt-1 truncate text-xl font-semibold text-slate-950">Lead</h3>
+                </div>
+                <button
+                    type="button"
+                    id="attention-review-close"
+                    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
+                    aria-label="Close attention review"
+                >
+                    &times;
+                </button>
+            </div>
+
+            <div class="space-y-4 overflow-y-auto px-5 py-5">
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Current stage</p>
+                        <p id="attention-review-stage" class="mt-2 text-sm font-semibold text-slate-900">-</p>
+                    </div>
+                    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">Issue</p>
+                        <p id="attention-review-issue" class="mt-2 text-sm font-semibold text-amber-950">Review next step</p>
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Why this needs attention</p>
+                    <p id="attention-review-reason" class="mt-2 text-sm leading-6 text-slate-700">Review this lead before taking action.</p>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Source</p>
+                        <p id="attention-review-source" class="mt-2 text-sm text-slate-700">-</p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Last touch</p>
+                        <p id="attention-review-last-touch" class="mt-2 text-sm text-slate-700">-</p>
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700">AI action</p>
+                    <p class="mt-2 text-sm leading-6 text-blue-950">
+                        AI will read the lead thread and notes, suggest the next action, and place the draft in the composer. You still approve before anything is sent.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                    type="button"
+                    id="attention-review-open-lead"
+                    class="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                    data-open-action-lead=""
+                    data-open-action-tab="communications"
+                >
+                    Open Full Lead
+                </button>
+                <button
+                    type="button"
+                    id="attention-review-ai-action"
+                    class="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    data-ai-action-lead=""
+                    data-open-action-tab="communications"
+                    data-ai-action-instruction=""
+                >
+                    AI Action
+                </button>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>

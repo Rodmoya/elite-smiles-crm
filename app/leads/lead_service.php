@@ -775,6 +775,19 @@ if (!function_exists('lead_pipeline_rows')) {
                 ? "(SELECT MAX(le.created_at) FROM lead_emails le WHERE le.lead_id = leads.id)"
                 : '',
         ];
+        $searchTextSubqueries = [];
+        if (lead_related_table_exists('lead_messages')) {
+            $searchTextSubqueries[] = "COALESCE((SELECT GROUP_CONCAT(LEFT(lm.body, 220) ORDER BY lm.created_at DESC SEPARATOR ' ') FROM lead_messages lm WHERE lm.lead_id = leads.id LIMIT 8), '')";
+        }
+        if (lead_related_table_exists('lead_emails')) {
+            $searchTextSubqueries[] = "COALESCE((SELECT GROUP_CONCAT(CONCAT_WS(' ', LEFT(le.subject, 160), LEFT(le.body, 260)) ORDER BY le.created_at DESC SEPARATOR ' ') FROM lead_emails le WHERE le.lead_id = leads.id LIMIT 6), '')";
+        }
+        if (lead_related_table_exists('lead_activities')) {
+            $searchTextSubqueries[] = "COALESCE((SELECT GROUP_CONCAT(LEFT(la.body, 220) ORDER BY la.created_at DESC SEPARATOR ' ') FROM lead_activities la WHERE la.lead_id = leads.id LIMIT 8), '')";
+        }
+        if (!empty($searchTextSubqueries)) {
+            $selectFields[] = 'CONCAT_WS(\' \', ' . implode(', ', $searchTextSubqueries) . ') AS lead_search_index';
+        }
 
         foreach ($latestActionSubqueries as $alias => $expression) {
             if ($expression === '') {

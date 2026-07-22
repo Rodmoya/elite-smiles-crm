@@ -301,7 +301,7 @@ $consultationOptions = [
                             type="search"
                             id="pipeline-lead-search"
                             class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                            placeholder="Search name, phone, email, source, notes..."
+                            placeholder="Search name, phone, email, source, notes, conversations..."
                             autocomplete="off"
                         >
                         <div
@@ -3046,30 +3046,72 @@ $consultationOptions = [
         return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
     }
 
-    function leadCardSearchText(card) {
-        const fields = [
-            card.dataset.leadId,
-            card.dataset.leadName,
-            card.dataset.leadPhone,
-            card.dataset.leadEmail,
-            card.dataset.leadProcedure,
-            card.dataset.leadSource,
-            card.dataset.leadDisplaySource,
-            card.dataset.leadSourceMedium,
-            card.dataset.leadSourceType,
-            card.dataset.leadDisplaySourceType,
-            card.dataset.leadCampaign,
-            card.dataset.leadSourceCampaign,
-            card.dataset.leadSourceAdSet,
-            card.dataset.leadSourceAdName,
-            card.dataset.leadExternalLeadId,
-            card.dataset.leadInstagramUsername,
-            card.dataset.leadTriggerKeyword,
-            card.dataset.leadNotes,
-            card.textContent,
-        ];
+    function normalizeLeadSearchDigits(value) {
+        return String(value || '').replace(/\D+/g, '');
+    }
 
-        return normalizeLeadSearchText(fields.filter(Boolean).join(' '));
+    function leadCardSearchSources(card) {
+        return [
+            { label: 'lead id', value: card.dataset.leadId },
+            { label: 'name', value: card.dataset.leadName },
+            { label: 'phone', value: card.dataset.leadPhone },
+            { label: 'email', value: card.dataset.leadEmail },
+            { label: 'service', value: card.dataset.leadProcedure },
+            { label: 'stage', value: card.dataset.leadConversionStageLabel || card.dataset.leadStageLabel },
+            { label: 'next action', value: card.dataset.leadNextAction },
+            { label: 'urgency', value: card.dataset.leadUrgencyLabel },
+            { label: 'source', value: card.dataset.leadDisplaySource || card.dataset.leadSource },
+            { label: 'source type', value: card.dataset.leadDisplaySourceType || card.dataset.leadSourceType },
+            { label: 'source medium', value: card.dataset.leadSourceMedium },
+            { label: 'landing page', value: card.dataset.leadLandingPage },
+            { label: 'campaign', value: card.dataset.leadCampaign || card.dataset.leadSourceCampaign },
+            { label: 'ad set', value: card.dataset.leadSourceAdSet },
+            { label: 'ad name', value: card.dataset.leadSourceAdName },
+            { label: 'post', value: card.dataset.leadSourcePostLabel || card.dataset.leadSourcePostId },
+            { label: 'external id', value: card.dataset.leadExternalLeadId },
+            { label: 'instagram', value: card.dataset.leadInstagramUsername },
+            { label: 'keyword', value: card.dataset.leadTriggerKeyword },
+            { label: 'DOB', value: card.dataset.leadDateOfBirth },
+            { label: 'preferred day', value: card.dataset.leadSchedulingPreferredDay },
+            { label: 'preferred time', value: card.dataset.leadSchedulingPreferredTime },
+            { label: 'consult date', value: card.dataset.leadConsultationDate },
+            { label: 'Dentrix patient', value: card.dataset.leadDentrixPatientKey },
+            { label: 'Dentrix appointment', value: card.dataset.leadDentrixAppointmentKey },
+            { label: 'notes', value: card.dataset.leadNotes },
+            { label: 'conversation', value: card.dataset.leadSearchIndex },
+            { label: 'card', value: card.textContent },
+        ].filter((source) => String(source.value || '').trim() !== '');
+    }
+
+    function leadCardSearchMatch(card, query) {
+        const normalizedQuery = normalizeLeadSearchText(query);
+        const queryDigits = normalizeLeadSearchDigits(query);
+        if (normalizedQuery === '' && queryDigits === '') return null;
+
+        const sources = leadCardSearchSources(card);
+        for (const source of sources) {
+            const text = normalizeLeadSearchText(source.value);
+            if (normalizedQuery !== '' && text.includes(normalizedQuery)) {
+                return source.label;
+            }
+
+            const sourceDigits = normalizeLeadSearchDigits(source.value);
+            if (queryDigits.length >= 3 && sourceDigits.includes(queryDigits)) {
+                return source.label;
+            }
+        }
+
+        const combinedText = normalizeLeadSearchText(sources.map((source) => source.value).join(' '));
+        if (normalizedQuery !== '' && combinedText.includes(normalizedQuery)) {
+            return 'lead details';
+        }
+
+        const combinedDigits = normalizeLeadSearchDigits(sources.map((source) => source.value).join(' '));
+        if (queryDigits.length >= 3 && combinedDigits.includes(queryDigits)) {
+            return 'number';
+        }
+
+        return null;
     }
 
     function leadCardSearchTitle(card) {
@@ -3097,21 +3139,24 @@ $consultationOptions = [
         if (!board || query === '') return [];
 
         return Array.from(board.querySelectorAll('.lead-card'))
-            .map((card) => ({
-                card,
-                title: leadCardSearchTitle(card),
-                meta: leadCardSearchMeta(card),
-                stage: card.closest('[data-stage-key]')?.dataset.stageKey || '',
-                searchText: leadCardSearchText(card),
-            }))
-            .filter((entry) => entry.searchText.includes(query))
+            .map((card) => {
+                const matchLabel = leadCardSearchMatch(card, query);
+                return {
+                    card,
+                    title: leadCardSearchTitle(card),
+                    meta: leadCardSearchMeta(card),
+                    stage: card.closest('[data-stage-key]')?.dataset.stageKey || '',
+                    matchLabel,
+                };
+            })
+            .filter((entry) => entry.matchLabel)
             .slice(0, 12);
     }
 
     function pipelineSearchMatchCount(query) {
         if (!board || query === '') return 0;
         return Array.from(board.querySelectorAll('.lead-card'))
-            .filter((card) => leadCardSearchText(card).includes(query))
+            .filter((card) => leadCardSearchMatch(card, query))
             .length;
     }
 
@@ -3194,8 +3239,13 @@ $consultationOptions = [
             meta.className = 'mt-0.5 block truncate text-xs text-slate-500';
             meta.textContent = entry.meta || 'Open lead';
 
+            const match = document.createElement('span');
+            match.className = 'mt-1 block truncate text-[11px] font-semibold text-blue-600';
+            match.textContent = entry.matchLabel ? `Matched ${entry.matchLabel}` : '';
+
             body.appendChild(title);
             body.appendChild(meta);
+            if (entry.matchLabel) body.appendChild(match);
             button.appendChild(initials);
             button.appendChild(body);
             button.addEventListener('mousedown', (event) => event.preventDefault());

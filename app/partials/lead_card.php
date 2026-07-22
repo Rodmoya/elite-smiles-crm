@@ -231,6 +231,7 @@ $leadLastDentrixSyncAt = lead_card_value($lead, 'last_dentrix_sync_at');
 $leadAppointmentSource = lead_card_value($lead, 'appointment_source');
 $leadOccupiedSlotType = lead_card_value($lead, 'occupied_slot_type');
 $leadExternalCalendarBlock = lead_card_value($lead, 'external_calendar_block', '0');
+$leadSearchIndex = mb_substr(lead_card_value($lead, 'lead_search_index'), 0, 3200);
 
 $financingOptionLabels = function_exists('lead_financing_option_labels') ? lead_financing_option_labels() : [];
 $leadFinancingOptionLabel = $financingOptionLabels[$leadFinancingOption]
@@ -415,6 +416,7 @@ if ($leadHasBadPhone) {
     data-lead-appointment-source="<?= e($leadAppointmentSource) ?>"
     data-lead-occupied-slot-type="<?= e($leadOccupiedSlotType) ?>"
     data-lead-external-calendar-block="<?= e($leadExternalCalendarBlock) ?>"
+    data-lead-search-index="<?= e($leadSearchIndex) ?>"
 >
     <div class="border-b border-slate-100 pb-2">
         <div class="flex min-w-0 items-start gap-2">

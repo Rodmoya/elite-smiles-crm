@@ -79,8 +79,21 @@ if (!function_exists('lead_related_table_exists')) {
 
         try {
             $cache[$table] = (bool) db_value("SHOW TABLES LIKE :table_name", ['table_name' => $table]);
+            if (!$cache[$table]) {
+                $cache[$table] = (bool) db_value(
+                    'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table_name',
+                    ['table_name' => $table]
+                );
+            }
         } catch (Throwable $e) {
-            $cache[$table] = false;
+            try {
+                $cache[$table] = (bool) db_value(
+                    'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table_name',
+                    ['table_name' => $table]
+                );
+            } catch (Throwable) {
+                $cache[$table] = false;
+            }
         }
 
         return $cache[$table];

@@ -3973,17 +3973,10 @@ function smile_design_create_ai_after_version(int $caseId, int $beforePhotoId, a
         ]
     );
 
-    $beforePhotos = smile_design_before_photos($caseId);
-    usort($beforePhotos, static function (array $a, array $b) use ($beforePhotoId): int {
-        $aRank = ((int)$a['id'] === $beforePhotoId) ? 0 : 1;
-        $bRank = ((int)$b['id'] === $beforePhotoId) ? 0 : 1;
-        if ($aRank !== $bRank) {
-            return $aRank <=> $bRank;
-        }
-        return ((int)$a['id']) <=> ((int)$b['id']);
-    });
-
-    $sourcePhotos = $beforePhotos ?: [$beforePhoto];
+    // Keep each generation anchored to its explicitly matched source photo.
+    // Sending every case angle lets image models borrow the pose from a
+    // different view even when before_photo_id and photo_type are correct.
+    $sourcePhotos = [$beforePhoto];
     $options['camera_metadata_summary'] = smile_design_photo_metadata_summary($beforePhoto);
     $referenceAfterVersionId = (int)($options['reference_after_version_id'] ?? 0);
     if ($referenceAfterVersionId > 0) {

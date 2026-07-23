@@ -126,6 +126,14 @@ $caseBackUrl = base_url('smile-design/cases/' . $caseId . '#compare');
                         Re-run AI case analysis before this revision
                     </label>
 
+                    <label class="flex items-start gap-2 text-sm font-semibold text-slate-700">
+                        <input type="checkbox" name="use_reference_after" value="1" checked class="mt-0.5 h-4 w-4 rounded border-slate-300">
+                        <span>
+                            Use current after as a reference
+                            <span class="mt-1 block text-xs font-normal leading-5 text-slate-500">Turn this off when the current after has the wrong pose or angle. The revision will restart from the matched source photo.</span>
+                        </span>
+                    </label>
+
                     <label class="block text-sm font-semibold text-slate-900">
                         Internal note
                         <input name="notes" value="" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="Optional note for the team.">

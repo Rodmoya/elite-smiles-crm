@@ -93,9 +93,8 @@ try {
         'precision_mode' => $precisionMode,
     ], auth_user_id());
 
-    $result = smile_design_create_ai_after_version($caseId, $beforePhotoId, [
+    $generationOptions = [
         'provider' => 'google_gemini',
-        'reference_after_version_id' => $versionId,
         'version_title' => $versionTitle,
         'custom_request' => $adjustmentRequest,
         'procedure_label' => $procedureLabel,
@@ -120,7 +119,12 @@ try {
         'smile_width_delta' => (int)$smileWidthDelta,
         'shade_brightness_delta' => (int)$shadeBrightnessDelta,
         'precision_mode' => $precisionMode,
-    ], auth_user_id());
+    ];
+    if (post('use_reference_after', '') === '1') {
+        $generationOptions['reference_after_version_id'] = $versionId;
+    }
+
+    $result = smile_design_create_ai_after_version($caseId, $beforePhotoId, $generationOptions, auth_user_id());
 
     if (empty($result['ok'])) {
         flash_set('error', (string)($result['message'] ?? 'AI revision failed.'));

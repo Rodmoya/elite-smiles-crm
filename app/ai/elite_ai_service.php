@@ -1707,6 +1707,7 @@ if (!function_exists('elite_ai_requested_stage_key')) {
             'no_show_reschedule' => '/\b(?:no\s*show|reschedule)\b/',
             'consult_completed' => '/\b(?:consult\s*completed|consultation\s*completed|completed\s*consult)\b/',
             'treatment_accepted' => '/\b(?:treatment\s*accepted|accepted|sale\s*closed)\b/',
+            'treatment_completed' => '/\b(?:treatment\s*completed|completed\s*treatment|completed\s*paid|paid\s*completed|case\s*completed)\b/',
             'no_answer' => '/\b(?:no\s*answer|nurture|follow\s*later)\b/',
             'opted_out' => '/\b(?:opted\s*out|unsubscribe|stop)\b/',
             'lost_lead' => '/\b(?:lost|archive|archived)\b/',

@@ -520,7 +520,7 @@ if (!function_exists('lead_dashboard_stats')) {
                 $wonCount = (int) db_value("
                     SELECT COUNT(*)
                     FROM leads
-                    WHERE status = 'treatment_accepted'" . lead_pipeline_visibility_sql('AND') . "
+                    WHERE status IN ('treatment_accepted', 'treatment_completed')" . lead_pipeline_visibility_sql('AND') . "
                 ");
 
                 if ($stats['total_leads'] > 0) {
@@ -555,7 +555,7 @@ if (!function_exists('lead_dashboard_stats')) {
 
                     $totalValue += $value;
 
-                    if ($status === 'treatment_accepted') {
+                    if (in_array($status, ['treatment_accepted', 'treatment_completed'], true)) {
                         $closedValue += $value;
                     } elseif ($status === 'lost_lead' || $status === 'opted_out') {
                         $lostValue += $value;
@@ -947,11 +947,11 @@ if (!function_exists('lead_action_queue_priority')) {
         $stageKey = (string)($summary['stage_key'] ?? '');
         $smsOptStatus = trim((string)($lead['sms_opt_status'] ?? 'unknown'));
 
-        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'consult_completed', 'treatment_accepted'], true)) {
+        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'consult_completed', 'treatment_accepted', 'treatment_completed'], true)) {
             return 0;
         }
 
-        if (in_array($stageKey, ['consult_completed', 'treatment_accepted', 'nurture_lost'], true) || $status === 'no_answer') {
+        if (in_array($stageKey, ['consult_completed', 'treatment_accepted', 'treatment_completed', 'nurture_lost'], true) || $status === 'no_answer') {
             return 0;
         }
 
@@ -1276,7 +1276,7 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
             leads_has_column('status')
             && $incomingStatus !== ''
             && $incomingStatus !== $existingStatus
-            && in_array($existingStatus, ['lost_lead', 'treatment_accepted'], true)
+            && in_array($existingStatus, ['lost_lead', 'treatment_accepted', 'treatment_completed'], true)
         ) {
             $updates[] = '`status` = :status';
             $params['status'] = $incomingStatus;

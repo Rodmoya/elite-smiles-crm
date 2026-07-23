@@ -29,7 +29,7 @@ if (!function_exists('lead_ai_schema')) {
                 'note' => ['type' => 'string'],
                 'recommended_stage' => [
                     'type' => 'string',
-                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'consultation_booked', 'treatment_accepted', 'no_answer', 'opted_out', 'lost_lead'],
+                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'consultation_booked', 'treatment_accepted', 'treatment_completed', 'no_answer', 'opted_out', 'lost_lead'],
                 ],
                 'needs_human_review' => ['type' => 'boolean'],
                 'should_send' => ['type' => 'boolean'],
@@ -56,7 +56,7 @@ if (!function_exists('lead_ai_email_schema')) {
                 'note' => ['type' => 'string'],
                 'recommended_stage' => [
                     'type' => 'string',
-                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'consultation_booked', 'treatment_accepted', 'no_answer', 'opted_out', 'lost_lead'],
+                    'enum' => ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'consultation_booked', 'treatment_accepted', 'treatment_completed', 'no_answer', 'opted_out', 'lost_lead'],
                 ],
                 'next_follow_up_at' => ['type' => 'string'],
                 'needs_human_review' => ['type' => 'boolean'],

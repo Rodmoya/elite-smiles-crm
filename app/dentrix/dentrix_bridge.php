@@ -621,7 +621,9 @@ if (!function_exists('dentrix_bridge_apply_result')) {
         } elseif (in_array($event, ['completed_paid', 'completed', 'appointment_completed', 'appointment_completed_paid'], true)) {
             $status = in_array($event, ['completed_paid', 'appointment_completed_paid'], true) ? 'dentrix_completed_paid' : 'dentrix_completed';
             $updates['consultation_status'] = 'completed';
-            $updates['status'] = 'consult_completed';
+            $updates['status'] = in_array($event, ['completed_paid', 'appointment_completed_paid'], true)
+                ? 'treatment_completed'
+                : 'consult_completed';
             $activityType = in_array($event, ['completed_paid', 'appointment_completed_paid'], true) ? 'dentrix_completed_paid' : 'dentrix_completed';
             $activityBody = in_array($event, ['completed_paid', 'appointment_completed_paid'], true)
                 ? 'Dentrix reported treatment completed and paid; CRM moved to completed/paid tracking.'

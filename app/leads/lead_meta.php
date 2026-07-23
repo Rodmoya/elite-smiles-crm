@@ -21,6 +21,7 @@ if (!function_exists('lead_stage_labels')) {
             'no_show_reschedule'  => 'No Show / Reschedule',
             'consult_completed'   => 'Consult Completed',
             'treatment_accepted'  => 'Treatment Accepted',
+            'treatment_completed' => 'Treatment Completed',
             'no_answer'           => 'No Answer / Nurture',
             'opted_out'           => 'Opted Out',
 
@@ -41,6 +42,7 @@ if (!function_exists('lead_stage_order')) {
             'no_show_reschedule',
             'consult_completed',
             'treatment_accepted',
+            'treatment_completed',
             'no_answer',
             'opted_out',
 
@@ -61,6 +63,7 @@ if (!function_exists('lead_stage_badge_class')) {
             'no_show_reschedule'  => 'border-orange-200 bg-orange-50 text-orange-800',
             'consult_completed'   => 'border-indigo-200 bg-indigo-50 text-indigo-700',
             'treatment_accepted'  => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'treatment_completed' => 'border-green-300 bg-green-50 text-green-800',
             'no_answer'           => 'border-amber-200 bg-amber-50 text-amber-800',
             'opted_out'           => 'border-slate-300 bg-slate-100 text-slate-700',
 
@@ -313,6 +316,7 @@ if (!function_exists('lead_conversion_stage_labels')) {
             'no_show_reschedule' => 'No Show / Reschedule',
             'consult_completed' => 'Consult Completed',
             'treatment_accepted' => 'Treatment Accepted',
+            'treatment_completed' => 'Treatment Completed',
             'nurture_lost' => 'Nurture / Lost',
         ];
     }
@@ -330,6 +334,7 @@ if (!function_exists('lead_conversion_stage_order')) {
             'no_show_reschedule',
             'consult_completed',
             'treatment_accepted',
+            'treatment_completed',
             'nurture_lost',
         ];
     }
@@ -351,6 +356,7 @@ if (!function_exists('lead_conversion_stage_legacy_target')) {
             'consultation_booked' => 'consultation_booked',
             'consult_completed' => 'consult_completed',
             'treatment_accepted' => 'treatment_accepted',
+            'treatment_completed' => 'treatment_completed',
             // Nurture / Lost is intentionally conservative for drag/drop: no
             // bulk move should silently mark a lead permanently lost.
             'nurture_lost' => 'no_answer',
@@ -371,6 +377,7 @@ if (!function_exists('lead_conversion_stage_badge_class')) {
             'no_show_reschedule' => 'border-orange-200 bg-orange-50 text-orange-800',
             'consult_completed' => 'border-indigo-200 bg-indigo-50 text-indigo-700',
             'treatment_accepted' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'treatment_completed' => 'border-green-300 bg-green-50 text-green-800',
             'nurture_lost' => 'border-rose-200 bg-rose-50 text-rose-700',
             default => 'border-slate-200 bg-slate-50 text-slate-600',
         };
@@ -625,6 +632,9 @@ if (!function_exists('lead_conversion_stage_key')) {
         if ($status === 'new_lead') {
             return 'new_lead';
         }
+        if ($status === 'treatment_completed') {
+            return 'treatment_completed';
+        }
         if ($status === 'treatment_accepted') {
             return 'treatment_accepted';
         }
@@ -683,6 +693,9 @@ if (!function_exists('lead_conversion_next_action')) {
     {
         $status = trim((string)($lead['status'] ?? ''));
 
+        if ($status === 'treatment_completed') {
+            return ['key' => 'completed_tracking', 'label' => 'Completed', 'tone' => 'emerald'];
+        }
         if (lead_conversion_bad_phone($lead)) {
             return ['key' => 'bad_phone', 'label' => 'Bad phone', 'tone' => 'rose'];
         }

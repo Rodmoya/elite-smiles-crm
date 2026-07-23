@@ -946,12 +946,32 @@ if (!function_exists('lead_action_queue_priority')) {
         $status = trim((string)($lead['status'] ?? ''));
         $stageKey = (string)($summary['stage_key'] ?? '');
         $smsOptStatus = trim((string)($lead['sms_opt_status'] ?? 'unknown'));
+        $lastTouch = lead_conversion_last_touch_datetime($lead);
+        $touchedToday = $lastTouch !== null && $lastTouch->format('Y-m-d') === (new DateTimeImmutable('today'))->format('Y-m-d');
 
-        if ($smsOptStatus === 'opted_out' || in_array($status, ['opted_out', 'lost_lead', 'consult_completed', 'treatment_accepted', 'treatment_completed'], true)) {
+        if ($touchedToday) {
             return 0;
         }
 
-        if (in_array($stageKey, ['consult_completed', 'treatment_accepted', 'treatment_completed', 'nurture_lost'], true) || $status === 'no_answer') {
+        if ($smsOptStatus === 'opted_out' || in_array($status, [
+            'opted_out',
+            'lost_lead',
+            'no_answer',
+            'consultation_booked',
+            'consult_completed',
+            'treatment_accepted',
+            'treatment_completed',
+        ], true)) {
+            return 0;
+        }
+
+        if (in_array($stageKey, [
+            'consultation_booked',
+            'consult_completed',
+            'treatment_accepted',
+            'treatment_completed',
+            'nurture_lost',
+        ], true)) {
             return 0;
         }
 

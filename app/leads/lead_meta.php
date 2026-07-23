@@ -464,15 +464,7 @@ if (!function_exists('lead_conversion_follow_up_needed')) {
             return true;
         }
 
-        $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
-        if ($lastOutbound === null) {
-            $lastOutbound = lead_conversion_datetime($lead['last_contacted_at'] ?? '');
-        }
-        if ($lastOutbound === null) {
-            return false;
-        }
-
-        return $lastOutbound <= $now->modify('-24 hours');
+        return false;
     }
 }
 

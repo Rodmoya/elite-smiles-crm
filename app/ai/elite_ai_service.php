@@ -116,6 +116,9 @@ if (!function_exists('elite_ai_infer_thread_lead_id')) {
             if (preg_match('/\blead\s*#\s*(\d{1,10})\b/i', $text, $matches)) {
                 return (int) $matches[1];
             }
+            if (preg_match('/\(#\s*(\d{1,10})\)/i', $text, $matches)) {
+                return (int) $matches[1];
+            }
             if (preg_match('/\bfor\s+lead\s+(\d{1,10})\b/i', $text, $matches)) {
                 return (int) $matches[1];
             }
@@ -137,6 +140,55 @@ if (!function_exists('elite_ai_prompt_references_conversation_subject')) {
             '/\b(?:it|this|that|them|her|him|he|she|they|the lead|the patient|same lead|same person|yes|ok|okay|do it|send it|draft it|answer it|answer them|move them|move her|move him|clear it)\b/i',
             $normalized
         );
+    }
+}
+
+if (!function_exists('elite_ai_prompt_is_affirmation')) {
+    function elite_ai_prompt_is_affirmation(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/^(?:yes|yep|yeah|correct|that one|that is right|that\'s right|do it|go ahead|ok|okay|please do|yes please|confirm)$/i', $normalized);
+    }
+}
+
+if (!function_exists('elite_ai_infer_pending_stage_move_from_thread')) {
+    function elite_ai_infer_pending_stage_move_from_thread(array $assistantThread): array
+    {
+        foreach (array_reverse($assistantThread) as $item) {
+            $role = strtolower(trim((string) ($item['role'] ?? 'assistant')));
+            if ($role !== 'assistant') {
+                continue;
+            }
+
+            $text = trim((string) ($item['text'] ?? ''));
+            if ($text === '' || stripos($text, 'close match') === false) {
+                continue;
+            }
+
+            if (!preg_match('/\(#\s*(\d{1,10})\)/i', $text, $idMatches)) {
+                continue;
+            }
+
+            $targetStage = '';
+            if (preg_match('/move\s+(?:this|the)\s+lead\s+to\s+([^?.\n]+)[?.]?/i', $text, $stageMatches)) {
+                $targetStage = elite_ai_requested_stage_key((string) ($stageMatches[1] ?? ''));
+            }
+
+            if ($targetStage === '') {
+                continue;
+            }
+
+            return [
+                'lead_id' => (int) $idMatches[1],
+                'target_status' => $targetStage,
+            ];
+        }
+
+        return [];
     }
 }
 
@@ -470,7 +522,14 @@ if (!function_exists('elite_ai_find_leads')) {
             $rows = array_slice($scored, 0, $limit);
         }
 
-        return array_map('elite_ai_enrich_conversion_layer', $rows);
+        return array_map(static function (array $row): array {
+            $distance = $row['_elite_ai_match_distance'] ?? null;
+            $row = elite_ai_enrich_conversion_layer($row);
+            if ($distance !== null) {
+                $row['_elite_ai_match_distance'] = (int) $distance;
+            }
+            return $row;
+        }, $rows);
     }
 }
 
@@ -2734,6 +2793,21 @@ if (!function_exists('elite_ai_resolve_lead_from_plan')) {
         if ($leadQuery !== '') {
             $matches = elite_ai_find_leads($leadQuery, 5);
             if (count($matches) === 1) {
+                if ((int) ($matches[0]['_elite_ai_match_distance'] ?? 0) > 0) {
+                    $matchName = trim((string) ($matches[0]['full_name'] ?? 'that lead'));
+                    $matchId = (int) ($matches[0]['id'] ?? 0);
+                    $targetStage = (string) ($plan['intent'] ?? '') === 'move_stage'
+                        ? elite_ai_requested_stage_key($prompt)
+                        : '';
+                    $actionQuestion = $targetStage !== ''
+                        ? ' Do you want me to move this lead to ' . elite_ai_stage_label($targetStage) . '?'
+                        : ' Is that who you mean?';
+                    return [
+                        'lead' => null,
+                        'matches' => $matches,
+                        'clarify' => 'I found a close match for "' . $leadQuery . '": ' . ($matchName !== '' ? $matchName : 'that lead') . ($matchId > 0 ? ' (#' . $matchId . ')' : '') . '.' . $actionQuestion,
+                    ];
+                }
                 return ['lead' => $matches[0], 'matches' => [], 'clarify' => ''];
             }
             if ($matches === []) {
@@ -3079,6 +3153,48 @@ function elite_ai_handle_request(array $user, array $request): array
                     'tool_capabilities' => elite_ai_tool_capabilities($surface),
                     'lead_id' => (int) ($draftPayload['lead_id'] ?? 0) ?: null,
                     'current_subject' => elite_ai_current_subject_payload((int) ($draftPayload['lead_id'] ?? 0) ?: null),
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
+        }
+
+        if ($quickAction === '' && elite_ai_prompt_is_affirmation($prompt)) {
+            $pendingMove = elite_ai_infer_pending_stage_move_from_thread((array) ($context['assistant_thread'] ?? []));
+            if ((int) ($pendingMove['lead_id'] ?? 0) > 0 && trim((string) ($pendingMove['target_status'] ?? '')) !== '') {
+                $leadId = (int) $pendingMove['lead_id'];
+                $targetStage = trim((string) $pendingMove['target_status']);
+                $moveResult = elite_ai_tool_run($user, 'lead.move_stage', [
+                    'surface' => $surface,
+                    'lead_id' => $leadId,
+                    'target_status' => $targetStage,
+                    'instruction' => 'Confirmed pending stage move: ' . $prompt,
+                ], $context + ['surface' => $surface]);
+                $moveResult = elite_ai_plain_text_payload($moveResult);
+                $summary = trim((string) ($moveResult['answer'] ?? $moveResult['message'] ?? 'Stage action completed.'));
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    ['conversation.confirmation', 'lead.move_stage'],
+                    $summary,
+                    $leadId,
+                    $context
+                );
+
+                return [
+                    'ok' => !empty($moveResult['ok']),
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'cards' => array_values((array) ($moveResult['cards'] ?? [])),
+                    'actions' => array_values((array) ($moveResult['actions'] ?? [])),
+                    'tools_used' => ['conversation.confirmation', 'lead.move_stage'],
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => $leadId,
+                    'current_subject' => elite_ai_current_subject_payload($leadId),
                     'context' => $context,
                     'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                     'learned_memory' => $learnedMemory,

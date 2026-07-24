@@ -6867,6 +6867,7 @@ function applyCommunicationViewportFit() {
             refreshComposerSafetyCue();
 
             if (smsStatus) smsStatus.textContent = data.message || 'SMS sent.';
+            dismissAttentionQueueLead(leadId);
 
             return true;
 
@@ -7136,6 +7137,32 @@ function applyCommunicationViewportFit() {
         if (!attentionReviewModal) return;
         attentionReviewModal.classList.add('hidden');
         attentionReviewModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function dismissAttentionQueueLead(leadId) {
+        const normalizedLeadId = String(leadId || '').trim();
+        if (!normalizedLeadId) return;
+
+        const escapedLeadId = window.CSS && CSS.escape ? CSS.escape(normalizedLeadId) : normalizedLeadId.replace(/"/g, '\\"');
+        const rows = document.querySelectorAll('[data-action-queue-row][data-action-queue-lead-id="' + escapedLeadId + '"]');
+        rows.forEach((row) => row.remove());
+
+        document.querySelectorAll('[data-action-queue-section]').forEach((section) => {
+            const remainingRows = section.querySelectorAll('[data-action-queue-row]').length;
+            const count = section.querySelector('[data-action-queue-shown-count]');
+            const list = section.querySelector('[data-action-queue-list]');
+            const empty = section.querySelector('[data-action-queue-empty]');
+
+            if (count) {
+                count.textContent = remainingRows + ' shown';
+            }
+            if (list && remainingRows === 0) {
+                list.classList.add('hidden');
+            }
+            if (empty) {
+                empty.classList.toggle('hidden', remainingRows > 0);
+            }
+        });
     }
 
     function resetAttentionReviewDraftUi() {
@@ -7490,6 +7517,7 @@ function applyCommunicationViewportFit() {
             refreshComposerSafetyCue();
 
             if (emailStatus) emailStatus.textContent = data.message || 'Email sent.';
+            dismissAttentionQueueLead(leadId);
             await loadLeadThread();
             return true;
         } catch (error) {

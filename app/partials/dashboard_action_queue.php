@@ -49,14 +49,14 @@ if (!function_exists('lead_action_queue_link')) {
 
 ?>
 
-<section class="<?= $actionQueueCompact ? 'mb-4' : 'mb-6' ?>">
+<section class="<?= $actionQueueCompact ? 'mb-4' : 'mb-6' ?>" data-action-queue-section="1">
     <div class="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div class="min-w-0">
                 <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Action Queue</p>
                 <div class="mt-1 flex flex-wrap items-center gap-2">
                     <h2 class="text-xl font-semibold text-slate-950"><?= e((string)$actionQueueTitle) ?></h2>
-                    <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                    <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600" data-action-queue-shown-count>
                         <?= e((string)count($actionQueueDisplayRows)) ?> shown
                     </span>
                 </div>
@@ -78,7 +78,7 @@ if (!function_exists('lead_action_queue_link')) {
                 Nothing urgent right now. The pipeline is clean for the moment.
             </div>
         <?php else: ?>
-            <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+            <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200" data-action-queue-list>
                 <?php foreach ($actionQueueDisplayRows as $lead): ?>
                     <?php
                     $queue = (array)($lead['_action_queue'] ?? []);
@@ -110,7 +110,7 @@ if (!function_exists('lead_action_queue_link')) {
                         ? lead_conversion_badge_class($actionTone)
                         : 'border-slate-200 bg-slate-50 text-slate-600';
                     ?>
-                    <article class="border-b border-slate-200 bg-white px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                    <article class="border-b border-slate-200 bg-white px-4 py-3 last:border-b-0 hover:bg-slate-50" data-action-queue-row data-action-queue-lead-id="<?= e((string)$leadId) ?>">
                         <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_auto] lg:items-center">
                             <div class="min-w-0">
                                 <a
@@ -177,6 +177,9 @@ if (!function_exists('lead_action_queue_link')) {
                         </div>
                     </article>
                 <?php endforeach; ?>
+            </div>
+            <div class="mt-4 hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-action-queue-empty>
+                Nothing urgent right now. The pipeline is clean for the moment.
             </div>
         <?php endif; ?>
     </div>

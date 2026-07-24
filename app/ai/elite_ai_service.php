@@ -1812,7 +1812,7 @@ if (!function_exists('elite_ai_pending_drafts_for_user')) {
     function elite_ai_pending_drafts_for_user(array $user, int $limit = 6): array
     {
         $limit = max(1, min(12, $limit));
-        if ((int) ($user['id'] ?? 0) <= 0) {
+        if ((int) ($user['id'] ?? 0) < 0) {
             return [];
         }
 
@@ -1841,7 +1841,7 @@ if (!function_exists('elite_ai_pending_drafts_for_user')) {
 if (!function_exists('elite_ai_load_action_item')) {
     function elite_ai_load_action_item(array $user, int $actionId): ?array
     {
-        if ((int) ($user['id'] ?? 0) <= 0 || $actionId <= 0) {
+        if ((int) ($user['id'] ?? 0) < 0 || $actionId <= 0) {
             return null;
         }
 

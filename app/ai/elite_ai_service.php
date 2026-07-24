@@ -2184,6 +2184,9 @@ if (!function_exists('elite_ai_extract_draft_lead_query')) {
         if ($text === '') {
             return '';
         }
+        if ((bool) preg_match('/\blead\s*#?\s*\d+\b|\bpatient\s*#?\s*\d+\b|\bcard\s*#?\s*\d+\b|#\s*\d+\b/i', $text)) {
+            return '';
+        }
 
         $patterns = [
             '/\b(?:draft|write|prepare|compose|create)\s+(?:a\s+)?(?:short\s+)?(?:sms|text|message|email|e-mail)?\s+(?:for|to)\s+(.+?)(?:\s+(?:saying|that says|about|with|to say)\b|$)/i',
@@ -2196,6 +2199,9 @@ if (!function_exists('elite_ai_extract_draft_lead_query')) {
                 $query = trim((string) ($matches[1] ?? ''));
                 $query = preg_replace('/\b(?:lead|patient|card|the lead|the patient)\b/i', '', $query) ?? $query;
                 $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.:,");
+                if ((bool) preg_match('/^(?:add|make|leave|create|record|save|update|set|note)\b/i', $query)) {
+                    return '';
+                }
                 if ($query === '' || (bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
                     return '';
                 }
@@ -2277,6 +2283,9 @@ if (!function_exists('elite_ai_extract_internal_update_lead_query')) {
                 $query = trim((string) ($matches[1] ?? ''));
                 $query = preg_replace('/\b(?:lead|patient|card|the lead|the patient)\b/i', '', $query) ?? $query;
                 $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.:,");
+                if ((bool) preg_match('/^(?:add|make|leave|create|record|save|update|set|note)\b/i', $query)) {
+                    return '';
+                }
                 if ($query === '' || (bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
                     return '';
                 }

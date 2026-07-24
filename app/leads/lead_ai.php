@@ -87,6 +87,39 @@ if (!function_exists('lead_ai_outbound_note_schema')) {
     }
 }
 
+if (!function_exists('lead_ai_improve_sms_schema')) {
+    function lead_ai_improve_sms_schema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'reply' => ['type' => 'string'],
+                'note' => ['type' => 'string'],
+                'confidence' => ['type' => 'number'],
+            ],
+            'required' => ['reply', 'note', 'confidence'],
+            'additionalProperties' => false,
+        ];
+    }
+}
+
+if (!function_exists('lead_ai_improve_email_schema')) {
+    function lead_ai_improve_email_schema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'subject' => ['type' => 'string'],
+                'body' => ['type' => 'string'],
+                'note' => ['type' => 'string'],
+                'confidence' => ['type' => 'number'],
+            ],
+            'required' => ['subject', 'body', 'note', 'confidence'],
+            'additionalProperties' => false,
+        ];
+    }
+}
+
 if (!function_exists('lead_ai_system_prompt')) {
     function lead_ai_system_prompt(): string
     {
@@ -108,6 +141,28 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: do not message if the patient asks to stop. If they say STOP/CANCEL/UNSUBSCRIBE, classify not_interested, recommend opted_out, should_send false, needs_human_review false.',
+            'Return only JSON matching the schema.',
+        ]);
+    }
+}
+
+if (!function_exists('lead_ai_improve_system_prompt')) {
+    function lead_ai_improve_system_prompt(string $channel): string
+    {
+        $format = $channel === 'email'
+            ? 'Return the improved subject and body.'
+            : 'Return the improved SMS in reply.';
+
+        return implode("\n", [
+            'You are a copy editor for Elite Smiles CRM composer text.',
+            'Your job is to improve only the text the operator already typed in the composer.',
+            'Do not create a new conversation, do not read between the lines, and do not add a new scheduling ask unless it is already present or explicitly requested by the operator.',
+            'Preserve the original intent, facts, language, level of warmth, and conversation position.',
+            'Fix grammar, spelling, capitalization, tone, clarity, and professional polish.',
+            'If the text is already a reply in an active conversation, do not add a fresh greeting or reintroduce Rod/Elite Smiles.',
+            'Do not add phone numbers, pricing, financing promises, medical advice, appointment times, or clinical claims.',
+            'Keep SMS concise. Keep email as plain text with short paragraphs.',
+            $format,
             'Return only JSON matching the schema.',
         ]);
     }
@@ -725,6 +780,54 @@ if (!function_exists('lead_ai_generate_reply')) {
     }
 }
 
+if (!function_exists('lead_ai_improve_sms')) {
+    function lead_ai_improve_sms(array $lead, string $currentMessage, string $operatorInstruction = ''): array
+    {
+        $currentMessage = trim($currentMessage);
+        if ($currentMessage === '') {
+            return ['ok' => false, 'message' => 'Write an SMS first, then click Improve.'];
+        }
+
+        $prompt = implode("\n\n", array_filter([
+            'Lead first name for tone only: ' . lead_ai_first_name($lead),
+            'Operator instruction, if any: ' . trim($operatorInstruction),
+            'Composer SMS to improve:',
+            $currentMessage,
+        ], static fn (string $part): bool => trim($part) !== ''));
+
+        $result = lead_ai_json_response(
+            lead_ai_improve_system_prompt('sms'),
+            $prompt,
+            lead_ai_improve_sms_schema(),
+            'elite_smiles_improve_sms',
+            'draft'
+        );
+
+        if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
+            return ['ok' => false, 'message' => (string)($result['message'] ?? 'AI SMS improvement failed.')];
+        }
+
+        $data = $result['data'];
+        $data['reply'] = trim((string)($data['reply'] ?? ''));
+        $data['note'] = trim((string)($data['note'] ?? 'Composer SMS improved for grammar, tone, and clarity.'));
+        $data['confidence'] = max(0.0, min(1.0, (float)($data['confidence'] ?? 0)));
+        $data['classification'] = 'composer_improvement';
+        $data['recommended_stage'] = trim((string)($lead['status'] ?? 'contacted'));
+        $data['needs_human_review'] = true;
+        $data['should_send'] = false;
+
+        if ($data['reply'] === '') {
+            $data['reply'] = $currentMessage;
+            $data['confidence'] = 0.0;
+        }
+
+        $data['provider'] = (string) ($result['provider'] ?? 'openai');
+        $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
+
+        return ['ok' => true, 'data' => $data];
+    }
+}
+
 if (!function_exists('lead_ai_generate_email')) {
     function lead_ai_generate_email(array $lead, string $latestMessage = '', string $mode = 'email_draft'): array
     {
@@ -760,6 +863,59 @@ if (!function_exists('lead_ai_generate_email')) {
             lead_ai_first_name($lead),
             (bool)($threadState['suppress_greeting'] ?? false)
         );
+
+        $data['provider'] = (string) ($result['provider'] ?? 'openai');
+        $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
+
+        return ['ok' => true, 'data' => $data];
+    }
+}
+
+if (!function_exists('lead_ai_improve_email')) {
+    function lead_ai_improve_email(array $lead, string $currentSubject, string $currentBody, string $operatorInstruction = ''): array
+    {
+        $currentSubject = trim($currentSubject);
+        $currentBody = trim($currentBody);
+        if ($currentSubject === '' && $currentBody === '') {
+            return ['ok' => false, 'message' => 'Write an email first, then click Improve.'];
+        }
+
+        $prompt = implode("\n\n", array_filter([
+            'Lead first name for tone only: ' . lead_ai_first_name($lead),
+            'Operator instruction, if any: ' . trim($operatorInstruction),
+            'Composer email subject:',
+            $currentSubject !== '' ? $currentSubject : '(no subject)',
+            'Composer email body:',
+            $currentBody !== '' ? $currentBody : '(no body)',
+        ], static fn (string $part): bool => trim($part) !== ''));
+
+        $result = lead_ai_json_response(
+            lead_ai_improve_system_prompt('email'),
+            $prompt,
+            lead_ai_improve_email_schema(),
+            'elite_smiles_improve_email',
+            'draft'
+        );
+
+        if (empty($result['ok']) || !is_array($result['data'] ?? null)) {
+            return ['ok' => false, 'message' => (string)($result['message'] ?? 'AI email improvement failed.')];
+        }
+
+        $data = $result['data'];
+        $data['subject'] = trim((string)($data['subject'] ?? $currentSubject));
+        $data['body'] = trim((string)($data['body'] ?? $currentBody));
+        $data['note'] = trim((string)($data['note'] ?? 'Composer email improved for grammar, tone, and clarity.'));
+        $data['next_follow_up_at'] = '';
+        $data['confidence'] = max(0.0, min(1.0, (float)($data['confidence'] ?? 0)));
+        $data['classification'] = 'composer_improvement';
+        $data['recommended_stage'] = trim((string)($lead['status'] ?? 'contacted'));
+        $data['needs_human_review'] = true;
+        $data['should_send'] = false;
+
+        if ($data['body'] === '') {
+            $data['body'] = $currentBody;
+            $data['confidence'] = 0.0;
+        }
 
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));

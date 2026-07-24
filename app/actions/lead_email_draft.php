@@ -33,6 +33,9 @@ try {
 $leadId = (int) post('lead_id');
 $instruction = trim((string) post('instruction'));
 $mode = trim((string) post('mode', 'email_draft'));
+$currentSubject = trim((string) post('current_subject'));
+$currentBody = trim((string) post('current_body'));
+$isImproveMode = substr($mode, 0, 16) === 'operator_improve';
 
 if ($leadId <= 0) {
     json_response(['ok' => false, 'message' => 'Invalid lead selected.'], 422);
@@ -47,12 +50,14 @@ if (trim((string)($lead['email'] ?? '')) === '') {
     json_response(['ok' => false, 'message' => 'Add a lead email address before drafting.'], 422);
 }
 
-$result = lead_ai_generate_email($lead, $instruction, $mode);
+$result = $isImproveMode
+    ? lead_ai_improve_email($lead, $currentSubject, $currentBody, $instruction)
+    : lead_ai_generate_email($lead, $instruction, $mode);
 if (empty($result['ok'])) {
     json_response(['ok' => false, 'message' => (string)($result['message'] ?? 'AI email draft failed.')], 502);
 }
 
-lead_comm_insert_activity($leadId, 'ai_email_draft', 'AI drafted an email for review: ' . mb_substr((string)($result['data']['subject'] ?? ''), 0, 180), [
+lead_comm_insert_activity($leadId, 'ai_email_draft', ($isImproveMode ? 'AI improved' : 'AI drafted') . ' an email for review: ' . mb_substr((string)($result['data']['subject'] ?? ''), 0, 180), [
     'classification' => $result['data']['classification'] ?? '',
     'confidence' => $result['data']['confidence'] ?? 0,
     'note' => $result['data']['note'] ?? '',

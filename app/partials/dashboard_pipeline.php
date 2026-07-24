@@ -4751,11 +4751,9 @@ $consultationOptions = [
             if (!currentMessage) return '';
 
             return [
-                'Improve the following SMS so it sounds warm, friendly, professional, and grammatically perfect.',
-                'Keep the core meaning, keep it concise, and make it feel natural for a real patient conversation.',
+                'Improve only the SMS currently typed in the composer.',
+                'Preserve the exact intent and do not create a new message from the lead timeline.',
                 extraInstruction !== '' ? 'Operator instruction: ' + extraInstruction : '',
-                'Current SMS:',
-                currentMessage,
             ].filter(Boolean).join('\n\n');
         }
 
@@ -4765,13 +4763,9 @@ $consultationOptions = [
         if (!currentSubject && !currentBody) return '';
 
         return [
-            'Improve the following patient email so it sounds warm, friendly, professional, and grammatically perfect.',
-            'Keep the core meaning, make it read naturally, and preserve the intent of the draft.',
+            'Improve only the email currently typed in the composer.',
+            'Preserve the exact intent and do not create a new email from the lead timeline.',
             extraInstruction !== '' ? 'Operator instruction: ' + extraInstruction : '',
-            'Current subject:',
-            currentSubject || '(no subject)',
-            'Current email body:',
-            currentBody || '(no body)',
         ].filter(Boolean).join('\n\n');
 
     }
@@ -4867,13 +4861,16 @@ $consultationOptions = [
 
     }
 
-    async function requestSmsDraft(leadId, instruction, mode = 'operator_follow_up_sms') {
+    async function requestSmsDraft(leadId, instruction, mode = 'operator_follow_up_sms', extraFields = {}) {
 
         const formData = new FormData();
         formData.append('_csrf_token', csrfToken);
         formData.append('lead_id', leadId);
         formData.append('mode', mode);
         formData.append('instruction', instruction);
+        Object.entries(extraFields || {}).forEach(([key, value]) => {
+            formData.append(key, String(value ?? ''));
+        });
 
         const response = await fetch(smsDraftUrl, {
             method: 'POST',
@@ -4888,13 +4885,16 @@ $consultationOptions = [
 
     }
 
-    async function requestEmailDraft(leadId, instruction, mode = 'operator_follow_up_email') {
+    async function requestEmailDraft(leadId, instruction, mode = 'operator_follow_up_email', extraFields = {}) {
 
         const formData = new FormData();
         formData.append('_csrf_token', csrfToken);
         formData.append('lead_id', leadId);
         formData.append('mode', mode);
         formData.append('instruction', instruction);
+        Object.entries(extraFields || {}).forEach(([key, value]) => {
+            formData.append(key, String(value ?? ''));
+        });
 
         const response = await fetch(emailDraftUrl, {
             method: 'POST',
@@ -6997,7 +6997,9 @@ function applyCommunicationViewportFit() {
             if (smsStatus) smsStatus.textContent = 'Improving SMS with AI...';
             setAiStatusMessage('Improving SMS...');
 
-            const data = await requestSmsDraft(prepared.leadId, improveInstruction, 'operator_improve_sms');
+            const data = await requestSmsDraft(prepared.leadId, improveInstruction, 'operator_improve_sms', {
+                current_message: currentMessage,
+            });
 
             if (smsInput) smsInput.value = data.draft?.reply || currentMessage;
             setComposerDraftSource('sms', 'ai');
@@ -7048,7 +7050,10 @@ function applyCommunicationViewportFit() {
             if (emailStatus) emailStatus.textContent = 'Improving email with AI...';
             setAiStatusMessage('Improving email...');
 
-            const data = await requestEmailDraft(prepared.leadId, improveInstruction, 'operator_improve_email');
+            const data = await requestEmailDraft(prepared.leadId, improveInstruction, 'operator_improve_email', {
+                current_subject: currentSubject,
+                current_body: currentBody,
+            });
 
             if (emailSubjectInput) emailSubjectInput.value = data.draft?.subject || currentSubject;
             if (emailBodyInput) emailBodyInput.value = data.draft?.body || currentBody;

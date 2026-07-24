@@ -32,6 +32,8 @@ try {
 $leadId = (int) post('lead_id');
 $instruction = trim((string) post('instruction'));
 $mode = trim((string) post('mode', 'sms_draft'));
+$currentMessage = trim((string) post('current_message'));
+$isImproveMode = substr($mode, 0, 16) === 'operator_improve';
 
 if ($leadId <= 0) {
     json_response(['ok' => false, 'message' => 'Invalid lead selected.'], 422);
@@ -50,7 +52,9 @@ if (trim((string)($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
     json_response(['ok' => false, 'message' => 'This lead has opted out of SMS.'], 409);
 }
 
-$result = lead_ai_generate_reply($lead, $instruction, $mode);
+$result = $isImproveMode
+    ? lead_ai_improve_sms($lead, $currentMessage, $instruction)
+    : lead_ai_generate_reply($lead, $instruction, $mode);
 if (empty($result['ok'])) {
     json_response(['ok' => false, 'message' => (string)($result['message'] ?? 'AI SMS draft failed.')], 502);
 }
@@ -58,7 +62,7 @@ if (empty($result['ok'])) {
 lead_comm_insert_activity(
     $leadId,
     'ai_draft',
-    'AI drafted an SMS for review: ' . mb_substr((string)($result['data']['reply'] ?? ''), 0, 180),
+    ($isImproveMode ? 'AI improved' : 'AI drafted') . ' an SMS for review: ' . mb_substr((string)($result['data']['reply'] ?? ''), 0, 180),
     [
         'classification' => $result['data']['classification'] ?? '',
         'confidence' => $result['data']['confidence'] ?? 0,

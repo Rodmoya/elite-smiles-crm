@@ -1150,6 +1150,37 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             } else if (Number(data.lead_id || 0) > 0) {
                 setAssistantLeadContext({ lead_id: Number(data.lead_id || 0) });
             }
+            const responseActionType = String(data.action || data.type || '');
+            if (responseActionType === 'cancel_draft') {
+                assistantBubble('Elite AI', data.answer || data.message || 'Draft cancelled.', 'assistant');
+                setDraftStatus('');
+                refreshPendingDrafts(true);
+                return;
+            }
+            if (responseActionType === 'use_draft' || responseActionType === 'edit_draft') {
+                const draftPayload = resolveDraftPayload(data);
+                const draftActionId = Number(data.action_id || 0);
+                const draftLeadId = Number(data.lead_id || 0);
+                const resolvedDraftType = resolveDraftActionType(data, responseActionType);
+                if (draftActionId > 0) {
+                    setDraftModeInComposer(
+                        draftPayload,
+                        resolvedDraftType || 'draft_email',
+                        draftLeadId,
+                        draftActionId,
+                        responseActionType === 'edit_draft' ? 'Editing draft' : 'Reviewing draft'
+                    );
+                }
+
+                const draftCardMessage = assistantBubble('Elite AI', data.answer || data.message || 'Draft loaded into composer.', 'assistant');
+                renderDraftCard(draftCardMessage, draftPayload, resolvedDraftType || 'draft_email', draftActionId, draftLeadId, data);
+                if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                    assistantBubble('Elite AI', 'Note: ' + String(data.warning), 'assistant');
+                }
+                setPendingDraftsCollapsed(false);
+                refreshPendingDrafts(true);
+                return;
+            }
             const assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
             assistantBubble('Elite AI', data.answer || 'Assistant response ready.', 'assistant', data.cards || [], false, assistantActions);
             if ((quickAction || '') === 'notifications' && Array.isArray(data.reviewed_lead_ids)) {

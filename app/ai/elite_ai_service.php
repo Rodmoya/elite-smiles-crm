@@ -275,8 +275,70 @@ if (!function_exists('elite_ai_prompt_requests_pending_draft_review')) {
     }
 }
 
+if (!function_exists('elite_ai_pending_draft_command')) {
+    function elite_ai_pending_draft_command(string $prompt): string
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return 'show_draft';
+        }
+        if ((bool) preg_match('/\b(?:cancel|discard|delete)\s+(?:it|this|that|draft)\b/i', $normalized)) {
+            return 'cancel_draft';
+        }
+        if ((bool) preg_match('/\b(?:edit|change|fix|modify)\s+(?:it|this|that|draft)\b/i', $normalized)) {
+            return 'edit_draft';
+        }
+        if ((bool) preg_match('/\b(?:send it|send this|send that|yes send|approve|approved|use draft|use it|load it|put it in composer)\b/i', $normalized)) {
+            return 'use_draft';
+        }
+
+        return 'show_draft';
+    }
+}
+
+if (!function_exists('elite_ai_select_pending_draft')) {
+    function elite_ai_select_pending_draft(array $pending, int $leadId, string $prompt): ?array
+    {
+        foreach ($pending as $draft) {
+            if ($leadId > 0 && (int) ($draft['lead_id'] ?? 0) === $leadId) {
+                return $draft;
+            }
+        }
+
+        $normalized = strtolower(trim($prompt));
+        if ($normalized !== '' && preg_match('/(?:queue|draft|#)\s*#?\s*(\d{1,10})\b/i', $normalized, $matches)) {
+            $requestedActionId = (int) $matches[1];
+            foreach ($pending as $draft) {
+                if ((int) ($draft['action_id'] ?? 0) === $requestedActionId) {
+                    return $draft;
+                }
+            }
+        }
+
+        if ($normalized !== '') {
+            $cleanPrompt = trim((string) preg_replace('/[^a-z0-9\s]+/i', ' ', $normalized));
+            $cleanPrompt = trim((string) preg_replace('/\s+/', ' ', $cleanPrompt));
+            foreach ($pending as $draft) {
+                $name = strtolower(trim((string) ($draft['lead_name'] ?? '')));
+                $cleanName = trim((string) preg_replace('/[^a-z0-9\s]+/i', ' ', $name));
+                $cleanName = trim((string) preg_replace('/\s+/', ' ', $cleanName));
+                if ($cleanName !== '' && (str_contains($cleanPrompt, $cleanName) || str_contains($cleanName, $cleanPrompt))) {
+                    return $draft;
+                }
+                foreach (preg_split('/\s+/', $cleanName) ?: [] as $part) {
+                    if (strlen($part) >= 3 && str_contains($cleanPrompt, $part)) {
+                        return $draft;
+                    }
+                }
+            }
+        }
+
+        return count($pending) === 1 ? $pending[0] : null;
+    }
+}
+
 if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
-    function elite_ai_pending_draft_conversation_payload(array $user, array $context): ?array
+    function elite_ai_pending_draft_conversation_payload(array $user, array $context, string $prompt = '', string $surface = 'desktop'): ?array
     {
         $pending = function_exists('elite_ai_pending_drafts_for_user') ? elite_ai_pending_drafts_for_user($user, 8) : [];
         if (!$pending) {
@@ -284,20 +346,73 @@ if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
         }
 
         $leadId = (int) ($context['lead_id'] ?? 0);
-        $selected = null;
-        foreach ($pending as $draft) {
-            if ($leadId > 0 && (int) ($draft['lead_id'] ?? 0) === $leadId) {
-                $selected = $draft;
-                break;
+        $command = elite_ai_pending_draft_command($prompt);
+        $selected = elite_ai_select_pending_draft($pending, $leadId, $prompt);
+        if (!$selected && count($pending) > 1 && in_array($command, ['use_draft', 'edit_draft', 'cancel_draft'], true)) {
+            $items = [];
+            foreach ($pending as $draft) {
+                $items[] = trim((string) ($draft['channel'] ?? 'Draft')) . ' for '
+                    . (trim((string) ($draft['lead_name'] ?? '')) !== '' ? trim((string) ($draft['lead_name'] ?? '')) : 'lead #' . (int) ($draft['lead_id'] ?? 0))
+                    . ' - queue #' . (int) ($draft['action_id'] ?? 0);
             }
+
+            return [
+                'answer' => 'I found more than one pending draft. Which one should I load into the composer? Open the lead first, or tell me the lead name or queue number.',
+                'cards' => [[
+                    'title' => 'Pending drafts',
+                    'items' => $items,
+                ]],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context', 'needs_clarification'],
+                'lead_id' => null,
+                'pending_drafts' => $pending,
+            ];
+        }
+        if (!$selected && count($pending) === 1) {
+            $selected = $pending[0];
         }
         if (!$selected) {
-            $selected = $pending[0];
+            return [
+                'answer' => 'I found pending drafts, but I am not sure which one you mean. Tell me the lead name or queue number.',
+                'cards' => [[
+                    'title' => 'Pending drafts',
+                    'items' => array_map(static function (array $draft): string {
+                        return trim((string) ($draft['channel'] ?? 'Draft')) . ' for '
+                            . (trim((string) ($draft['lead_name'] ?? '')) !== '' ? trim((string) ($draft['lead_name'] ?? '')) : 'lead #' . (int) ($draft['lead_id'] ?? 0))
+                            . ' - queue #' . (int) ($draft['action_id'] ?? 0);
+                    }, $pending),
+                ]],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context', 'needs_clarification'],
+                'lead_id' => null,
+                'pending_drafts' => $pending,
+            ];
         }
 
         $selectedLeadId = (int) ($selected['lead_id'] ?? 0);
         $leadName = trim((string) ($selected['lead_name'] ?? 'this lead'));
         $preview = trim((string) ($selected['draft_preview'] ?? 'Draft ready for review.'));
+        $actionId = (int) ($selected['action_id'] ?? 0);
+        if (in_array($command, ['use_draft', 'edit_draft', 'cancel_draft'], true) && $actionId > 0) {
+            $result = elite_ai_prepare_action_draft($user, [
+                'surface' => $surface,
+                'assistant_action' => $command,
+                'action_id' => $actionId,
+                'lead_id' => $selectedLeadId,
+                'prompt' => $prompt,
+                'instruction' => $prompt,
+                'context' => $context,
+            ], $surface);
+
+            if (!empty($result['ok'])) {
+                $result['answer'] = $command === 'cancel_draft'
+                    ? 'Cancelled the pending draft for ' . ($leadName !== '' ? $leadName : 'this lead') . '.'
+                    : 'I loaded the pending ' . trim((string) ($selected['channel'] ?? 'draft')) . ' draft for ' . ($leadName !== '' ? $leadName : 'this lead') . ' into the composer for your final review. Nothing was sent yet.';
+                $result['tools_used'] = ['pending_draft_context', $command];
+                $result['pending_drafts'] = elite_ai_pending_drafts_for_user($user, 8);
+                return $result;
+            }
+        }
 
         return [
             'answer' => 'I found the pending ' . trim((string) ($selected['channel'] ?? 'draft')) . ' draft for ' . ($leadName !== '' ? $leadName : 'this lead') . '. I did not send it. Review it here, then use the draft action if it looks right.',
@@ -3204,7 +3319,7 @@ function elite_ai_handle_request(array $user, array $request): array
         }
 
         if ($quickAction === '' && elite_ai_prompt_requests_pending_draft_review($prompt)) {
-            $draftPayload = elite_ai_pending_draft_conversation_payload($user, $context);
+            $draftPayload = elite_ai_pending_draft_conversation_payload($user, $context, $prompt, $surface);
             if ($draftPayload) {
                 $draftPayload = elite_ai_plain_text_payload($draftPayload);
                 $summary = trim((string) ($draftPayload['answer'] ?? 'Pending draft ready for review.'));

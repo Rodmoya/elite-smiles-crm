@@ -1313,6 +1313,38 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     } else if (Number(data.lead_id || 0) > 0) {
                         baseContext.lead_id = Number(data.lead_id || 0);
                     }
+                    var responseActionType = String(data.action || data.type || '');
+                    if (responseActionType === 'cancel_draft') {
+                        setDraftStatus('');
+                        applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                        createMessage('assistant', data.answer || data.message || 'Draft cancelled.');
+                        return;
+                    }
+                    if (responseActionType === 'use_draft' || responseActionType === 'edit_draft') {
+                        var typedDraftPayload = resolveDraftPayload(data);
+                        var typedDraftActionType = resolveDraftActionType(data, responseActionType);
+                        var typedDraftActionId = Number(data.action_id || 0);
+                        var typedDraftLeadId = Number(data.lead_id || 0);
+                        if (typedDraftActionId > 0) {
+                            setDraftModeInComposer(
+                                typedDraftPayload,
+                                typedDraftActionType,
+                                typedDraftLeadId,
+                                typedDraftActionId,
+                                responseActionType === 'edit_draft' ? 'Editing draft' : 'Reviewing draft'
+                            );
+                        }
+                        var typedDraftMessage = createMessage('assistant', data.answer || data.message || 'Draft loaded into composer.');
+                        renderDraftCard(typedDraftMessage, typedDraftPayload, typedDraftActionType, typedDraftActionId, typedDraftLeadId, data, {
+                            lead_id: typedDraftLeadId,
+                            actions: resolveDraftActions(data)
+                        });
+                        applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                        if (typeof data.warning === 'string' && data.warning.trim() !== '') {
+                            createMessage('assistant', 'Note: ' + String(data.warning));
+                        }
+                        return;
+                    }
                     var assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);
                     var assistantMessage = createMessage('assistant', data.answer || 'Ready.', data.cards || [], assistantActions);
                     applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);

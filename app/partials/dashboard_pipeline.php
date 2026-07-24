@@ -2855,6 +2855,7 @@ $consultationOptions = [
         note: 'manual',
     };
     let pendingAttentionDraft = null;
+    let activeAttentionReviewLead = null;
     const calendarStateStorageKey = 'elite-smiles-calendar-panel-state-v1';
     const calendarStateFromStorage = (() => {
         try {
@@ -7139,6 +7140,38 @@ function applyCommunicationViewportFit() {
         attentionReviewModal.setAttribute('aria-hidden', 'true');
     }
 
+    function openAttentionReviewLead(button = null) {
+        const leadId = String(
+            button?.dataset?.openActionLead
+            || activeAttentionReviewLead?.leadId
+            || ''
+        ).trim();
+        const tab = String(
+            button?.dataset?.openActionTab
+            || activeAttentionReviewLead?.tab
+            || 'communications'
+        ).trim() || 'communications';
+
+        const card = safeCardLookupById(leadId);
+        if (!card) {
+            if (leadId) {
+                window.location.href = '<?= e(base_url('leads.php')) ?>?lead_id=' + encodeURIComponent(leadId);
+            }
+            return false;
+        }
+
+        closeAttentionReviewModal();
+        card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        card.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        window.setTimeout(() => {
+            card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+        }, 1800);
+        window.setTimeout(() => {
+            openLeadModal(card, tab);
+        }, 150);
+        return true;
+    }
+
     function dismissAttentionQueueLead(leadId) {
         const normalizedLeadId = String(leadId || '').trim();
         if (!normalizedLeadId) return;
@@ -7197,6 +7230,8 @@ function applyCommunicationViewportFit() {
         const source = trigger.dataset.attentionSourceLabel || card.dataset.leadSource || card.dataset.leadCampaign || '-';
         const lastTouch = trigger.dataset.attentionLastTouch || card.dataset.leadLastOutboundAt || card.dataset.leadLastInboundAt || '-';
         const instruction = trigger.dataset.attentionAiInstruction || trigger.dataset.aiActionInstruction || '';
+
+        activeAttentionReviewLead = { leadId, tab };
 
         setAttentionReviewText(attentionReviewLeadName, leadName, 'Lead');
         setAttentionReviewText(attentionReviewStage, stage);
@@ -8266,6 +8301,14 @@ function applyCommunicationViewportFit() {
         attentionReviewApproveAction.addEventListener('click', function (event) {
             event.preventDefault();
             approveAttentionReviewDraft();
+        });
+    }
+
+    if (attentionReviewOpenLead) {
+        attentionReviewOpenLead.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            openAttentionReviewLead(attentionReviewOpenLead);
         });
     }
 

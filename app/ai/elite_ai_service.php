@@ -2152,6 +2152,9 @@ if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
         if ($text === '') {
             return '';
         }
+        if ((bool) preg_match('/\b(?:lead|patient|card)?\s*#\s*\d+\b|\blead\s+\d+\b/i', $text)) {
+            return '';
+        }
 
         $patterns = [
             '/\b(?:move|send|put|set|change|mark)\s+(.+?)\s+(?:to|as|into)\s+.+$/i',

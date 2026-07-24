@@ -1037,6 +1037,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
+            if (data.current_subject && Number(data.current_subject.lead_id || 0) > 0) {
+                setAssistantLeadContext({ lead_id: Number(data.current_subject.lead_id || 0) });
+            } else if (Number(data.lead_id || 0) > 0) {
+                setAssistantLeadContext({ lead_id: Number(data.lead_id || 0) });
+            }
+
             if (actionType === 'mark_reviewed') {
                 assistantBubble('Elite AI', data.answer || data.message || 'Notification reviewed.', 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                 refreshPendingDrafts(true);
@@ -1139,7 +1145,9 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                 return;
             }
 
-            if (Number(data.lead_id || 0) > 0) {
+            if (data.current_subject && Number(data.current_subject.lead_id || 0) > 0) {
+                setAssistantLeadContext({ lead_id: Number(data.current_subject.lead_id || 0) });
+            } else if (Number(data.lead_id || 0) > 0) {
                 setAssistantLeadContext({ lead_id: Number(data.lead_id || 0) });
             }
             const assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);

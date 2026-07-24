@@ -1205,6 +1205,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
+                    if (data.current_subject && Number(data.current_subject.lead_id || 0) > 0) {
+                        baseContext.lead_id = Number(data.current_subject.lead_id || 0);
+                    } else if (Number(data.lead_id || 0) > 0) {
+                        baseContext.lead_id = Number(data.lead_id || 0);
+                    }
+
                     if (actionType === 'mark_reviewed') {
                         createMessage('assistant', data.answer || data.message || 'Notification reviewed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                         refreshPendingDrafts();
@@ -1302,7 +1308,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
 
-                    if (Number(data.lead_id || 0) > 0) {
+                    if (data.current_subject && Number(data.current_subject.lead_id || 0) > 0) {
+                        baseContext.lead_id = Number(data.current_subject.lead_id || 0);
+                    } else if (Number(data.lead_id || 0) > 0) {
                         baseContext.lead_id = Number(data.lead_id || 0);
                     }
                     var assistantActions = normalizeAssistantActions(data.actions || [], data.lead_id || 0);

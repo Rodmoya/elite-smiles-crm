@@ -31,6 +31,11 @@ if (!function_exists('elite_ai_knowledge_base')) {
                     'label' => 'Notification Prompt Rule',
                     'text' => 'New inbound notifications should lead to a clear next-step question, not an automatic send.',
                 ],
+                [
+                    'key' => 'conversation_continuity',
+                    'label' => 'Conversation Continuity',
+                    'text' => 'Elite AI should keep the current lead, draft, notification, and operator correction in context so short follow-ups feel conversational.',
+                ],
             ],
             'stage_rules' => [
                 'new_lead' => 'New leads should be reviewed for first contact needs before anything else.',

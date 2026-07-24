@@ -104,6 +104,115 @@ if (!function_exists('elite_ai_surface')) {
     }
 }
 
+if (!function_exists('elite_ai_infer_thread_lead_id')) {
+    function elite_ai_infer_thread_lead_id(array $assistantThread): int
+    {
+        foreach (array_reverse($assistantThread) as $item) {
+            $text = trim((string) ($item['text'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+
+            if (preg_match('/\blead\s*#\s*(\d{1,10})\b/i', $text, $matches)) {
+                return (int) $matches[1];
+            }
+            if (preg_match('/\bfor\s+lead\s+(\d{1,10})\b/i', $text, $matches)) {
+                return (int) $matches[1];
+            }
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('elite_ai_prompt_references_conversation_subject')) {
+    function elite_ai_prompt_references_conversation_subject(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:it|this|that|them|her|him|he|she|they|the lead|the patient|same lead|same person|yes|ok|okay|do it|send it|draft it|answer it|answer them|move them|move her|move him|clear it)\b/i',
+            $normalized
+        );
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_pending_draft_review')) {
+    function elite_ai_prompt_requests_pending_draft_review(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(?:send it|send this|send that|yes send|approve|approved|use draft|use it|edit draft|show draft|where is the draft|draft again)\b/i', $normalized);
+    }
+}
+
+if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
+    function elite_ai_pending_draft_conversation_payload(array $user, array $context): ?array
+    {
+        $pending = function_exists('elite_ai_pending_drafts_for_user') ? elite_ai_pending_drafts_for_user($user, 8) : [];
+        if (!$pending) {
+            return null;
+        }
+
+        $leadId = (int) ($context['lead_id'] ?? 0);
+        $selected = null;
+        foreach ($pending as $draft) {
+            if ($leadId > 0 && (int) ($draft['lead_id'] ?? 0) === $leadId) {
+                $selected = $draft;
+                break;
+            }
+        }
+        if (!$selected) {
+            $selected = $pending[0];
+        }
+
+        $selectedLeadId = (int) ($selected['lead_id'] ?? 0);
+        $leadName = trim((string) ($selected['lead_name'] ?? 'this lead'));
+        $preview = trim((string) ($selected['draft_preview'] ?? 'Draft ready for review.'));
+
+        return [
+            'answer' => 'I found the pending ' . trim((string) ($selected['channel'] ?? 'draft')) . ' draft for ' . ($leadName !== '' ? $leadName : 'this lead') . '. I did not send it. Review it here, then use the draft action if it looks right.',
+            'cards' => [[
+                'title' => 'Pending draft',
+                'items' => [$preview],
+            ]],
+            'actions' => array_values((array) ($selected['actions'] ?? [])),
+            'tools_used' => ['pending_draft_context'],
+            'lead_id' => $selectedLeadId > 0 ? $selectedLeadId : null,
+            'pending_drafts' => $pending,
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_current_subject_payload')) {
+    function elite_ai_current_subject_payload(?int $leadId): array
+    {
+        $leadId = (int) ($leadId ?? 0);
+        if ($leadId <= 0 || !function_exists('elite_ai_load_lead')) {
+            return [];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return [];
+        }
+
+        return [
+            'type' => 'lead',
+            'lead_id' => $leadId,
+            'label' => trim((string) ($lead['full_name'] ?? 'Lead #' . $leadId)),
+            'status' => trim((string) ($lead['status'] ?? '')),
+            'conversion_stage' => trim((string) ($lead['conversion_stage_label'] ?? '')),
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_normalize_context')) {
 function elite_ai_normalize_context(array $request): array
     {
@@ -148,6 +257,12 @@ function elite_ai_normalize_context(array $request): array
                     'role' => $role === 'user' ? 'user' : 'assistant',
                     'text' => mb_substr($text, 0, 700),
                 ];
+            }
+        }
+        if ($leadId <= 0) {
+            $threadLeadId = elite_ai_infer_thread_lead_id($assistantThread);
+            if ($threadLeadId > 0) {
+                $leadId = $threadLeadId;
             }
         }
 
@@ -2078,6 +2193,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
 
             return $result + [
                 'context' => $context,
+                'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
@@ -2099,6 +2215,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
 
             return $result + [
                 'context' => $context,
+                'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
@@ -2126,6 +2243,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             return $result + [
                 'surface' => $surface,
                 'context' => $context,
+                'current_subject' => elite_ai_current_subject_payload($leadId),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
@@ -2151,6 +2269,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             return $result + [
                 'ok' => true,
                 'context' => $context,
+                'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
@@ -2161,6 +2280,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             'surface' => $surface,
             'message' => (string) ($result['message'] ?? 'Unable to prepare the requested action.'),
             'context' => elite_ai_normalize_context($request),
+            'current_subject' => elite_ai_current_subject_payload((int) ($request['lead_id'] ?? 0) ?: null),
             'tool_capabilities' => elite_ai_tool_capabilities($surface),
             'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
         ];
@@ -2411,7 +2531,7 @@ if (!function_exists('elite_ai_plan_request')) {
                 'intent' => elite_ai_prompt_explicitly_requests_email($prompt) ? 'draft_email' : 'draft_sms',
                 'reason' => 'Deterministic reply draft request. Defaulting to SMS unless email is explicitly requested.',
                 'lead_query' => '',
-                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0,
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 || elite_ai_prompt_references_conversation_subject($prompt),
                 'needs_clarification' => (int) ($context['lead_id'] ?? 0) <= 0 && trim((string) ($context['notification']['lead_name'] ?? '')) === '',
                 'clarification_question' => 'Which lead should I draft this for?',
                 'provider' => 'deterministic',
@@ -2423,7 +2543,7 @@ if (!function_exists('elite_ai_plan_request')) {
                 'intent' => elite_ai_detect_intent($prompt, '', $context),
                 'reason' => 'Planner unavailable, using fallback intent router.',
                 'lead_query' => '',
-                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && elite_ai_prompt_mentions_current_lead($prompt),
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && (elite_ai_prompt_mentions_current_lead($prompt) || elite_ai_prompt_references_conversation_subject($prompt)),
                 'needs_clarification' => false,
                 'clarification_question' => '',
                 'provider' => 'fallback',
@@ -2454,7 +2574,7 @@ if (!function_exists('elite_ai_plan_request')) {
                 'intent' => elite_ai_detect_intent($prompt, '', $context),
                 'reason' => 'Planner fallback: ' . (string) ($result['message'] ?? 'AI planner unavailable.'),
                 'lead_query' => '',
-                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && elite_ai_prompt_mentions_current_lead($prompt),
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && (elite_ai_prompt_mentions_current_lead($prompt) || elite_ai_prompt_references_conversation_subject($prompt)),
                 'needs_clarification' => false,
                 'clarification_question' => '',
                 'provider' => 'fallback',
@@ -2809,10 +2929,45 @@ function elite_ai_handle_request(array $user, array $request): array
                 'tools_used' => ['memory.remember'],
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'lead_id' => null,
+                'current_subject' => [],
                 'context' => $context,
                 'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                 'learned_memory' => $learnedMemory,
             ];
+        }
+
+        if ($quickAction === '' && elite_ai_prompt_requests_pending_draft_review($prompt)) {
+            $draftPayload = elite_ai_pending_draft_conversation_payload($user, $context);
+            if ($draftPayload) {
+                $draftPayload = elite_ai_plain_text_payload($draftPayload);
+                $summary = trim((string) ($draftPayload['answer'] ?? 'Pending draft ready for review.'));
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    (array) ($draftPayload['tools_used'] ?? []),
+                    $summary,
+                    (int) ($draftPayload['lead_id'] ?? 0) ?: null,
+                    $context
+                );
+
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => array_values((array) ($draftPayload['pending_drafts'] ?? elite_ai_pending_drafts_for_user($user, 8))),
+                    'cards' => array_values((array) ($draftPayload['cards'] ?? [])),
+                    'actions' => array_values((array) ($draftPayload['actions'] ?? [])),
+                    'tools_used' => array_values((array) ($draftPayload['tools_used'] ?? [])),
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => (int) ($draftPayload['lead_id'] ?? 0) ?: null,
+                    'current_subject' => elite_ai_current_subject_payload((int) ($draftPayload['lead_id'] ?? 0) ?: null),
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
         }
 
         $plan = elite_ai_plan_request($prompt, $quickAction, $context);
@@ -2989,6 +3144,7 @@ function elite_ai_handle_request(array $user, array $request): array
             'tools_used' => array_values((array) ($payload['tools_used'] ?? [])),
             'tool_capabilities' => elite_ai_tool_capabilities($surface),
             'lead_id' => $leadId,
+            'current_subject' => elite_ai_current_subject_payload($leadId),
             'context' => $context,
             'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
             'learned_memory' => $learnedMemory,

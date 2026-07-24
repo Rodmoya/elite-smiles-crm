@@ -1550,6 +1550,213 @@ if (!function_exists('elite_ai_pipeline_count_payload')) {
     }
 }
 
+if (!function_exists('elite_ai_stage_from_text')) {
+    function elite_ai_stage_from_text(string $text): string
+    {
+        $normalized = strtolower(trim($text));
+        if ($normalized === '') {
+            return '';
+        }
+
+        $map = [
+            'first touch attempted' => 'attempted_contact',
+            'first touch attempt' => 'attempted_contact',
+            'attempted contact' => 'attempted_contact',
+            'first touch sent' => 'contacted',
+            'first touch' => 'contacted',
+            'scheduling' => 'in_contact',
+            'in communication' => 'in_contact',
+            'in contact' => 'in_contact',
+            'consultation booked' => 'consultation_booked',
+            'consult booked' => 'consultation_booked',
+            'no show reschedule' => 'no_show_reschedule',
+            'no show' => 'no_show_reschedule',
+            'reschedule' => 'no_show_reschedule',
+            'new lead' => 'new_lead',
+            'contacted' => 'contacted',
+            'nurture' => 'no_answer',
+            'no answer' => 'no_answer',
+            'no answer nurture' => 'no_answer',
+            'opted out' => 'opted_out',
+            'sale closed' => 'sale_closed',
+            'treatment accepted' => 'treatment_accepted',
+            'treatment completed' => 'treatment_completed',
+            'consult completed' => 'consult_completed',
+            'lead lost' => 'lost_lead',
+            'lost archived' => 'lost_lead',
+        ];
+
+        foreach ($map as $label => $status) {
+            if (str_contains($normalized, $label)) {
+                return $status;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_stage_message_review')) {
+    function elite_ai_prompt_requests_stage_message_review(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:need|needs|due|should|any|which|who|send|message|text|sms|follow(?:-|\s*)up)\b.*\b(?:message|text|sms|follow(?:-|\s*)up|today)\b|\b(?:message|text|sms|follow(?:-|\s*)up)\b.*\b(?:today|due|needed|need|needs|send)\b/i',
+            $normalized
+        );
+    }
+}
+
+if (!function_exists('elite_ai_infer_stage_for_message_review')) {
+    function elite_ai_infer_stage_for_message_review(string $prompt, array $context): string
+    {
+        $stage = elite_ai_stage_from_text($prompt);
+        if ($stage !== '') {
+            return $stage;
+        }
+
+        foreach (array_reverse((array) ($context['assistant_thread'] ?? [])) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $text = trim((string) ($item['text'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $stage = elite_ai_stage_from_text($text);
+            if ($stage !== '') {
+                return $stage;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('elite_ai_stage_message_candidates')) {
+    function elite_ai_stage_message_candidates(string $status, int $limit = 12): array
+    {
+        $limit = max(1, min(25, $limit));
+        $hasNextFollowUp = function_exists('leads_has_column') && leads_has_column('next_follow_up_at');
+        $nextFollowUpOrder = $hasNextFollowUp ? 'l.next_follow_up_at' : 'NULL';
+        $rows = db_all(
+            "SELECT
+                l.*,
+                COALESCE(msg.outbound_count, 0) AS message_outbound_count,
+                COALESCE(msg.inbound_count, 0) AS message_inbound_count,
+                msg.message_last_inbound_at,
+                msg.message_last_outbound_at
+             FROM leads l
+             LEFT JOIN (
+                SELECT
+                    lead_id,
+                    SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_count,
+                    SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_count,
+                    MAX(CASE WHEN direction = 'inbound' THEN created_at ELSE NULL END) AS message_last_inbound_at,
+                    MAX(CASE WHEN direction = 'outbound' THEN created_at ELSE NULL END) AS message_last_outbound_at
+                FROM lead_messages
+                GROUP BY lead_id
+             ) msg ON msg.lead_id = l.id
+             WHERE l.status = :status
+             ORDER BY COALESCE({$nextFollowUpOrder}, msg.message_last_inbound_at, msg.message_last_outbound_at, l.updated_at) ASC, l.id ASC
+             LIMIT {$limit}",
+            ['status' => $status]
+        );
+
+        $todayStart = strtotime(date('Y-m-d 00:00:00')) ?: time();
+        $now = time();
+        $candidates = [];
+
+        foreach ($rows as $row) {
+            $lastInboundAt = trim((string) ($row['message_last_inbound_at'] ?? $row['last_inbound_at'] ?? ''));
+            $lastOutboundAt = trim((string) ($row['message_last_outbound_at'] ?? $row['last_outbound_at'] ?? ''));
+            $nextFollowUpAt = trim((string) ($row['next_follow_up_at'] ?? ''));
+            $followUpStatus = strtolower(trim((string) ($row['follow_up_status'] ?? '')));
+
+            $lastInboundTs = $lastInboundAt !== '' ? (strtotime($lastInboundAt) ?: 0) : 0;
+            $lastOutboundTs = $lastOutboundAt !== '' ? (strtotime($lastOutboundAt) ?: 0) : 0;
+            $nextFollowUpTs = $nextFollowUpAt !== '' ? (strtotime($nextFollowUpAt) ?: 0) : 0;
+            $reason = '';
+
+            if ($lastInboundTs > 0 && ($lastOutboundTs <= 0 || $lastInboundTs > $lastOutboundTs)) {
+                $reason = 'Patient replied after our last outbound touch.';
+            } elseif ($nextFollowUpTs > 0 && $nextFollowUpTs <= $now) {
+                $reason = 'Saved follow-up time is due.';
+            } elseif (in_array($followUpStatus, ['needs_follow_up', 'reply_received'], true)) {
+                $reason = 'Follow-up flag is active.';
+            } elseif ($lastOutboundTs <= 0) {
+                $reason = 'No outbound SMS is recorded yet.';
+            } elseif ($lastOutboundTs < $todayStart) {
+                $reason = 'No outbound message has been sent today.';
+            }
+
+            if ($reason === '') {
+                continue;
+            }
+
+            $row['review_reason'] = $reason;
+            $row['message_last_inbound_at'] = $lastInboundAt;
+            $row['message_last_outbound_at'] = $lastOutboundAt;
+            $candidates[] = $row;
+        }
+
+        return $candidates;
+    }
+}
+
+if (!function_exists('elite_ai_stage_message_review_payload')) {
+    function elite_ai_stage_message_review_payload(string $status): array
+    {
+        $label = elite_ai_stage_label($status);
+        $counts = elite_ai_stage_counts();
+        $total = (int) ($counts[$status] ?? 0);
+        $candidates = elite_ai_stage_message_candidates($status, 12);
+        $dueCount = count($candidates);
+
+        $items = [];
+        $actions = [];
+        foreach ($candidates as $lead) {
+            $detail = trim((string) ($lead['review_reason'] ?? 'Needs review.'));
+            $lastOutboundAt = trim((string) ($lead['message_last_outbound_at'] ?? ''));
+            $lastInboundAt = trim((string) ($lead['message_last_inbound_at'] ?? ''));
+            if ($lastOutboundAt !== '') {
+                $detail .= ' Last outbound ' . format_datetime($lastOutboundAt, 'M j g:i A') . '.';
+            }
+            if ($lastInboundAt !== '') {
+                $detail .= ' Last inbound ' . format_datetime($lastInboundAt, 'M j g:i A') . '.';
+            }
+            $items[] = elite_ai_format_lead_line($lead, $detail);
+
+            $leadId = (int) ($lead['id'] ?? 0);
+            if ($leadId > 0 && trim((string) ($lead['phone'] ?? '')) !== '' && trim((string) ($lead['sms_opt_status'] ?? 'unknown')) !== 'opted_out') {
+                $actions[] = [
+                    'type' => 'draft_sms',
+                    'label' => 'Prepare SMS for ' . trim((string) ($lead['full_name'] ?? 'Lead #' . $leadId)),
+                    'lead_id' => $leadId,
+                    'help' => 'Draft an in-context follow-up for this lead.',
+                    'channel' => 'sms',
+                ];
+            }
+        }
+
+        return [
+            'answer' => $dueCount > 0
+                ? 'Yes. In ' . $label . ', ' . $dueCount . ' of ' . $total . ' leads look like they may need a message today. I did not send anything.'
+                : 'No. I do not see any ' . $label . ' leads that need a message today.',
+            'cards' => $items ? [[
+                'title' => $label . ' message review',
+                'items' => $items,
+            ]] : [],
+            'actions' => $actions,
+            'tools_used' => ['stage_context', 'stage_message_review', 'lead_messages'],
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_shorten_patient_quote')) {
     function elite_ai_shorten_patient_quote(string $text, int $limit = 180): string
     {
@@ -3752,6 +3959,40 @@ function elite_ai_handle_request(array $user, array $request): array
                     'tool_capabilities' => elite_ai_tool_capabilities($surface),
                     'lead_id' => $internalLeadId,
                     'current_subject' => elite_ai_current_subject_payload($internalLeadId),
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
+        }
+
+        if ($quickAction === '' && elite_ai_prompt_requests_stage_message_review($prompt)) {
+            $stageMessageStatus = elite_ai_infer_stage_for_message_review($prompt, $context);
+            if ($stageMessageStatus !== '') {
+                $stageMessagePayload = elite_ai_plain_text_payload(elite_ai_stage_message_review_payload($stageMessageStatus));
+                $summary = trim((string) ($stageMessagePayload['answer'] ?? 'Stage message review completed.'));
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    (array) ($stageMessagePayload['tools_used'] ?? []),
+                    $summary,
+                    null,
+                    $context
+                );
+
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'cards' => array_values((array) ($stageMessagePayload['cards'] ?? [])),
+                    'actions' => array_values((array) ($stageMessagePayload['actions'] ?? [])),
+                    'tools_used' => array_values((array) ($stageMessagePayload['tools_used'] ?? [])),
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => null,
+                    'current_subject' => [],
                     'context' => $context,
                     'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                     'learned_memory' => $learnedMemory,

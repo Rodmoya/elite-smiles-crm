@@ -1225,6 +1225,11 @@ if (!function_exists('elite_ai_prompt_requests_stage_count')) {
         }
 
         $map = [
+            'first touch attempted' => 'attempted_contact',
+            'first touch attempt' => 'attempted_contact',
+            'attempted contact' => 'attempted_contact',
+            'first touch sent' => 'contacted',
+            'first touch' => 'contacted',
             'scheduling' => 'in_contact',
             'in communication' => 'in_contact',
             'in contact' => 'in_contact',
@@ -1234,9 +1239,14 @@ if (!function_exists('elite_ai_prompt_requests_stage_count')) {
             'reschedule' => 'no_show_reschedule',
             'new lead' => 'new_lead',
             'contacted' => 'contacted',
+            'nurture' => 'no_answer',
             'no answer' => 'no_answer',
+            'no answer nurture' => 'no_answer',
             'opted out' => 'opted_out',
             'sale closed' => 'sale_closed',
+            'treatment accepted' => 'treatment_accepted',
+            'treatment completed' => 'treatment_completed',
+            'consult completed' => 'consult_completed',
             'lead lost' => 'lost_lead',
         ];
 
@@ -1836,6 +1846,44 @@ if (!function_exists('elite_ai_requested_stage_key')) {
         foreach ($patterns as $stage => $pattern) {
             if ((bool) preg_match($pattern, $normalized)) {
                 return $stage;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_stage_move')) {
+    function elite_ai_prompt_requests_stage_move(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(?:move|send|put|set|change|mark)\b.+\b(?:to|as|into)\b/i', $normalized)
+            && elite_ai_requested_stage_key($normalized) !== '';
+    }
+}
+
+if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
+    function elite_ai_extract_stage_move_lead_query(string $prompt): string
+    {
+        $text = trim($prompt);
+        if ($text === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\b(?:move|send|put|set|change|mark)\s+(.+?)\s+(?:to|as|into)\s+.+$/i',
+            '/^(.+?)\s+(?:to|as|into)\s+(?:nurture|no\s*answer|lost|archive|archived|scheduling|consultation\s*booked|booked|first\s*touch\s*sent|first\s*touch\s*attempted)$/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $matches)) {
+                $query = trim((string) ($matches[1] ?? ''));
+                $query = preg_replace('/\b(?:lead|patient|card)\b/i', '', $query) ?? $query;
+                return trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.");
             }
         }
 
@@ -2445,7 +2493,7 @@ if (!function_exists('elite_ai_planner_schema')) {
             'properties' => [
                 'intent' => [
                     'type' => 'string',
-                    'enum' => ['morning_sweep', 'new_leads', 'replies', 'follow_ups', 'no_answer_review', 'notifications', 'pipeline', 'lead_summary', 'draft_sms', 'draft_email', 'mark_reviewed', 'help'],
+                    'enum' => ['morning_sweep', 'new_leads', 'replies', 'follow_ups', 'no_answer_review', 'notifications', 'pipeline', 'lead_summary', 'draft_sms', 'draft_email', 'mark_reviewed', 'move_stage', 'help'],
                 ],
                 'reason' => ['type' => 'string'],
                 'lead_query' => ['type' => 'string'],
@@ -2473,6 +2521,7 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
             'Choose the single best next workflow intent.',
             'Use draft_sms or draft_email when the operator is asking you to prepare a patient-facing reply or follow-up draft.',
             'Use mark_reviewed only when the operator clearly asks to clear, dismiss, review, or mark a notification/message as reviewed for a specific lead.',
+            'Use move_stage when the operator clearly asks to move, put, set, change, or mark a specific lead to a CRM stage.',
             'Use lead_summary when they want context, status, or what to do next for one lead.',
             'Use use_current_lead true when the request clearly refers to the current lead on screen.',
             'Set needs_clarification true only when you truly cannot safely determine the lead or the requested workflow.',
@@ -2520,6 +2569,18 @@ if (!function_exists('elite_ai_plan_request')) {
                 'reason' => 'Empty prompt.',
                 'lead_query' => '',
                 'use_current_lead' => false,
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'deterministic',
+            ];
+        }
+
+        if (elite_ai_prompt_requests_stage_move($prompt)) {
+            return [
+                'intent' => 'move_stage',
+                'reason' => 'Deterministic CRM stage move request.',
+                'lead_query' => elite_ai_extract_stage_move_lead_query($prompt),
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && elite_ai_extract_stage_move_lead_query($prompt) === '',
                 'needs_clarification' => false,
                 'clarification_question' => '',
                 'provider' => 'deterministic',
@@ -3046,6 +3107,47 @@ function elite_ai_handle_request(array $user, array $request): array
         } else {
 
         switch ($intent) {
+            case 'move_stage':
+                $targetStage = elite_ai_requested_stage_key($prompt);
+                $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
+                if ($targetStage === '') {
+                    $payload = [
+                        'answer' => 'Which stage should I move that lead to?',
+                        'cards' => [],
+                        'actions' => [],
+                        'tools_used' => ['stage_move_parse'],
+                    ];
+                    break;
+                }
+
+                if (!empty($resolved['lead']) && is_array($resolved['lead'])) {
+                    $leadId = (int) (($resolved['lead']['id'] ?? 0));
+                    $moveResult = elite_ai_tool_run($user, 'lead.move_stage', [
+                        'surface' => $surface,
+                        'lead_id' => $leadId,
+                        'target_status' => $targetStage,
+                        'instruction' => $prompt,
+                    ], $context + ['surface' => $surface]);
+                    $payload = $moveResult + [
+                        'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), 'lead.lookup', 'lead.move_stage'],
+                    ];
+                } else {
+                    $items = [];
+                    foreach ((array) ($resolved['matches'] ?? []) as $match) {
+                        $items[] = elite_ai_format_lead_line($match, trim((string) ($match['email'] ?? '')) !== '' ? trim((string) ($match['email'] ?? '')) : trim((string) ($match['phone'] ?? '')));
+                    }
+                    $payload = [
+                        'answer' => (string) ($resolved['clarify'] ?? 'Which lead should I move?'),
+                        'cards' => $items ? [[
+                            'title' => 'Possible matches',
+                            'items' => $items,
+                        ]] : [],
+                        'actions' => [],
+                        'tools_used' => ['planner_' . (string) ($plan['provider'] ?? 'fallback'), 'lead_lookup', 'stage_move_parse'],
+                    ];
+                }
+                break;
+
             case 'mark_reviewed':
                 $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
                 if (!empty($resolved['lead']) && is_array($resolved['lead'])) {

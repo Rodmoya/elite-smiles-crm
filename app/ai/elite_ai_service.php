@@ -2174,6 +2174,36 @@ if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
     }
 }
 
+if (!function_exists('elite_ai_extract_draft_lead_query')) {
+    function elite_ai_extract_draft_lead_query(string $prompt): string
+    {
+        $text = trim($prompt);
+        if ($text === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\b(?:draft|write|prepare|compose|create)\s+(?:a\s+)?(?:short\s+)?(?:sms|text|message|email|e-mail)?\s+(?:for|to)\s+(.+?)(?:\s+(?:saying|that says|about|with|to say)\b|$)/i',
+            '/\b(?:text|message|email|e-mail|reply|respond|answer)\s+(.+?)(?:\s+(?:saying|that says|about|with|to say)\b|$)/i',
+            '/\b(?:for|to)\s+(.+?)(?:\s+(?:saying|that says|about|with|to say)\b|$)/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $matches)) {
+                $query = trim((string) ($matches[1] ?? ''));
+                $query = preg_replace('/\b(?:lead|patient|card|the lead|the patient)\b/i', '', $query) ?? $query;
+                $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.:,");
+                if ($query === '' || (bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
+                    return '';
+                }
+                return $query;
+            }
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('elite_ai_conversational_next_line')) {
     function elite_ai_conversational_next_line(string $recommendation): string
     {
@@ -2888,12 +2918,13 @@ if (!function_exists('elite_ai_plan_request')) {
         }
 
         if (elite_ai_prompt_requests_reply_draft($prompt)) {
+            $draftLeadQuery = elite_ai_extract_draft_lead_query($prompt);
             return [
                 'intent' => elite_ai_prompt_explicitly_requests_email($prompt) ? 'draft_email' : 'draft_sms',
                 'reason' => 'Deterministic reply draft request. Defaulting to SMS unless email is explicitly requested.',
-                'lead_query' => '',
-                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 || elite_ai_prompt_references_conversation_subject($prompt),
-                'needs_clarification' => (int) ($context['lead_id'] ?? 0) <= 0 && trim((string) ($context['notification']['lead_name'] ?? '')) === '',
+                'lead_query' => $draftLeadQuery,
+                'use_current_lead' => $draftLeadQuery === '' && ((int) ($context['lead_id'] ?? 0) > 0 || elite_ai_prompt_references_conversation_subject($prompt)),
+                'needs_clarification' => $draftLeadQuery === '' && (int) ($context['lead_id'] ?? 0) <= 0 && trim((string) ($context['notification']['lead_name'] ?? '')) === '',
                 'clarification_question' => 'Which lead should I draft this for?',
                 'provider' => 'deterministic',
             ];

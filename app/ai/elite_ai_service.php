@@ -271,7 +271,7 @@ if (!function_exists('elite_ai_prompt_requests_pending_draft_review')) {
             return false;
         }
 
-        return (bool) preg_match('/\b(?:send it|send this|send that|yes send|approve|approved|use draft|use it|edit draft|show draft|where is the draft|draft again)\b/i', $normalized);
+        return (bool) preg_match('/\b(?:send it|send this|send that|yes send|approve|approved|use draft|use it|edit draft|show draft|where is the draft|draft again|cancel draft|discard draft|delete draft)\b/i', $normalized);
     }
 }
 

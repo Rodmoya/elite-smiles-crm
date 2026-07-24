@@ -645,6 +645,9 @@ if (!function_exists('lead_conversion_stage_key')) {
         if ($status === 'consultation_booked') {
             return lead_conversion_consult_completed($lead) ? 'consult_completed' : 'consultation_booked';
         }
+        if ($status === 'no_answer') {
+            return 'nurture_lost';
+        }
         if (lead_conversion_has_future_consult($lead)) {
             return 'consultation_booked';
         }
@@ -663,10 +666,6 @@ if (!function_exists('lead_conversion_stage_key')) {
         if (in_array($status, ['contacted', 'attempted_contact'], true)) {
             return 'first_touch_sent';
         }
-        if ($status === 'no_answer') {
-            return 'nurture_lost';
-        }
-
         return 'first_touch_sent';
     }
 }

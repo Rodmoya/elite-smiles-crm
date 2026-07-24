@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/elite_ai_knowledge.php';
 require_once __DIR__ . '/../leads/lead_ai.php';
+require_once __DIR__ . '/elite_ai_tools.php';
 
 if (!function_exists('elite_ai_ensure_schema')) {
     function elite_ai_ensure_schema(): void
@@ -2059,13 +2060,13 @@ if (!function_exists('elite_ai_handle_action_request')) {
         $assistantAction = strtolower(trim((string) ($request['assistant_action'] ?? '')));
         if ($assistantAction === 'move_stage') {
             $context = elite_ai_normalize_context($request);
-            $result = elite_ai_handle_move_stage_action($user, $request, $surface);
+            $result = elite_ai_tool_run($user, 'lead.move_stage', $request + ['surface' => $surface], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
                 (string) ($request['prompt'] ?? $request['instruction'] ?? ''),
-                ['move_stage'],
+                ['lead.move_stage'],
                 trim((string) ($result['answer'] ?? $result['message'] ?? 'Stage action completed.')),
                 (int) ($result['lead_id'] ?? 0),
                 $context
@@ -2073,19 +2074,20 @@ if (!function_exists('elite_ai_handle_action_request')) {
 
             return $result + [
                 'context' => $context,
+                'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
         }
 
         if ($assistantAction === 'add_note') {
             $context = elite_ai_normalize_context($request);
-            $result = elite_ai_handle_add_note_action($user, $request, $surface);
+            $result = elite_ai_tool_run($user, 'lead.add_note', $request + ['surface' => $surface], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
                 (string) ($request['prompt'] ?? $request['instruction'] ?? ''),
-                ['add_note'],
+                ['lead.add_note'],
                 trim((string) ($result['answer'] ?? $result['message'] ?? 'Note action completed.')),
                 (int) ($result['lead_id'] ?? 0),
                 $context
@@ -2093,6 +2095,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
 
             return $result + [
                 'context' => $context,
+                'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
         }
@@ -2100,13 +2103,17 @@ if (!function_exists('elite_ai_handle_action_request')) {
         if ($assistantAction === 'mark_reviewed') {
             $context = elite_ai_normalize_context($request);
             $leadId = (int) ($request['lead_id'] ?? $context['lead_id'] ?? 0);
-            $result = elite_ai_mark_notification_reviewed_payload($user, $leadId, 'elite_ai_action_button');
+            $result = elite_ai_tool_run($user, 'notifications.mark_reviewed', $request + [
+                'surface' => $surface,
+                'lead_id' => $leadId,
+                'source' => 'elite_ai_action_button',
+            ], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
             elite_ai_log_interaction(
                 $user,
                 $surface,
                 (string) ($request['prompt'] ?? ''),
-                ['notification_review'],
+                ['notifications.mark_reviewed'],
                 trim((string) ($result['message'] ?? 'Notification review action completed.')),
                 $leadId,
                 $context
@@ -2115,6 +2122,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             return $result + [
                 'surface' => $surface,
                 'context' => $context,
+                'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
         }
@@ -2139,6 +2147,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             return $result + [
                 'ok' => true,
                 'context' => $context,
+                'tool_capabilities' => elite_ai_tool_capabilities($surface),
                 'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
             ];
         }
@@ -2148,6 +2157,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             'surface' => $surface,
             'message' => (string) ($result['message'] ?? 'Unable to prepare the requested action.'),
             'context' => elite_ai_normalize_context($request),
+            'tool_capabilities' => elite_ai_tool_capabilities($surface),
             'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
         ];
     }
@@ -2920,6 +2930,7 @@ function elite_ai_handle_request(array $user, array $request): array
             'cards' => array_values((array) ($payload['cards'] ?? [])),
             'actions' => array_values((array) ($payload['actions'] ?? [])),
             'tools_used' => array_values((array) ($payload['tools_used'] ?? [])),
+            'tool_capabilities' => elite_ai_tool_capabilities($surface),
             'lead_id' => $leadId,
             'context' => $context,
             'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],

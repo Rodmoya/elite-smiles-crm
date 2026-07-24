@@ -1332,7 +1332,8 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
         $conversionNextAction = (array)($conversionSummary['next_action'] ?? ($lead['conversion_next_action'] ?? []));
         $conversionBadges = (array)($conversionSummary['badges'] ?? ($lead['conversion_badges'] ?? []));
         $leadName = trim((string) ($lead['full_name'] ?? 'This lead'));
-        $statusLabel = elite_ai_stage_label(trim((string) ($lead['status'] ?? '')));
+        $status = trim((string) ($lead['status'] ?? ''));
+        $statusLabel = elite_ai_stage_label($status);
         $preferredContact = trim((string) ($lead['preferred_contact'] ?? ''));
         $sourceLabel = trim((string) ($lead['source'] ?? '')) !== '' ? trim((string) ($lead['source'] ?? '')) : 'Unknown';
 
@@ -1371,7 +1372,10 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
             $conversationLine = $leadName . ' does not show a recent conversation yet.';
         }
 
-        $statusLine = 'They are in ' . $statusLabel . ($conversionStageLabel !== '' ? ' / ' . $conversionStageLabel : '') . '.';
+        $showConversionLabel = $conversionStageLabel !== ''
+            && strcasecmp($conversionStageLabel, $statusLabel) !== 0
+            && !($status === 'no_answer' && strcasecmp($conversionStageLabel, 'Nurture / Lost') === 0);
+        $statusLine = 'They are in ' . $statusLabel . ($showConversionLabel ? ' / ' . $conversionStageLabel : '') . '.';
 
         $appointmentLine = '';
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {

@@ -440,6 +440,36 @@ if (!function_exists('elite_ai_find_leads')) {
             $params
         );
 
+        if (!$rows && $digits === '' && mb_strlen($query) >= 3) {
+            $needle = strtolower(preg_replace('/[^a-z0-9]+/i', '', $query) ?? '');
+            $candidates = db_all(
+                'SELECT ' . elite_ai_lead_select_fields() . '
+                 FROM leads
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT 250'
+            );
+            $scored = [];
+            foreach ($candidates as $candidate) {
+                $name = strtolower(preg_replace('/[^a-z0-9]+/i', '', (string) ($candidate['full_name'] ?? '')) ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $first = strtolower(preg_replace('/[^a-z0-9]+/i', '', (string) (preg_split('/\s+/', trim((string) ($candidate['full_name'] ?? '')))[0] ?? '')) ?? '');
+                $distance = min(
+                    levenshtein($needle, mb_substr($name, 0, max(mb_strlen($needle), 1))),
+                    $first !== '' ? levenshtein($needle, $first) : 99
+                );
+                if ($distance <= 2) {
+                    $candidate['_elite_ai_match_distance'] = $distance;
+                    $scored[] = $candidate;
+                }
+            }
+            usort($scored, static function (array $a, array $b): int {
+                return ((int) ($a['_elite_ai_match_distance'] ?? 99)) <=> ((int) ($b['_elite_ai_match_distance'] ?? 99));
+            });
+            $rows = array_slice($scored, 0, $limit);
+        }
+
         return array_map('elite_ai_enrich_conversion_layer', $rows);
     }
 }
@@ -1350,7 +1380,7 @@ if (!function_exists('elite_ai_lead_summary_payload')) {
 
         $nextLine = '';
         if ($recommendation !== '') {
-            $nextLine = 'I would ' . lcfirst(rtrim($recommendation, '.')) . '.';
+            $nextLine = elite_ai_conversational_next_line($recommendation);
         }
 
         $cards = [];
@@ -1883,11 +1913,32 @@ if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
             if (preg_match($pattern, $text, $matches)) {
                 $query = trim((string) ($matches[1] ?? ''));
                 $query = preg_replace('/\b(?:lead|patient|card)\b/i', '', $query) ?? $query;
-                return trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.");
+                $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.");
+                if ((bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
+                    return '';
+                }
+                return $query;
             }
         }
 
         return '';
+    }
+}
+
+if (!function_exists('elite_ai_conversational_next_line')) {
+    function elite_ai_conversational_next_line(string $recommendation): string
+    {
+        $recommendation = trim((string) preg_replace('/\s+/', ' ', $recommendation));
+        if ($recommendation === '') {
+            return '';
+        }
+
+        $recommendation = rtrim($recommendation, '.');
+        if ((bool) preg_match('/^(?:i would|i\'d|we should|review|prepare|protect|confirm|ask|offer)\b/i', $recommendation)) {
+            return ucfirst($recommendation) . '.';
+        }
+
+        return 'I would ' . lcfirst($recommendation) . '.';
     }
 }
 
@@ -2826,7 +2877,7 @@ if (!function_exists('elite_ai_latest_reply_payload')) {
         if (!$latestInbound) {
             $answer = $fullName . ' does not have a recent inbound reply for me to review.';
             if ($nextStep !== '') {
-                $answer .= ' Next, I would ' . lcfirst($nextStep);
+                $answer .= ' Next, ' . lcfirst(elite_ai_conversational_next_line($nextStep));
             }
 
             return [
@@ -2857,7 +2908,7 @@ if (!function_exists('elite_ai_latest_reply_payload')) {
 
         $cards = [];
         if ($nextStep !== '' && !($latestOutbound && $outboundTime > $inboundTime)) {
-            $answer .= ' I would ' . lcfirst(rtrim($nextStep, '.')) . '.';
+            $answer .= ' ' . elite_ai_conversational_next_line($nextStep);
         }
 
         return [

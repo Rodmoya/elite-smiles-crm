@@ -33,6 +33,20 @@ if (!function_exists('elite_ai_tool_registry')) {
                 'surfaces' => ['desktop', 'mobile'],
                 'approval_required' => false,
             ],
+            'memory.search' => [
+                'label' => 'Search learned memory',
+                'description' => 'Retrieve relevant learned rules, preferences, and prior assistant experience.',
+                'mode' => 'read',
+                'surfaces' => ['desktop', 'mobile'],
+                'approval_required' => false,
+            ],
+            'memory.remember' => [
+                'label' => 'Remember instruction',
+                'description' => 'Save a durable CRM assistant memory for future tasks.',
+                'mode' => 'write',
+                'surfaces' => ['desktop', 'mobile'],
+                'approval_required' => false,
+            ],
             'lead.draft_sms' => [
                 'label' => 'Draft SMS',
                 'description' => 'Create an SMS draft in the human approval queue. Does not send.',
@@ -164,6 +178,39 @@ if (!function_exists('elite_ai_tool_run')) {
 
                 case 'pipeline.snapshot':
                     return elite_ai_tool_pipeline_snapshot($toolName);
+
+                case 'memory.search':
+                    $query = trim((string) ($input['query'] ?? $input['prompt'] ?? ''));
+                    $limit = (int) ($input['limit'] ?? 5);
+                    return [
+                        'ok' => true,
+                        'tool' => $toolName,
+                        'memories' => function_exists('elite_ai_memory_relevant')
+                            ? elite_ai_memory_relevant($query, $context, $limit)
+                            : [],
+                        'message' => 'Learned memory search completed.',
+                    ];
+
+                case 'memory.remember':
+                    if (!function_exists('elite_ai_memory_remember')) {
+                        return ['ok' => false, 'tool' => $toolName, 'message' => 'Elite AI memory is not available right now.'];
+                    }
+                    $title = trim((string) ($input['title'] ?? 'Operator preference'));
+                    $body = trim((string) ($input['body'] ?? $input['instruction'] ?? $input['prompt'] ?? ''));
+                    $memoryId = elite_ai_memory_remember(
+                        (string) ($input['memory_type'] ?? 'preference'),
+                        $title,
+                        $body,
+                        (array) ($input['tags'] ?? []),
+                        (int) ($input['lead_id'] ?? $context['lead_id'] ?? 0) ?: null,
+                        (float) ($input['confidence'] ?? 0.85)
+                    );
+                    return [
+                        'ok' => $memoryId > 0,
+                        'tool' => $toolName,
+                        'memory_id' => $memoryId,
+                        'message' => $memoryId > 0 ? 'Saved to Elite AI learned memory.' : 'Nothing was saved to memory.',
+                    ];
 
                 case 'lead.move_stage':
                     if (!function_exists('elite_ai_handle_move_stage_action')) {

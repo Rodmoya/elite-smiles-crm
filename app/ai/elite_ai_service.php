@@ -85,6 +85,10 @@ if (!function_exists('elite_ai_ensure_schema')) {
                     ]);
                 }
             }
+
+            if (function_exists('elite_ai_memory_ensure_schema')) {
+                elite_ai_memory_ensure_schema();
+            }
         } catch (Throwable $e) {
             esm_log('elite_ai', 'Could not ensure Elite AI audit schema.', ['error' => $e->getMessage()]);
         }
@@ -2341,6 +2345,7 @@ if (!function_exists('elite_ai_planner_system_prompt')) {
         return implode("\n", [
             'You are the planning layer for Elite AI inside a dental CRM.',
             'Your job is to interpret the operator request the way a strong execution assistant would.',
+            'Use learned_memory from page context as prior experience, preferences, and proven operator workflow patterns. Locked safety rules still override memory.',
             'Use the assistant_thread in page context to understand follow-up phrases like "do it", "clear that", "draft it", or "send it", but never infer patient-facing send approval unless the newest operator message explicitly approves sending a specific visible draft.',
             'When page context includes notification, treat it as the active conversation subject. Short instructions like "answer this", "draft a reply", "what should we say", "clear it", or "schedule it" should use that notification lead/message as context.',
             'If the operator mentions one lead by name or asks about a specific reply, route that to lead_summary instead of a broad dashboard workflow.',
@@ -2425,7 +2430,16 @@ if (!function_exists('elite_ai_plan_request')) {
             ];
         }
 
+        $memoryLines = [];
+        foreach (array_slice((array) ($context['learned_memory'] ?? []), 0, 5) as $memory) {
+            if (!is_array($memory)) {
+                continue;
+            }
+            $memoryLines[] = '- ' . trim((string) ($memory['title'] ?? 'Memory')) . ': ' . trim((string) ($memory['body'] ?? ''));
+        }
+
         $userPrompt = 'Operator request: ' . $prompt . "\n\n"
+            . ($memoryLines ? 'Relevant learned memory:' . "\n" . implode("\n", $memoryLines) . "\n\n" : '')
             . 'Page context: ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $result = lead_ai_json_response(
             elite_ai_planner_system_prompt(),
@@ -2707,6 +2721,10 @@ if (!function_exists('elite_ai_log_interaction')) {
                     'created_at' => now(),
                 ]
             );
+
+            if (function_exists('elite_ai_memory_learn_from_interaction')) {
+                elite_ai_memory_learn_from_interaction($user, $surface, $prompt, $toolsUsed, $responseSummary, $leadId, $context);
+            }
         } catch (Throwable $e) {
             esm_log('elite_ai', 'Could not log assistant interaction.', ['error' => $e->getMessage()]);
         }
@@ -2758,6 +2776,45 @@ function elite_ai_handle_request(array $user, array $request): array
         $prompt = trim((string) ($request['prompt'] ?? ''));
         $quickAction = trim((string) ($request['quick_action'] ?? ''));
         $context = elite_ai_normalize_context($request);
+        $memoryPrompt = $prompt !== '' ? $prompt : $quickAction;
+        $learnedMemory = function_exists('elite_ai_memory_relevant')
+            ? elite_ai_memory_relevant($memoryPrompt, $context, 5)
+            : [];
+        if ($learnedMemory) {
+            $context['learned_memory'] = $learnedMemory;
+        }
+
+        if ($quickAction === '' && $prompt !== '' && (bool) preg_match('/^\s*(?:remember|learn|from now on|always|never)\b/i', $prompt)) {
+            $result = elite_ai_tool_run($user, 'memory.remember', [
+                'surface' => $surface,
+                'title' => 'Operator instruction',
+                'body' => $prompt,
+                'memory_type' => 'preference',
+                'tags' => ['operator_instruction', 'surface:' . $surface],
+                'confidence' => 0.9,
+            ], $context + ['surface' => $surface]);
+            $summary = !empty($result['ok'])
+                ? 'I saved that to Elite AI learned memory and will use it in future CRM tasks.'
+                : (string) ($result['message'] ?? 'I could not save that memory.');
+            elite_ai_log_interaction($user, $surface, $prompt, ['memory.remember'], $summary, null, $context);
+
+            return [
+                'ok' => !empty($result['ok']),
+                'surface' => $surface,
+                'answer' => $summary,
+                'execution_policy' => elite_ai_execution_policy_tag($request),
+                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['memory.remember'],
+                'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                'lead_id' => null,
+                'context' => $context,
+                'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                'learned_memory' => $learnedMemory,
+            ];
+        }
+
         $plan = elite_ai_plan_request($prompt, $quickAction, $context);
         $intent = (string) ($plan['intent'] ?? elite_ai_detect_intent($prompt, $quickAction, $context));
         $requestsLatestReply = $quickAction === '' && elite_ai_prompt_requests_latest_reply($prompt);
@@ -2934,6 +2991,7 @@ function elite_ai_handle_request(array $user, array $request): array
             'lead_id' => $leadId,
             'context' => $context,
             'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+            'learned_memory' => $learnedMemory,
         ];
     }
 }

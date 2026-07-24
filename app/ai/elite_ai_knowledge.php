@@ -50,3 +50,227 @@ if (!function_exists('elite_ai_knowledge_base')) {
         ];
     }
 }
+
+if (!function_exists('elite_ai_memory_ensure_schema')) {
+    function elite_ai_memory_ensure_schema(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            db_query(
+                "CREATE TABLE IF NOT EXISTS elite_ai_memory_items (
+                    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    memory_type VARCHAR(40) NOT NULL DEFAULT 'experience',
+                    title VARCHAR(180) NOT NULL,
+                    body TEXT NOT NULL,
+                    tags_json LONGTEXT DEFAULT NULL,
+                    source VARCHAR(60) NOT NULL DEFAULT 'assistant',
+                    lead_id INT UNSIGNED DEFAULT NULL,
+                    confidence DECIMAL(5,2) NOT NULL DEFAULT 0.70,
+                    use_count INT UNSIGNED NOT NULL DEFAULT 0,
+                    last_used_at DATETIME DEFAULT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    KEY idx_elite_ai_memory_type (memory_type),
+                    KEY idx_elite_ai_memory_lead (lead_id),
+                    KEY idx_elite_ai_memory_updated (updated_at),
+                    FULLTEXT KEY ft_elite_ai_memory_text (title, body)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('elite_ai', 'Could not ensure Elite AI memory schema.', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $ensured = true;
+    }
+}
+
+if (!function_exists('elite_ai_memory_sanitize')) {
+    function elite_ai_memory_sanitize(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', '[email]', $text) ?? $text;
+        $text = preg_replace('/(?:\+?1[\s.\-]?)?(?:\(?\d{3}\)?[\s.\-]?)\d{3}[\s.\-]?\d{4}\b/', '[phone]', $text) ?? $text;
+        $text = preg_replace('/https?:\/\/\S+/i', '[link]', $text) ?? $text;
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+        return mb_substr(trim($text), 0, 1200);
+    }
+}
+
+if (!function_exists('elite_ai_memory_keywords')) {
+    function elite_ai_memory_keywords(string $prompt, array $context = []): array
+    {
+        $source = strtolower($prompt . ' ' . (string) ($context['page'] ?? '') . ' ' . (string) ($context['page_title'] ?? ''));
+        $source = preg_replace('/[^a-z0-9\s_\-]+/', ' ', $source) ?? $source;
+        $words = preg_split('/\s+/', trim($source)) ?: [];
+        $skip = array_flip(['the', 'and', 'for', 'with', 'this', 'that', 'from', 'what', 'when', 'where', 'how', 'lead', 'leads', 'please', 'need', 'want', 'can', 'you']);
+        $keywords = [];
+        foreach ($words as $word) {
+            $word = trim($word);
+            if (mb_strlen($word) < 4 || isset($skip[$word])) {
+                continue;
+            }
+            $keywords[$word] = true;
+        }
+
+        return array_slice(array_keys($keywords), 0, 8);
+    }
+}
+
+if (!function_exists('elite_ai_memory_relevant')) {
+    function elite_ai_memory_relevant(string $prompt, array $context = [], int $limit = 5): array
+    {
+        try {
+            elite_ai_memory_ensure_schema();
+            $limit = max(1, min(8, $limit));
+            $leadId = (int) ($context['lead_id'] ?? 0);
+            $keywords = elite_ai_memory_keywords($prompt, $context);
+            $where = [];
+            $params = [];
+
+            if ($leadId > 0) {
+                $where[] = 'lead_id = :lead_id';
+                $params['lead_id'] = $leadId;
+            }
+
+            foreach ($keywords as $idx => $keyword) {
+                $key = 'kw' . $idx;
+                $where[] = "(title LIKE :$key OR body LIKE :$key)";
+                $params[$key] = '%' . $keyword . '%';
+            }
+
+            if (!$where) {
+                $where[] = "memory_type IN ('rule', 'preference')";
+            }
+
+            $rows = db_all(
+                'SELECT id, memory_type, title, body, confidence, use_count, updated_at
+                 FROM elite_ai_memory_items
+                 WHERE ' . implode(' OR ', $where) . '
+                 ORDER BY confidence DESC, updated_at DESC
+                 LIMIT ' . $limit,
+                $params
+            );
+
+            if ($rows) {
+                $ids = array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $rows);
+                $ids = array_values(array_filter($ids));
+                if ($ids) {
+                    db_query(
+                        'UPDATE elite_ai_memory_items
+                         SET use_count = use_count + 1, last_used_at = :now
+                         WHERE id IN (' . implode(',', array_map('intval', $ids)) . ')',
+                        ['now' => function_exists('now') ? now() : date('Y-m-d H:i:s')]
+                    );
+                }
+            }
+
+            return array_map(static function (array $row): array {
+                return [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'type' => (string) ($row['memory_type'] ?? ''),
+                    'title' => (string) ($row['title'] ?? ''),
+                    'body' => (string) ($row['body'] ?? ''),
+                    'confidence' => (float) ($row['confidence'] ?? 0),
+                ];
+            }, $rows);
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('elite_ai', 'Could not retrieve Elite AI memory.', ['error' => $e->getMessage()]);
+            }
+            return [];
+        }
+    }
+}
+
+if (!function_exists('elite_ai_memory_remember')) {
+    function elite_ai_memory_remember(string $type, string $title, string $body, array $tags = [], ?int $leadId = null, float $confidence = 0.7): int
+    {
+        $title = mb_substr(elite_ai_memory_sanitize($title), 0, 180);
+        $body = elite_ai_memory_sanitize($body);
+        if ($title === '' || $body === '') {
+            return 0;
+        }
+
+        try {
+            elite_ai_memory_ensure_schema();
+            return (int) db_insert(
+                'INSERT INTO elite_ai_memory_items (memory_type, title, body, tags_json, source, lead_id, confidence, created_at, updated_at)
+                 VALUES (:memory_type, :title, :body, :tags_json, :source, :lead_id, :confidence, :created_at, :updated_at)',
+                [
+                    'memory_type' => mb_substr(preg_replace('/[^a-z0-9_\-]/i', '', $type) ?: 'experience', 0, 40),
+                    'title' => $title,
+                    'body' => $body,
+                    'tags_json' => json_encode(array_values($tags), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'source' => 'elite_ai_learning',
+                    'lead_id' => $leadId && $leadId > 0 ? $leadId : null,
+                    'confidence' => max(0.1, min(1.0, $confidence)),
+                    'created_at' => function_exists('now') ? now() : date('Y-m-d H:i:s'),
+                    'updated_at' => function_exists('now') ? now() : date('Y-m-d H:i:s'),
+                ]
+            );
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('elite_ai', 'Could not save Elite AI memory.', ['error' => $e->getMessage()]);
+            }
+            return 0;
+        }
+    }
+}
+
+if (!function_exists('elite_ai_memory_should_persist_interaction')) {
+    function elite_ai_memory_should_persist_interaction(string $prompt, array $toolsUsed): bool
+    {
+        $prompt = strtolower(trim($prompt));
+        if ($prompt === '') {
+            return false;
+        }
+
+        if ((bool) preg_match('/\b(?:remember|learn|from now on|always|never|next time|rule|preference|we should|we need to)\b/i', $prompt)) {
+            return true;
+        }
+
+        foreach ($toolsUsed as $tool) {
+            $tool = (string) $tool;
+            if (str_contains($tool, 'lead.') || str_contains($tool, 'draft') || str_contains($tool, 'notification')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('elite_ai_memory_learn_from_interaction')) {
+    function elite_ai_memory_learn_from_interaction(array $user, string $surface, string $prompt, array $toolsUsed, string $responseSummary, ?int $leadId, array $context): void
+    {
+        if (in_array('memory.remember', array_map('strval', $toolsUsed), true)) {
+            return;
+        }
+
+        if (!elite_ai_memory_should_persist_interaction($prompt, $toolsUsed)) {
+            return;
+        }
+
+        $toolLabel = implode(', ', array_slice(array_map('strval', $toolsUsed), 0, 5));
+        $title = $toolLabel !== '' ? 'Assistant experience: ' . $toolLabel : 'Assistant experience';
+        $body = 'Operator request: ' . $prompt . ' | Assistant outcome: ' . $responseSummary;
+        $tags = array_values(array_filter([
+            'surface:' . $surface,
+            'page:' . (string) ($context['page'] ?? 'unknown'),
+            $toolLabel !== '' ? 'tools:' . $toolLabel : '',
+        ]));
+
+        elite_ai_memory_remember('experience', $title, $body, $tags, $leadId, 0.55);
+    }
+}

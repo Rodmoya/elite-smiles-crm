@@ -2831,6 +2831,9 @@ $consultationOptions = [
     let sourceDropzone = null;
 
     let activeCard = null;
+    let activeThreadSignature = '';
+    let threadPollTimer = null;
+    let threadPollInFlight = false;
 
     let dragMouseX = null;
 
@@ -5343,29 +5346,78 @@ $consultationOptions = [
 
     }
 
+    function leadThreadSignature(thread) {
+        const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+        const activities = Array.isArray(thread?.activities) ? thread.activities : [];
+        const emails = Array.isArray(thread?.emails) ? thread.emails : [];
+        const newest = (items) => items.reduce((memo, item) => {
+            const id = Number(item?.id || 0);
+            const time = String(item?.created_at || item?.updated_at || item?.delivered_at || '');
+            return id > memo.id || threadTimeValue(time) > threadTimeValue(memo.time) ? { id, time } : memo;
+        }, { id: 0, time: '' });
+        const lastMessage = newest(messages);
+        const lastActivity = newest(activities);
+        const lastEmail = newest(emails);
+        return [
+            messages.length,
+            lastMessage.id,
+            lastMessage.time,
+            activities.length,
+            lastActivity.id,
+            lastActivity.time,
+            emails.length,
+            lastEmail.id,
+            lastEmail.time
+        ].join('|');
+    }
+
+    function stopLeadThreadPolling() {
+        if (threadPollTimer) {
+            window.clearInterval(threadPollTimer);
+            threadPollTimer = null;
+        }
+        threadPollInFlight = false;
+        activeThreadSignature = '';
+    }
+
+    function startLeadThreadPolling() {
+        stopLeadThreadPolling();
+        if (!activeCard || !threadUrl) return;
+        threadPollTimer = window.setInterval(() => {
+            if (!activeCard || !modal || modal.classList.contains('hidden') || document.hidden) {
+                return;
+            }
+            loadLeadThread({ silent: true, poll: true });
+        }, 5000);
+    }
 
 
-    async function loadLeadThread() {
+
+    async function loadLeadThread(options = {}) {
 
         if (!activeCard || !threadUrl) return false;
 
         const leadId = activeCard.dataset.leadId || '';
 
         if (!leadId) return false;
+        const silent = Boolean(options.silent);
+        const isPoll = Boolean(options.poll);
+        if (isPoll && threadPollInFlight) return false;
+        if (isPoll) threadPollInFlight = true;
 
-        if (messageThread) {
+        if (!silent && messageThread) {
 
             messageThread.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">Loading SMS history...</div>';
 
         }
 
-        if (activityFeed) {
+        if (!silent && activityFeed) {
 
             activityFeed.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">Loading activity...</div>';
 
         }
 
-        if (loadThreadButton) loadThreadButton.disabled = true;
+        if (!silent && loadThreadButton) loadThreadButton.disabled = true;
 
         try {
 
@@ -5385,7 +5437,12 @@ $consultationOptions = [
 
             if (!response.ok || !data.ok) throw new Error(data.message || 'Failed to load SMS history.');
 
-            renderThreadSnapshot(data.thread || {});
+            const thread = data.thread || {};
+            const nextSignature = leadThreadSignature(thread);
+            if (!silent || nextSignature !== activeThreadSignature) {
+                renderThreadSnapshot(thread);
+                activeThreadSignature = nextSignature;
+            }
 
             if (data.sms_opt_status) {
 
@@ -5401,7 +5458,7 @@ $consultationOptions = [
 
         } catch (error) {
 
-            if (messageThread) {
+            if (!silent && messageThread) {
 
                 messageThread.innerHTML = '<div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">' + escapeHtml(error.message || 'Failed to load SMS history.') + '</div>';
 
@@ -5411,7 +5468,8 @@ $consultationOptions = [
 
         } finally {
 
-            if (loadThreadButton) loadThreadButton.disabled = false;
+            if (!silent && loadThreadButton) loadThreadButton.disabled = false;
+            if (isPoll) threadPollInFlight = false;
 
         }
 
@@ -6138,9 +6196,12 @@ function applyCommunicationViewportFit() {
         refreshAiDraftUi();
         refreshComposerSafetyCue();
 
+        stopLeadThreadPolling();
         renderThreadSnapshot({ messages: [], activities: [], emails: [] });
 
-        loadLeadThread();
+        loadLeadThread().then((loaded) => {
+            if (loaded) startLeadThreadPolling();
+        });
 
 
 
@@ -6181,6 +6242,8 @@ function applyCommunicationViewportFit() {
     function hardCloseLeadModal() {
 
         if (!modal) return;
+
+        stopLeadThreadPolling();
 
         modal.classList.add('hidden');
 
@@ -8572,6 +8635,12 @@ function applyCommunicationViewportFit() {
         });
 
     }
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && activeCard && modal && !modal.classList.contains('hidden')) {
+            loadLeadThread({ silent: true, poll: true });
+        }
+    });
 
 
 

@@ -2224,7 +2224,280 @@ if (!function_exists('elite_ai_conversational_next_line')) {
 if (!function_exists('elite_ai_prompt_requests_internal_note')) {
     function elite_ai_prompt_requests_internal_note(string $prompt): bool
     {
-        return (bool) preg_match('/\b(?:make|add|leave|create|record)\s+(?:a\s+)?notes?\b|\bnotes?\b/i', strtolower(trim($prompt)));
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        if ((bool) preg_match('/^\s*(?:send|text|sms|email|e-mail|reply|respond|draft|write|compose)\b/i', $normalized)) {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(?:make|add|leave|create|record|save)\s+(?:a\s+)?notes?\b|\bnotes?\b/i', $normalized);
+    }
+}
+
+if (!function_exists('elite_ai_prompt_requests_internal_update')) {
+    function elite_ai_prompt_requests_internal_update(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        if ((bool) preg_match('/^\s*(?:send|text|sms|email|e-mail|reply|respond|draft|write|compose)\b/i', $normalized)) {
+            return false;
+        }
+
+        return elite_ai_prompt_requests_internal_note($prompt)
+            || (bool) preg_match('/\b(?:save|record|update|set)\b.*\b(?:dob|date\s+of\s+birth|birthday|preferred\s+contact|preferred\s+day|preferred\s+time)\b/i', $normalized)
+            || (bool) preg_match('/\b(?:dob|date\s+of\s+birth|birthday)\s*(?:is|=|:)?\s*\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/i', $normalized)
+            || (bool) preg_match('/\b(?:prefers?|preferred)\s+(?:contact\s+)?(?:text|sms|call|phone|email|e-mail|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening)\b/i', $normalized);
+    }
+}
+
+if (!function_exists('elite_ai_extract_internal_update_lead_query')) {
+    function elite_ai_extract_internal_update_lead_query(string $prompt): string
+    {
+        $text = trim($prompt);
+        if ($text === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\b(?:for|to)\s+(?:lead|patient)?\s*#?\s*([A-Za-z][A-Za-z0-9 .@_\'-]{1,80}?)(?:\s+(?:that|who|with|dob|date\s+of\s+birth|birthday|preferred|prefers|wants|is)\b|$)/i',
+            '/^\s*([A-Za-z][A-Za-z .\'-]{1,60})\s+(?:dob|date\s+of\s+birth|birthday|preferred|prefers|wants)\b/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $matches)) {
+                $query = trim((string) ($matches[1] ?? ''));
+                $query = preg_replace('/\b(?:lead|patient|card|the lead|the patient)\b/i', '', $query) ?? $query;
+                $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.:,");
+                if ($query === '' || (bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
+                    return '';
+                }
+                return $query;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('elite_ai_parse_internal_update_date')) {
+    function elite_ai_parse_internal_update_date(string $value): string
+    {
+        $value = trim($value);
+        if (!preg_match('/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/', $value, $matches)) {
+            return '';
+        }
+
+        $month = (int) $matches[1];
+        $day = (int) $matches[2];
+        $year = (int) $matches[3];
+        if ($year < 100) {
+            $currentTwoDigitYear = (int) date('y');
+            $year += $year > $currentTwoDigitYear ? 1900 : 2000;
+        }
+
+        if (!checkdate($month, $day, $year)) {
+            return '';
+        }
+
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+}
+
+if (!function_exists('elite_ai_extract_internal_update_fields')) {
+    function elite_ai_extract_internal_update_fields(string $prompt): array
+    {
+        $normalized = strtolower(trim($prompt));
+        $fields = [];
+        $labels = [];
+
+        if (preg_match('/\b(?:dob|date\s+of\s+birth|birthday)\s*(?:is|=|:)?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\b/i', $prompt, $matches)) {
+            $dob = elite_ai_parse_internal_update_date((string) ($matches[1] ?? ''));
+            if ($dob !== '' && function_exists('leads_has_column') && leads_has_column('date_of_birth')) {
+                $fields['date_of_birth'] = $dob;
+                $labels[] = 'DOB set to ' . $dob;
+            }
+        }
+
+        if (function_exists('leads_has_column') && leads_has_column('preferred_contact')) {
+            if ((bool) preg_match('/\b(?:preferred\s+contact|prefers?\s+(?:to\s+)?)\s*(?:is|=|:)?\s*(?:by\s+)?(?:text|sms)\b/i', $normalized)) {
+                $fields['preferred_contact'] = 'text';
+                $labels[] = 'preferred contact set to text';
+            } elseif ((bool) preg_match('/\b(?:preferred\s+contact|prefers?\s+(?:to\s+)?)\s*(?:is|=|:)?\s*(?:by\s+)?(?:call|phone)\b/i', $normalized)) {
+                $fields['preferred_contact'] = 'phone';
+                $labels[] = 'preferred contact set to phone';
+            } elseif ((bool) preg_match('/\b(?:preferred\s+contact|prefers?\s+(?:to\s+)?)\s*(?:is|=|:)?\s*(?:by\s+)?(?:email|e-mail)\b/i', $normalized)) {
+                $fields['preferred_contact'] = 'email';
+                $labels[] = 'preferred contact set to email';
+            }
+        }
+
+        if (function_exists('leads_has_column') && leads_has_column('scheduling_preferred_day')) {
+            if (preg_match('/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i', $prompt, $matches)) {
+                $fields['scheduling_preferred_day'] = ucfirst(strtolower((string) $matches[1]));
+                $labels[] = 'preferred day set to ' . $fields['scheduling_preferred_day'];
+            }
+        }
+
+        if (function_exists('leads_has_column') && leads_has_column('scheduling_preferred_time')) {
+            if (preg_match('/\b(morning|afternoon|evening)\b/i', $prompt, $matches)) {
+                $fields['scheduling_preferred_time'] = strtolower((string) $matches[1]);
+                $labels[] = 'preferred time set to ' . $fields['scheduling_preferred_time'];
+            }
+        }
+
+        return ['fields' => $fields, 'labels' => $labels];
+    }
+}
+
+if (!function_exists('elite_ai_extract_internal_note_text')) {
+    function elite_ai_extract_internal_note_text(string $prompt, array $fieldLabels = []): string
+    {
+        $text = trim((string) preg_replace('/\s+/', ' ', $prompt));
+        if ($text === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\b(?:add|make|leave|create|record|save)\s+(?:a\s+)?notes?\s+(?:that|saying|with|:)?\s*(.+)$/i',
+            '/\bnotes?\s+(?:that|saying|with|:)?\s*(.+)$/i',
+            '/\b(?:record|save|update|set)\s+(.+)$/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $matches)) {
+                $candidate = trim((string) ($matches[1] ?? ''));
+                if ($candidate !== '') {
+                    return mb_substr($candidate, 0, 900);
+                }
+            }
+        }
+
+        if ($fieldLabels) {
+            return 'Elite AI captured CRM update: ' . implode('; ', $fieldLabels) . '.';
+        }
+
+        return mb_substr('Elite AI operator note: ' . $text, 0, 900);
+    }
+}
+
+if (!function_exists('elite_ai_update_lead_fields')) {
+    function elite_ai_update_lead_fields(int $leadId, array $fields): array
+    {
+        if ($leadId <= 0 || !$fields) {
+            return [];
+        }
+
+        $allowed = ['date_of_birth', 'preferred_contact', 'scheduling_preferred_day', 'scheduling_preferred_time'];
+        $setParts = [];
+        $params = ['id' => $leadId];
+        foreach ($fields as $field => $value) {
+            if (!in_array($field, $allowed, true)) {
+                continue;
+            }
+            if (!function_exists('leads_has_column') || !leads_has_column($field)) {
+                continue;
+            }
+            $setParts[] = $field . ' = :' . $field;
+            $params[$field] = $value;
+        }
+
+        if (!$setParts) {
+            return [];
+        }
+
+        if (function_exists('leads_has_column') && leads_has_column('updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = now();
+        }
+
+        db_query('UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1', $params);
+        return array_intersect_key($fields, array_flip($allowed));
+    }
+}
+
+if (!function_exists('elite_ai_handle_internal_update_request')) {
+    function elite_ai_handle_internal_update_request(array $user, string $prompt, array $context, string $surface): ?array
+    {
+        if (!elite_ai_prompt_requests_internal_update($prompt)) {
+            return null;
+        }
+
+        $leadQuery = elite_ai_extract_internal_update_lead_query($prompt);
+        $plan = [
+            'intent' => 'internal_update',
+            'lead_query' => $leadQuery,
+            'use_current_lead' => $leadQuery === '' && ((int) ($context['lead_id'] ?? 0) > 0 || elite_ai_prompt_references_conversation_subject($prompt)),
+        ];
+        $resolved = elite_ai_resolve_lead_from_plan($plan, $prompt, $context);
+
+        if (empty($resolved['lead']) || !is_array($resolved['lead'])) {
+            $items = [];
+            foreach ((array) ($resolved['matches'] ?? []) as $match) {
+                $items[] = elite_ai_format_lead_line($match, trim((string) ($match['email'] ?? '')) !== '' ? trim((string) ($match['email'] ?? '')) : trim((string) ($match['phone'] ?? '')));
+            }
+
+            return [
+                'answer' => (string) ($resolved['clarify'] ?? 'Which lead should I update?'),
+                'cards' => $items ? [[
+                    'title' => 'Possible matches',
+                    'items' => $items,
+                ]] : [],
+                'actions' => [],
+                'tools_used' => ['lead.lookup', 'needs_clarification'],
+                'lead_id' => null,
+            ];
+        }
+
+        $lead = (array) $resolved['lead'];
+        $leadId = (int) ($lead['id'] ?? 0);
+        $updateInfo = elite_ai_extract_internal_update_fields($prompt);
+        $updatedFields = elite_ai_update_lead_fields($leadId, (array) ($updateInfo['fields'] ?? []));
+        $fieldLabels = (array) ($updateInfo['labels'] ?? []);
+        $note = elite_ai_extract_internal_note_text($prompt, $fieldLabels);
+        $noteResult = elite_ai_handle_add_note_action($user, [
+            'lead_id' => $leadId,
+            'note' => $note,
+            'instruction' => $prompt,
+        ], $surface);
+
+        $items = [];
+        if ($updatedFields) {
+            $items[] = 'Updated structured fields: ' . implode(', ', array_keys($updatedFields)) . '.';
+        }
+        if (!empty($noteResult['ok'])) {
+            $items[] = 'Added internal activity note.';
+        }
+        $items[] = 'No SMS or email was sent.';
+
+        $leadName = trim((string) ($lead['full_name'] ?? 'this lead'));
+        $answerParts = [];
+        if ($fieldLabels) {
+            $answerParts[] = implode('; ', $fieldLabels);
+        }
+        if (!empty($noteResult['ok'])) {
+            $answerParts[] = 'internal note added';
+        }
+
+        return [
+            'ok' => !empty($noteResult['ok']) || (bool) $updatedFields,
+            'surface' => $surface,
+            'action' => 'internal_update',
+            'lead_id' => $leadId,
+            'answer' => 'Updated ' . ($leadName !== '' ? $leadName : 'this lead') . ': ' . ($answerParts ? implode('; ', $answerParts) . '.' : 'internal note captured.'),
+            'message' => 'Internal CRM update completed.',
+            'cards' => [[
+                'title' => 'Internal CRM update',
+                'items' => $items,
+            ]],
+            'actions' => [],
+            'tools_used' => array_values(array_filter(['lead.lookup', $updatedFields ? 'lead.update_fields' : '', 'lead.add_note'])),
+        ];
     }
 }
 
@@ -3432,6 +3705,41 @@ function elite_ai_handle_request(array $user, array $request): array
                     'tool_capabilities' => elite_ai_tool_capabilities($surface),
                     'lead_id' => $leadId,
                     'current_subject' => elite_ai_current_subject_payload($leadId),
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
+        }
+
+        if ($quickAction === '' && $prompt !== '') {
+            $internalUpdatePayload = elite_ai_handle_internal_update_request($user, $prompt, $context, $surface);
+            if ($internalUpdatePayload !== null) {
+                $internalUpdatePayload = elite_ai_plain_text_payload($internalUpdatePayload);
+                $summary = trim((string) ($internalUpdatePayload['answer'] ?? 'Internal CRM update completed.'));
+                $internalLeadId = (int) ($internalUpdatePayload['lead_id'] ?? 0) ?: null;
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    (array) ($internalUpdatePayload['tools_used'] ?? []),
+                    $summary,
+                    $internalLeadId,
+                    $context
+                );
+
+                return [
+                    'ok' => !array_key_exists('ok', $internalUpdatePayload) || !empty($internalUpdatePayload['ok']),
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'cards' => array_values((array) ($internalUpdatePayload['cards'] ?? [])),
+                    'actions' => array_values((array) ($internalUpdatePayload['actions'] ?? [])),
+                    'tools_used' => array_values((array) ($internalUpdatePayload['tools_used'] ?? [])),
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => $internalLeadId,
+                    'current_subject' => elite_ai_current_subject_payload($internalLeadId),
                     'context' => $context,
                     'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                     'learned_memory' => $learnedMemory,

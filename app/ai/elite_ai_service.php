@@ -165,16 +165,29 @@ if (!function_exists('elite_ai_infer_pending_stage_move_from_thread')) {
             }
 
             $text = trim((string) ($item['text'] ?? ''));
-            if ($text === '' || stripos($text, 'close match') === false) {
+            if ($text === '' || stripos($text, 'move') === false) {
                 continue;
             }
 
-            if (!preg_match('/\(#\s*(\d{1,10})\)/i', $text, $idMatches)) {
-                continue;
+            $candidates = [];
+            if (preg_match_all('/^\s*([^\r\n#]+?)\s+\(#\s*(\d{1,10})\)/mi', $text, $candidateMatches, PREG_SET_ORDER)) {
+                foreach ($candidateMatches as $candidateMatch) {
+                    $name = trim((string) ($candidateMatch[1] ?? ''));
+                    $id = (int) ($candidateMatch[2] ?? 0);
+                    if ($id > 0) {
+                        $candidates[] = [
+                            'lead_id' => $id,
+                            'name' => $name,
+                        ];
+                    }
+                }
             }
 
             $targetStage = '';
             if (preg_match('/move\s+(?:this|the)\s+lead\s+to\s+([^?.\n]+)[?.]?/i', $text, $stageMatches)) {
+                $targetStage = elite_ai_requested_stage_key((string) ($stageMatches[1] ?? ''));
+            }
+            if ($targetStage === '' && preg_match('/move\s+to\s+([^?.\n]+)[?.]?/i', $text, $stageMatches)) {
                 $targetStage = elite_ai_requested_stage_key((string) ($stageMatches[1] ?? ''));
             }
 
@@ -182,13 +195,71 @@ if (!function_exists('elite_ai_infer_pending_stage_move_from_thread')) {
                 continue;
             }
 
+            $leadId = 0;
+            if (count($candidates) === 1) {
+                $leadId = (int) ($candidates[0]['lead_id'] ?? 0);
+            } elseif (preg_match('/\(#\s*(\d{1,10})\)/i', $text, $idMatches) && count($candidates) === 0) {
+                $leadId = (int) $idMatches[1];
+            }
+
             return [
-                'lead_id' => (int) $idMatches[1],
+                'lead_id' => $leadId,
                 'target_status' => $targetStage,
+                'candidates' => $candidates,
             ];
         }
 
         return [];
+    }
+}
+
+if (!function_exists('elite_ai_resolve_pending_stage_move_selection')) {
+    function elite_ai_resolve_pending_stage_move_selection(string $prompt, array $pendingMove): int
+    {
+        $candidates = array_values((array) ($pendingMove['candidates'] ?? []));
+        if (!$candidates) {
+            return (int) ($pendingMove['lead_id'] ?? 0);
+        }
+
+        $normalized = strtolower(trim($prompt));
+        $normalized = trim((string) preg_replace('/[^a-z0-9\s]+/i', ' ', $normalized));
+        $normalized = trim((string) preg_replace('/\s+/', ' ', $normalized));
+        if ($normalized === '') {
+            return 0;
+        }
+
+        if (preg_match('/\b(?:first|top|1st|number\s*1)\b/i', $normalized)) {
+            return (int) ($candidates[0]['lead_id'] ?? 0);
+        }
+
+        $bestId = 0;
+        $bestScore = 99;
+        foreach ($candidates as $candidate) {
+            $name = strtolower(trim((string) ($candidate['name'] ?? '')));
+            $id = (int) ($candidate['lead_id'] ?? 0);
+            if ($id <= 0 || $name === '') {
+                continue;
+            }
+            $cleanName = trim((string) preg_replace('/[^a-z0-9\s]+/i', ' ', $name));
+            $cleanName = trim((string) preg_replace('/\s+/', ' ', $cleanName));
+            if ($cleanName === '') {
+                continue;
+            }
+            if ($cleanName === $normalized || str_contains($cleanName, $normalized)) {
+                return $id;
+            }
+
+            $nameParts = preg_split('/\s+/', $cleanName) ?: [];
+            foreach ($nameParts as $part) {
+                $distance = levenshtein($normalized, $part);
+                if ($distance < $bestScore) {
+                    $bestScore = $distance;
+                    $bestId = $id;
+                }
+            }
+        }
+
+        return $bestScore <= 2 ? $bestId : 0;
     }
 }
 
@@ -2813,10 +2884,16 @@ if (!function_exists('elite_ai_resolve_lead_from_plan')) {
             if ($matches === []) {
                 return ['lead' => null, 'matches' => [], 'clarify' => 'I could not find a lead matching "' . $leadQuery . '".'];
             }
+            $targetStage = (string) ($plan['intent'] ?? '') === 'move_stage'
+                ? elite_ai_requested_stage_key($prompt)
+                : '';
+            $clarify = $targetStage !== ''
+                ? 'I found multiple matching leads. Which one should I move to ' . elite_ai_stage_label($targetStage) . '?'
+                : 'I found multiple matching leads. Please tell me which one you want by name or lead number.';
             return [
                 'lead' => null,
                 'matches' => $matches,
-                'clarify' => 'I found multiple matching leads. Please tell me which one you want by name or lead number.',
+                'clarify' => $clarify,
             ];
         }
 
@@ -3160,10 +3237,14 @@ function elite_ai_handle_request(array $user, array $request): array
             }
         }
 
-        if ($quickAction === '' && elite_ai_prompt_is_affirmation($prompt)) {
+        if ($quickAction === '') {
             $pendingMove = elite_ai_infer_pending_stage_move_from_thread((array) ($context['assistant_thread'] ?? []));
-            if ((int) ($pendingMove['lead_id'] ?? 0) > 0 && trim((string) ($pendingMove['target_status'] ?? '')) !== '') {
-                $leadId = (int) $pendingMove['lead_id'];
+            $isAffirmation = elite_ai_prompt_is_affirmation($prompt);
+            $selectedPendingLeadId = $isAffirmation
+                ? (int) ($pendingMove['lead_id'] ?? 0)
+                : elite_ai_resolve_pending_stage_move_selection($prompt, $pendingMove);
+            if ($selectedPendingLeadId > 0 && trim((string) ($pendingMove['target_status'] ?? '')) !== '') {
+                $leadId = $selectedPendingLeadId;
                 $targetStage = trim((string) $pendingMove['target_status']);
                 $moveResult = elite_ai_tool_run($user, 'lead.move_stage', [
                     'surface' => $surface,

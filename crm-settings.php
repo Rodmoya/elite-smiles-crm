@@ -65,17 +65,18 @@ if (is_post() && post('action') === 'send_internal_sms_test') {
 if (is_post() && post('action') === 'generate_mobile_qr') {
     require_csrf();
 
-    $targetUserId = (int)($user['id'] ?? 0);
+    $targetUserId = (int)(auth_user_id() ?? 0);
     if ($targetUserId <= 0) {
         flash_set('error', 'Could not find the current CRM user.');
         redirect(base_url('crm-settings.php'));
     }
 
+    $targetUser = auth_find_user_by_id($targetUserId) ?: (array)$user;
     $token = mobile_ai_issue_setup_token($targetUserId, $targetUserId);
     $generatedMobileLink = mobile_ai_qr_setup_url($token);
     $generatedMobileQrUrl = mobile_ai_qr_image_url($token);
-    $generatedMobileUserLabel = trim(((string)($user['first_name'] ?? '')) . ' ' . ((string)($user['last_name'] ?? '')));
-    $generatedMobileUserLabel = $generatedMobileUserLabel !== '' ? $generatedMobileUserLabel : (string)($user['email'] ?? 'Current user');
+    $generatedMobileUserLabel = trim(((string)($targetUser['first_name'] ?? '')) . ' ' . ((string)($targetUser['last_name'] ?? '')));
+    $generatedMobileUserLabel = $generatedMobileUserLabel !== '' ? $generatedMobileUserLabel : (string)($targetUser['email'] ?? 'Current user');
     flash_set('success', 'Mobile AI reconnect QR generated.');
 }
 

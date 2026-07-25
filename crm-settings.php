@@ -5,6 +5,7 @@ require_once __DIR__ . '/app/config/config.php';
 require_once __DIR__ . '/app/core/helpers.php';
 require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
+require_once __DIR__ . '/app/core/mobile_ai_auth.php';
 require_once __DIR__ . '/app/notifications/internal_sms.php';
 
 require_auth();
@@ -22,6 +23,9 @@ $currentPage = 'settings';
 $pageTitle = 'Settings';
 $logoutAction = base_url('crm-settings.php');
 $logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
+$generatedMobileLink = '';
+$generatedMobileQrUrl = '';
+$generatedMobileUserLabel = '';
 
 if (is_post() && post('action') === 'save_internal_sms') {
     require_csrf();
@@ -56,6 +60,23 @@ if (is_post() && post('action') === 'send_internal_sms_test') {
     $result = internal_sms_send($recipient, $body, (int)($user['id'] ?? 0));
     flash_set(!empty($result['ok']) ? 'success' : 'error', (string)($result['message'] ?? 'Test complete.'));
     redirect(base_url('crm-settings.php'));
+}
+
+if (is_post() && post('action') === 'generate_mobile_qr') {
+    require_csrf();
+
+    $targetUserId = (int)($user['id'] ?? 0);
+    if ($targetUserId <= 0) {
+        flash_set('error', 'Could not find the current CRM user.');
+        redirect(base_url('crm-settings.php'));
+    }
+
+    $token = mobile_ai_issue_setup_token($targetUserId, $targetUserId);
+    $generatedMobileLink = mobile_ai_qr_setup_url($token);
+    $generatedMobileQrUrl = mobile_ai_qr_image_url($token);
+    $generatedMobileUserLabel = trim(((string)($user['first_name'] ?? '')) . ' ' . ((string)($user['last_name'] ?? '')));
+    $generatedMobileUserLabel = $generatedMobileUserLabel !== '' ? $generatedMobileUserLabel : (string)($user['email'] ?? 'Current user');
+    flash_set('success', 'Mobile AI reconnect QR generated.');
 }
 
 $successMessage = flash_get('success') ?? '';
@@ -93,6 +114,40 @@ while (count($recipients) < 4) {
         <?php if ($errorMessage !== ''): ?>
             <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"><?= e($errorMessage) ?></div>
         <?php endif; ?>
+
+        <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-4 border-b border-slate-200 pb-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-950">Reconnect Elite AI on iPhone</h2>
+                    <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-500">Generate a fresh one-time QR code, scan it with the iPhone Camera, open it in Safari, then add Elite AI back to the Home Screen if needed.</p>
+                </div>
+                <form method="POST">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="action" value="generate_mobile_qr">
+                    <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">Generate Reconnect QR</button>
+                </form>
+            </div>
+
+            <?php if ($generatedMobileLink !== ''): ?>
+                <div class="mt-5 grid gap-5 lg:grid-cols-[260px_1fr] lg:items-start">
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <img src="<?= e($generatedMobileQrUrl) ?>" alt="Mobile AI reconnect QR code" class="mx-auto h-auto w-full max-w-[220px]">
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Reconnect Link</p>
+                            <h3 class="mt-1 text-base font-semibold text-slate-950"><?= e($generatedMobileUserLabel) ?></h3>
+                            <p class="mt-2 text-sm leading-6 text-slate-500">This link expires in 15 minutes and works one time. On iPhone, scan the QR, open in Safari, then open the Elite AI Home Screen app and allow notifications.</p>
+                        </div>
+                        <div id="mobile-ai-qr-link" class="break-all rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200"><?= e($generatedMobileLink) ?></div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="mobile-ai-copy-link" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100">Copy Link</button>
+                            <a href="<?= e($generatedMobileLink) ?>" target="_blank" rel="noreferrer" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100">Open Setup Page</a>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </section>
 
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -147,5 +202,25 @@ while (count($recipients) < 4) {
         </section>
     </div>
 </main>
+<script>
+    (function () {
+        var copy = document.getElementById('mobile-ai-copy-link');
+        var link = document.getElementById('mobile-ai-qr-link');
+        if (!copy || !link) {
+            return;
+        }
+        copy.addEventListener('click', async function () {
+            try {
+                await navigator.clipboard.writeText((link.textContent || '').trim());
+                copy.textContent = 'Copied';
+            } catch (error) {
+                copy.textContent = 'Copy Failed';
+            }
+            window.setTimeout(function () {
+                copy.textContent = 'Copy Link';
+            }, 1600);
+        });
+    }());
+</script>
 </body>
 </html>

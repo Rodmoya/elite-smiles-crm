@@ -537,12 +537,12 @@ if (!function_exists('elite_ai_select_pending_draft')) {
 if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
     function elite_ai_pending_draft_conversation_payload(array $user, array $context, string $prompt = '', string $surface = 'desktop'): ?array
     {
-        $pending = function_exists('elite_ai_pending_drafts_for_user') ? elite_ai_pending_drafts_for_user($user, 8) : [];
+        $leadId = (int) ($context['lead_id'] ?? 0);
+        $pending = function_exists('elite_ai_pending_drafts_for_context') ? elite_ai_pending_drafts_for_context($user, $context, $leadId, 8) : [];
         if (!$pending) {
             return null;
         }
 
-        $leadId = (int) ($context['lead_id'] ?? 0);
         $command = elite_ai_pending_draft_command($prompt);
         $selected = elite_ai_select_pending_draft($pending, $leadId, $prompt);
         if (!$selected && count($pending) > 1 && in_array($command, ['use_draft', 'edit_draft', 'cancel_draft'], true)) {
@@ -606,7 +606,7 @@ if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
                     ? 'Cancelled the pending draft for ' . ($leadName !== '' ? $leadName : 'this lead') . '.'
                     : 'I loaded the pending ' . trim((string) ($selected['channel'] ?? 'draft')) . ' draft for ' . ($leadName !== '' ? $leadName : 'this lead') . ' into the composer for your final review. Nothing was sent yet.';
                 $result['tools_used'] = ['pending_draft_context', $command];
-                $result['pending_drafts'] = elite_ai_pending_drafts_for_user($user, 8);
+                $result['pending_drafts'] = elite_ai_pending_drafts_for_context($user, $context, $selectedLeadId, 8);
                 return $result;
             }
         }
@@ -620,7 +620,7 @@ if (!function_exists('elite_ai_pending_draft_conversation_payload')) {
             'actions' => array_values((array) ($selected['actions'] ?? [])),
             'tools_used' => ['pending_draft_context'],
             'lead_id' => $selectedLeadId > 0 ? $selectedLeadId : null,
-            'pending_drafts' => $pending,
+            'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, $selectedLeadId, 8),
         ];
     }
 }
@@ -2352,25 +2352,33 @@ if (!function_exists('elite_ai_pending_action_row')) {
 }
 
 if (!function_exists('elite_ai_pending_drafts_for_user')) {
-    function elite_ai_pending_drafts_for_user(array $user, int $limit = 6): array
+    function elite_ai_pending_drafts_for_user(array $user, int $limit = 6, ?int $leadId = null): array
     {
         $limit = max(1, min(12, $limit));
+        $leadId = (int) ($leadId ?? 0);
         if ((int) ($user['id'] ?? 0) < 0) {
             return [];
         }
 
         try {
+            $where = 'q.user_id = :user_id AND q.status = :status';
+            $params = [
+                'user_id' => (int) ($user['id'] ?? 0),
+                'status' => 'pending_review',
+            ];
+            if ($leadId > 0) {
+                $where .= ' AND q.lead_id = :lead_id';
+                $params['lead_id'] = $leadId;
+            }
+
             $rows = db_all(
                 "SELECT q.id, q.action_type, q.lead_id, q.created_at, q.updated_at, q.draft_payload_json, l.full_name
                  FROM elite_ai_action_queue q
                  LEFT JOIN leads l ON l.id = q.lead_id
-                 WHERE q.user_id = :user_id AND q.status = :status
+                 WHERE {$where}
                  ORDER BY q.updated_at DESC, q.id DESC
                  LIMIT {$limit}",
-                [
-                    'user_id' => (int) ($user['id'] ?? 0),
-                    'status' => 'pending_review',
-                ]
+                $params
             );
 
             return array_map('elite_ai_pending_action_row', $rows ?: []);
@@ -2672,6 +2680,21 @@ if (!function_exists('elite_ai_requested_stage_key')) {
         }
 
         return '';
+    }
+}
+
+if (!function_exists('elite_ai_pending_drafts_for_context')) {
+    function elite_ai_pending_drafts_for_context(array $user, array $context, ?int $leadId = null, int $limit = 8): array
+    {
+        $scopedLeadId = (int) ($leadId ?? 0);
+        if ($scopedLeadId <= 0) {
+            $scopedLeadId = (int) ($context['lead_id'] ?? 0);
+        }
+        if ($scopedLeadId <= 0 && isset($context['notification']) && is_array($context['notification'])) {
+            $scopedLeadId = (int) ($context['notification']['lead_id'] ?? 0);
+        }
+
+        return elite_ai_pending_drafts_for_user($user, $limit, $scopedLeadId > 0 ? $scopedLeadId : null);
     }
 }
 
@@ -3401,7 +3424,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
-                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, (int) ($result['lead_id'] ?? 0), 8),
             ];
         }
 
@@ -3423,7 +3446,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
-                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, (int) ($result['lead_id'] ?? 0), 8),
             ];
         }
 
@@ -3451,7 +3474,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload($leadId),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
-                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, (int) ($result['lead_id'] ?? 0), 8),
             ];
         }
 
@@ -3477,7 +3500,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
-                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, (int) ($result['lead_id'] ?? 0), 8),
             ];
         }
 
@@ -3488,7 +3511,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             'context' => elite_ai_normalize_context($request),
             'current_subject' => elite_ai_current_subject_payload((int) ($request['lead_id'] ?? 0) ?: null),
             'tool_capabilities' => elite_ai_tool_capabilities($surface),
-            'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+            'pending_drafts' => elite_ai_pending_drafts_for_context($user, elite_ai_normalize_context($request), (int) ($request['lead_id'] ?? 0), 8),
         ];
     }
 }
@@ -4164,7 +4187,7 @@ function elite_ai_handle_request(array $user, array $request): array
                 'surface' => $surface,
                 'answer' => $summary,
                 'execution_policy' => elite_ai_execution_policy_tag($request),
-                'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, (int) ($result['lead_id'] ?? 0), 8),
                 'cards' => [],
                 'actions' => [],
                 'tools_used' => ['memory.remember'],
@@ -4287,7 +4310,7 @@ function elite_ai_handle_request(array $user, array $request): array
                     'surface' => $surface,
                     'answer' => $summary,
                     'execution_policy' => elite_ai_execution_policy_tag($request),
-                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, $leadId, 8),
                     'cards' => array_values((array) ($moveResult['cards'] ?? [])),
                     'actions' => array_values((array) ($moveResult['actions'] ?? [])),
                     'tools_used' => ['conversation.confirmation', 'lead.move_stage'],
@@ -4322,7 +4345,7 @@ function elite_ai_handle_request(array $user, array $request): array
                     'surface' => $surface,
                     'answer' => $summary,
                     'execution_policy' => elite_ai_execution_policy_tag($request),
-                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, $internalLeadId, 8),
                     'cards' => array_values((array) ($internalUpdatePayload['cards'] ?? [])),
                     'actions' => array_values((array) ($internalUpdatePayload['actions'] ?? [])),
                     'tools_used' => array_values((array) ($internalUpdatePayload['tools_used'] ?? [])),
@@ -4613,7 +4636,7 @@ function elite_ai_handle_request(array $user, array $request): array
             'surface' => $surface,
             'answer' => $summary,
             'execution_policy' => $executionPolicy,
-            'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+            'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, $leadId, 8),
             'cards' => array_values((array) ($payload['cards'] ?? [])),
             'actions' => array_values((array) ($payload['actions'] ?? [])),
             'tools_used' => array_values((array) ($payload['tools_used'] ?? [])),

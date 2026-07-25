@@ -510,10 +510,11 @@ if (!function_exists('codex_api_elite_ai_pending_drafts')) {
     function codex_api_elite_ai_pending_drafts(): void
     {
         $limit = (int) codex_api_value('limit', 12);
+        $leadId = (int) codex_api_value('lead_id', codex_api_value('id', 0));
         codex_api_response([
             'ok' => true,
             'pending_drafts' => function_exists('elite_ai_pending_drafts_for_user')
-                ? elite_ai_pending_drafts_for_user(['id' => 0, 'first_name' => 'Codex', 'last_name' => 'API'], $limit)
+                ? elite_ai_pending_drafts_for_user(['id' => 0, 'first_name' => 'Codex', 'last_name' => 'API'], $limit, $leadId > 0 ? $leadId : null)
                 : [],
         ]);
     }

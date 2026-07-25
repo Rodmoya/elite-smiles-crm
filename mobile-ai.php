@@ -183,6 +183,31 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             padding: 8px 10px 10px;
             margin-top: 8px;
         }
+        .notification-enable {
+            display: none;
+            border: 1px solid #bfdbfe;
+            border-radius: 14px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            padding: 10px 12px;
+            margin: 0 0 8px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .notification-enable.open {
+            display: block;
+        }
+        .notification-enable button {
+            appearance: none;
+            border: 0;
+            border-radius: 999px;
+            background: #1d4ed8;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 8px 11px;
+            margin-top: 8px;
+        }
         .pending-drafts-title {
             margin: 0 2px 8px;
             color: var(--muted);
@@ -439,6 +464,10 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
         <?php if ($tab === 'assistant'): ?>
         <section class="thread" id="assistant-thread" aria-live="polite">
+                <article class="notification-enable" id="notification-enable-card">
+                    <div id="notification-enable-text">Enable iPhone notifications for Elite AI.</div>
+                    <button type="button" id="notification-enable-button">Enable Notifications</button>
+                </article>
                 <?php if ($showWelcome): ?>
                     <article class="message assistant welcome">
                         <p>Setup complete. Add this page to your Home Screen for daily use.</p>
@@ -523,6 +552,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var pendingDraftsSection = document.getElementById('assistant-pending-drafts');
             var pendingDraftsTitle = document.getElementById('assistant-pending-drafts-title');
             var pendingDraftsList = document.getElementById('assistant-pending-drafts-list');
+            var notificationEnableCard = document.getElementById('notification-enable-card');
+            var notificationEnableButton = document.getElementById('notification-enable-button');
+            var notificationEnableText = document.getElementById('notification-enable-text');
             if (!thread || !form || !input) {
                 return;
             }
@@ -551,6 +583,54 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var assistantSpeech = null;
             var isListening = false;
             var assistantThreadState = [];
+
+            function isStandaloneApp() {
+                return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            }
+
+            function refreshNotificationPrompt() {
+                if (!notificationEnableCard || !notificationEnableButton || !notificationEnableText) {
+                    return;
+                }
+                if (!('Notification' in window)) {
+                    notificationEnableCard.classList.add('open');
+                    notificationEnableText.textContent = 'iPhone notifications need the Home Screen Elite AI app.';
+                    notificationEnableButton.style.display = 'none';
+                    return;
+                }
+                if (Notification.permission === 'granted') {
+                    notificationEnableCard.classList.remove('open');
+                    return;
+                }
+                notificationEnableCard.classList.add('open');
+                notificationEnableButton.style.display = Notification.permission === 'denied' ? 'none' : 'inline-flex';
+                notificationEnableText.textContent = Notification.permission === 'denied'
+                    ? 'Notifications are blocked. Open iPhone Settings > Notifications > Elite AI and allow them.'
+                    : (isStandaloneApp()
+                        ? 'Tap to allow iPhone notifications for Elite AI.'
+                        : 'Open Elite AI from the Home Screen, then tap Enable Notifications.');
+            }
+
+            if (notificationEnableButton) {
+                notificationEnableButton.addEventListener('click', async function () {
+                    if (!('Notification' in window)) {
+                        refreshNotificationPrompt();
+                        return;
+                    }
+                    try {
+                        var permission = await Notification.requestPermission();
+                        if (permission === 'granted' && 'serviceWorker' in navigator) {
+                            await navigator.serviceWorker.ready;
+                        }
+                    } catch (error) {
+                        if (notificationEnableText) {
+                            notificationEnableText.textContent = 'Could not open the iPhone notification prompt. Open Elite AI from the Home Screen and try again.';
+                        }
+                    }
+                    refreshNotificationPrompt();
+                });
+            }
+            refreshNotificationPrompt();
 
             function assistantConversationContext() {
                 return assistantThreadState.slice(-8).map(function (item) {

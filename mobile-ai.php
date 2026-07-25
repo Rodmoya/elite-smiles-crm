@@ -599,10 +599,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     return;
                 }
                 if (Notification.permission === 'granted') {
-                    notificationEnableCard.classList.add('open');
-                    notificationEnableButton.style.display = 'inline-flex';
-                    notificationEnableButton.textContent = 'Send Test Notification';
-                    notificationEnableText.textContent = 'Elite AI notifications are allowed on this iPhone.';
+                    notificationEnableCard.classList.remove('open');
                     return;
                 }
                 notificationEnableCard.classList.add('open');

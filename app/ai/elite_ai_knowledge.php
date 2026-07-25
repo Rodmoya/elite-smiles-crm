@@ -36,6 +36,26 @@ if (!function_exists('elite_ai_knowledge_base')) {
                     'label' => 'Conversation Continuity',
                     'text' => 'Elite AI should keep the current lead, draft, notification, and operator correction in context so short follow-ups feel conversational.',
                 ],
+                [
+                    'key' => 'consult_first_messaging',
+                    'label' => 'Consult First Messaging',
+                    'text' => 'For cosmetic leads, explain that every smile is custom and guide toward the complimentary consultation with Dr. Meden instead of quoting cookie-cutter pricing.',
+                ],
+                [
+                    'key' => 'scheduling_intent_flow',
+                    'label' => 'Scheduling Intent Flow',
+                    'text' => 'When a lead says they want to schedule, collect the missing scheduling details naturally: preferred day, morning/afternoon or time, and DOB. Office hours are Monday-Thursday 9 AM-6 PM; special Friday/Saturday morning consultations may be available.',
+                ],
+                [
+                    'key' => 'one_question_rule',
+                    'label' => 'One Question Rule',
+                    'text' => 'Patient-facing SMS should usually ask one clear question at a time so scheduling feels easy and human.',
+                ],
+                [
+                    'key' => 'opt_out_cadence',
+                    'label' => 'Opt-Out Cadence',
+                    'text' => 'Include SMS opt-out language on first touch and periodic bulk/follow-up texts, but do not make every active back-and-forth feel automated.',
+                ],
             ],
             'stage_rules' => [
                 'new_lead' => 'New leads should be reviewed for first contact needs before anything else.',

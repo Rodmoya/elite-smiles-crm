@@ -136,7 +136,10 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
-            'Scheduling: the consultation is complimentary/free. If the patient shows interest, ask whether mornings or afternoons are easier, then ask for date of birth and preferred day/time unless those are already known. If a specific time is confirmed by the office context, confirm it clearly.',
+            'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
+            'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
+            'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete. If several are missing, ask for the preferred day and DOB in one concise message; do not overwhelm them.',
+            'One-question SMS rule: keep SMS easy to answer. Prefer one direct scheduling question unless DOB is also required for booking.',
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
@@ -186,7 +189,9 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Invite clinical questions to be reviewed with Dr. Meden.',
-            'Scheduling: the consultation is complimentary/free. If the patient shows interest, ask whether mornings or afternoons work better. If the office context already includes a specific confirmed time, confirm it clearly.',
+            'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
+            'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
+            'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete.',
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
@@ -500,6 +505,81 @@ if (!function_exists('lead_ai_strip_redundant_greeting')) {
     }
 }
 
+if (!function_exists('lead_ai_schedule_intent_signal')) {
+    function lead_ai_schedule_intent_signal(string $text): bool
+    {
+        $normalized = strtolower(trim($text));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:yes|yeah|yep|sure|ok|okay|sounds good|lets do|let\'?s do|schedule|book|appointment|consult|consultation|available|availability|what day|what time|morning|afternoon|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|next week)\b/i',
+            $normalized
+        );
+    }
+}
+
+if (!function_exists('lead_ai_scheduling_context')) {
+    function lead_ai_scheduling_context(array $lead, string $latestMessage = ''): array
+    {
+        $preferredDay = trim((string)($lead['scheduling_preferred_day'] ?? ''));
+        $preferredTime = trim((string)($lead['scheduling_preferred_time'] ?? ''));
+        $dob = trim((string)($lead['date_of_birth'] ?? ''));
+        $consultationDate = trim((string)($lead['consultation_date'] ?? ''));
+        $missing = [];
+
+        if ($consultationDate === '') {
+            if ($preferredDay === '') {
+                $missing[] = 'preferred day/date';
+            }
+            if ($preferredTime === '') {
+                $missing[] = 'morning/afternoon or preferred time';
+            }
+        }
+        if ($dob === '') {
+            $missing[] = 'DOB';
+        }
+
+        return [
+            'office_hours' => 'Monday-Thursday 9 AM-6 PM',
+            'special_consult_hours' => 'Friday and Saturday morning by special appointment when needed',
+            'consultation_type' => 'complimentary consultation with Dr. Meden',
+            'schedule_intent_detected' => lead_ai_schedule_intent_signal($latestMessage),
+            'preferred_day_known' => $preferredDay !== '',
+            'preferred_time_known' => $preferredTime !== '',
+            'dob_known' => $dob !== '',
+            'consultation_already_booked' => $consultationDate !== '',
+            'missing_for_scheduling' => $missing,
+            'next_best_question' => $missing === []
+                ? 'Confirm the appointment details or tell Rod to check availability.'
+                : 'Ask for ' . implode(' and ', array_slice($missing, 0, 2)) . '.',
+        ];
+    }
+}
+
+if (!function_exists('lead_ai_apply_scheduling_posture')) {
+    function lead_ai_apply_scheduling_posture(array $lead, array $data, string $latestMessage = ''): array
+    {
+        $scheduling = lead_ai_scheduling_context($lead, $latestMessage);
+        if (empty($scheduling['schedule_intent_detected']) || !empty($scheduling['consultation_already_booked'])) {
+            return $data;
+        }
+
+        $data['classification'] = 'schedule_ready';
+        $data['recommended_stage'] = 'in_contact';
+
+        $missing = array_values((array)($scheduling['missing_for_scheduling'] ?? []));
+        $note = trim((string)($data['note'] ?? ''));
+        $next = $missing
+            ? 'Need ' . implode(', ', $missing) . ' before Rod can check/confirm availability.'
+            : 'Ready for Rod to check availability and prepare the Dentrix-ready scheduling package.';
+        $data['note'] = trim($note !== '' ? $note . ' ' . $next : $next);
+
+        return $data;
+    }
+}
+
 if (!function_exists('lead_ai_context')) {
     function lead_ai_context(array $lead, string $latestMessage = '', string $mode = 'inbound_sms', ?array $threadState = null): string
     {
@@ -527,6 +607,7 @@ if (!function_exists('lead_ai_context')) {
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1200),
             ],
             'thread_state' => $threadState,
+            'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
             'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 8),
             'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
@@ -562,6 +643,7 @@ if (!function_exists('lead_ai_email_context')) {
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1600),
             ],
             'thread_state' => $threadState,
+            'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
             'recent_email_thread' => lead_ai_recent_email_thread($leadId, 8),
             'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
@@ -763,6 +845,7 @@ if (!function_exists('lead_ai_generate_reply')) {
         $data['confidence'] = max(0.0, min(1.0, (float)($data['confidence'] ?? 0)));
         $data['should_send'] = (bool)($data['should_send'] ?? false);
         $data['needs_human_review'] = (bool)($data['needs_human_review'] ?? true);
+        $data = lead_ai_apply_scheduling_posture($lead, $data, $latestMessage);
 
         if ($data['reply'] === '') {
             $data['should_send'] = false;
@@ -854,6 +937,7 @@ if (!function_exists('lead_ai_generate_email')) {
         $data['confidence'] = max(0.0, min(1.0, (float)($data['confidence'] ?? 0)));
         $data['should_send'] = (bool)($data['should_send'] ?? false);
         $data['needs_human_review'] = (bool)($data['needs_human_review'] ?? true);
+        $data = lead_ai_apply_scheduling_posture($lead, $data, $latestMessage);
 
         if ($data['subject'] === '' || $data['body'] === '') {
             $data['should_send'] = false;
@@ -1034,12 +1118,12 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
         $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
         if ($prefersSpanish) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-            return $greeting . ' soy Rod de Elite Smiles. Vi tu solicitud sobre opciones para tu sonrisa. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres ver que es posible? Responde STOP para cancelar.';
+            return $greeting . ' soy Rod de Elite Smiles. Vi tu solicitud sobre opciones para tu sonrisa. Cada sonrisa es personalizada, asi que el mejor siguiente paso es una consulta gratis con Dr. Meden para revisar tus metas y opciones. Normalmente te funcionan mejor las mananas o las tardes? Responde STOP para cancelar.';
         }
 
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
 
-        return $greeting . ' this is Rod with Elite Smiles. I saw your request about veneers/smile options. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible? Reply STOP to opt out.';
+        return $greeting . ' this is Rod with Elite Smiles. I saw your request about veneers/smile options. Every smile is custom, so the best next step is a complimentary consult with Dr. Meden to review your goals and options. Do mornings or afternoons usually work better? Reply STOP to opt out.';
     }
 }
 

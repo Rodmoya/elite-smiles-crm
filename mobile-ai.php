@@ -599,11 +599,15 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     return;
                 }
                 if (Notification.permission === 'granted') {
-                    notificationEnableCard.classList.remove('open');
+                    notificationEnableCard.classList.add('open');
+                    notificationEnableButton.style.display = 'inline-flex';
+                    notificationEnableButton.textContent = 'Send Test Notification';
+                    notificationEnableText.textContent = 'Elite AI notifications are allowed on this iPhone.';
                     return;
                 }
                 notificationEnableCard.classList.add('open');
                 notificationEnableButton.style.display = Notification.permission === 'denied' ? 'none' : 'inline-flex';
+                notificationEnableButton.textContent = 'Enable Notifications';
                 notificationEnableText.textContent = Notification.permission === 'denied'
                     ? 'Notifications are blocked. Open iPhone Settings > Notifications > Elite AI and allow them.'
                     : (isStandaloneApp()
@@ -618,9 +622,26 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
                     try {
-                        var permission = await Notification.requestPermission();
-                        if (permission === 'granted' && 'serviceWorker' in navigator) {
-                            await navigator.serviceWorker.ready;
+                        var permission = Notification.permission === 'granted'
+                            ? 'granted'
+                            : await Notification.requestPermission();
+                        if (permission === 'granted') {
+                            if ('serviceWorker' in navigator) {
+                                var registration = await navigator.serviceWorker.ready;
+                                await registration.showNotification('Elite AI test', {
+                                    body: 'Test notification from Elite AI.',
+                                    icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
+                                    badge: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
+                                    tag: 'elite-ai-test',
+                                    renotify: true,
+                                    data: { url: '/crm/mobile-ai?tab=notifications' }
+                                });
+                            } else {
+                                new Notification('Elite AI test', {
+                                    body: 'Test notification from Elite AI.',
+                                    icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png'
+                                });
+                            }
                         }
                     } catch (error) {
                         if (notificationEnableText) {

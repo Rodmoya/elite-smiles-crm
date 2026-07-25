@@ -388,10 +388,13 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             padding: 12px 0 22px;
         }
         .notification {
+            display: block;
             border: 1px solid var(--line);
             border-radius: 14px;
             background: var(--panel);
             padding: 12px 14px;
+            color: inherit;
+            text-decoration: none;
         }
         .notification.unread {
             border-color: #cbd5e1;
@@ -442,6 +445,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             font-size: 13px;
             font-weight: 700;
             text-decoration: none;
+        }
+        .notification .open-link {
+            pointer-events: none;
         }
         .empty {
             color: var(--muted);
@@ -507,7 +513,21 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
                 <?php foreach ($notifications as $item): ?>
                     <?php $isUnread = !empty($item['is_new']); ?>
-                    <article class="notification <?= $isUnread ? 'unread' : 'read' ?>">
+                    <?php $notificationAssistantUrl = ''; ?>
+                    <?php if ((int) ($item['lead_id'] ?? 0) > 0): ?>
+                        <?php
+                            $notificationAssistantUrl = base_url('mobile-ai/?tab=assistant'
+                                . '&notification_id=' . rawurlencode((string) ($item['id'] ?? ''))
+                                . '&lead_id=' . (int) ($item['lead_id'] ?? 0));
+                        ?>
+                    <?php endif; ?>
+                    <<?= $notificationAssistantUrl !== '' ? 'a' : 'article' ?>
+                        class="notification <?= $isUnread ? 'unread' : 'read' ?>"
+                        <?php if ($notificationAssistantUrl !== ''): ?>
+                            href="<?= e($notificationAssistantUrl) ?>"
+                            aria-label="Open notification in Assistant"
+                        <?php endif; ?>
+                    >
                         <h2>
                             <?= e((string) ($item['title'] ?? 'CRM alert')) ?>
                             <span class="notification-state"><?= $isUnread ? 'Unread' : 'Read' ?></span>
@@ -521,16 +541,10 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                                 - <?= e((string) $item['lead_name']) ?>
                             <?php endif; ?>
                         </p>
-                        <?php $assistantCard = is_array($item['assistant_card'] ?? null) ? $item['assistant_card'] : []; ?>
-                        <?php if ((int) ($item['lead_id'] ?? 0) > 0): ?>
-                            <?php
-                                $notificationAssistantUrl = base_url('mobile-ai/?tab=assistant'
-                                    . '&notification_id=' . rawurlencode((string) ($item['id'] ?? ''))
-                                    . '&lead_id=' . (int) ($item['lead_id'] ?? 0));
-                            ?>
-                            <a class="open-link" href="<?= e($notificationAssistantUrl) ?>">Ask Elite AI</a>
+                        <?php if ($notificationAssistantUrl !== ''): ?>
+                            <span class="open-link">Open in Assistant</span>
                         <?php endif; ?>
-                    </article>
+                    </<?= $notificationAssistantUrl !== '' ? 'a' : 'article' ?>>
                 <?php endforeach; ?>
             </section>
         <?php endif; ?>

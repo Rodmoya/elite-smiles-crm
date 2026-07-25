@@ -468,7 +468,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         if (mappedActionType === 'draft_sms' || mappedActionType === 'draft_email') {
             return mappedActionType;
         }
-        if (mappedActionType === 'use_draft' || mappedActionType === 'edit_draft' || mappedActionType === 'cancel_draft') {
+        if (mappedActionType === 'send_draft' || mappedActionType === 'use_draft' || mappedActionType === 'edit_draft' || mappedActionType === 'cancel_draft') {
             if (data && String(data.channel || '') === 'SMS') {
                 return 'draft_sms';
             }
@@ -993,15 +993,17 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         const actionType = String(action.type || '');
         const leadId = Number(action.lead_id || 0);
         const actionLabel = String(action.label || '');
-        const humanActionLabel = actionType === 'use_draft'
-            ? 'Use draft'
+        const humanActionLabel = actionType === 'send_draft'
+            ? 'Send draft'
+            : actionType === 'use_draft'
+                ? 'Use draft'
             : actionType === 'edit_draft'
                 ? 'Edit draft'
                 : actionType === 'cancel_draft'
                     ? 'Cancel draft'
                     : (actionLabel || 'Prepare draft');
         assistantBubble('You', humanActionLabel + ' for lead #' + leadId, 'user');
-        const loading = assistantBubble('Elite AI', actionType === 'mark_reviewed' ? 'Clearing notification...' : 'Preparing draft for approval...', 'assistant', [], true);
+        const loading = assistantBubble('Elite AI', actionType === 'mark_reviewed' ? 'Clearing notification...' : (actionType === 'send_draft' ? 'Sending approved draft...' : 'Preparing draft for approval...'), 'assistant', [], true);
         setBusy(true);
 
         try {
@@ -1058,6 +1060,15 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (actionType === 'cancel_draft') {
                 assistantBubble('Elite AI', data.message || 'Draft cancelled.', 'assistant');
                 setDraftStatus('');
+                refreshPendingDrafts(true);
+                return;
+            }
+
+            if (actionType === 'send_draft') {
+                const sentMessage = data.message || data.answer || 'Draft sent.';
+                assistantBubble('Elite AI', sentMessage, 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                setDraftStatus('');
+                setPendingDraftsCollapsed(false);
                 refreshPendingDrafts(true);
                 return;
             }
@@ -1154,6 +1165,13 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             if (responseActionType === 'cancel_draft') {
                 assistantBubble('Elite AI', data.answer || data.message || 'Draft cancelled.', 'assistant');
                 setDraftStatus('');
+                refreshPendingDrafts(true);
+                return;
+            }
+            if (responseActionType === 'send_draft') {
+                assistantBubble('Elite AI', data.answer || data.message || 'Draft sent.', 'assistant', data.cards || [], false, normalizeAssistantActions(data.actions || [], data.lead_id || 0));
+                setDraftStatus('');
+                setPendingDraftsCollapsed(false);
                 refreshPendingDrafts(true);
                 return;
             }

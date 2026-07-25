@@ -460,31 +460,7 @@ if (!function_exists('lead_email_action_alert_message')) {
 if (!function_exists('lead_email_send_action_alert')) {
     function lead_email_send_action_alert(array $lead, string $event, string $detail = ''): bool
     {
-        if (!function_exists('elite_email_to_text_recipient') || !function_exists('elite_mail_from_address')) {
-            return false;
-        }
-
-        $to = elite_email_to_text_recipient();
-        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
-            return false;
-        }
-
-        $headers = [
-            'From: Elite Smiles CRM <' . elite_mail_from_address() . '>',
-            'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=UTF-8',
-        ];
-
-        try {
-            return @mail($to, 'CRM', lead_email_action_alert_message($lead, $event, $detail), implode("\r\n", $headers));
-        } catch (Throwable $e) {
-            esm_log('lead_email', 'Could not send email-to-text action alert.', [
-                'lead_id' => (int)($lead['id'] ?? 0),
-                'event' => $event,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
-        }
+        return false;
     }
 }
 

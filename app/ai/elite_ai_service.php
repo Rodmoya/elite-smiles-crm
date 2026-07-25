@@ -1206,13 +1206,13 @@ if (!function_exists('elite_ai_notification_rows')) {
                     'type' => 'reply',
                     'priority' => $isUnread ? 'high' : 'normal',
                     'is_new' => $isUnread,
-                    'title' => 'Reply from ' . $leadName . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
+                    'title' => 'New message from ' . $leadName,
                     'message' => trim((string) ($row['body'] ?? '')),
                     'created_at' => (string) ($row['created_at'] ?? ''),
                     'lead_id' => $leadId,
                     'lead_name' => $leadName,
                     'status' => trim((string) ($row['status'] ?? '')),
-                    'suggested_action' => (string) ($assistantCard['recommended_action'] ?? 'Review context and prepare a draft before sending.'),
+                    'suggested_action' => '',
                     'assistant_card' => $assistantCard,
                 ];
             }
@@ -1263,13 +1263,13 @@ if (!function_exists('elite_ai_notification_rows')) {
                     'type' => 'new_lead',
                     'priority' => $isUnread ? 'high' : 'normal',
                     'is_new' => $isUnread,
-                    'title' => 'New lead: ' . $leadName . ' - Lead #' . $leadId,
-                    'message' => 'New lead received from ' . $sourceLabel . '.',
+                    'title' => 'New lead from ' . $sourceLabel,
+                    'message' => $leadName . '. I sent first message.',
                     'created_at' => (string) ($row['created_at'] ?? ''),
                     'lead_id' => $leadId,
                     'lead_name' => $leadName,
                     'status' => trim((string) ($row['status'] ?? '')),
-                    'suggested_action' => 'Open the lead and review first-touch status.',
+                    'suggested_action' => '',
                     'assistant_card' => $assistantCard,
                 ];
             }
@@ -1319,15 +1319,13 @@ if (!function_exists('elite_ai_notification_rows')) {
                     'type' => $type,
                     'priority' => 'normal',
                     'is_new' => false,
-                    'title' => $label . ': ' . $leadName . ($leadId > 0 ? ' - Lead #' . $leadId : ''),
+                    'title' => $type === 'manual_sms_followup_prepared' ? 'I sent first message' : $label . ': ' . $leadName,
                     'message' => trim((string) ($row['body'] ?? '')),
                     'created_at' => (string) ($row['created_at'] ?? ''),
                     'lead_id' => $leadId,
                     'lead_name' => $leadName,
                     'status' => trim((string) ($row['status'] ?? '')),
-                    'suggested_action' => (string) ($assistantCard['recommended_action'] ?? ($type === 'lead_created'
-                        ? 'Review the lead for first-touch readiness.'
-                        : 'Open the lead and review the next manual step.')),
+                    'suggested_action' => '',
                     'assistant_card' => $assistantCard,
                 ];
             }

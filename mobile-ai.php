@@ -492,11 +492,6 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             <?php endif; ?>
                         </p>
                         <?php $assistantCard = is_array($item['assistant_card'] ?? null) ? $item['assistant_card'] : []; ?>
-                        <?php if (trim((string) ($assistantCard['recommended_action'] ?? $item['suggested_action'] ?? '')) !== ''): ?>
-                            <p class="meta">
-                                Next: <?= e((string) ($assistantCard['recommended_action'] ?? $item['suggested_action'] ?? 'Review next step.')) ?>
-                            </p>
-                        <?php endif; ?>
                         <?php if ((int) ($item['lead_id'] ?? 0) > 0): ?>
                             <?php
                                 $notificationAssistantUrl = base_url('mobile-ai/?tab=assistant'

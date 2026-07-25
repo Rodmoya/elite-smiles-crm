@@ -13,9 +13,11 @@ self.addEventListener('fetch', function () {
 self.addEventListener('push', function (event) {
   var title = 'Elite AI';
   var options = {
-    body: 'New CRM activity is ready for review.',
+    body: 'New CRM activity.',
     icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
-    badge: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png'
+    badge: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
+    tag: 'elite-ai-alert',
+    renotify: true
   };
 
   if (event.data) {

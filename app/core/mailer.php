@@ -755,7 +755,10 @@ if (!function_exists('elite_send_pushover_notification')) {
         ?string $url = null,
         ?string $urlTitle = null
     ): bool {
-        if (!elite_pushover_is_enabled()) {
+        $url = null;
+        $urlTitle = null;
+
+        if (!elite_pushover_is_enabled()) {
             return false;
         }
 
@@ -946,6 +949,9 @@ if (!function_exists('elite_send_pushover_notification_to_user')) {
         ?array &$sendResult = null
 
     ): bool {
+
+        $url = null;
+        $urlTitle = null;
 
         if (!function_exists('curl_init') || elite_pushover_app_token() === '' || $userKey === '') {
             if (is_array($sendResult)) {
@@ -1183,17 +1189,19 @@ if (!function_exists('elite_send_lead_notification_pushover')) {
             $cleanLeadMessage = mb_substr($cleanLeadMessage, 0, 320) . '...';
         }
 
-        $quickActionUrl = elite_quick_action_url($lead, $context);
+        $source = trim((string) ($context['source_label'] ?? $lead['source'] ?? $lead['source_type'] ?? 'CRM'));
+        if ($source === '') {
+            $source = 'CRM';
+        }
 
-        $title = 'New Elite Smiles Lead • ' . $fullName;
+        $title = 'New lead from ' . $source;
 
         $lines = [];
-        $lines[] = 'Lead: ' . $fullName;
-        $lines[] = 'Hour: ' . $receivedHour;
-        $lines[] = 'Person: ' . $personName;
-        $lines[] = '';
-        $lines[] = 'Message: ' . $cleanLeadMessage;
-        $lines[] = '';
+        $lines[] = 'Name: ' . $fullName;
+        $lines[] = 'Time: ' . $receivedHour;
+        if ($cleanLeadMessage !== '') {
+            $lines[] = 'Message: ' . $cleanLeadMessage;
+        }
 
         return elite_send_pushover_notification(
             $title,
@@ -1303,24 +1311,19 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
             }
         }
 
-        $quickActionUrl = elite_operator_quick_action_url($lead, ['quick_action_mode' => $mode] + $context);
-
         $titlePrefix = match ($event) {
             'sms_delivery_issue' => 'SMS Delivery Issue',
-            'communication' => 'Lead Communication',
+            'communication' => 'New message from',
             default => 'Lead Follow-Up',
         };
 
-        $title = $titlePrefix . ' - ' . $fullName;
+        $title = $event === 'communication'
+            ? $titlePrefix . ' ' . $fullName
+            : $titlePrefix . ': ' . $fullName;
 
         $lines = [];
-        $lines[] = 'Lead: ' . $fullName;
-        $lines[] = 'Hour: ' . $receivedHour;
-        $lines[] = 'Person: ' . $personName;
-        $lines[] = '';
+        $lines[] = 'Time: ' . $receivedHour;
         $lines[] = 'Message: ' . $cleanMessage;
-
-        $lines[] = '';
 
 
         return elite_send_pushover_notification(
@@ -1337,6 +1340,8 @@ if (!function_exists('elite_send_operator_follow_up_pushover')) {
 if (!function_exists('elite_send_lead_notification_email')) {
     function elite_send_lead_notification_email(array $lead, array $context = []): bool
     {
+        return elite_send_lead_notification_pushover($lead, $context);
+
         $to = trim((string) ($context['to'] ?? elite_lead_notification_recipient()));
         if ($to === '') {
             return false;
@@ -1415,6 +1420,23 @@ if (!function_exists('elite_send_new_lead_autoresponse_summary')) {
         $emailBody = trim((string) ($context['auto_response_email_body'] ?? ''));
         $emailStatus = trim((string) ($context['auto_response_email_status'] ?? ''));
         $quickActionUrl = elite_quick_action_url($lead, $context);
+
+        $source = trim($campaign !== '' ? $campaign : ($landingPage !== '' ? $landingPage : (string)($lead['source'] ?? 'CRM')));
+        if ($source === '') {
+            $source = 'CRM';
+        }
+        $pushLines = [
+            'Name: ' . $fullName,
+            $procedure !== '' ? 'Interest: ' . $procedure : '',
+            $smsBody !== '' ? 'I sent first message.' : 'First message not sent yet.',
+        ];
+
+        return elite_send_pushover_notification(
+            'New lead from ' . $source,
+            implode("\n", array_values(array_filter($pushLines, static fn ($line) => $line !== ''))),
+            null,
+            null
+        );
 
         $subject = 'New Lead Auto-Response | ' . $fullName;
         $plainLines = [
@@ -1594,6 +1616,8 @@ if (!function_exists('elite_send_lead_email_to_text_alert')) {
 
     {
 
+        return false;
+
         $to = elite_string($context['email_to_text_to'] ?? elite_email_to_text_recipient());
         if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
             return false;
@@ -1631,6 +1655,8 @@ if (!function_exists('elite_send_manual_sms_followup_email')) {
     function elite_send_manual_sms_followup_email(array $lead, string $smsBody, array $context = []): array
 
     {
+
+        return ['ok' => false, 'message' => 'Manual SMS follow-up email alerts are disabled.'];
 
         $to = trim((string) ($context['to'] ?? elite_lead_notification_recipient()));
         if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {

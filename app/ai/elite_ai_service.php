@@ -1757,6 +1757,142 @@ if (!function_exists('elite_ai_stage_message_review_payload')) {
     }
 }
 
+if (!function_exists('elite_ai_prompt_requests_bulk_stage_follow_up')) {
+    function elite_ai_prompt_requests_bulk_stage_follow_up(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (!preg_match('/\b(?:follow(?:-|\s*)up|send|text|sms|message|draft|prepare|write|answer|reply)\b/i', $normalized)) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:them|those|these|all|all\s+\d+|the\s+\d+|ones|everyone|leads?|patients?)\b|\b(?:first\s*touch|contacted|new\s+lead|nurture|no\s+answer|in\s+contact|scheduling)\b/i',
+            $normalized
+        );
+    }
+}
+
+if (!function_exists('elite_ai_stage_bulk_follow_up_payload')) {
+    function elite_ai_stage_bulk_follow_up_payload(array $user, string $prompt, array $context, string $surface): ?array
+    {
+        if (!elite_ai_prompt_requests_bulk_stage_follow_up($prompt)) {
+            return null;
+        }
+
+        $stage = elite_ai_infer_stage_for_message_review($prompt, $context);
+        if ($stage === '') {
+            return [
+                'answer' => 'Which stage or lead list should I work on?',
+                'cards' => [[
+                    'title' => 'Need a target',
+                    'items' => [
+                        'Example: follow up with First Touch Sent leads that need a message today.',
+                        'Example: draft SMS for those leads.',
+                    ],
+                ]],
+                'actions' => [],
+                'tools_used' => ['task_router', 'needs_clarification'],
+            ];
+        }
+
+        $candidates = elite_ai_stage_message_candidates($stage, 12);
+        if (!$candidates) {
+            return [
+                'answer' => 'I checked ' . elite_ai_stage_label($stage) . ' and do not see anyone that needs a message today.',
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['task_router', 'stage_context', 'stage_message_review'],
+            ];
+        }
+
+        $created = [];
+        $skipped = [];
+        $actions = [];
+        $instruction = trim((string) preg_replace('/\s+/', ' ', $prompt));
+        if ($instruction === '') {
+            $instruction = 'Prepare a concise, warm SMS follow-up to re-engage this lead and invite them to schedule a free veneers consultation with Dr. Meden.';
+        } else {
+            $instruction .= ' Keep it concise, friendly, and focused on getting the free veneers consultation scheduled. Use the lead conversation context and do not restart awkwardly if this is an active thread.';
+        }
+
+        foreach ($candidates as $lead) {
+            $leadId = (int) ($lead['id'] ?? 0);
+            $leadName = trim((string) ($lead['full_name'] ?? 'Lead #' . $leadId));
+            if ($leadId <= 0) {
+                continue;
+            }
+
+            if (trim((string) ($lead['phone'] ?? '')) === '') {
+                $skipped[] = $leadName . ' - no phone number.';
+                continue;
+            }
+            if (trim((string) ($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
+                $skipped[] = $leadName . ' - opted out of SMS.';
+                continue;
+            }
+
+            $draft = elite_ai_prepare_action_draft($user, [
+                'assistant_action' => 'draft_sms',
+                'lead_id' => $leadId,
+                'instruction' => $instruction,
+                'prompt' => 'Bulk stage follow-up: ' . $prompt,
+                'context' => $context,
+            ], $surface);
+
+            if (empty($draft['ok'])) {
+                $skipped[] = $leadName . ' - ' . trim((string) ($draft['message'] ?? 'draft failed.'));
+                continue;
+            }
+
+            $preview = trim((string) ($draft['draft_preview'] ?? ''));
+            $created[] = [
+                'lead_id' => $leadId,
+                'lead_name' => $leadName,
+                'action_id' => (int) ($draft['action_id'] ?? 0),
+                'preview' => $preview,
+            ];
+            if ((int) ($draft['action_id'] ?? 0) > 0) {
+                $actions[] = [
+                    'type' => 'use_draft',
+                    'label' => 'Review ' . $leadName,
+                    'lead_id' => $leadId,
+                    'action_id' => (int) ($draft['action_id'] ?? 0),
+                    'help' => 'Load this SMS draft into the composer for approval.',
+                ];
+            }
+        }
+
+        $items = [];
+        foreach ($created as $row) {
+            $line = trim((string) ($row['lead_name'] ?? 'Lead')) . ' (#' . (int) ($row['lead_id'] ?? 0) . ')';
+            $preview = trim((string) ($row['preview'] ?? ''));
+            if ($preview !== '') {
+                $line .= ' - ' . mb_substr($preview, 0, 220);
+            }
+            $items[] = $line;
+        }
+        foreach ($skipped as $line) {
+            $items[] = 'Skipped: ' . $line;
+        }
+
+        return [
+            'answer' => count($created) > 0
+                ? 'I prepared ' . count($created) . ' in-context SMS draft' . (count($created) === 1 ? '' : 's') . ' for ' . elite_ai_stage_label($stage) . '. Nothing was sent yet; they are queued for review and approval.'
+                : 'I found the leads, but I could not prepare any SMS drafts. Nothing was sent.',
+            'cards' => $items ? [[
+                'title' => 'Prepared follow-up drafts',
+                'items' => $items,
+            ]] : [],
+            'actions' => $actions,
+            'tools_used' => ['task_router', 'stage_context', 'stage_message_review', 'lead.draft_sms'],
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_shorten_patient_quote')) {
     function elite_ai_shorten_patient_quote(string $text, int $limit = 180): string
     {
@@ -3959,6 +4095,40 @@ function elite_ai_handle_request(array $user, array $request): array
                     'tool_capabilities' => elite_ai_tool_capabilities($surface),
                     'lead_id' => $internalLeadId,
                     'current_subject' => elite_ai_current_subject_payload($internalLeadId),
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
+        }
+
+        if ($quickAction === '' && $prompt !== '') {
+            $bulkTaskPayload = elite_ai_stage_bulk_follow_up_payload($user, $prompt, $context, $surface);
+            if ($bulkTaskPayload !== null) {
+                $bulkTaskPayload = elite_ai_plain_text_payload($bulkTaskPayload);
+                $summary = trim((string) ($bulkTaskPayload['answer'] ?? 'CRM task prepared.'));
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    (array) ($bulkTaskPayload['tools_used'] ?? []),
+                    $summary,
+                    null,
+                    $context
+                );
+
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+                    'cards' => array_values((array) ($bulkTaskPayload['cards'] ?? [])),
+                    'actions' => array_values((array) ($bulkTaskPayload['actions'] ?? [])),
+                    'tools_used' => array_values((array) ($bulkTaskPayload['tools_used'] ?? [])),
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => null,
+                    'current_subject' => [],
                     'context' => $context,
                     'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                     'learned_memory' => $learnedMemory,

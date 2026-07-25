@@ -177,6 +177,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             margin-bottom: 8px;
         }
         .pending-drafts {
+            display: none;
             border: 1px solid var(--line);
             border-radius: 14px;
             background: #fff;
@@ -1521,7 +1522,6 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 createMessage('assistant', assistantIntro, [], notificationActions);
                 input.placeholder = 'Tell me what to do with this notification...';
             }
-            refreshPendingDrafts();
         }());
     </script>
 </body>

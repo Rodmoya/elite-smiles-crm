@@ -174,6 +174,8 @@ if (!function_exists('codex_security_action_scopes')) {
             'mobile_notifications' => ['leads:read'],
             'elite_ai_audit_recent' => ['audit:read'],
             'assistant_prompt' => ['messages:draft'],
+            'elite_ai_pending_drafts' => ['messages:draft'],
+            'elite_ai_cancel_draft' => ['messages:draft'],
             'draft_email' => ['messages:draft'],
             'prepare_sms_followup' => ['messages:draft'],
             'create_lead' => ['leads:write'],

@@ -354,12 +354,14 @@ if (!function_exists('codex_api_capabilities')) {
                 'list_leads', 'inbox', 'get_lead', 'get_thread',
                 'find_lead', 'search_leads', 'find_duplicates',
                 'mobile_notifications', 'elite_ai_audit_recent', 'assistant_prompt',
+                'elite_ai_pending_drafts',
             ],
             'write_actions' => [
                 'create_lead', 'import_meta_leads', 'add_note',
                 'mark_notification_reviewed', 'update_lead', 'move_stage',
                 'prepare_sms_followup', 'draft_email', 'send_sms',
                 'send_email', 'send_internal_sms', 'merge_leads',
+                'elite_ai_cancel_draft',
             ],
             'approval_required' => [
                 'send_sms' => ['send_approved' => true],
@@ -501,6 +503,50 @@ if (!function_exists('codex_api_assistant_prompt')) {
             'assistant' => $result,
             'safety_note' => 'Patient-facing sends still require explicit send approval.',
         ]);
+    }
+}
+
+if (!function_exists('codex_api_elite_ai_pending_drafts')) {
+    function codex_api_elite_ai_pending_drafts(): void
+    {
+        $limit = (int) codex_api_value('limit', 12);
+        codex_api_response([
+            'ok' => true,
+            'pending_drafts' => function_exists('elite_ai_pending_drafts_for_user')
+                ? elite_ai_pending_drafts_for_user(['id' => 0, 'first_name' => 'Codex', 'last_name' => 'API'], $limit)
+                : [],
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_elite_ai_cancel_draft')) {
+    function codex_api_elite_ai_cancel_draft(): void
+    {
+        $actionId = (int) codex_api_value('action_id', codex_api_value('id', 0));
+        if ($actionId <= 0) {
+            codex_api_response(['ok' => false, 'message' => 'action_id is required.'], 422);
+        }
+
+        $user = ['id' => 0, 'first_name' => 'Codex', 'last_name' => 'API'];
+        $item = function_exists('elite_ai_load_action_item') ? elite_ai_load_action_item($user, $actionId) : null;
+        if (!$item) {
+            codex_api_response(['ok' => false, 'message' => 'Draft action not found.'], 404);
+        }
+        if (trim((string)($item['status'] ?? '')) !== 'pending_review') {
+            codex_api_response([
+                'ok' => true,
+                'message' => 'Draft was already not pending.',
+                'action_id' => $actionId,
+                'status' => trim((string)($item['status'] ?? '')),
+            ]);
+        }
+
+        $cancelled = function_exists('elite_ai_mark_action_status') && elite_ai_mark_action_status($actionId, 'cancelled');
+        codex_api_response([
+            'ok' => $cancelled,
+            'message' => $cancelled ? 'Draft cancelled.' : 'Draft could not be cancelled.',
+            'action_id' => $actionId,
+        ], $cancelled ? 200 : 500);
     }
 }
 
@@ -1810,6 +1856,10 @@ try {
         codex_api_assistant_prompt();
     }
 
+    if ($action === 'elite_ai_pending_drafts') {
+        codex_api_elite_ai_pending_drafts();
+    }
+
     if ($action === 'find_duplicates') {
         codex_api_response(['ok' => true, 'duplicate_groups' => codex_api_duplicate_groups()]);
     }
@@ -1866,6 +1916,10 @@ try {
 
     if ($action === 'follow_up_lead' || $action === 'operator_follow_up') {
         codex_api_follow_up_lead();
+    }
+
+    if ($action === 'elite_ai_cancel_draft') {
+        codex_api_elite_ai_cancel_draft();
     }
 
     if ($action === 'create_lead') {

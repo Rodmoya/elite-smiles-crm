@@ -1765,6 +1765,11 @@ if (!function_exists('elite_ai_prompt_requests_bulk_stage_follow_up')) {
             return false;
         }
 
+        if (preg_match('/^\s*(?:does|do|did|should|would|could|can|is|are|which|who|any)\b/i', $normalized)
+            && preg_match('/\b(?:need|needs|due|should)\b.*\b(?:message|text|sms|follow(?:-|\s*)up|today)\b/i', $normalized)) {
+            return false;
+        }
+
         if (!preg_match('/\b(?:follow(?:-|\s*)up|send|text|sms|message|draft|prepare|write|answer|reply)\b/i', $normalized)) {
             return false;
         }

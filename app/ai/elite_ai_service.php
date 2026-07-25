@@ -296,6 +296,203 @@ if (!function_exists('elite_ai_pending_draft_command')) {
     }
 }
 
+if (!function_exists('elite_ai_prompt_requests_send_pending_drafts')) {
+    function elite_ai_prompt_requests_send_pending_drafts(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(?:send|dispatch|deliver)\s+(?:them|those|these|all|all\s+of\s+them|the\s+drafts?|the\s+messages?)\b|\b(?:send|dispatch|deliver)\s+(?:all|the|these|those)\s+(?:sms|texts?|messages?|drafts?)\b/i', $normalized);
+    }
+}
+
+if (!function_exists('elite_ai_send_sms_draft_item')) {
+    function elite_ai_send_sms_draft_item(array $user, array $draft): array
+    {
+        $actionId = (int) ($draft['action_id'] ?? 0);
+        $leadId = (int) ($draft['lead_id'] ?? 0);
+        $payload = (array) ($draft['draft'] ?? []);
+        $message = trim((string) ($payload['reply'] ?? $payload['message'] ?? $payload['text'] ?? $payload['body'] ?? $draft['draft_preview'] ?? ''));
+        if ($actionId <= 0 || $leadId <= 0 || $message === '') {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => 'Draft is missing lead, queue id, or SMS body.'];
+        }
+
+        $lead = elite_ai_load_lead($leadId);
+        if (!$lead) {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => 'Lead not found.'];
+        }
+        if (trim((string) ($lead['phone'] ?? '')) === '') {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => 'Lead has no phone number.'];
+        }
+        if (trim((string) ($lead['sms_opt_status'] ?? 'unknown')) === 'opted_out') {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => 'Lead opted out of SMS.'];
+        }
+        if (!function_exists('elite_twilio_send_sms')) {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => 'SMS sender is unavailable.'];
+        }
+
+        $sendResult = elite_twilio_send_sms((string) ($lead['phone'] ?? ''), $message, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the Elite AI approved SMS draft. Open lead actions to retry manually.',
+            'original_body' => $message,
+        ]);
+        if (empty($sendResult['ok'])) {
+            return ['ok' => false, 'lead_id' => $leadId, 'action_id' => $actionId, 'message' => (string) ($sendResult['message'] ?? 'SMS failed.')];
+        }
+
+        $sentBody = (string) ($sendResult['body'] ?? $message);
+        $messageId = function_exists('lead_comm_insert_message') ? lead_comm_insert_message([
+            'lead_id' => $leadId,
+            'direction' => 'outbound',
+            'channel' => 'sms',
+            'from_number' => (string) ($sendResult['from'] ?? ''),
+            'to_number' => (string) ($sendResult['to'] ?? $lead['phone'] ?? ''),
+            'body' => $sentBody,
+            'twilio_message_sid' => (string) ($sendResult['twilio_sid'] ?? ''),
+            'twilio_status' => (string) ($sendResult['twilio_status'] ?? ''),
+            'is_read' => 1,
+        ]) : 0;
+
+        if (function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity($leadId, 'sms_outbound', 'Elite AI sent approved SMS draft.', [
+                'message_id' => $messageId,
+                'action_id' => $actionId,
+                'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+                'source' => 'elite_ai_pending_draft',
+            ], trim((string) ($user['first_name'] ?? 'Elite AI')));
+        }
+        if (function_exists('lead_comm_update_rollup')) {
+            lead_comm_update_rollup($leadId);
+        }
+        if (function_exists('lead_comm_clear_follow_up_attention')) {
+            lead_comm_clear_follow_up_attention($leadId);
+        }
+        if (function_exists('lead_ai_create_outbound_note')) {
+            lead_ai_create_outbound_note($leadId, 'sms', '', $sentBody, [
+                'message_id' => $messageId,
+                'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+                'sent_at' => date('Y-m-d H:i:s'),
+                'created_by' => trim((string) ($user['first_name'] ?? 'Elite AI')),
+                'source' => 'elite_ai_pending_draft',
+            ]);
+        }
+        elite_ai_mark_action_status($actionId, 'completed');
+
+        return [
+            'ok' => true,
+            'lead_id' => $leadId,
+            'action_id' => $actionId,
+            'lead_name' => trim((string) ($lead['full_name'] ?? 'Lead #' . $leadId)),
+            'message' => 'SMS sent.',
+            'twilio_sid' => (string) ($sendResult['twilio_sid'] ?? ''),
+        ];
+    }
+}
+
+if (!function_exists('elite_ai_send_pending_drafts_payload')) {
+    function elite_ai_send_pending_drafts_payload(array $user, array $context, string $prompt, string $surface): ?array
+    {
+        if (!elite_ai_prompt_requests_send_pending_drafts($prompt)) {
+            return null;
+        }
+
+        $pending = function_exists('elite_ai_pending_drafts_for_user') ? elite_ai_pending_drafts_for_user($user, 12) : [];
+        $pending = array_values(array_filter($pending, static fn(array $draft): bool => (string) ($draft['action_type'] ?? '') === 'draft_sms'));
+        if (!$pending) {
+            return [
+                'answer' => 'I do not see pending SMS drafts to send. Ask me to prepare the drafts first.',
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context'],
+            ];
+        }
+
+        $threadText = '';
+        foreach (array_reverse((array) ($context['assistant_thread'] ?? [])) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $role = strtolower(trim((string) ($item['role'] ?? 'assistant')));
+            $text = trim((string) ($item['text'] ?? ''));
+            if ($role === 'assistant' && $text !== '' && stripos($text, 'prepared') !== false && stripos($text, 'draft') !== false) {
+                $threadText = strtolower($text);
+                break;
+            }
+        }
+        if ($threadText !== '') {
+            $pending = array_values(array_filter($pending, static function (array $draft) use ($threadText): bool {
+                $name = strtolower(trim((string) ($draft['lead_name'] ?? '')));
+                return $name !== '' && str_contains($threadText, $name);
+            }));
+        } elseif (count($pending) > 1) {
+            return [
+                'answer' => 'I found more than one pending SMS draft, but I cannot tell which group you mean. Tell me the lead name, queue number, or ask me to prepare the group again.',
+                'cards' => [[
+                    'title' => 'Pending SMS drafts',
+                    'items' => array_map(static fn(array $draft): string => trim((string) ($draft['lead_name'] ?? 'Lead')) . ' - queue #' . (int) ($draft['action_id'] ?? 0), $pending),
+                ]],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context', 'needs_clarification'],
+            ];
+        }
+
+        if (!$pending) {
+            return [
+                'answer' => 'I found the previous prepared-draft message, but I do not see matching pending drafts anymore. They may already be used, cancelled, or sent.',
+                'cards' => [],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context'],
+            ];
+        }
+
+        if (!elite_ai_prompt_requests_send_pending_drafts($prompt)) {
+            return [
+                'answer' => 'I found pending drafts, but I need explicit approval before sending patient-facing SMS.',
+                'cards' => [[
+                    'title' => 'Pending SMS drafts',
+                    'items' => array_map(static fn(array $draft): string => trim((string) ($draft['lead_name'] ?? 'Lead')) . ' - queue #' . (int) ($draft['action_id'] ?? 0), $pending),
+                ]],
+                'actions' => [],
+                'tools_used' => ['pending_draft_context', 'send_blocked'],
+            ];
+        }
+
+        $sent = [];
+        $failed = [];
+        foreach ($pending as $draft) {
+            $result = elite_ai_send_sms_draft_item($user, $draft);
+            if (!empty($result['ok'])) {
+                $sent[] = $result;
+            } else {
+                $failed[] = trim((string) ($draft['lead_name'] ?? 'Lead #' . (int) ($draft['lead_id'] ?? 0))) . ' - ' . trim((string) ($result['message'] ?? 'failed'));
+            }
+        }
+
+        $items = [];
+        foreach ($sent as $row) {
+            $items[] = trim((string) ($row['lead_name'] ?? 'Lead #' . (int) ($row['lead_id'] ?? 0))) . ' - sent.';
+        }
+        foreach ($failed as $line) {
+            $items[] = 'Failed: ' . $line;
+        }
+
+        return [
+            'answer' => 'Sent ' . count($sent) . ' approved SMS draft' . (count($sent) === 1 ? '' : 's') . ($failed ? '; ' . count($failed) . ' failed.' : '.'),
+            'cards' => $items ? [[
+                'title' => 'SMS send results',
+                'items' => $items,
+            ]] : [],
+            'actions' => [],
+            'tools_used' => ['pending_draft_context', 'lead.sms_send', 'lead_messages'],
+            'pending_drafts' => elite_ai_pending_drafts_for_user($user, 8),
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_select_pending_draft')) {
     function elite_ai_select_pending_draft(array $pending, int $leadId, string $prompt): ?array
     {
@@ -3980,6 +4177,40 @@ function elite_ai_handle_request(array $user, array $request): array
                 'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
                 'learned_memory' => $learnedMemory,
             ];
+        }
+
+        if ($quickAction === '' && $prompt !== '') {
+            $sendPendingPayload = elite_ai_send_pending_drafts_payload($user, $context, $prompt, $surface);
+            if ($sendPendingPayload !== null) {
+                $sendPendingPayload = elite_ai_plain_text_payload($sendPendingPayload);
+                $summary = trim((string) ($sendPendingPayload['answer'] ?? 'Pending draft send task completed.'));
+                elite_ai_log_interaction(
+                    $user,
+                    $surface,
+                    $prompt,
+                    (array) ($sendPendingPayload['tools_used'] ?? []),
+                    $summary,
+                    null,
+                    $context
+                );
+
+                return [
+                    'ok' => true,
+                    'surface' => $surface,
+                    'answer' => $summary,
+                    'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'pending_drafts' => array_values((array) ($sendPendingPayload['pending_drafts'] ?? elite_ai_pending_drafts_for_user($user, 8))),
+                    'cards' => array_values((array) ($sendPendingPayload['cards'] ?? [])),
+                    'actions' => array_values((array) ($sendPendingPayload['actions'] ?? [])),
+                    'tools_used' => array_values((array) ($sendPendingPayload['tools_used'] ?? [])),
+                    'tool_capabilities' => elite_ai_tool_capabilities($surface),
+                    'lead_id' => null,
+                    'current_subject' => [],
+                    'context' => $context,
+                    'knowledge_rules' => elite_ai_knowledge_base()['locked_rules'],
+                    'learned_memory' => $learnedMemory,
+                ];
+            }
         }
 
         if ($quickAction === '' && elite_ai_prompt_requests_pending_draft_review($prompt)) {

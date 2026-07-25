@@ -133,9 +133,10 @@ if (!function_exists('lead_ai_system_prompt')) {
             'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
             'Only avoid the greeting when the thread is active and clearly a live conversation.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
-            'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
+            'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
+            'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
-            'Scheduling: if the patient wants to schedule, ask for date of birth and preferred day/time unless those are already known. If a specific time is confirmed by the office context, confirm it clearly.',
+            'Scheduling: the consultation is complimentary/free. If the patient shows interest, ask whether mornings or afternoons are easier, then ask for date of birth and preferred day/time unless those are already known. If a specific time is confirmed by the office context, confirm it clearly.',
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
@@ -182,9 +183,10 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Only avoid the greeting when the thread is active and clearly a live conversation.',
             'Email format: concise subject, plain-text body, short paragraphs, signed "The Elite Smiles Team" with no phone number.',
             'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
-            'Pricing: never give exact pricing without an exam. Explain that each case is evaluated personally and the free consultation reviews options, pricing, and financing case by case.',
+            'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
+            'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Invite clinical questions to be reviewed with Dr. Meden.',
-            'Scheduling: if the patient wants to schedule, ask whether mornings or afternoons work better. If the office context already includes a specific confirmed time, confirm it clearly.',
+            'Scheduling: the consultation is complimentary/free. If the patient shows interest, ask whether mornings or afternoons work better. If the office context already includes a specific confirmed time, confirm it clearly.',
             'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
@@ -1032,12 +1034,12 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
         $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
         if ($prefersSpanish) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos sobre tu consulta de sonrisa. Ofrecemos una consulta gratis con Dr. Meden para revisar opciones y financiamiento. Que dia/hora te funciona mejor? Responde STOP para cancelar.';
+            return $greeting . ' soy Rod de Elite Smiles. Vi tu solicitud sobre opciones para tu sonrisa. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres ver que es posible? Responde STOP para cancelar.';
         }
 
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
 
-        return $greeting . ' this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. We offer a complimentary consultation with Dr. Meden to review options and financing. What day/time works best for you? Reply STOP to opt out.';
+        return $greeting . ' this is Rod with Elite Smiles. I saw your request about veneers/smile options. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible? Reply STOP to opt out.';
     }
 }
 
@@ -1132,6 +1134,29 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
             'created_by' => 'System',
             'source' => 'new_lead_auto_first_touch',
         ]);
+
+        try {
+            $updates = ['updated_at = :updated_at'];
+            $params = [
+                'id' => $leadId,
+                'updated_at' => now(),
+            ];
+            if (function_exists('leads_has_column') && leads_has_column('next_follow_up_at')) {
+                $updates[] = 'next_follow_up_at = :next_follow_up_at';
+                $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+20 minutes'));
+            }
+            if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+                $updates[] = "follow_up_status = 'ok'";
+            }
+            db_execute('UPDATE leads SET ' . implode(', ', $updates) . ' WHERE id = :id LIMIT 1', $params);
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('openai', 'Could not schedule first-touch SMS follow-up.', [
+                    'lead_id' => $leadId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if (function_exists('esm_log')) {
             esm_log('openai', 'New lead first-touch SMS sent.', [

@@ -196,8 +196,8 @@ if (!function_exists('lead_email_default_first_touch')) {
                 'body' => implode("\n\n", [
                     $greeting,
                     $serviceLine,
-                    'La consulta con Dr. Meden es gratis. Nos da la oportunidad de evaluar tu caso, revisar tus opciones y hablar sobre precio y financiamiento segun lo que realmente necesitas. Puede haber opciones al 0% para pacientes calificados.',
-                    'Te funciona mejor venir en la manana o en la tarde?',
+                    'Cada sonrisa se planifica de forma personalizada. Dr. Meden revisa tus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan generico.',
+                    'La consulta es gratis y sin presion. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres ver que es posible?',
                     "Con gusto,\nEl equipo de Elite Smiles",
                 ]),
             ];
@@ -214,8 +214,8 @@ if (!function_exists('lead_email_default_first_touch')) {
             'body' => implode("\n\n", [
                 $greeting,
                 $serviceLine,
-                'The consultation with Dr. Meden is free. It gives us a chance to evaluate your case, review your options, and go over pricing and financing based on what you actually need. 0% interest may be available for qualified patients.',
-                'Would mornings or afternoons usually work better for you to come in?',
+                'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
+                'The consultation is complimentary and low pressure. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible?',
                 "Warmly,\nThe Elite Smiles Team",
             ]),
         ];
@@ -841,6 +841,30 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                 'lead_id' => $leadId,
                 'message' => $result['message'] ?? '',
             ]);
+        } else {
+            try {
+                $updates = ['updated_at = :updated_at'];
+                $params = [
+                    'id' => $leadId,
+                    'updated_at' => now(),
+                ];
+                if (lead_email_column_exists('leads', 'next_follow_up_at')) {
+                    $currentFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+                    if ($currentFollowUp === '') {
+                        $updates[] = 'next_follow_up_at = :next_follow_up_at';
+                        $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+1 day'));
+                    }
+                }
+                if (lead_email_column_exists('leads', 'follow_up_status')) {
+                    $updates[] = "follow_up_status = 'ok'";
+                }
+                db_execute('UPDATE leads SET ' . implode(', ', $updates) . ' WHERE id = :id LIMIT 1', $params);
+            } catch (Throwable $e) {
+                esm_log('lead_email', 'Could not schedule first-touch email follow-up.', [
+                    'lead_id' => $leadId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return [

@@ -14,27 +14,27 @@ if (!function_exists('lead_playbook_sms_templates')) {
         return [
             'first_follow_up' => [
                 'label' => 'First Follow-Up',
-                'body' => 'Hi {first_name}, this is Rod Moya with Elite Smiles. I wanted to personally follow up on your dental implant consultation request. The consultation with Dr. Meden is free, and it gives us a chance to evaluate your case properly, review your options, and go over pricing and financing based on what you actually need. We may also have 0% interest options available for qualified patients. Would mornings or afternoons usually work better for you to come in?',
+                'body' => 'Hi {first_name}, this is Rod with Elite Smiles. I saw your request about veneers/smile options. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible? Reply STOP to opt out.',
             ],
             'price_objection' => [
                 'label' => 'Price Question',
-                'body' => 'Hi {first_name}, I completely understand wanting to know the cost before coming in. Unfortunately, we cannot give an accurate price without an exam because every patient and every case is different. We do not do cookie-cutter implant work at Elite Smiles. Dr. Meden takes each case seriously and personally so he can recommend the right plan for you. The consultation is free, and we can review your options, pricing, and financing case by case. Would mornings or afternoons work better for you?',
+                'body' => 'Totally understand, {first_name}. Because every smile case is custom, Dr. Meden needs to see your teeth, bite, and goals before giving accurate options or pricing. The consultation is complimentary, and you will leave with a clearer idea of what actually makes sense for your smile. Would mornings or afternoons work better?',
             ],
             'scheduling_info' => [
                 'label' => 'Scheduling Info',
                 'body' => 'Perfect, {first_name}. I can help with that. To schedule your free consultation with Dr. Meden, what day and time usually work best for you? We will also need your date of birth for the appointment record.',
             ],
             'no_answer' => [
-                'label' => 'Called No Answer',
-                'body' => 'Hi {first_name}, this is Rod Moya with Elite Smiles. I just tried giving you a quick call about your free consultation request with Dr. Meden and missed you. No rush, but I would be happy to help you look at options and answer questions. Would mornings or afternoons usually work better for you?',
+                'label' => 'Active Follow-Up',
+                'body' => 'No pressure, {first_name}. Most people who reach out are just trying to understand what is possible. A complimentary consultation with Dr. Meden is the easiest way to get clear, custom options instead of guessing. Would morning or afternoon be easier?',
             ],
             'financing_concern' => [
                 'label' => 'Financing Concern',
-                'body' => 'Hi {first_name}, I completely understand wanting to know what financing may look like before making a decision. Every case is reviewed individually after Dr. Meden evaluates what you need, and we may have 0% interest options available for qualified patients. The consultation is free, so it is the best way to understand your actual options before committing to anything.',
+                'body' => 'That makes sense, {first_name}. Financing depends on the treatment plan, and the plan depends on what Dr. Meden sees clinically. The complimentary consultation is where we can review what fits your smile and what payment options may apply.',
             ],
             'not_ready_check_in' => [
                 'label' => 'Not Ready Check-In',
-                'body' => 'Hi {first_name}, this is Rod Moya with Elite Smiles. I wanted to check in and see if you are still considering dental implants or if your timing has changed. If you still have questions, I am happy to help you understand the consultation process and what Dr. Meden would review with you.',
+                'body' => 'Hi {first_name}, just checking in gently. If now is not the right time, that is completely okay. If you still want to understand what is possible for your smile, I can help set up the complimentary consultation with Dr. Meden. Reply STOP to opt out.',
             ],
             'appointment_confirmation' => [
                 'label' => 'Appointment Confirmation',

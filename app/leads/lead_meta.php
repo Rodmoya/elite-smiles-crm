@@ -310,6 +310,7 @@ if (!function_exists('lead_conversion_stage_labels')) {
         return [
             'new_lead' => 'New Lead',
             'first_touch_sent' => 'First Touch Sent',
+            'active_follow_up' => 'Active Follow-Up',
             'follow_up_needed' => 'Follow-Up Needed',
             'scheduling' => 'Scheduling',
             'consultation_booked' => 'Consultation Booked',
@@ -328,6 +329,7 @@ if (!function_exists('lead_conversion_stage_order')) {
         return [
             'new_lead',
             'first_touch_sent',
+            'active_follow_up',
             'follow_up_needed',
             'scheduling',
             'consultation_booked',
@@ -348,9 +350,9 @@ if (!function_exists('lead_conversion_stage_legacy_target')) {
         // migrate the schema and every webhook/API/cron path together.
         return match ($conversionStageKey) {
             'new_lead' => 'new_lead',
-            // Follow-Up Needed is time-sensitive and should recalculate as
+            // Active Follow-Up and Follow-Up Needed are time-sensitive and should recalculate as
             // replies, appointments, and last-touch timestamps change.
-            'first_touch_sent', 'follow_up_needed' => 'contacted',
+            'first_touch_sent', 'active_follow_up', 'follow_up_needed' => 'contacted',
             'scheduling' => 'in_contact',
             'no_show_reschedule' => 'no_show_reschedule',
             'consultation_booked' => 'consultation_booked',
@@ -371,6 +373,7 @@ if (!function_exists('lead_conversion_stage_badge_class')) {
         return match ($conversionStageKey) {
             'new_lead' => 'border-sky-200 bg-sky-50 text-sky-700',
             'first_touch_sent' => 'border-cyan-200 bg-cyan-50 text-cyan-700',
+            'active_follow_up' => 'border-blue-200 bg-blue-50 text-blue-700',
             'follow_up_needed' => 'border-amber-200 bg-amber-50 text-amber-800',
             'scheduling' => 'border-teal-200 bg-teal-50 text-teal-700',
             'consultation_booked' => 'border-purple-200 bg-purple-50 text-purple-700',
@@ -664,6 +667,11 @@ if (!function_exists('lead_conversion_stage_key')) {
             return 'follow_up_needed';
         }
         if (in_array($status, ['contacted', 'attempted_contact'], true)) {
+            $hasOutbound = trim((string)($lead['last_outbound_at'] ?? '')) !== '' || trim((string)($lead['last_contacted_at'] ?? '')) !== '';
+            $hasNextFollowUp = trim((string)($lead['next_follow_up_at'] ?? '')) !== '';
+            if ($hasOutbound && $hasNextFollowUp) {
+                return 'active_follow_up';
+            }
             return 'first_touch_sent';
         }
         return 'first_touch_sent';

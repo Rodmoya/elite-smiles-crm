@@ -43,7 +43,10 @@ if (!function_exists('social_studio_ensure_schema')) {
             'branded_image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN branded_image_storage_key VARCHAR(255) NULL AFTER image_storage_key",
             'image_generated_at' => "ALTER TABLE social_studio_drafts ADD COLUMN image_generated_at DATETIME NULL AFTER branded_image_storage_key",
         ] as $column => $sql) {
-            if (!db_one('SHOW COLUMNS FROM social_studio_drafts LIKE :column_name', ['column_name' => $column])) {
+            // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
+            // Quote the value through PDO, then keep the DDL itself fixed and controlled.
+            $quotedColumn = db()->quote($column);
+            if (!db_one("SHOW COLUMNS FROM social_studio_drafts LIKE {$quotedColumn}")) {
                 db_query($sql);
             }
         }

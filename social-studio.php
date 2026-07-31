@@ -194,6 +194,7 @@ function social_studio_badge_class(string $status): string
                                     <p class="mt-2 text-sm leading-6 text-slate-600"><?= e(str_limit((string)$draft['caption'], 170)) ?></p>
                                 </div>
                                 <div class="flex flex-wrap gap-2 sm:justify-end">
+                                    <button type="button" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" data-social-open data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-image="<?= e($draftImageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status] ?? $status) ?>">Open post</button>
                                     <form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" onsubmit="return confirm('Delete this draft? This cannot be undone.');">
                                         <?= csrf_input() ?>
                                         <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">
@@ -300,5 +301,38 @@ function social_studio_badge_class(string $status): string
             </aside>
         </section>
     </main>
+    <dialog id="social-post-modal" class="w-[min(94vw,520px)] rounded-[2rem] border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/50">
+        <div class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white">
+            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Post review</p><h2 id="social-modal-title" class="mt-1 text-lg font-semibold text-slate-900">Selected draft</h2></div>
+                <button type="button" data-social-close class="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Close post review">×</button>
+            </div>
+            <div class="p-5">
+                <div class="overflow-hidden rounded-2xl border border-slate-200">
+                    <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3"><div class="h-7 w-7 rounded-full bg-gradient-to-br from-slate-950 to-amber-300"></div><div class="text-xs font-semibold text-slate-900">elite.smiles.utah<span class="block text-[10px] font-normal text-slate-500">Elite Smiles</span></div><div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div></div>
+                    <img id="social-modal-image" class="aspect-[4/5] w-full bg-slate-100 object-cover" alt="">
+                    <div class="border-b border-slate-100 px-3 py-2 text-lg tracking-[0.35em] text-slate-900">♡　◌　➤ <span class="float-right tracking-normal">⌑</span></div>
+                    <div class="space-y-2 p-4"><span id="social-modal-status" class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Review</span><p id="social-modal-caption" class="text-sm leading-6 text-slate-700"></p></div>
+                </div>
+            </div>
+        </div>
+    </dialog>
+    <script>
+        const socialModal = document.getElementById('social-post-modal');
+        const socialModalTitle = document.getElementById('social-modal-title');
+        const socialModalCaption = document.getElementById('social-modal-caption');
+        const socialModalImage = document.getElementById('social-modal-image');
+        const socialModalStatus = document.getElementById('social-modal-status');
+        document.querySelectorAll('[data-social-open]').forEach((button) => button.addEventListener('click', () => {
+            socialModalTitle.textContent = button.dataset.title || 'Selected draft';
+            socialModalCaption.textContent = button.dataset.caption || '';
+            socialModalStatus.textContent = button.dataset.status || 'Review';
+            socialModalImage.src = button.dataset.image || '';
+            socialModalImage.alt = button.dataset.title || 'Social post image';
+            socialModal.showModal();
+        }));
+        document.querySelector('[data-social-close]')?.addEventListener('click', () => socialModal.close());
+        socialModal?.addEventListener('click', (event) => { if (event.target === socialModal) socialModal.close(); });
+    </script>
 </body>
 </html>

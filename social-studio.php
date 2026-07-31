@@ -231,8 +231,8 @@ function social_studio_badge_class(string $status): string
                     <?php if ($selected): ?>
                         <?php $selectedImageUrl = social_studio_image_url($selected); ?>
                         <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
-                            <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
-                                <div class="h-7 w-7 rounded-full bg-gradient-to-br from-slate-950 to-amber-300"></div>
+                                <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
+                                <img class="h-7 w-7 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles Instagram avatar">
                                 <div class="text-xs font-semibold text-slate-900">elite.smiles.utah<span class="block text-[10px] font-normal text-slate-500">Elite Smiles</span></div>
                                 <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
                             </div>
@@ -301,19 +301,13 @@ function social_studio_badge_class(string $status): string
             </aside>
         </section>
     </main>
-    <dialog id="social-post-modal" class="w-[min(94vw,520px)] rounded-[2rem] border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/50">
-        <div class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white">
-            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Post review</p><h2 id="social-modal-title" class="mt-1 text-lg font-semibold text-slate-900">Selected draft</h2></div>
-                <button type="button" data-social-close class="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Close post review">×</button>
-            </div>
-            <div class="p-5">
-                <div class="overflow-hidden rounded-2xl border border-slate-200">
-                    <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3"><div class="h-7 w-7 rounded-full bg-gradient-to-br from-slate-950 to-amber-300"></div><div class="text-xs font-semibold text-slate-900">elite.smiles.utah<span class="block text-[10px] font-normal text-slate-500">Elite Smiles</span></div><div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div></div>
-                    <img id="social-modal-image" class="aspect-[4/5] w-full bg-slate-100 object-cover" alt="">
-                    <div class="border-b border-slate-100 px-3 py-2 text-lg tracking-[0.35em] text-slate-900">♡　◌　➤ <span class="float-right tracking-normal">⌑</span></div>
-                    <div class="space-y-2 p-4"><span id="social-modal-status" class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Review</span><p id="social-modal-caption" class="text-sm leading-6 text-slate-700"></p></div>
-                </div>
+    <dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-[1.5rem] border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
+        <div class="grid max-h-[92vh] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white lg:grid-cols-[minmax(0,1.18fr)_minmax(360px,.82fr)]">
+            <div class="flex min-h-[420px] items-center justify-center bg-slate-950 p-4 lg:min-h-[760px] lg:p-0"><img id="social-modal-image" class="max-h-[86vh] w-full object-contain" alt=""></div>
+            <div class="flex min-h-0 flex-col bg-white">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div class="flex items-center gap-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles Instagram avatar"><div><p class="text-sm font-semibold text-slate-900">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div></div><div class="flex items-center gap-3"><span id="social-modal-status" class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Review</span><button type="button" data-social-close class="text-2xl leading-none text-slate-500 hover:text-slate-900" aria-label="Close post review">×</button></div></div>
+                <div class="min-h-0 flex-1 overflow-y-auto p-5"><p id="social-modal-caption" class="whitespace-pre-line text-sm leading-6 text-slate-700"></p><p class="mt-5 text-xs text-slate-400">8w</p></div>
+                <div class="border-t border-slate-100 px-5 py-4"><div class="mb-4 flex items-center gap-5 text-2xl text-slate-900">♡　◌　➤ <span class="ml-auto">⌑</span></div><p class="text-xs font-semibold text-slate-900">128 likes</p><button type="button" class="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700" data-social-close>Close preview</button></div>
             </div>
         </div>
     </dialog>

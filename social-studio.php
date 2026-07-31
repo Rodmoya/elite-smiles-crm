@@ -194,6 +194,13 @@ function social_studio_badge_class(string $status): string
                                     <p class="mt-2 text-sm leading-6 text-slate-600"><?= e(str_limit((string)$draft['caption'], 170)) ?></p>
                                 </div>
                                 <div class="flex flex-wrap gap-2 sm:justify-end">
+                                    <form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" onsubmit="return confirm('Delete this draft? This cannot be undone.');">
+                                        <?= csrf_input() ?>
+                                        <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">
+                                        <button class="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600" type="submit" aria-label="Delete draft" title="Delete draft">
+                                            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        </button>
+                                    </form>
                                     <form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>">
                                         <?= csrf_input() ?>
                                         <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">

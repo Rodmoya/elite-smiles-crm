@@ -182,7 +182,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the social media strategist for Elite Smiles by Walter Meden DDS. Write concise, premium, compliant dental marketing posts. Avoid guaranteed outcomes, hype, fake patient claims, and medical overpromising. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a clean visual with no text, no logo, no watermark, and room for CRM branding. Instruction: " . ($instruction !== '' ? $instruction : 'Generate conversion-focused consult posts.');
+        $user = "Create {$count} draft social posts for {$focus}. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a clean visual with no text, no logo, no watermark, and no added branding. Instruction: " . ($instruction !== '' ? $instruction : 'Generate conversion-focused consult posts.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts');
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);
@@ -241,7 +241,7 @@ if (!function_exists('social_studio_fallback_caption')) {
 if (!function_exists('social_studio_fallback_image_prompt')) {
     function social_studio_fallback_image_prompt(string $focus, string $title): string
     {
-        return 'Premium dental social media image for "' . $title . '". Realistic cosmetic dentistry or lifestyle setting, bright natural smile, elegant black white and warm gold brand feel, clean negative space for CRM logo placement. No readable text, no logo, no watermark, no typography, no distorted teeth.';
+        return 'Premium dental social media image for "' . $title . '". Realistic cosmetic dentistry or lifestyle setting, bright natural smile, elegant black white and warm gold visual feel. No readable text, no logo, no watermark, no typography, no added branding, no distorted teeth.';
     }
 }
 
@@ -395,7 +395,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
                 ],
                 'required' => ['prompt'],
             ];
-            $system = 'You write image generation prompts for premium dental social media. The CRM will add the Elite Smiles logo later, so do not ask the image model to render logos, words, captions, text, watermarks, badges, or typography. ' . social_studio_editorial_context();
+            $system = 'You write image generation prompts for premium dental social media. Images must remain unbranded; do not ask the image model or CRM to render logos, words, captions, text, watermarks, badges, or typography. ' . social_studio_editorial_context();
             $user = "Create one precise Nano Banana image prompt.\nTitle: {$title}\nFocus: {$focus}\nCaption: {$caption}\nExisting visual direction: {$basePrompt}\nRules: no text in image, no logo, no watermarks, premium cosmetic dentistry, realistic clean image, bright attractive smile where relevant, no distorted teeth or extra teeth, suitable for Facebook/Instagram feed.";
             $response = elite_openai_json_response($system, $user, $schema, 'social_image_prompt');
             if (!empty($response['ok']) && is_string($response['data']['prompt'] ?? null)) {
@@ -406,7 +406,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
             }
         }
 
-        return trim($basePrompt . "\n\nCreate a premium Elite Smiles social media image for: {$title}. Focus: {$focus}. No readable text, no logo, no watermark, no typography. Clean cosmetic dentistry or lifestyle look, realistic smile, elegant black/white/warm gold feel, suitable for Instagram and Facebook feed, with negative space for CRM logo placement.");
+        return trim($basePrompt . "\n\nCreate a premium dental social media image for: {$title}. Focus: {$focus}. No readable text, no logo, no watermark, no typography, no added branding. Clean cosmetic dentistry or lifestyle look, realistic smile, elegant black/white/warm gold feel, suitable for Instagram and Facebook feed.");
     }
 }
 
@@ -531,36 +531,9 @@ if (!function_exists('social_studio_can_raster_brand_images')) {
 if (!function_exists('social_studio_create_branded_image')) {
     function social_studio_create_branded_image(string $sourcePath, string $targetPath): bool
     {
-        if (class_exists('Imagick')) {
-            try {
-                $image = new Imagick($sourcePath);
-                $image->setImageFormat('png');
-                $width = $image->getImageWidth();
-                $height = $image->getImageHeight();
-                $logoPath = ROOT_PATH . '/assets/img/ES-Logo-Stack-500-x-150-px.png';
-                if (is_file($logoPath)) {
-                    $logo = new Imagick($logoPath);
-                    $targetLogoWidth = max(180, (int)round($width * 0.24));
-                    $logo->resizeImage($targetLogoWidth, 0, Imagick::FILTER_LANCZOS, 1);
-                    $boxPaddingX = max(18, (int)round($width * 0.025));
-                    $boxPaddingY = max(14, (int)round($width * 0.016));
-                    $boxW = $logo->getImageWidth() + ($boxPaddingX * 2);
-                    $boxH = $logo->getImageHeight() + ($boxPaddingY * 2);
-                    $boxX = $width - $boxW - max(28, (int)round($width * 0.035));
-                    $boxY = $height - $boxH - max(28, (int)round($width * 0.035));
-                    $draw = new ImagickDraw();
-                    $draw->setFillColor(new ImagickPixel('rgba(255,255,255,0.9)'));
-                    $draw->rectangle($boxX, $boxY, $boxX + $boxW, $boxY + $boxH);
-                    $image->drawImage($draw);
-                    $image->compositeImage($logo, Imagick::COMPOSITE_OVER, $boxX + $boxPaddingX, $boxY + $boxPaddingY);
-                    $logo->clear();
-                }
-                $ok = $image->writeImage($targetPath);
-                $image->clear();
-                return $ok;
-            } catch (Throwable $e) {
-                esm_log('social_studio', 'Imagick branding failed.', ['message' => $e->getMessage()]);
-            }
+        // Preserve the generated image exactly; social creatives must remain unbranded.
+        if (@copy($sourcePath, $targetPath)) {
+            return true;
         }
 
         if (!function_exists('imagecreatefromstring')) {
@@ -580,44 +553,7 @@ if (!function_exists('social_studio_create_branded_image')) {
         $width = imagesx($source);
         $height = imagesy($source);
 
-        $logoPath = ROOT_PATH . '/assets/img/ES-Logo-Stack-500-x-150-px.png';
-        $logo = is_file($logoPath) ? @imagecreatefrompng($logoPath) : false;
-        if (!$logo) {
-            imagepng($source, $targetPath, 6);
-            imagedestroy($source);
-            return true;
-        }
-        imagepalettetotruecolor($logo);
-        imagealphablending($logo, true);
-        imagesavealpha($logo, true);
-
-        $targetLogoWidth = max(180, (int)round($width * 0.24));
-        $logoRatio = imagesy($logo) > 0 ? imagesx($logo) / imagesy($logo) : 3.33;
-        $targetLogoHeight = max(54, (int)round($targetLogoWidth / $logoRatio));
-        $padding = max(28, (int)round($width * 0.035));
-        $boxPaddingX = (int)round($padding * 0.7);
-        $boxPaddingY = (int)round($padding * 0.45);
-        $boxW = $targetLogoWidth + ($boxPaddingX * 2);
-        $boxH = $targetLogoHeight + ($boxPaddingY * 2);
-        $boxX = $width - $boxW - $padding;
-        $boxY = $height - $boxH - $padding;
-        $white = imagecolorallocatealpha($source, 255, 255, 255, 14);
-        imagefilledrectangle($source, $boxX, $boxY, $boxX + $boxW, $boxY + $boxH, $white);
-        imagecopyresampled(
-            $source,
-            $logo,
-            $boxX + $boxPaddingX,
-            $boxY + $boxPaddingY,
-            0,
-            0,
-            $targetLogoWidth,
-            $targetLogoHeight,
-            imagesx($logo),
-            imagesy($logo)
-        );
-
         $ok = imagepng($source, $targetPath, 6);
-        imagedestroy($logo);
         imagedestroy($source);
         return $ok;
     }
@@ -637,33 +573,33 @@ if (!function_exists('social_studio_create_branded_svg')) {
         $size = @getimagesize($sourcePath);
         $width = is_array($size) && !empty($size[0]) ? (int)$size[0] : 1080;
         $height = is_array($size) && !empty($size[1]) ? (int)$size[1] : 1080;
-        $logoPath = ROOT_PATH . '/assets/img/ES-Logo-Stack-500-x-150-px.png';
-        $logoBytes = is_file($logoPath) ? @file_get_contents($logoPath) : '';
-        $logoData = is_string($logoBytes) && $logoBytes !== '' ? 'data:image/png;base64,' . base64_encode($logoBytes) : '';
-        $logoW = max(180, (int)round($width * 0.24));
-        $logoH = (int)round($logoW / 3.33);
-        $pad = max(28, (int)round($width * 0.035));
-        $boxPadX = max(18, (int)round($width * 0.025));
-        $boxPadY = max(14, (int)round($width * 0.016));
-        $boxW = $logoW + ($boxPadX * 2);
-        $boxH = $logoH + ($boxPadY * 2);
-        $boxX = $width - $boxW - $pad;
-        $boxY = $height - $boxH - $pad;
         $sourceData = 'data:' . $sourceMime . ';base64,' . base64_encode($sourceBytes);
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
-            . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/>'
-            . '<rect x="' . $boxX . '" y="' . $boxY . '" width="' . $boxW . '" height="' . $boxH . '" rx="0" fill="rgba(255,255,255,.9)"/>';
-        if ($logoData !== '') {
-            $svg .= '<image href="' . $logoData . '" x="' . ($boxX + $boxPadX) . '" y="' . ($boxY + $boxPadY) . '" width="' . $logoW . '" height="' . $logoH . '" preserveAspectRatio="xMidYMid meet"/>';
-        } else {
-            $svg .= '<text x="' . ($boxX + $boxPadX) . '" y="' . ($boxY + $boxPadY + 34) . '" fill="#020617" font-family="Arial, sans-serif" font-size="28" font-weight="700">Elite Smiles</text>';
-        }
-        $svg .= '</svg>';
+            . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/></svg>';
         return @file_put_contents($targetPath, $svg) !== false;
     }
 }
 
 if (!function_exists('social_studio_update_status')) {
+    function social_studio_delete_draft(int $draftId): bool
+    {
+        social_studio_ensure_schema();
+        if ($draftId <= 0) {
+            return false;
+        }
+        $draft = db_one('SELECT image_storage_key, branded_image_storage_key FROM social_studio_drafts WHERE id = :id LIMIT 1', ['id' => $draftId]);
+        if (!$draft) {
+            return false;
+        }
+        foreach (['image_storage_key', 'branded_image_storage_key'] as $key) {
+            $path = social_studio_safe_storage_path((string)($draft[$key] ?? ''));
+            if ($path !== '' && is_file($path)) {
+                @unlink($path);
+            }
+        }
+        return db_query('DELETE FROM social_studio_drafts WHERE id = :id', ['id' => $draftId])->rowCount() > 0;
+    }
+
     function social_studio_update_status(int $draftId, string $status, int $userId = 0): bool
     {
         social_studio_ensure_schema();

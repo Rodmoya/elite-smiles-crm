@@ -82,7 +82,7 @@ if (!function_exists('social_studio_default_hashtags')) {
 if (!function_exists('social_studio_editorial_context')) {
     function social_studio_editorial_context(): string
     {
-        return 'Elite Smiles by Walter Meden DDS is a premium cosmetic dentistry practice in Draper, Utah. Editorial line: warm, sincere, premium, confidence-led, and consultation-focused. Lead with how a natural-looking smile affects photos, conversations, weddings, work, and self-confidence. Use short paragraphs, simple benefit bullets, a clear complimentary-consultation CTA, and Draper, Utah location context. Mention flexible or 0% financing only when useful and always for qualified patients. Avoid guaranteed outcomes, fake patient claims, heavy jargon, and aggressive price-first copy.';
+        return 'Elite Smiles by Walter Meden DDS is a premium cosmetic dentistry practice in Draper, Utah. Editorial line: warm, sincere, premium, confidence-led, and consultation-focused. Lead with how a natural-looking smile affects photos, conversations, weddings, work, and self-confidence. Use short paragraphs, simple benefit bullets, a clear complimentary-consultation CTA, and Draper, Utah location context. Mention flexible or 0% financing only when useful and always for qualified patients. Avoid guaranteed outcomes, fake patient claims, heavy jargon, and aggressive price-first copy. Visual editorial line learned from the existing Instagram direction: clean, bright, natural-looking smiles; real human moments over clinical stock imagery; warm neutral whites with restrained charcoal and champagne-gold accents; soft daylight, premium but approachable styling, close human framing, generous breathing room, and realistic dental anatomy. Prefer one clear subject and one visual idea per post. Avoid logos, brand marks, watermarks, text baked into images, loud gradients, neon colors, overly perfect artificial teeth, exaggerated whitening, split-screen collages, cluttered props, and generic dental instruments unless the post is specifically educational.';
     }
 }
 
@@ -406,7 +406,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
             }
         }
 
-        return trim($basePrompt . "\n\nCreate a premium dental social media image for: {$title}. Focus: {$focus}. No readable text, no logo, no watermark, no typography, no added branding. Clean cosmetic dentistry or lifestyle look, realistic smile, elegant black/white/warm gold feel, suitable for Instagram and Facebook feed.");
+        return trim($basePrompt . "\n\nCreate a premium dental social media image for: {$title}. Focus: {$focus}. Match the Elite Smiles editorial line: clean bright natural-looking smile, real human moment, soft daylight, warm neutral whites, restrained charcoal and champagne-gold accents, one clear subject, close human framing, generous breathing room, realistic dental anatomy, premium but approachable. No readable text, no logo, no watermark, no typography, no added branding, loud gradients, neon colors, exaggerated whitening, split-screen collage, or clutter.");
     }
 }
 

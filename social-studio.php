@@ -49,6 +49,19 @@ function social_studio_badge_class(string $status): string
     <title><?= e(APP_NAME) ?> | Social Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <meta name="robots" content="noindex,nofollow">
+    <style>
+        @media (min-width: 1280px) {
+            .social-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+            .social-workspace > .social-main, .social-workspace > .social-rail { display: contents; }
+            .social-main > section:nth-child(1) { grid-column: 2; grid-row: 1; }
+            .social-main > section:nth-child(2) { grid-column: 1; grid-row: 2; }
+            .social-rail > section:nth-child(1) { grid-column: 1; grid-row: 1; }
+            .social-rail > section:nth-child(2) { grid-column: 2; grid-row: 2; }
+            .social-rail > section:nth-child(3) { grid-column: 2; grid-row: 3; }
+        }
+        .instagram-review { max-width: 430px; margin: 0 auto; }
+        .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
+    </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
     <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
@@ -102,8 +115,8 @@ function social_studio_badge_class(string $status): string
             </div>
         </section>
 
-        <section class="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-            <div class="space-y-5">
+        <section class="social-workspace grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+            <div class="social-main space-y-5">
                 <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
@@ -201,7 +214,7 @@ function social_studio_badge_class(string $status): string
                 </section>
             </div>
 
-            <aside class="space-y-5">
+            <aside class="social-rail space-y-5">
                 <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="mb-4">
                         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Preview</p>
@@ -209,15 +222,22 @@ function social_studio_badge_class(string $status): string
                     </div>
                     <?php if ($selected): ?>
                         <?php $selectedImageUrl = social_studio_image_url($selected); ?>
-                        <div class="overflow-hidden rounded-2xl border border-slate-200">
+                        <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
+                            <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
+                                <div class="h-7 w-7 rounded-full bg-gradient-to-br from-slate-950 to-amber-300"></div>
+                                <div class="text-xs font-semibold text-slate-900">elite.smiles.utah<span class="block text-[10px] font-normal text-slate-500">Elite Smiles</span></div>
+                                <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
+                            </div>
                             <?php if ($selectedImageUrl !== ''): ?>
-                                <img class="aspect-square w-full bg-slate-100 object-cover" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
+                                <img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
                             <?php else: ?>
-                                <div class="flex min-h-[210px] items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
+                                <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
                                     <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>
                                 </div>
                             <?php endif; ?>
+                            <div class="border-b border-slate-100 px-3 py-2 text-lg tracking-[0.35em] text-slate-900">♡　◌　➤ <span class="float-right tracking-normal">⌑</span></div>
                             <div class="space-y-3 p-4">
+                                <p class="text-xs font-semibold text-slate-900">128 likes</p>
                                 <p class="text-sm leading-6 text-slate-700"><?= e((string)$selected['caption']) ?></p>
                                 <?php if (!empty($selected['cta'])): ?><p class="text-sm font-semibold text-slate-900">CTA: <?= e((string)$selected['cta']) ?></p><?php endif; ?>
                                 <p class="text-xs leading-5 text-slate-500"><?= e((string)$selected['hashtags']) ?></p>

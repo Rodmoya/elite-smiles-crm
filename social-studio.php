@@ -146,9 +146,9 @@ function social_studio_badge_class(string $status): string
                             </label>
                             <label class="block text-sm font-semibold text-slate-800">How many?
                                 <select name="count" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="7">7 posts</option>
-                                    <option value="14">14 posts</option>
-                                    <option value="3">3 posts</option>
+                                    <?php for ($postCount = 1; $postCount <= 7; $postCount++): ?>
+                                        <option value="<?= $postCount ?>" <?= $postCount === 7 ? 'selected' : '' ?>><?= $postCount ?> <?= $postCount === 1 ? 'post' : 'posts' ?></option>
+                                    <?php endfor; ?>
                                 </select>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Instruction

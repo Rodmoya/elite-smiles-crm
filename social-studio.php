@@ -62,11 +62,12 @@ function social_studio_badge_class(string $status): string
         .instagram-review { max-width: 430px; margin: 0 auto; }
         .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
         .creative-frame { position: relative; overflow: hidden; }
-        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.25rem; background: linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,0) 38%, rgba(2,6,23,.08) 68%, rgba(2,6,23,.72) 100%); pointer-events: none; }
-        .creative-overlay h3 { max-width: 15rem; font-family: Georgia, serif; font-size: clamp(1.5rem, 3vw, 2.25rem); line-height: .95; letter-spacing: -.04em; color: #1e293b; }
-        .creative-overlay .benefits { align-self: flex-start; margin-top: auto; margin-bottom: .8rem; display: grid; gap: .35rem; color: #1e293b; font-size: .68rem; font-weight: 700; }
-        .creative-overlay .benefits span { display: block; padding: .35rem .55rem; border-left: 2px solid #b08b62; background: rgba(255,255,255,.84); }
-        .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #1e293b; color: white; padding: .55rem .75rem; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); pointer-events: none; }
+        .creative-overlay h3 { max-width: 11rem; font-family: Georgia, serif; font-size: clamp(1.45rem, 3vw, 2.15rem); line-height: .94; letter-spacing: -.04em; color: #20242b; }
+        .creative-overlay h3::before { content: 'THE POWER OF'; display: block; margin-bottom: .45rem; font-family: Arial, sans-serif; font-size: .48em; line-height: 1; letter-spacing: .18em; color: #8f6b4d; }
+        .creative-overlay .benefits { align-self: flex-start; margin-top: auto; margin-bottom: .7rem; display: grid; gap: .3rem; color: #20242b; font-size: .62rem; font-weight: 700; }
+        .creative-overlay .benefits span { display: block; max-width: 11rem; padding: .3rem .5rem; border-left: 2px solid #b08b62; background: rgba(250,247,241,.88); }
+        .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #20242b; color: white; padding: .5rem .65rem; font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">

@@ -628,15 +628,25 @@ if (!function_exists('social_studio_generate_image_binary')) {
             return social_studio_placeholder_image_binary($prompt);
         }
 
+        $imageFormat = [
+            'aspectRatio' => '4:5',
+        ];
+        if (str_contains(strtolower($model), 'gemini-3')) {
+            $imageFormat['imageSize'] = '2K';
+        }
+
         $payload = [
             'contents' => [[
                 'role' => 'user',
                 'parts' => [[
-                    'text' => $prompt,
+                    'text' => $prompt . "\n\nOutput requirement: return one vertical 4:5 portrait image composed for an Instagram feed post.",
                 ]],
             ]],
             'generationConfig' => [
-                'responseModalities' => ['TEXT', 'IMAGE'],
+                'responseModalities' => ['IMAGE'],
+                'responseFormat' => [
+                    'image' => $imageFormat,
+                ],
             ],
         ];
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);

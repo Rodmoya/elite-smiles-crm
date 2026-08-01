@@ -47,6 +47,52 @@ function social_studio_badge_class(string $status): string
         default => 'border-slate-200 bg-slate-100 text-slate-600',
     };
 }
+
+function social_studio_preview_overlay(array $draft): array
+{
+    $title = trim((string)($draft['title'] ?? 'Your best smile starts here'));
+    $caption = trim((string)($draft['caption'] ?? ''));
+    $cta = trim((string)($draft['cta'] ?? ''));
+    $overlaySpec = strtolower(trim((string)($draft['overlay_spec'] ?? '')));
+
+    $benefits = [];
+    if ($caption !== '' && preg_match_all('/(?:^|\s)[\-•✦✨]\s*([^\-•✦✨\r\n]{3,80})/u', $caption, $matches)) {
+        foreach ($matches[1] as $benefit) {
+            $benefit = trim((string)$benefit, " \t\n\r\0\x0B.,;:");
+            if ($benefit !== '' && !in_array($benefit, $benefits, true)) {
+                $benefits[] = $benefit;
+            }
+            if (count($benefits) === 3) {
+                break;
+            }
+        }
+    }
+
+    if ($benefits === []) {
+        $focus = (string)($draft['content_focus'] ?? 'smile_makeover');
+        $benefits = match ($focus) {
+            'implants' => ['Natural look and feel', 'Restore everyday confidence', 'Designed for lasting function'],
+            'lip_repositioning' => ['A more balanced smile', 'Personalized treatment plan', 'Confidence that feels natural'],
+            'veneers' => ['Natural-looking results', 'Customized shape and shade', 'Designed around your smile'],
+            default => ['Personalized for you', 'Natural-looking results', 'Confidence in every smile'],
+        };
+    }
+
+    $position = 'left';
+    if ($overlaySpec !== '') {
+        if (preg_match('/\b(?:text|copy|overlay|headline|title)\b.{0,36}\b(left|right|top|bottom)\b/', $overlaySpec, $positionMatch)
+            || preg_match('/\b(left|right|top|bottom)\b.{0,24}\b(?:text|copy|overlay|headline|title)\b/', $overlaySpec, $positionMatch)) {
+            $position = (string)$positionMatch[1];
+        }
+    }
+
+    return [
+        'title' => $title !== '' ? $title : 'Your best smile starts here',
+        'benefits' => array_slice($benefits, 0, 3),
+        'cta' => $cta !== '' ? $cta : 'Schedule your consultation',
+        'position' => $position,
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -69,12 +115,19 @@ function social_studio_badge_class(string $status): string
         .instagram-review { max-width: 430px; margin: 0 auto; }
         .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
         .creative-frame { position: relative; overflow: hidden; }
-        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); pointer-events: none; }
+        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; pointer-events: none; }
+        .creative-overlay.overlay-left { align-items: flex-start; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
+        .creative-overlay.overlay-right { align-items: flex-end; text-align: right; background: linear-gradient(270deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
+        .creative-overlay.overlay-top { justify-content: flex-start; background: linear-gradient(180deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.76) 30%, rgba(250,247,241,.05) 62%); }
+        .creative-overlay.overlay-bottom { justify-content: flex-end; background: linear-gradient(0deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.76) 34%, rgba(250,247,241,.05) 68%); }
         .creative-overlay h3 { max-width: 11rem; font-family: Georgia, serif; font-size: clamp(1.45rem, 3vw, 2.15rem); line-height: .94; letter-spacing: -.04em; color: #20242b; }
-        .creative-overlay h3::before { content: 'THE POWER OF'; display: block; margin-bottom: .45rem; font-family: Arial, sans-serif; font-size: .48em; line-height: 1; letter-spacing: .18em; color: #8f6b4d; }
-        .creative-overlay .benefits { align-self: flex-start; margin-top: auto; margin-bottom: .7rem; display: grid; gap: .3rem; color: #20242b; font-size: .62rem; font-weight: 700; }
+        .creative-overlay .overlay-eyebrow { margin-bottom: .45rem; font-size: .62rem; font-weight: 800; letter-spacing: .18em; color: #8f6b4d; text-transform: uppercase; }
+        .creative-overlay .benefits { margin-top: auto; margin-bottom: .7rem; display: grid; gap: .3rem; color: #20242b; font-size: .62rem; font-weight: 700; }
         .creative-overlay .benefits span { display: block; max-width: 11rem; padding: .3rem .5rem; border-left: 2px solid #b08b62; background: rgba(250,247,241,.88); }
+        .creative-overlay.overlay-right .benefits span { border-right: 2px solid #b08b62; border-left: 0; }
+        .creative-overlay.overlay-top .benefits, .creative-overlay.overlay-bottom .benefits { margin-top: .65rem; }
         .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #20242b; color: white; padding: .5rem .65rem; font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .creative-overlay.overlay-right .creative-cta { align-self: flex-end; }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
@@ -315,6 +368,7 @@ function social_studio_badge_class(string $status): string
                     </div>
                     <?php if ($selected): ?>
                         <?php $selectedImageUrl = social_studio_image_url($selected); ?>
+                        <?php $selectedOverlay = social_studio_preview_overlay($selected); ?>
                         <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
                                 <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
                                 <img class="h-7 w-7 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles Instagram avatar">
@@ -322,7 +376,7 @@ function social_studio_badge_class(string $status): string
                                 <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
-                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay"><h3>The Power of Veneers</h3><div class="benefits"><span>Natural-looking results</span><span>Customized shape and shade</span><span>Confidence for every moment</span></div><div class="creative-cta">Complimentary consultation</div></div></div>
+                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?>"><div><p class="overlay-eyebrow">Elite Smiles &middot; Draper, Utah</p><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div></div>
                             <?php else: ?>
                                 <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
                                     <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>

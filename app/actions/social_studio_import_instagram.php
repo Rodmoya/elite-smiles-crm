@@ -25,7 +25,7 @@ $itemSchema = [
     'type' => 'object', 'additionalProperties' => false,
     'properties' => [
         'post_id' => ['type' => 'string'], 'title' => ['type' => 'string'], 'group_name' => ['type' => 'string'],
-        'analysis' => ['type' => 'object', 'additionalProperties' => true],
+        'analysis' => ['type' => 'string'],
         'base_prompt' => ['type' => 'string'], 'overlay_spec' => ['type' => 'string'],
     ],
     'required' => ['post_id', 'title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],

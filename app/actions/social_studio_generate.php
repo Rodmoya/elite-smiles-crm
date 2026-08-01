@@ -12,6 +12,9 @@ require_csrf();
 $focus = (string)post('focus', 'veneers');
 $count = (int)post('count', 7);
 $instruction = (string)post('instruction', '');
+$visualReferenceKey = (string)post('visual_reference', 'none');
+$visualReferences = social_studio_visual_references();
+$visualReference = $visualReferences[$visualReferenceKey] ?? $visualReferences['none'];
 $brief = implode("\n", [
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
     'Creative angle: ' . (string)post('angle', 'benefits'),
@@ -20,6 +23,9 @@ $brief = implode("\n", [
     'Financing: ' . ((string)post('financing', 'exclude') === 'include_0' ? 'Mention 0% financing for qualified patients' : 'Do not mention financing'),
     'Editable overlay logo: ' . (!empty($_POST['include_logo']) ? 'include logo' : 'no logo'),
     'Text position: ' . (string)post('text_position', 'left'),
+    'Instagram visual inspiration: ' . $visualReference['label'],
+    'Reference style direction: ' . $visualReference['description'],
+    'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
 $instruction = $brief . "\n" . $instruction;
 $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction);

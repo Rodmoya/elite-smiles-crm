@@ -100,6 +100,39 @@ if (!function_exists('social_studio_focus_label')) {
     }
 }
 
+if (!function_exists('social_studio_visual_references')) {
+    function social_studio_visual_references(): array
+    {
+        return [
+            'editorial_veneers' => [
+                'label' => 'Veneers editorial card',
+                'description' => 'Cream background, elegant serif headline, close smile detail, structured benefit copy.',
+                'image' => 'assets/img/landings/veneers-ad-final.png',
+            ],
+            'premium_patient' => [
+                'label' => 'Premium patient portrait',
+                'description' => 'Warm luxury portrait, natural expression, generous negative space for overlay copy.',
+                'image' => 'assets/img/landings/veneers-draper-hero-v1.jpg',
+            ],
+            'implant_education' => [
+                'label' => 'Implant education layout',
+                'description' => 'Clinical education with clean hierarchy, neutral ivory palette, and benefit-led structure.',
+                'image' => 'assets/img/landings/implants-hero-education-comparison.jpg',
+            ],
+            'lifestyle_confidence' => [
+                'label' => 'Life experience / confidence',
+                'description' => 'Human lifestyle moment, calm premium lighting, emotionally confident but never staged.',
+                'image' => 'assets/img/landings/implants-patient-lifestyle.jpg',
+            ],
+            'none' => [
+                'label' => 'Let the Master CMO choose',
+                'description' => 'Use the strongest existing Elite Smiles pattern for the selected topic and audience.',
+                'image' => '',
+            ],
+        ];
+    }
+}
+
 if (!function_exists('social_studio_seed_drafts')) {
     function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = ''): int
     {

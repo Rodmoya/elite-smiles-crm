@@ -31,6 +31,7 @@ $logoutAction = base_url('social-studio.php');
 $successMessage = flash_get('success') ?? '';
 $errorMessage = flash_get('error') ?? '';
 $data = social_studio_dashboard_data();
+$visualReferences = social_studio_visual_references();
 $counts = $data['counts'];
 $drafts = $data['drafts'];
 $selected = $data['selected'];
@@ -219,6 +220,14 @@ function social_studio_badge_class(string $status): string
                                     <option value="top">Top</option>
                                     <option value="bottom">Bottom</option>
                                 </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Instagram visual inspiration
+                                <select name="visual_reference" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <?php foreach ($visualReferences as $referenceKey => $reference): ?>
+                                        <option value="<?= e($referenceKey) ?>"><?= e($reference['label']) ?> — <?= e($reference['description']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">The reference controls style and composition only. The image, copy, and subject will be newly created.</span>
                             </label>
                             <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800">
                                 <input type="checkbox" name="include_logo" value="1" class="h-4 w-4 rounded border-slate-300"> Include logo in editable overlay

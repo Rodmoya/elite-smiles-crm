@@ -25,6 +25,7 @@ $brief = implode("\n", [
     'Text position: ' . (string)post('text_position', 'left'),
     'Creative angle group: ' . ($visualReference['group'] ?? 'Other'),
     'Instagram visual inspiration: ' . $visualReference['label'],
+    'Instagram reference window: March 16, 2026 through today only.',
     'Reference style direction: ' . $visualReference['description'],
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);

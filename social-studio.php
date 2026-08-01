@@ -230,12 +230,12 @@ function social_studio_badge_class(string $status): string
                                     foreach ($referenceGroups as $groupLabel => $groupReferences): ?>
                                         <optgroup label="<?= e($groupLabel) ?>">
                                             <?php foreach ($groupReferences as $referenceKey => $reference): ?>
-                                                <option value="<?= e($referenceKey) ?>"><?= e($reference['label']) ?></option>
+                                                <option value="<?= e($referenceKey) ?>"><?= e($reference['label']) ?><?= !empty($reference['date']) ? ' (' . e(date('M j, Y', strtotime($reference['date']))) . ')' : '' ?></option>
                                             <?php endforeach; ?>
                                         </optgroup>
                                     <?php endforeach; ?>
                                 </select>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Grouped by creative angle. The reference controls style and composition only; the image, copy, and subject will be newly created.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">Instagram window: Mar 16, 2026–today. Grouped by creative angle; references guide style only and never get copied.</span>
                             </label>
                             <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800">
                                 <input type="checkbox" name="include_logo" value="1" class="h-4 w-4 rounded border-slate-300"> Include logo in editable overlay

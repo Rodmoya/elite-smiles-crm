@@ -151,11 +151,15 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
     {
         social_studio_ensure_schema();
         $limit = max(1, min(3, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT ' . $limit);
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT ' . max(10, $limit * 5));
         $updated = 0;
         $failed = 0;
+        $errors = [];
 
         foreach ($bases as $base) {
+            if ($updated >= $limit) {
+                break;
+            }
             $path = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
             if (!$path || !is_file($path)) {
                 $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
@@ -168,11 +172,13 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             }
             if (!$path || !is_file($path)) {
                 $failed++;
+                $errors[] = (string)$base['title'] . ': source image file not found';
                 continue;
             }
             $bytes = @file_get_contents($path);
             if (!is_string($bytes) || $bytes === '') {
                 $failed++;
+                $errors[] = (string)$base['title'] . ': source image could not be read';
                 continue;
             }
             $mime = function_exists('mime_content_type') ? (string)(@mime_content_type($path) ?: 'image/jpeg') : 'image/jpeg';
@@ -181,6 +187,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             $analysis = social_studio_analyze_base_creative($post);
             if (empty($analysis['ok']) || !is_array($analysis['data'] ?? null)) {
                 $failed++;
+                $errors[] = (string)$base['title'] . ': ' . (string)($analysis['message'] ?? 'OpenAI analysis failed');
                 continue;
             }
             $data = $analysis['data'];
@@ -198,7 +205,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             $updated++;
         }
 
-        return ['updated' => $updated, 'failed' => $failed] + social_studio_base_analysis_progress();
+        return ['updated' => $updated, 'failed' => $failed, 'errors' => array_slice($errors, 0, 4)] + social_studio_base_analysis_progress();
     }
 }
 

@@ -59,15 +59,19 @@ if (!$batch) {
     foreach ($valid as $post) {
         $data = $byId[(string)$post['post_id']] ?? null;
         if (!is_array($data)) { $failed++; continue; }
-        social_studio_upsert_base_creative([
-            'source_type' => 'instagram', 'source_url' => (string)($post['source_url'] ?? ''),
-            'source_post_id' => (string)$post['post_id'], 'title' => (string)$data['title'],
-            'published_at' => (string)($post['published_at'] ?? ''), 'group_name' => (string)$data['group_name'],
-            'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($post['local_image_key'] ?? ''),
-            'analysis_json' => json_encode($data['analysis'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            'base_prompt' => (string)$data['base_prompt'], 'overlay_spec' => (string)$data['overlay_spec'],
-        ]);
-        $imported++;
+        try {
+            social_studio_upsert_base_creative([
+                'source_type' => 'instagram', 'source_url' => (string)($post['source_url'] ?? ''),
+                'source_post_id' => (string)$post['post_id'], 'title' => (string)$data['title'],
+                'published_at' => (string)($post['published_at'] ?? ''), 'group_name' => (string)$data['group_name'],
+                'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($post['local_image_key'] ?? ''),
+                'analysis_json' => json_encode($data['analysis'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'base_prompt' => (string)$data['base_prompt'], 'overlay_spec' => (string)$data['overlay_spec'],
+            ]);
+            $imported++;
+        } catch (Throwable $exception) {
+            $failed++;
+        }
     }
 }
 

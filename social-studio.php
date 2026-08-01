@@ -168,6 +168,61 @@ function social_studio_badge_class(string $status): string
                                     <?php endfor; ?>
                                 </select>
                             </label>
+                            <label class="block text-sm font-semibold text-slate-800">Purpose
+                                <select name="purpose" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="educational">Educational</option>
+                                    <option value="social_ad">Social media ad</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Creative angle
+                                <select name="angle" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="benefits">Benefits</option>
+                                    <option value="confidence">Confidence / life experience</option>
+                                    <option value="faq">FAQ</option>
+                                    <option value="financing">Financing</option>
+                                    <option value="consultation">Consultation CTA</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Audience
+                                <select name="audience" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="any">Any adult</option>
+                                    <option value="woman">Woman</option>
+                                    <option value="man">Man</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Age range
+                                <select name="age_range" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="any">Any adult</option>
+                                    <option value="25-34">25–34</option>
+                                    <option value="35-44">35–44</option>
+                                    <option value="45-54">45–54</option>
+                                    <option value="55+">55+</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Utah setting
+                                <select name="location_style" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="draper">Draper premium style</option>
+                                    <option value="lehi">Lehi premium style</option>
+                                    <option value="alpine">Alpine / Utah luxury style</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Financing
+                                <select name="financing" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="exclude">Do not mention</option>
+                                    <option value="include_0">Mention 0% financing for qualified patients</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800">Text position
+                                <select name="text_position" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="left">Left</option>
+                                    <option value="right">Right</option>
+                                    <option value="top">Top</option>
+                                    <option value="bottom">Bottom</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800">
+                                <input type="checkbox" name="include_logo" value="1" class="h-4 w-4 rounded border-slate-300"> Include logo in editable overlay
+                            </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Instruction
                                 <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Use Elite Smiles voice. Keep it friendly, premium, and conversion focused. Goal: schedule veneer consults."></textarea>
                             </label>

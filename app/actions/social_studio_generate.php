@@ -12,6 +12,16 @@ require_csrf();
 $focus = (string)post('focus', 'veneers');
 $count = (int)post('count', 7);
 $instruction = (string)post('instruction', '');
+$brief = implode("\n", [
+    'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
+    'Creative angle: ' . (string)post('angle', 'benefits'),
+    'Audience: ' . (string)post('audience', 'any') . ', age ' . (string)post('age_range', 'any'),
+    'Utah setting: ' . (string)post('location_style', 'draper'),
+    'Financing: ' . ((string)post('financing', 'exclude') === 'include_0' ? 'Mention 0% financing for qualified patients' : 'Do not mention financing'),
+    'Editable overlay logo: ' . (!empty($_POST['include_logo']) ? 'include logo' : 'no logo'),
+    'Text position: ' . (string)post('text_position', 'left'),
+]);
+$instruction = $brief . "\n" . $instruction;
 $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction);
 
 flash_set('success', 'Created ' . $created . ' social draft' . ($created === 1 ? '' : 's') . ' for review.');

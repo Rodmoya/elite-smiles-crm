@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/openai.php';
 require_once dirname(__DIR__) . '/core/google_gemini.php';
+require_once __DIR__ . '/elite_smiles_master_cmo.php';
 
 if (!function_exists('social_studio_ensure_schema')) {
     function social_studio_ensure_schema(): void
@@ -82,6 +83,7 @@ if (!function_exists('social_studio_default_hashtags')) {
 if (!function_exists('social_studio_editorial_context')) {
     function social_studio_editorial_context(): string
     {
+        return social_studio_master_cmo_prompt();
         return 'Elite Smiles by Walter Meden DDS is a premium cosmetic dentistry practice in Draper, Utah. Editorial line: warm, sincere, premium, confidence-led, and consultation-focused. Lead with how a natural-looking smile affects photos, conversations, weddings, work, and self-confidence. Use short paragraphs, simple benefit bullets, a clear complimentary-consultation CTA, and Draper, Utah location context. Mention flexible or 0% financing only when useful and always for qualified patients. Avoid guaranteed outcomes, fake patient claims, heavy jargon, and aggressive price-first copy. Visual editorial line learned from the current Instagram feed: 4:5 magazine-style compositions; creamy ivory, warm white, charcoal, black, and restrained champagne-gold; elegant serif display headlines paired with clean sans-serif support text; soft daylight and polished portrait photography; confident women and men, close-up smiles, natural facial expressions, lifestyle confidence, and carefully framed before/after cases. Rotate among editorial education cards, benefit checklists, premium portraits, close-up smile details, before/after transformations, and dark luxury panels. Use generous whitespace, clear hierarchy, one primary visual idea, and readable high-contrast type zones. For portrait or smile imagery, use a deliberate editorial crop with the face and smile large enough to read immediately, tack-sharp eyes and teeth, realistic skin texture, accurate anatomy, and the subject placed inside the frame—not cut off or pushed to the edge. Use one clear focal subject, professional camera focus, crisp detail, and balanced negative space for the separate CRM text layer. Nano Banana must not render logos, brand marks, watermarks, or typography; leave intentional clean space for the CRM’s separate text layout layer. Avoid neon colors, loud gradients, generic dental stock imagery, distorted teeth, exaggerated whitening, cluttered props, soft focus, motion blur, distant subjects, awkward cropping, and overly artificial faces.';
     }
 }
@@ -104,7 +106,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         social_studio_ensure_schema();
 
         $focus = social_studio_normalize_focus($focus);
-        $count = max(1, min(14, $count));
+        $count = max(1, min(7, $count));
         $hashtags = social_studio_default_hashtags($focus);
         $topics = social_studio_generate_topics($focus, $count, $instruction);
         $created = 0;
@@ -163,7 +165,7 @@ if (!function_exists('social_studio_generate_topics')) {
                 'drafts' => [
                     'type' => 'array',
                     'minItems' => 1,
-                    'maxItems' => 14,
+                    'maxItems' => 7,
                     'items' => [
                         'type' => 'object',
                         'additionalProperties' => false,
@@ -181,8 +183,8 @@ if (!function_exists('social_studio_generate_topics')) {
             'required' => ['drafts'],
         ];
 
-        $system = 'You are the social media strategist for Elite Smiles by Walter Meden DDS. Write concise, premium, compliant dental marketing posts. Avoid guaranteed outcomes, hype, fake patient claims, and medical overpromising. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a clean visual with no text, no logo, no watermark, and no added branding. Instruction: " . ($instruction !== '' ? $instruction : 'Generate conversion-focused consult posts.');
+        $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
+        $user = "Create {$count} draft social posts for {$focus}. Make the set an intentional editorial sequence: vary hooks, formats, and angles; do not repeat the same claim. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a sharp, clean visual with no text, logo, watermark, or typography and reserve space for the CRM overlay. Instruction: " . ($instruction !== '' ? $instruction : 'Generate a balanced sequence of education, trust, lifestyle, and consultation content.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts');
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);

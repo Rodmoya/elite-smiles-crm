@@ -208,7 +208,7 @@ if (!function_exists('social_studio_visual_references')) {
                 'group' => (string)($base['group_name'] ?: 'Instagram base creatives'),
                 'date' => (string)($base['published_at'] ?? ''),
                 'description' => 'Analyzed base creative. ' . trim((string)($base['overlay_spec'] ?? '')),
-                'image_url' => !empty($base['local_image_key']) ? base_url('app/actions/social_studio_base_image.php?base_id=' . (int)$base['id']) : (string)($base['source_image_url'] ?? ''),
+                'image_url' => base_url('app/actions/social_studio_base_image.php?base_id=' . (int)$base['id']),
                 'base_prompt' => (string)($base['base_prompt'] ?? ''),
                 'source_url' => (string)($base['source_url'] ?? ''),
             ];

@@ -211,6 +211,10 @@ if (!function_exists('social_studio_visual_references')) {
             $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
             $bundledImage = $safePostId !== '' ? 'assets/social-studio/instagram/' . $safePostId . '.jpg' : '';
             $bundledPath = $bundledImage !== '' ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $bundledImage) : '';
+            $storedPath = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
+            if (str_starts_with((string)($base['source_post_id'] ?? ''), 'draft_') && (!$storedPath || !is_file($storedPath))) {
+                continue;
+            }
             $references[$key] = [
                 'label' => (string)$base['title'],
                 'group' => (string)($base['group_name'] ?: 'Instagram base creatives'),
@@ -226,6 +230,11 @@ if (!function_exists('social_studio_visual_references')) {
         }
         foreach (db_all('SELECT id, title, image_storage_key, branded_image_storage_key FROM social_studio_drafts WHERE status IN ("approved", "published") AND (image_storage_key IS NOT NULL OR branded_image_storage_key IS NOT NULL) ORDER BY id DESC LIMIT 20') as $draft) {
             $draftId = (int)$draft['id'];
+            $draftStorageKey = (string)($draft['branded_image_storage_key'] ?: $draft['image_storage_key']);
+            $draftPath = social_studio_safe_storage_path($draftStorageKey);
+            if (!$draftPath || !is_file($draftPath)) {
+                continue;
+            }
             $references['approved_' . $draftId] = [
                 'label' => 'Approved ad — ' . (string)$draft['title'],
                 'group' => 'Approved generated ads',

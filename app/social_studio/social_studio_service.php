@@ -21,6 +21,9 @@ if (!function_exists('social_studio_ensure_schema')) {
             cta VARCHAR(255) NOT NULL DEFAULT '',
             hashtags TEXT NULL,
             image_prompt TEXT NULL,
+            base_reference_key VARCHAR(180) NULL,
+            base_post_prompt TEXT NULL,
+            overlay_spec TEXT NULL,
             image_url VARCHAR(500) NULL,
             image_storage_key VARCHAR(255) NULL,
             branded_image_storage_key VARCHAR(255) NULL,
@@ -43,6 +46,9 @@ if (!function_exists('social_studio_ensure_schema')) {
             'image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url",
             'branded_image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN branded_image_storage_key VARCHAR(255) NULL AFTER image_storage_key",
             'image_generated_at' => "ALTER TABLE social_studio_drafts ADD COLUMN image_generated_at DATETIME NULL AFTER branded_image_storage_key",
+            'base_reference_key' => "ALTER TABLE social_studio_drafts ADD COLUMN base_reference_key VARCHAR(180) NULL AFTER image_prompt",
+            'base_post_prompt' => "ALTER TABLE social_studio_drafts ADD COLUMN base_post_prompt TEXT NULL AFTER base_reference_key",
+            'overlay_spec' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_spec TEXT NULL AFTER base_post_prompt",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -182,9 +188,9 @@ if (!function_exists('social_studio_seed_drafts')) {
 
             db_insert(
                 "INSERT INTO social_studio_drafts
-                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, scheduled_at, created_by)
+                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, scheduled_at, created_by)
                  VALUES
-                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :scheduled_at, :created_by)",
+                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :scheduled_at, :created_by)",
                 [
                     'title' => $title,
                     'platform' => 'facebook_instagram',
@@ -194,6 +200,9 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'cta' => trim((string)($topic['cta'] ?? 'Request a veneer quote today.')),
                     'hashtags' => implode(' ', $hashtags),
                     'image_prompt' => $imagePrompt,
+                    'base_reference_key' => trim((string)($topic['base_reference_key'] ?? '')) ?: null,
+                    'base_post_prompt' => trim((string)($topic['base_post_prompt'] ?? '')) ?: null,
+                    'overlay_spec' => trim((string)($topic['overlay_spec'] ?? '')) ?: null,
                     'scheduled_at' => $scheduledAt,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
                 ]
@@ -229,8 +238,11 @@ if (!function_exists('social_studio_generate_topics')) {
                             'caption' => ['type' => 'string'],
                             'cta' => ['type' => 'string'],
                             'image_prompt' => ['type' => 'string'],
+                            'base_reference_key' => ['type' => 'string'],
+                            'base_post_prompt' => ['type' => 'string'],
+                            'overlay_spec' => ['type' => 'string'],
                         ],
-                        'required' => ['title', 'post_type', 'caption', 'cta', 'image_prompt'],
+                        'required' => ['title', 'post_type', 'caption', 'cta', 'image_prompt', 'base_reference_key', 'base_post_prompt', 'overlay_spec'],
                     ],
                 ],
             ],
@@ -238,7 +250,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. Make the set an intentional editorial sequence: vary hooks, formats, and angles; do not repeat the same claim. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a sharp, clean visual with no text, logo, watermark, or typography and reserve space for the CRM overlay. Instruction: " . ($instruction !== '' ? $instruction : 'Generate a balanced sequence of education, trust, lifestyle, and consultation content.');
+        $user = "Create {$count} draft social posts for {$focus}. Each draft is a new version of a selected base post, not a blank concept. Preserve the base post's analyzed look, feel, content hierarchy, CTA pattern, and overlay structure; change only the requested variation inputs and create original wording and imagery. Return base_reference_key, base_post_prompt (the reusable analyzed template prompt), and overlay_spec (headline scale, text blocks, placement, CTA, and logo treatment) for every draft. Make the Nano Banana image prompt sharp, clean, original, unbranded, with no text/logo/watermark/typography and with space for the CRM overlay. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);

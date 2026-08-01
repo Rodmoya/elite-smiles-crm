@@ -222,19 +222,15 @@ function social_studio_badge_class(string $status): string
                                 </select>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Instagram visual inspiration
-                                <select name="visual_reference" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <?php $referenceGroups = [];
-                                    foreach ($visualReferences as $referenceKey => $reference) {
-                                        $referenceGroups[$reference['group'] ?? 'Other'][$referenceKey] = $reference;
-                                    }
-                                    foreach ($referenceGroups as $groupLabel => $groupReferences): ?>
-                                        <optgroup label="<?= e($groupLabel) ?>">
-                                            <?php foreach ($groupReferences as $referenceKey => $reference): ?>
-                                                <option value="<?= e($referenceKey) ?>"><?= e($reference['label']) ?><?= !empty($reference['date']) ? ' (' . e(date('M j, Y', strtotime($reference['date']))) . ')' : '' ?></option>
-                                            <?php endforeach; ?>
-                                        </optgroup>
+                                <input type="hidden" name="visual_reference" id="social-visual-reference" value="none">
+                                <div class="mt-2 flex gap-3 overflow-x-auto pb-2" id="social-reference-carousel">
+                                    <?php foreach ($visualReferences as $referenceKey => $reference): ?>
+                                        <button type="button" data-social-reference="<?= e($referenceKey) ?>" class="social-reference-card group w-36 shrink-0 overflow-hidden rounded-2xl border-2 border-transparent bg-slate-50 text-left transition hover:border-slate-400 <?= $referenceKey === 'none' ? 'border-slate-950' : '' ?>">
+                                            <?php if (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
+                                            <span class="block px-3 py-2 text-xs font-semibold leading-4 text-slate-800"><?= e($reference['label']) ?></span>
+                                        </button>
                                     <?php endforeach; ?>
-                                </select>
+                                </div>
                                 <span class="mt-1 block text-xs font-normal text-slate-500">Instagram window: Mar 16, 2026–today. Grouped by creative angle; references guide style only and never get copied.</span>
                             </label>
                             <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800">
@@ -406,6 +402,12 @@ function social_studio_badge_class(string $status): string
         const socialModalCaption = document.getElementById('social-modal-caption');
         const socialModalImage = document.getElementById('social-modal-image');
         const socialModalStatus = document.getElementById('social-modal-status');
+        const socialReferenceInput = document.getElementById('social-visual-reference');
+        document.querySelectorAll('[data-social-reference]').forEach((card) => card.addEventListener('click', () => {
+            socialReferenceInput.value = card.dataset.socialReference || 'none';
+            document.querySelectorAll('[data-social-reference]').forEach((item) => item.classList.remove('border-slate-950'));
+            card.classList.add('border-slate-950');
+        }));
         document.querySelectorAll('[data-social-open]').forEach((button) => button.addEventListener('click', () => {
             socialModalTitle.textContent = button.dataset.title || 'Selected draft';
             socialModalCaption.textContent = button.dataset.caption || '';

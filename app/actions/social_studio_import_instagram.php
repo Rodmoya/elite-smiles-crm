@@ -36,7 +36,12 @@ foreach (array_chunk($posts, 5) as $batch) {
     if (!$valid) continue;
     $schema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['items' => ['type' => 'array', 'items' => $itemSchema]], 'required' => ['items']];
     $prompt = 'Analyze every post in this batch. Use the metadata to match each image to its post_id. Do not omit any item. Metadata: ' . json_encode($valid, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    $analysis = elite_openai_json_response($system, $prompt, $schema, 'elite_smiles_base_creative_batch', array_values(array_map(static fn($post) => (string)$post['image_url'], $valid)));
+    try {
+        $analysis = elite_openai_json_response($system, $prompt, $schema, 'elite_smiles_base_creative_batch', array_values(array_map(static fn($post) => (string)$post['image_url'], $valid)));
+    } catch (Throwable $exception) {
+        $failed += count($valid);
+        continue;
+    }
     $results = is_array($analysis['data']['items'] ?? null) ? $analysis['data']['items'] : [];
     $byId = [];
     foreach ($results as $result) $byId[(string)($result['post_id'] ?? '')] = $result;

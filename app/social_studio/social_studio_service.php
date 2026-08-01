@@ -148,7 +148,8 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
         ];
         if ($existing) {
-            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec WHERE id=:id LIMIT 1', $params + ['id' => (int)$existing['id']]);
+            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec']));
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
             return (int)$existing['id'];
         }
         return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec)', $params);

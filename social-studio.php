@@ -154,6 +154,13 @@ function social_studio_badge_class(string $status): string
                             <?php endforeach; ?>
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
+                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Creation mode
+                                <select name="creation_mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="remix">Remix selected post</option>
+                                    <option value="manual">Manual brief</option>
+                                </select>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">Remix keeps the selected ad’s structure and style. Manual uses your written direction as the source.</span>
+                            </label>
                             <label class="block text-sm font-semibold text-slate-800">Focus
                                 <select name="focus" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
                                     <option value="veneers">Veneers consults</option>
@@ -226,7 +233,7 @@ function social_studio_badge_class(string $status): string
                                 <div class="mt-2 flex gap-3 overflow-x-auto pb-2" id="social-reference-carousel">
                                     <?php foreach ($visualReferences as $referenceKey => $reference): ?>
                                         <button type="button" data-social-reference="<?= e($referenceKey) ?>" class="social-reference-card group w-36 shrink-0 overflow-hidden rounded-2xl border-2 border-transparent bg-slate-50 text-left transition hover:border-slate-400 <?= $referenceKey === 'none' ? 'border-slate-950' : '' ?>">
-                                            <?php if (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
+                                            <?php if (!empty($reference['image_url'])): ?><img src="<?= e($reference['image_url']) ?>" class="h-28 w-full object-cover" alt=""><?php elseif (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
                                             <span class="block px-3 py-2 text-xs font-semibold leading-4 text-slate-800"><?= e($reference['label']) ?></span>
                                         </button>
                                     <?php endforeach; ?>

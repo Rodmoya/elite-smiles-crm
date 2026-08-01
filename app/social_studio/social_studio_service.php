@@ -103,7 +103,7 @@ if (!function_exists('social_studio_focus_label')) {
 if (!function_exists('social_studio_visual_references')) {
     function social_studio_visual_references(): array
     {
-        return [
+        $references = [
             'instagram_2026_veneers_confidence' => [
                 'label' => 'Instagram 2026 — Veneers confidence',
                 'group' => 'Confidence / life experience',
@@ -140,6 +140,17 @@ if (!function_exists('social_studio_visual_references')) {
                 'image' => '',
             ],
         ];
+        foreach (db_all('SELECT id, title, image_storage_key, branded_image_storage_key FROM social_studio_drafts WHERE status IN ("approved", "published") AND (image_storage_key IS NOT NULL OR branded_image_storage_key IS NOT NULL) ORDER BY id DESC LIMIT 20') as $draft) {
+            $draftId = (int)$draft['id'];
+            $references['approved_' . $draftId] = [
+                'label' => 'Approved ad — ' . (string)$draft['title'],
+                'group' => 'Approved generated ads',
+                'date' => '',
+                'description' => 'Proven Elite Smiles approved creative. Preserve its strongest angle, hierarchy, CTA pattern, and visual language while creating a new original version.',
+                'image_url' => base_url('app/actions/social_studio_image.php?draft_id=' . $draftId . '&variant=branded'),
+            ];
+        }
+        return $references;
     }
 }
 

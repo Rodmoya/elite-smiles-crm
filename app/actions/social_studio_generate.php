@@ -13,6 +13,7 @@ $focus = (string)post('focus', 'veneers');
 $count = (int)post('count', 7);
 $instruction = (string)post('instruction', '');
 $visualReferenceKey = (string)post('visual_reference', 'none');
+$creationMode = (string)post('creation_mode', 'remix');
 $visualReferences = social_studio_visual_references();
 $visualReference = $visualReferences[$visualReferenceKey] ?? $visualReferences['none'];
 $uploadedInspirationDataUrl = '';
@@ -24,6 +25,7 @@ if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES
     }
 }
 $brief = implode("\n", [
+    'Creation mode: ' . ($creationMode === 'manual' ? 'Manual brief' : 'Remix selected post'),
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
     'Creative angle: ' . (string)post('angle', 'benefits'),
     'Audience: ' . (string)post('audience', 'any') . ', age ' . (string)post('age_range', 'any'),
@@ -34,7 +36,9 @@ $brief = implode("\n", [
     'Creative angle group: ' . ($visualReference['group'] ?? 'Other'),
     'Instagram visual inspiration: ' . $visualReference['label'],
     'Instagram reference window: March 16, 2026 through today only.',
-    'Remix mode: create a new version of the selected Instagram ad. Preserve its angle, content structure, hierarchy, CTA pattern, and visual language; change the subject, wording, facts, and image so the result is original. Apply Focus, audience, age, and text position as controlled variations.',
+    $creationMode === 'manual'
+        ? 'Manual mode: treat the user instruction as the primary creative direction and use the Master CMO system for quality, compliance, and consistency.'
+        : 'Remix mode: create a new version of the selected Instagram ad. Preserve its angle, content structure, hierarchy, CTA pattern, and visual language; change the subject, wording, facts, and image so the result is original. Apply Focus, audience, age, and text position as controlled variations.',
     'Reference style direction: ' . $visualReference['description'],
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);

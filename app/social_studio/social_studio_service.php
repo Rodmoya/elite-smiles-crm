@@ -158,6 +158,11 @@ if (!function_exists('social_studio_upsert_base_creative')) {
 if (!function_exists('social_studio_visual_references')) {
     function social_studio_visual_references(): array
     {
+        social_studio_ensure_schema();
+        $references = [];
+        /* The library is intentionally database-backed. Static placeholders made
+         * it possible to remix four examples without importing the full window. */
+        /* legacy references removed */
         $references = [
             'instagram_2026_veneers_confidence' => [
                 'label' => 'Instagram 2026 — Veneers confidence',
@@ -217,11 +222,34 @@ if (!function_exists('social_studio_visual_references')) {
                 'image_url' => base_url('app/actions/social_studio_image.php?draft_id=' . $draftId . '&variant=branded'),
             ];
         }
+        foreach (['instagram_2026_veneers_confidence', 'instagram_2026_veneers_benefits', 'instagram_2026_lip_repositioning', 'instagram_2026_all_on_x', 'none'] as $legacyKey) {
+            unset($references[$legacyKey]);
+        }
         return $references;
     }
 }
 
 if (!function_exists('social_studio_seed_drafts')) {
+    function social_studio_analyze_base_creative(array $post): array
+    {
+        require_once dirname(__DIR__) . '/core/openai.php';
+        $schema = [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'properties' => [
+                'title' => ['type' => 'string'],
+                'group_name' => ['type' => 'string'],
+                'analysis' => ['type' => 'object', 'additionalProperties' => true],
+                'base_prompt' => ['type' => 'string'],
+                'overlay_spec' => ['type' => 'string'],
+            ],
+            'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
+        ];
+        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a reusable design system. Identify composition, subject framing, lighting, palette, typography family and scale, text hierarchy, safe zones, CTA treatment, logo treatment, and clinical-ad compliance. Never ask for or reproduce a logo inside the generated image; the CRM overlay remains editable.';
+        $user = 'Analyze this existing Elite Smiles Instagram post. Return a reusable base prompt for creating an original new version with Nano Banana and a precise editable overlay specification. Source metadata: ' . json_encode($post, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
+    }
+
     function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = ''): int
     {
         social_studio_ensure_schema();

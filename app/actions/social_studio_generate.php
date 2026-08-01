@@ -15,7 +15,20 @@ $instruction = (string)post('instruction', '');
 $visualReferenceKey = (string)post('visual_reference', 'none');
 $creationMode = (string)post('creation_mode', 'remix');
 $visualReferences = social_studio_visual_references();
-$visualReference = $visualReferences[$visualReferenceKey] ?? $visualReferences['none'];
+$visualReference = $visualReferences[$visualReferenceKey] ?? null;
+if ($creationMode !== 'manual' && (!$visualReference || !str_starts_with($visualReferenceKey, 'base_'))) {
+    flash_set('error', 'Select an Instagram base post before generating a remix.');
+    redirect(base_url('social-studio.php'));
+}
+$baseAnalysis = null;
+if (str_starts_with($visualReferenceKey, 'base_')) {
+    $baseId = (int)substr($visualReferenceKey, 5);
+    $baseAnalysis = $baseId > 0 ? db_one('SELECT title, source_url, group_name, analysis_json, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE id = :id AND status = "active" LIMIT 1', ['id' => $baseId]) : null;
+    if ($creationMode !== 'manual' && !$baseAnalysis) {
+        flash_set('error', 'That Instagram base post is no longer available.');
+        redirect(base_url('social-studio.php'));
+    }
+}
 $uploadedInspirationDataUrl = '';
 if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES['inspiration_image']['tmp_name'])) {
     $mime = (string)($_FILES['inspiration_image']['type'] ?? '');
@@ -27,21 +40,23 @@ if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES
 $brief = implode("\n", [
     'Creation mode: ' . ($creationMode === 'manual' ? 'Manual brief' : 'Remix selected post'),
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
-    'Creative angle: ' . (string)post('angle', 'benefits'),
-    'Audience: ' . (string)post('audience', 'any') . ', age ' . (string)post('age_range', 'any'),
-    'Utah setting: ' . (string)post('location_style', 'draper'),
-    'Financing: ' . ((string)post('financing', 'exclude') === 'include_0' ? 'Mention 0% financing for qualified patients' : 'Do not mention financing'),
-    'Editable overlay logo: ' . (!empty($_POST['include_logo']) ? 'include logo' : 'no logo'),
+    'Focus: ' . $focus,
+    'Audience: ' . (string)post('audience', 'any'),
+    'Age range: ' . (string)post('age_range', 'any'),
     'Text position: ' . (string)post('text_position', 'left'),
-    'Creative angle group: ' . ($visualReference['group'] ?? 'Other'),
-    'Instagram visual inspiration: ' . $visualReference['label'],
+    'Instagram base post: ' . ($visualReference['label'] ?? 'Manual brief'),
     'Instagram reference window: March 16, 2026 through today only.',
     $creationMode === 'manual'
         ? 'Manual mode: treat the user instruction as the primary creative direction and use the Master CMO system for quality, compliance, and consistency.'
         : 'Remix mode: create a new version of the selected Instagram ad. Preserve its angle, content structure, hierarchy, CTA pattern, and visual language; change the subject, wording, facts, and image so the result is original. Apply Focus, audience, age, and text position as controlled variations.',
-    'Reference style direction: ' . $visualReference['description'],
+    'Reference style direction: ' . ($visualReference['description'] ?? 'Use the Elite Smiles Master CMO system.'),
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
+if ($baseAnalysis) {
+    $instruction .= "\nBASE POST ANALYSIS (source of truth):\n" . (string)$baseAnalysis['analysis_json'];
+    $instruction .= "\nBASE POST PROMPT:\n" . (string)$baseAnalysis['base_prompt'];
+    $instruction .= "\nBASE OVERLAY SPEC:\n" . (string)$baseAnalysis['overlay_spec'];
+}
 $instruction = $brief . "\n" . $instruction;
 $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl);
 

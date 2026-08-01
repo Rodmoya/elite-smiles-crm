@@ -92,6 +92,7 @@ function social_studio_badge_class(string $status): string
                 <p class="mt-2 text-xs leading-5 text-slate-500">Paste the authenticated Instagram inventory JSON to import every post from March 16, 2026 through today. Each image is analyzed in batches and stored as a reusable base creative.</p>
                 <form method="post" action="<?= e(base_url('app/actions/social_studio_import_instagram.php')) ?>" class="mt-3">
                     <?= csrf_input() ?>
+                    <input type="hidden" name="batch_index" value="0">
                     <textarea name="posts_json" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","source_url":"...","image_url":"..."}]'></textarea>
                     <button type="submit" class="mt-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Import and analyze library</button>
                 </form>

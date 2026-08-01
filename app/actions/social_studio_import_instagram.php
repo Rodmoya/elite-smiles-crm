@@ -20,6 +20,7 @@ if (!is_array($posts)) {
 
 $imported = 0;
 $failed = 0;
+$batchIndex = max(0, (int)post('batch_index', 0));
 $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze each supplied Instagram creative as a reusable design system. Return one result per post_id. Identify composition, subject framing, lighting, palette, typography family and scale, text hierarchy, safe zones, CTA treatment, logo treatment, and clinical-ad compliance. The CRM overlay remains editable; generated images must not bake text or logos.';
 $itemSchema = [
     'type' => 'object', 'additionalProperties' => false,
@@ -30,7 +31,13 @@ $itemSchema = [
     ],
     'required' => ['post_id', 'title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
 ];
-foreach (array_chunk($posts, 5) as $batch) {
+$batches = array_chunk($posts, 5);
+$batch = $batches[$batchIndex] ?? [];
+if (!$batch) {
+    flash_set('error', 'Instagram import batch not found.');
+    redirect(base_url('social-studio.php'));
+}
+{
     $valid = array_values(array_filter($batch, static fn($post) => is_array($post) && trim((string)($post['post_id'] ?? '')) !== '' && trim((string)($post['image_url'] ?? '')) !== ''));
     $failed += count($batch) - count($valid);
     if (!$valid) continue;

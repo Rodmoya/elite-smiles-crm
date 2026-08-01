@@ -739,7 +739,12 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
                 }
             }
         }
-        $generated = social_studio_generate_image_binary($prompt, $referenceImage);
+        $replicaSquare = str_contains(strtolower((string)($draft['overlay_spec'] ?? '')), 'replica_template: confidence_starts');
+        $generated = social_studio_generate_image_binary($prompt, $referenceImage, $replicaSquare ? [
+            'aspect_ratio' => 'ASPECT_RATIO_ONE_BY_ONE',
+            'image_size' => 'IMAGE_SIZE_TWO_K',
+            'output_requirement' => 'Return one square 1:1 image matching the supplied Instagram source canvas.',
+        ] : []);
         if (empty($generated['ok']) || !is_string($generated['bytes'] ?? null) || $generated['bytes'] === '') {
             return ['ok' => false, 'message' => (string)($generated['message'] ?? 'Could not generate image.')];
         }
@@ -812,7 +817,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
 }
 
 if (!function_exists('social_studio_generate_image_binary')) {
-    function social_studio_generate_image_binary(string $prompt, array $referenceImage = []): array
+    function social_studio_generate_image_binary(string $prompt, array $referenceImage = [], array $format = []): array
     {
         if (!elite_gemini_is_configured()) {
             return social_studio_placeholder_image_binary($prompt);
@@ -825,14 +830,14 @@ if (!function_exists('social_studio_generate_image_binary')) {
         }
 
         $imageFormat = [
-            'aspectRatio' => 'ASPECT_RATIO_FOUR_BY_FIVE',
+            'aspectRatio' => (string)($format['aspect_ratio'] ?? 'ASPECT_RATIO_FOUR_BY_FIVE'),
         ];
         if (str_contains(strtolower($model), 'gemini-3')) {
-            $imageFormat['imageSize'] = 'IMAGE_SIZE_TWO_K';
+            $imageFormat['imageSize'] = (string)($format['image_size'] ?? 'IMAGE_SIZE_TWO_K');
         }
 
         $parts = [[
-            'text' => $prompt . "\n\nOutput requirement: return one vertical 4:5 portrait image composed for an Instagram feed post.",
+            'text' => $prompt . "\n\nOutput requirement: " . (string)($format['output_requirement'] ?? 'Return one vertical 4:5 portrait image composed for an Instagram feed post.'),
         ]];
         if (is_string($referenceImage['bytes'] ?? null) && $referenceImage['bytes'] !== '') {
             $parts[] = [

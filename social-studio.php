@@ -122,6 +122,7 @@ function social_studio_preview_overlay(array $draft): array
         }
         .instagram-review { max-width: 430px; margin: 0 auto; }
         .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
+        .instagram-review .review-image.review-image-square { aspect-ratio: 1 / 1; }
         .creative-frame { position: relative; overflow: hidden; }
         .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; pointer-events: none; }
         .creative-overlay.overlay-left { align-items: flex-start; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
@@ -143,15 +144,15 @@ function social_studio_preview_overlay(array $draft): array
         .creative-overlay.overlay-theme-dark .benefits span { color: white; border-color: #d7b98e; background: rgba(15,23,42,.82); }
         .replica-confidence { position: absolute; inset: 0; padding: 7.5% 0 6.5% 7.8%; color: #171b24; pointer-events: none; }
         .replica-confidence .replica-copy { width: 40%; }
-        .replica-confidence .replica-kicker { font: 400 clamp(.8rem, 2vw, 1.45rem)/1 Arial, sans-serif; letter-spacing: .17em; }
-        .replica-confidence .replica-title { margin-top: 4%; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2rem, 5.1vw, 3.85rem); font-weight: 400; line-height: .93; letter-spacing: -.04em; }
-        .replica-confidence .replica-script { margin-top: 1%; color: #9c7a4d; font-family: 'Segoe Script', 'Brush Script MT', cursive; font-size: clamp(1.25rem, 3vw, 2.35rem); font-style: italic; line-height: 1; white-space: nowrap; }
-        .replica-confidence .replica-rule { width: 30%; margin: 7% 0 8%; border-top: 1px solid #9c7a4d; }
-        .replica-confidence .replica-deck { width: 95%; font: 500 clamp(.65rem, 1.35vw, 1rem)/1.42 Arial, sans-serif; letter-spacing: .01em; }
-        .replica-confidence .replica-features { display: grid; gap: .45rem; margin-top: 8%; }
-        .replica-confidence .replica-feature { display: grid; grid-template-columns: 2.2rem 1fr; align-items: center; gap: .65rem; font: 500 clamp(.48rem, 1vw, .72rem)/1.28 Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-        .replica-confidence .replica-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid #a8895c; border-radius: 999px; color: #8c6d43; font-size: .9rem; }
-        .replica-confidence .replica-footer { position: absolute; bottom: 5.5%; left: 7.8%; font: 600 clamp(.48rem, 1vw, .72rem)/1.5 Arial, sans-serif; letter-spacing: .15em; text-transform: uppercase; }
+        .replica-confidence .replica-kicker { font: 400 .92rem/1 Arial, sans-serif; letter-spacing: .17em; }
+        .replica-confidence .replica-title { margin-top: 4%; font-family: Georgia, 'Times New Roman', serif; font-size: 1.72rem; font-weight: 400; line-height: .93; letter-spacing: -.04em; }
+        .replica-confidence .replica-script { margin-top: 1%; color: #9c7a4d; font-family: 'Segoe Script', 'Brush Script MT', cursive; font-size: 1.42rem; font-style: italic; line-height: 1; white-space: nowrap; }
+        .replica-confidence .replica-rule { width: 30%; margin: 6% 0 7%; border-top: 1px solid #9c7a4d; }
+        .replica-confidence .replica-deck { width: 95%; font: 500 .69rem/1.42 Arial, sans-serif; letter-spacing: .01em; }
+        .replica-confidence .replica-features { display: grid; gap: .36rem; margin-top: 6%; }
+        .replica-confidence .replica-feature { display: grid; grid-template-columns: 1.75rem 1fr; align-items: center; gap: .5rem; font: 500 .46rem/1.25 Arial, sans-serif; letter-spacing: .11em; text-transform: uppercase; }
+        .replica-confidence .replica-icon { display: grid; width: 1.55rem; height: 1.55rem; place-items: center; border: 1px solid #a8895c; border-radius: 999px; color: #8c6d43; font-size: .7rem; }
+        .replica-confidence .replica-footer { position: absolute; bottom: 5.5%; left: 7.8%; font: 600 .47rem/1.45 Arial, sans-serif; letter-spacing: .15em; text-transform: uppercase; }
         .replica-confidence .replica-footer span { display: block; margin-top: .45rem; color: #9c7a4d; }
     </style>
 </head>
@@ -408,7 +409,7 @@ function social_studio_preview_overlay(array $draft): array
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
                                 <div class="creative-frame">
-                                    <img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
+                                    <img class="review-image <?= $selectedOverlay['template'] === 'confidence_starts' ? 'review-image-square' : '' ?> w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
                                     <?php if ($selectedOverlay['template'] === 'confidence_starts'): ?>
                                         <div class="replica-confidence">
                                             <div class="replica-copy">

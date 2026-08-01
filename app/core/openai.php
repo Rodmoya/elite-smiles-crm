@@ -42,15 +42,18 @@ if (!function_exists('elite_openai_extract_output_text')) {
 }
 
 if (!function_exists('elite_openai_json_response')) {
-    function elite_openai_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, string $imageDataUrl = ''): array
+    function elite_openai_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, string|array $imageDataUrl = ''): array
     {
         if (!elite_openai_is_configured()) {
             return ['ok' => false, 'message' => 'OpenAI is not configured.'];
         }
 
         $userContent = [['type' => 'input_text', 'text' => $userPrompt]];
-        if ($imageDataUrl !== '') {
-            $userContent[] = ['type' => 'input_image', 'image_url' => $imageDataUrl, 'detail' => 'high'];
+        $imageInputs = is_array($imageDataUrl) ? $imageDataUrl : ($imageDataUrl !== '' ? [$imageDataUrl] : []);
+        foreach ($imageInputs as $imageUrl) {
+            if (is_string($imageUrl) && $imageUrl !== '') {
+                $userContent[] = ['type' => 'input_image', 'image_url' => $imageUrl, 'detail' => 'high'];
+            }
         }
         $payload = [
             'model' => OPENAI_MODEL_CHAT,
@@ -66,7 +69,7 @@ if (!function_exists('elite_openai_json_response')) {
                     'strict' => true,
                 ],
             ],
-            'max_output_tokens' => 700,
+            'max_output_tokens' => 4000,
         ];
 
         $ch = curl_init('https://api.openai.com/v1/responses');

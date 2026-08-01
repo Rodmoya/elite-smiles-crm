@@ -20,6 +20,7 @@ if (!is_array($posts)) {
 
 $imported = 0;
 $failed = 0;
+$errors = [];
 $batchIndex = max(0, (int)post('batch_index', 0));
 $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze each supplied Instagram creative as a reusable design system. Return one result per post_id. Identify composition, subject framing, lighting, palette, typography family and scale, text hierarchy, safe zones, CTA treatment, logo treatment, and clinical-ad compliance. The CRM overlay remains editable; generated images must not bake text or logos.';
 $itemSchema = [
@@ -65,6 +66,7 @@ if (!$batch) {
         $analysis = elite_openai_json_response($system, $prompt, $schema, 'elite_smiles_base_creative_batch', $downloadedImages);
     } catch (Throwable $exception) {
         $failed += count($valid);
+        $errors[] = substr($exception->getMessage(), 0, 160);
         flash_set('error', 'Instagram analysis batch failed; retry this batch.');
         redirect(base_url('social-studio.php'));
     }
@@ -95,9 +97,10 @@ if (!$batch) {
             $imported++;
         } catch (Throwable $exception) {
             $failed++;
+            $errors[] = substr($exception->getMessage(), 0, 160);
         }
     }
 }
 
-flash_set('success', 'Imported and analyzed ' . $imported . ' Instagram base posts' . ($failed ? '; ' . $failed . ' failed.' : '.'));
+flash_set('success', 'Imported and analyzed ' . $imported . ' Instagram base posts' . ($failed ? '; ' . $failed . ' failed.' . ($errors ? ' ' . implode(' | ', $errors) : '') : '.'));
 redirect(base_url('social-studio.php'));

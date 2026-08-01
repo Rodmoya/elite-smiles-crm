@@ -221,7 +221,7 @@ function social_studio_badge_class(string $status): string
                                 <div class="mt-2 flex gap-3 overflow-x-auto pb-2" id="social-reference-carousel">
                                     <?php foreach ($visualReferences as $referenceKey => $reference): ?>
                                         <button type="button" data-social-reference="<?= e($referenceKey) ?>" class="social-reference-card group w-36 shrink-0 overflow-hidden rounded-2xl border-2 border-transparent bg-slate-50 text-left transition hover:border-slate-400 <?= $referenceKey === 'none' ? 'border-slate-950' : '' ?>">
-                                            <?php if (!empty($reference['image_url'])): ?><img src="<?= e($reference['image_url']) ?>" class="h-28 w-full object-cover" alt=""><?php elseif (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
+                                            <?php if (!empty($reference['image_url'])): ?><img src="<?= e($reference['image_url']) ?>" data-source-fallback="<?= e((string)($reference['source_image_url'] ?? '')) ?>" class="h-28 w-full object-cover" alt=""><div class="hidden h-28 items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-500">Image unavailable</div><?php elseif (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
                                             <span class="block px-3 py-2 text-xs font-semibold leading-4 text-slate-800"><?= e($reference['label']) ?></span>
                                         </button>
                                     <?php endforeach; ?>
@@ -399,6 +399,13 @@ function social_studio_badge_class(string $status): string
         const socialModalImage = document.getElementById('social-modal-image');
         const socialModalStatus = document.getElementById('social-modal-status');
         const socialReferenceInput = document.getElementById('social-visual-reference');
+        document.querySelectorAll('[data-social-reference] img[data-source-fallback]').forEach((img) => img.addEventListener('error', () => {
+            const fallback = img.dataset.sourceFallback || '';
+            if (fallback && img.src !== fallback) { img.src = fallback; return; }
+            img.classList.add('hidden');
+            img.nextElementSibling?.classList.remove('hidden');
+            img.nextElementSibling?.classList.add('flex');
+        }));
         document.querySelectorAll('[data-social-reference]').forEach((card) => card.addEventListener('click', () => {
             socialReferenceInput.value = card.dataset.socialReference || 'none';
             document.querySelectorAll('[data-social-reference]').forEach((item) => item.classList.remove('border-slate-950'));

@@ -211,6 +211,7 @@ if (!function_exists('social_studio_visual_references')) {
                 'image_url' => base_url('app/actions/social_studio_base_image.php?base_id=' . (int)$base['id']),
                 'base_prompt' => (string)($base['base_prompt'] ?? ''),
                 'source_url' => (string)($base['source_url'] ?? ''),
+                'source_image_url' => (string)($base['source_image_url'] ?? ''),
             ];
         }
         foreach (db_all('SELECT id, title, image_storage_key, branded_image_storage_key FROM social_studio_drafts WHERE status IN ("approved", "published") AND (image_storage_key IS NOT NULL OR branded_image_storage_key IS NOT NULL) ORDER BY id DESC LIMIT 20') as $draft) {

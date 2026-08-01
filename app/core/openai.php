@@ -81,7 +81,7 @@ if (!function_exists('elite_openai_json_response')) {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 25,
+            CURLOPT_TIMEOUT => 120,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . OPENAI_API_KEY,
                 'Content-Type: application/json',

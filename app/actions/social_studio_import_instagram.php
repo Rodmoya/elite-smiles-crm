@@ -68,6 +68,10 @@ if (!$batch) {
         redirect(base_url('social-studio.php'));
     }
     $results = is_array($analysis['data']['items'] ?? null) ? $analysis['data']['items'] : [];
+    if (!$results && !empty($analysis['message'])) {
+        flash_set('error', 'Instagram analysis error: ' . substr((string)$analysis['message'], 0, 220));
+        redirect(base_url('social-studio.php'));
+    }
     $byId = [];
     foreach ($results as $result) $byId[(string)($result['post_id'] ?? '')] = $result;
     foreach ($valid as $post) {

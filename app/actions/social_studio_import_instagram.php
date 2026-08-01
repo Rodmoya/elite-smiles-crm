@@ -31,7 +31,7 @@ $itemSchema = [
     ],
     'required' => ['post_id', 'title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
 ];
-$batches = array_chunk($posts, 5);
+$batches = array_chunk($posts, 1);
 $batch = $batches[$batchIndex] ?? [];
 if (!$batch) {
     flash_set('error', 'Instagram import batch not found.');

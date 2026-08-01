@@ -600,6 +600,21 @@ if (!function_exists('social_studio_update_status')) {
         return db_query('DELETE FROM social_studio_drafts WHERE id = :id', ['id' => $draftId])->rowCount() > 0;
     }
 
+    function social_studio_delete_all_drafts(): int
+    {
+        social_studio_ensure_schema();
+        $drafts = db_all('SELECT image_storage_key, branded_image_storage_key FROM social_studio_drafts');
+        foreach ($drafts as $draft) {
+            foreach (['image_storage_key', 'branded_image_storage_key'] as $key) {
+                $path = social_studio_safe_storage_path((string)($draft[$key] ?? ''));
+                if ($path !== '' && is_file($path)) {
+                    @unlink($path);
+                }
+            }
+        }
+        return (int)db_query('DELETE FROM social_studio_drafts')->rowCount();
+    }
+
     function social_studio_update_status(int $draftId, string $status, int $userId = 0): bool
     {
         social_studio_ensure_schema();

@@ -131,6 +131,10 @@ function social_studio_badge_class(string $status): string
                             <h2 class="mt-2 text-xl font-semibold text-slate-900">Generate social drafts</h2>
                             <p class="mt-1 text-sm text-slate-500">One focused form. No publishing from this screen.</p>
                         </div>
+                        <form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');">
+                            <?= csrf_input() ?>
+                            <button type="submit" class="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Clear queue</button>
+                        </form>
                     </div>
                     <form id="social-generate-form" class="grid gap-4 lg:grid-cols-[220px_1fr]" method="POST" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
                         <?= csrf_input() ?>
@@ -154,7 +158,7 @@ function social_studio_badge_class(string $status): string
                             <label class="block text-sm font-semibold text-slate-800">How many?
                                 <select name="count" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
                                     <?php for ($postCount = 1; $postCount <= 7; $postCount++): ?>
-                                        <option value="<?= $postCount ?>" <?= $postCount === 7 ? 'selected' : '' ?>><?= $postCount ?> <?= $postCount === 1 ? 'post' : 'posts' ?></option>
+                                        <option value="<?= $postCount ?>" <?= $postCount === 1 ? 'selected' : '' ?>><?= $postCount ?> <?= $postCount === 1 ? 'post' : 'posts' ?></option>
                                     <?php endfor; ?>
                                 </select>
                             </label>

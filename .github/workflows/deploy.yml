@@ -14,15 +14,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Deploy via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
-          port: 21
-          server-dir: /hi.elitesmilesutah.com/crm/
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          security: ${{ secrets.FTP_SECURITY || 'loose' }}
+          timeout: ${{ secrets.FTP_TIMEOUT || 120000 }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR || '/hi.elitesmilesutah.com/crm/' }}
           local-dir: ./
           exclude: |
             **/.git*

@@ -104,6 +104,26 @@ if (!function_exists('social_studio_visual_references')) {
     function social_studio_visual_references(): array
     {
         return [
+            'instagram_2026_veneers_confidence' => [
+                'label' => 'Instagram 2026 — Veneers confidence',
+                'description' => 'Current Elite Smiles creative: warm patient portrait, editorial magazine composition, serif headline, short emotional promise, complimentary consultation CTA.',
+                'image' => 'assets/img/social-studio/instagram-2026/veneers-confidence.jpg',
+            ],
+            'instagram_2026_veneers_benefits' => [
+                'label' => 'Instagram 2026 — Veneers benefits',
+                'description' => 'Current Elite Smiles creative: ivory education card, large serif title, compact benefit list, restrained gold accents, consultation and qualified-financing footer.',
+                'image' => 'assets/img/social-studio/instagram-2026/veneers-benefits.jpg',
+            ],
+            'instagram_2026_lip_repositioning' => [
+                'label' => 'Instagram 2026 — Lip repositioning',
+                'description' => 'Current Elite Smiles creative: close lifestyle portrait, treatment name clearly framed, before/after education, natural-looking results, Draper location and concise CTA.',
+                'image' => 'assets/img/social-studio/instagram-2026/lip-repositioning.jpg',
+            ],
+            'instagram_2026_all_on_x' => [
+                'label' => 'Instagram 2026 — All-on-X',
+                'description' => 'Current Elite Smiles creative: dark premium clinical panel, benefit-led hierarchy, qualified-patient financing note, confidence/lifestyle close, Draper consultation CTA.',
+                'image' => 'assets/img/social-studio/instagram-2026/all-on-x.jpg',
+            ],
             'editorial_veneers' => [
                 'label' => 'Veneers editorial card',
                 'description' => 'Cream background, elegant serif headline, close smile detail, structured benefit copy.',

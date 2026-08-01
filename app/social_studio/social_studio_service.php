@@ -139,7 +139,7 @@ if (!function_exists('social_studio_base_analysis_progress')) {
     function social_studio_base_analysis_progress(): array
     {
         social_studio_ensure_schema();
-        $row = db_one('SELECT COUNT(*) AS total, SUM(CASE WHEN analysis_version >= 2 THEN 1 ELSE 0 END) AS ready FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram"');
+        $row = db_one('SELECT COUNT(*) AS total, SUM(CASE WHEN analysis_version >= 2 THEN 1 ELSE 0 END) AS ready FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND published_at >= "2026-03-16"');
         $total = (int)($row['total'] ?? 0);
         $ready = (int)($row['ready'] ?? 0);
         return ['total' => $total, 'ready' => $ready, 'remaining' => max(0, $total - $ready)];
@@ -151,7 +151,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
     {
         social_studio_ensure_schema();
         $limit = max(1, min(3, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT 100');
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND published_at >= "2026-03-16" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT 100');
         $updated = 0;
         $failed = 0;
         $errors = [];
@@ -308,7 +308,7 @@ if (!function_exists('social_studio_visual_references')) {
                 'image' => '',
             ],
         ];
-        foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
+        foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" AND (source_type <> "instagram" OR published_at >= "2026-03-16") ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
             $key = 'base_' . (int)$base['id'];
             $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
             $bundledImage = $safePostId !== '' ? 'assets/social-studio/instagram/' . $safePostId . '.jpg' : '';

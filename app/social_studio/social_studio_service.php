@@ -773,6 +773,39 @@ if (!function_exists('social_studio_update_status')) {
         return (int)db_query('DELETE FROM social_studio_drafts')->rowCount();
     }
 
+    function social_studio_promote_approved_draft(int $draftId): bool
+    {
+        social_studio_ensure_schema();
+        $draft = db_one('SELECT * FROM social_studio_drafts WHERE id = :id LIMIT 1', ['id' => $draftId]);
+        if (!$draft) {
+            return false;
+        }
+        $sourceImageUrl = base_url('app/actions/social_studio_image.php?draft_id=' . $draftId . '&variant=branded');
+        $analysis = json_encode([
+            'source' => 'approved_social_studio_draft',
+            'draft_id' => $draftId,
+            'focus' => (string)($draft['content_focus'] ?? ''),
+            'purpose' => (string)($draft['post_type'] ?? ''),
+            'caption' => (string)($draft['caption'] ?? ''),
+            'cta' => (string)($draft['cta'] ?? ''),
+            'hashtags' => (string)($draft['hashtags'] ?? ''),
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        social_studio_upsert_base_creative([
+            'source_type' => 'approved_draft',
+            'source_url' => '',
+            'source_post_id' => 'draft_' . $draftId,
+            'title' => (string)($draft['title'] ?? ('Approved creative ' . $draftId)),
+            'published_at' => date('Y-m-d'),
+            'group_name' => (string)($draft['content_focus'] ?? 'Approved creative'),
+            'source_image_url' => $sourceImageUrl,
+            'local_image_key' => (string)($draft['branded_image_storage_key'] ?: ($draft['image_storage_key'] ?? '')),
+            'analysis_json' => $analysis ?: '{}',
+            'base_prompt' => (string)($draft['base_post_prompt'] ?: ($draft['image_prompt'] ?? '')),
+            'overlay_spec' => (string)($draft['overlay_spec'] ?? ''),
+        ]);
+        return true;
+    }
+
     function social_studio_update_status(int $draftId, string $status, int $userId = 0): bool
     {
         social_studio_ensure_schema();
@@ -793,6 +826,10 @@ if (!function_exists('social_studio_update_status')) {
             $params['scheduled_at'] = social_studio_next_slot(0);
         }
 
-        return db_execute('UPDATE social_studio_drafts SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', $params);
+        $ok = db_execute('UPDATE social_studio_drafts SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', $params);
+        if ($ok && $status === 'approved') {
+            social_studio_promote_approved_draft($draftId);
+        }
+        return $ok;
     }
 }

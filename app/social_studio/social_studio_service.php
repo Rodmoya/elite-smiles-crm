@@ -139,6 +139,22 @@ if (!function_exists('social_studio_focus_label')) {
     }
 }
 
+if (!function_exists('social_studio_compact_overlay_cta')) {
+    function social_studio_compact_overlay_cta(string $cta, string $focus = 'veneers'): string
+    {
+        $cta = trim(preg_replace('/\s+/', ' ', $cta) ?? $cta);
+        if ($cta !== '' && str_word_count($cta) <= 7) {
+            return $cta;
+        }
+        return match ($focus) {
+            'implants' => 'Book Your Implant Consultation',
+            'lip_repositioning' => 'Explore Lip Repositioning',
+            'smile_makeover' => 'Design Your New Smile',
+            default => 'Book Your Complimentary Consultation',
+        };
+    }
+}
+
 if (!function_exists('social_studio_base_source_path')) {
     function social_studio_base_source_path(array $base): string
     {
@@ -423,7 +439,7 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'content_focus' => $focus,
                     'post_type' => trim((string)($topic['post_type'] ?? 'education')) ?: 'education',
                     'caption' => $caption,
-                    'cta' => trim((string)($topic['cta'] ?? 'Request a veneer quote today.')),
+                    'cta' => social_studio_compact_overlay_cta((string)($topic['cta'] ?? ''), $focus),
                     'hashtags' => implode(' ', $hashtags),
                     'image_prompt' => $imagePrompt,
                     'base_reference_key' => trim((string)($topic['base_reference_key'] ?? '')) ?: null,
@@ -480,7 +496,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return overlay_eyebrow as the short overline/kicker used by the base (empty string if the base has none). Return overlay_blocks with exactly the same number and role of supporting text blocks/bullets as the base (empty array if it has none); these are concise on-image words, not caption paragraphs. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return overlay_eyebrow as the short overline/kicker used by the base (empty string if the base has none). Return overlay_blocks with exactly the same number and role of supporting text blocks/bullets as the base (empty array if it has none); these are concise on-image words, not caption paragraphs. The CTA must match the base CTA's approximate word count and may never exceed seven words; longer action language belongs in the caption. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);

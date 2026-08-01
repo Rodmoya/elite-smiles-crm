@@ -92,7 +92,7 @@ function social_studio_preview_overlay(array $draft): array
     return [
         'title' => $title !== '' ? $title : 'Your best smile starts here',
         'benefits' => array_slice($benefits, 0, 3),
-        'cta' => $cta !== '' ? $cta : 'Schedule your consultation',
+        'cta' => social_studio_compact_overlay_cta($cta, (string)($draft['content_focus'] ?? 'veneers')),
         'position' => $position,
         'eyebrow' => trim((string)($draft['overlay_eyebrow'] ?? '')),
         'theme' => preg_match('/\b(?:dark|black|charcoal|navy)\b.{0,30}\b(?:background|panel|canvas|field)\b|\b(?:background|panel|canvas|field)\b.{0,30}\b(?:dark|black|charcoal|navy)\b/', $overlaySpec) ? 'dark' : 'light',

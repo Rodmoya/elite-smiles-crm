@@ -201,7 +201,7 @@ if (!function_exists('social_studio_visual_references')) {
                 'image' => '',
             ],
         ];
-        foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
+        foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
             $key = 'base_' . (int)$base['id'];
             $references[$key] = [
                 'label' => (string)$base['title'],

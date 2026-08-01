@@ -44,10 +44,24 @@ if (!$batch) {
         flash_set('error', 'Instagram import batch contained no valid posts.');
         redirect(base_url('social-studio.php'));
     }
+    $downloadedImages = [];
+    foreach ($valid as $validPost) {
+        $url = (string)$validPost['image_url'];
+        $imageBytes = false;
+        if (function_exists('curl_init')) {
+            $curl = curl_init($url);
+            curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 30, CURLOPT_USERAGENT => 'Mozilla/5.0']);
+            $imageBytes = curl_exec($curl);
+            curl_close($curl);
+        } else {
+            $imageBytes = @file_get_contents($url);
+        }
+        $downloadedImages[] = is_string($imageBytes) && $imageBytes !== '' ? 'data:image/jpeg;base64,' . base64_encode($imageBytes) : $url;
+    }
     $schema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['items' => ['type' => 'array', 'items' => $itemSchema]], 'required' => ['items']];
     $prompt = 'Analyze every post in this batch. Use the metadata to match each image to its post_id. Do not omit any item. Metadata: ' . json_encode($valid, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     try {
-        $analysis = elite_openai_json_response($system, $prompt, $schema, 'elite_smiles_base_creative_batch', array_values(array_map(static fn($post) => (string)$post['image_url'], $valid)));
+        $analysis = elite_openai_json_response($system, $prompt, $schema, 'elite_smiles_base_creative_batch', $downloadedImages);
     } catch (Throwable $exception) {
         $failed += count($valid);
         flash_set('error', 'Instagram analysis batch failed; retry this batch.');

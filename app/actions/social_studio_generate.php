@@ -15,6 +15,14 @@ $instruction = (string)post('instruction', '');
 $visualReferenceKey = (string)post('visual_reference', 'none');
 $visualReferences = social_studio_visual_references();
 $visualReference = $visualReferences[$visualReferenceKey] ?? $visualReferences['none'];
+$uploadedInspirationDataUrl = '';
+if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES['inspiration_image']['tmp_name'])) {
+    $mime = (string)($_FILES['inspiration_image']['type'] ?? '');
+    $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+    if (isset($allowed[$mime]) && (int)($_FILES['inspiration_image']['size'] ?? 0) <= 8 * 1024 * 1024) {
+        $uploadedInspirationDataUrl = 'data:' . $mime . ';base64,' . base64_encode((string)file_get_contents($_FILES['inspiration_image']['tmp_name']));
+    }
+}
 $brief = implode("\n", [
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
     'Creative angle: ' . (string)post('angle', 'benefits'),
@@ -30,7 +38,7 @@ $brief = implode("\n", [
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
 $instruction = $brief . "\n" . $instruction;
-$created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction);
+$created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl);
 
 flash_set('success', 'Created ' . $created . ' social draft' . ($created === 1 ? '' : 's') . ' for review.');
 redirect(base_url('social-studio.php'));

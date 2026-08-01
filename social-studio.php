@@ -143,7 +143,7 @@ function social_studio_badge_class(string $status): string
                             <button type="submit" class="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Clear queue</button>
                         </form>
                     </div>
-                    <form id="social-generate-form" class="grid gap-4 lg:grid-cols-[220px_1fr]" method="POST" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
+                    <form id="social-generate-form" class="grid gap-4 lg:grid-cols-[220px_1fr]" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
                         <?= csrf_input() ?>
                         <div class="space-y-2">
                             <?php foreach ([['1', 'Define story'], ['2', 'Create copy'], ['3', 'Create visual'], ['4', 'Assemble post'], ['5', 'Review & approve']] as [$number, $label]): ?>
@@ -232,6 +232,10 @@ function social_studio_badge_class(string $status): string
                                     <?php endforeach; ?>
                                 </div>
                                 <span class="mt-1 block text-xs font-normal text-slate-500">Instagram window: Mar 16, 2026–today. Grouped by creative angle; references guide style only and never get copied.</span>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Or upload inspiration image <span class="font-normal text-slate-500">(optional)</span>
+                                <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm">
+                                <span class="mt-1 block text-xs font-normal text-slate-500">OpenAI will analyze layout, typography, color, framing, and CTA treatment, then create a new Nano Banana prompt.</span>
                             </label>
                             <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800">
                                 <input type="checkbox" name="include_logo" value="1" class="h-4 w-4 rounded border-slate-300"> Include logo in editable overlay

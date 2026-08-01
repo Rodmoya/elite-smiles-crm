@@ -144,14 +144,14 @@ if (!function_exists('social_studio_visual_references')) {
 }
 
 if (!function_exists('social_studio_seed_drafts')) {
-    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = ''): int
+    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = ''): int
     {
         social_studio_ensure_schema();
 
         $focus = social_studio_normalize_focus($focus);
         $count = max(1, min(7, $count));
         $hashtags = social_studio_default_hashtags($focus);
-        $topics = social_studio_generate_topics($focus, $count, $instruction);
+        $topics = social_studio_generate_topics($focus, $count, $instruction, $inspirationImageDataUrl);
         $created = 0;
 
         foreach ($topics as $index => $topic) {
@@ -195,7 +195,7 @@ if (!function_exists('social_studio_seed_drafts')) {
 }
 
 if (!function_exists('social_studio_generate_topics')) {
-    function social_studio_generate_topics(string $focus, int $count, string $instruction = ''): array
+    function social_studio_generate_topics(string $focus, int $count, string $instruction = '', string $inspirationImageDataUrl = ''): array
     {
         if (!elite_openai_is_configured()) {
             return social_studio_fallback_topics($focus, $count);
@@ -228,7 +228,7 @@ if (!function_exists('social_studio_generate_topics')) {
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
         $user = "Create {$count} draft social posts for {$focus}. Make the set an intentional editorial sequence: vary hooks, formats, and angles; do not repeat the same claim. Each draft needs title, post_type, caption, CTA, and Nano Banana image prompt. The image prompt must request a sharp, clean visual with no text, logo, watermark, or typography and reserve space for the CRM overlay. Instruction: " . ($instruction !== '' ? $instruction : 'Generate a balanced sequence of education, trust, lifestyle, and consultation content.');
-        $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts');
+        $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);
         }

@@ -42,17 +42,21 @@ if (!function_exists('elite_openai_extract_output_text')) {
 }
 
 if (!function_exists('elite_openai_json_response')) {
-    function elite_openai_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName): array
+    function elite_openai_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, string $imageDataUrl = ''): array
     {
         if (!elite_openai_is_configured()) {
             return ['ok' => false, 'message' => 'OpenAI is not configured.'];
         }
 
+        $userContent = [['type' => 'input_text', 'text' => $userPrompt]];
+        if ($imageDataUrl !== '') {
+            $userContent[] = ['type' => 'input_image', 'image_url' => $imageDataUrl, 'detail' => 'high'];
+        }
         $payload = [
             'model' => OPENAI_MODEL_CHAT,
             'input' => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $userPrompt],
+                ['role' => 'user', 'content' => $userContent],
             ],
             'text' => [
                 'format' => [

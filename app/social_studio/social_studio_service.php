@@ -266,12 +266,12 @@ if (!function_exists('social_studio_seed_drafts')) {
             ],
             'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
         ];
-        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a reusable design system. Identify composition, subject framing, lighting, palette, typography family and scale, text hierarchy, safe zones, CTA treatment, logo treatment, and clinical-ad compliance. Never ask for or reproduce a logo inside the generated image; the CRM overlay remains editable.';
-        $user = 'Analyze this existing Elite Smiles Instagram post. Return a reusable base prompt for creating an original new version with Nano Banana and a precise editable overlay specification. Source metadata: ' . json_encode($post, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a LOCKED reusable design template. Identify exact composition, crop, subject scale, lighting, palette, typography families, relative font sizes, capitalization, line breaks, text hierarchy, content-block count, spacing, safe zones, CTA treatment, and logo treatment. The base_prompt must be self-contained and specific enough to recreate the same design language while changing only Focus, Purpose, Audience, Age range, and Text position. Never ask for or reproduce a logo inside the generated image; the CRM overlay remains editable.';
+        $user = 'Analyze this existing Elite Smiles Instagram post. Return a locked reusable base image prompt and a precise editable overlay specification. Explicitly document what must remain unchanged and expose only these variables: {{FOCUS}}, {{PURPOSE}}, {{AUDIENCE}}, {{AGE_RANGE}}, and {{TEXT_POSITION}}. Source metadata: ' . json_encode($post, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
     }
 
-    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = ''): int
+    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = []): int
     {
         social_studio_ensure_schema();
 
@@ -282,6 +282,13 @@ if (!function_exists('social_studio_seed_drafts')) {
         $created = 0;
 
         foreach ($topics as $index => $topic) {
+            if ($remixTemplate !== []) {
+                $topic['base_reference_key'] = (string)($remixTemplate['reference_key'] ?? '');
+                $topic['base_post_prompt'] = (string)($remixTemplate['base_prompt'] ?? '');
+                $topic['overlay_spec'] = social_studio_locked_overlay_spec($remixTemplate);
+                $topic['image_prompt'] = social_studio_locked_remix_image_prompt($remixTemplate, $topic, $focus);
+                $topic['post_type'] = (string)($remixTemplate['purpose'] ?? 'educational') === 'social_ad' ? 'social_ad' : 'education';
+            }
             $scheduledAt = social_studio_next_slot($index);
             $caption = trim((string)($topic['caption'] ?? ''));
             if ($caption === '') {
@@ -360,7 +367,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. Each draft is a new version of a selected base post, not a blank concept. Preserve the base post's analyzed look, feel, content hierarchy, CTA pattern, and overlay structure; change only the requested variation inputs and create original wording and imagery. Return base_reference_key, base_post_prompt (the reusable analyzed template prompt), and overlay_spec (headline scale, text blocks, placement, CTA, and logo treatment) for every draft. Make the Nano Banana image prompt sharp, clean, original, unbranded, with no text/logo/watermark/typography and with space for the CRM overlay. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);
@@ -510,6 +517,40 @@ if (!function_exists('social_studio_image_url')) {
     }
 }
 
+if (!function_exists('social_studio_locked_overlay_spec')) {
+    function social_studio_locked_overlay_spec(array $template): string
+    {
+        $position = (string)($template['text_position'] ?? 'left');
+        if (!in_array($position, ['left', 'right', 'top', 'bottom'], true)) {
+            $position = 'left';
+        }
+        return "Text position: {$position}. This is the only permitted layout substitution.\n"
+            . "LOCKED BASE OVERLAY — preserve typography families, relative font sizes, capitalization, line breaks, block count, spacing, hierarchy, palette, and CTA treatment exactly:\n"
+            . trim((string)($template['overlay_spec'] ?? ''));
+    }
+}
+
+if (!function_exists('social_studio_locked_remix_image_prompt')) {
+    function social_studio_locked_remix_image_prompt(array $template, array $topic, string $focus): string
+    {
+        $variables = [
+            '{{FOCUS}}' => social_studio_focus_label($focus),
+            '{{PURPOSE}}' => (string)($template['purpose'] ?? 'educational'),
+            '{{AUDIENCE}}' => (string)($template['audience'] ?? 'any adult'),
+            '{{AGE_RANGE}}' => (string)($template['age_range'] ?? 'any adult'),
+            '{{TEXT_POSITION}}' => (string)($template['text_position'] ?? 'left'),
+        ];
+        $basePrompt = strtr(trim((string)($template['base_prompt'] ?? '')), $variables);
+        $topicDirection = trim((string)($topic['image_prompt'] ?? ''));
+
+        return $basePrompt
+            . "\n\nLOCKED REMIX CONTRACT: preserve the selected ad's composition, crop, subject scale, camera angle, lighting, background style, negative-space ratio, palette, and visual rhythm. Do not reinterpret the template."
+            . "\nControlled substitutions only — Focus: {$variables['{{FOCUS}}']}; Purpose: {$variables['{{PURPOSE}}']}; Audience: {$variables['{{AUDIENCE}}']}; Age range: {$variables['{{AGE_RANGE}}']}; Text position: {$variables['{{TEXT_POSITION}}']}."
+            . ($topicDirection !== '' ? "\nTreatment-specific subject direction: {$topicDirection}" : '')
+            . "\nPORTRAIT QUALITY: use a close, intentional head-and-shoulders crop when a person is present. The face and smile must be a dominant focal point, both eyes fully visible and tack-sharp, and the teeth brilliant bright white, even, polished, and cosmetically perfect while retaining credible human anatomy. No soft focus, haze, motion blur, distant subject, cut-off face, gray teeth, yellow cast, text, logo, watermark, or typography.";
+    }
+}
+
 if (!function_exists('social_studio_store_imported_image')) {
     function social_studio_store_imported_image(string $postId, string $bytes, string $mime = ''): string
     {
@@ -590,6 +631,10 @@ if (!function_exists('social_studio_refine_image_prompt')) {
         $caption = trim((string)($draft['caption'] ?? ''));
         $basePrompt = trim((string)($draft['image_prompt'] ?? ''));
         $focus = social_studio_focus_label((string)($draft['content_focus'] ?? 'veneers'));
+
+        if (str_starts_with((string)($draft['base_reference_key'] ?? ''), 'base_') && trim((string)($draft['base_post_prompt'] ?? '')) !== '') {
+            return $basePrompt . "\n\nFinal output safeguards: vertical 4:5 Instagram composition. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. No text, logo, watermark, typography, soft focus, haze, or cut-off face.";
+        }
 
         if (elite_openai_is_configured()) {
             $schema = [

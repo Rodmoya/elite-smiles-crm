@@ -48,7 +48,7 @@ $brief = implode("\n", [
     'Instagram reference window: March 16, 2026 through today only.',
     $creationMode === 'manual'
         ? 'Manual mode: treat the user instruction as the primary creative direction and use the Master CMO system for quality, compliance, and consistency.'
-        : 'Remix mode: create a new version of the selected Instagram ad. Preserve its angle, content structure, hierarchy, CTA pattern, and visual language; change the subject, wording, facts, and image so the result is original. Apply Focus, audience, age, and text position as controlled variations.',
+        : 'LOCKED REMIX MODE: the selected Instagram ad is the immutable template. Preserve its composition, crop, subject scale, negative space, palette, typography families, font scale, line breaks, content-block count, hierarchy, benefit format, CTA treatment, and overall visual rhythm. The ONLY substitutions allowed are Focus, Purpose, Audience, Age range, and Text position. Rewrite treatment-specific words only where required by those five substitutions. Do not invent a new layout, font system, CTA style, or content structure.',
     'Reference style direction: ' . ($visualReference['description'] ?? 'Use the Elite Smiles Master CMO system.'),
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
@@ -58,7 +58,19 @@ if ($baseAnalysis) {
     $instruction .= "\nBASE OVERLAY SPEC:\n" . (string)$baseAnalysis['overlay_spec'];
 }
 $instruction = $brief . "\n" . $instruction;
-$created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl);
+$remixTemplate = $baseAnalysis ? [
+    'reference_key' => $visualReferenceKey,
+    'title' => (string)$baseAnalysis['title'],
+    'analysis_json' => (string)$baseAnalysis['analysis_json'],
+    'base_prompt' => (string)$baseAnalysis['base_prompt'],
+    'overlay_spec' => (string)$baseAnalysis['overlay_spec'],
+    'focus' => $focus,
+    'purpose' => (string)post('purpose', 'educational'),
+    'audience' => (string)post('audience', 'any'),
+    'age_range' => (string)post('age_range', 'any'),
+    'text_position' => (string)post('text_position', 'left'),
+] : [];
+$created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl, $remixTemplate);
 
 flash_set('success', 'Created ' . $created . ' social draft' . ($created === 1 ? '' : 's') . ' for review.');
 redirect(base_url('social-studio.php'));

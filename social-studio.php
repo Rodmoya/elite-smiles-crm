@@ -134,7 +134,7 @@ function social_studio_badge_class(string $status): string
                     <form id="social-generate-form" class="grid gap-4 lg:grid-cols-[220px_1fr]" method="POST" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
                         <?= csrf_input() ?>
                         <div class="space-y-2">
-                            <?php foreach ([['1', 'Choose focus'], ['2', 'Generate drafts'], ['3', 'Generate image'], ['4', 'Approve']] as [$number, $label]): ?>
+                            <?php foreach ([['1', 'Define story'], ['2', 'Create copy'], ['3', 'Create visual'], ['4', 'Assemble post'], ['5', 'Review & approve']] as [$number, $label]): ?>
                                 <div class="<?= $number === '1' ? 'bg-slate-950 text-white' : 'bg-white text-slate-700' ?> flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-semibold">
                                     <span class="<?= $number === '1' ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700' ?> grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs font-bold"><?= e($number) ?></span>
                                     <?= e($label) ?>

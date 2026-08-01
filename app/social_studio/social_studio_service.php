@@ -135,13 +135,45 @@ if (!function_exists('social_studio_focus_label')) {
     }
 }
 
+if (!function_exists('social_studio_base_source_path')) {
+    function social_studio_base_source_path(array $base): string
+    {
+        $storedPath = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
+        if ($storedPath && is_file($storedPath)) {
+            return $storedPath;
+        }
+        $candidateIds = [(string)($base['source_post_id'] ?? '')];
+        if (preg_match('#/(?:p|reel)/([^/?]+)#', (string)($base['source_url'] ?? ''), $sourceMatch)) {
+            $candidateIds[] = (string)$sourceMatch[1];
+        }
+        foreach (array_unique($candidateIds) as $candidateId) {
+            $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', $candidateId) ?: '';
+            $bundledPath = $safePostId !== ''
+                ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'social-studio' . DIRECTORY_SEPARATOR . 'instagram' . DIRECTORY_SEPARATOR . $safePostId . '.jpg'
+                : '';
+            if ($bundledPath !== '' && is_file($bundledPath)) {
+                return $bundledPath;
+            }
+        }
+        return '';
+    }
+}
+
 if (!function_exists('social_studio_base_analysis_progress')) {
     function social_studio_base_analysis_progress(): array
     {
         social_studio_ensure_schema();
-        $row = db_one('SELECT COUNT(*) AS total, SUM(CASE WHEN analysis_version >= 2 THEN 1 ELSE 0 END) AS ready FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND published_at >= "2026-03-16"');
-        $total = (int)($row['total'] ?? 0);
-        $ready = (int)($row['ready'] ?? 0);
+        $total = 0;
+        $ready = 0;
+        foreach (db_all('SELECT source_url, source_post_id, local_image_key, analysis_version FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram"') as $base) {
+            if (social_studio_base_source_path($base) === '') {
+                continue;
+            }
+            $total++;
+            if ((int)($base['analysis_version'] ?? 1) >= 2) {
+                $ready++;
+            }
+        }
         return ['total' => $total, 'ready' => $ready, 'remaining' => max(0, $total - $ready)];
     }
 }
@@ -151,7 +183,8 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
     {
         social_studio_ensure_schema();
         $limit = max(1, min(3, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND published_at >= "2026-03-16" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT 100');
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT 100');
+        $bases = array_values(array_filter($bases, static fn(array $base): bool => social_studio_base_source_path($base) !== ''));
         $updated = 0;
         $failed = 0;
         $errors = [];
@@ -160,40 +193,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             if ($updated >= $limit) {
                 break;
             }
-            $path = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
-            if (!$path || !is_file($path)) {
-                $candidateIds = [(string)($base['source_post_id'] ?? '')];
-                if (preg_match('#/(?:p|reel)/([^/?]+)#', (string)($base['source_url'] ?? ''), $sourceMatch)) {
-                    $candidateIds[] = (string)$sourceMatch[1];
-                }
-                foreach (array_unique($candidateIds) as $candidateId) {
-                    $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', $candidateId) ?: '';
-                    $bundledPath = $safePostId !== ''
-                        ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'social-studio' . DIRECTORY_SEPARATOR . 'instagram' . DIRECTORY_SEPARATOR . $safePostId . '.jpg'
-                        : '';
-                    if ($bundledPath !== '' && is_file($bundledPath)) {
-                        $path = $bundledPath;
-                        break;
-                    }
-                }
-            }
-            if ((!$path || !is_file($path)) && trim((string)($base['source_image_url'] ?? '')) !== '') {
-                $remoteBytes = false;
-                $remoteUrl = (string)$base['source_image_url'];
-                if (function_exists('curl_init')) {
-                    $curl = curl_init($remoteUrl);
-                    curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 15, CURLOPT_USERAGENT => 'Mozilla/5.0']);
-                    $remoteBytes = curl_exec($curl);
-                    curl_close($curl);
-                }
-                if (is_string($remoteBytes) && $remoteBytes !== '' && @getimagesizefromstring($remoteBytes) !== false) {
-                    $storedKey = social_studio_store_imported_image((string)($base['source_post_id'] ?: ('base_' . $base['id'])), $remoteBytes);
-                    if ($storedKey !== '') {
-                        db_execute('UPDATE social_studio_base_creatives SET local_image_key=:key WHERE id=:id LIMIT 1', ['key' => $storedKey, 'id' => (int)$base['id']]);
-                        $path = social_studio_safe_storage_path($storedKey);
-                    }
-                }
-            }
+            $path = social_studio_base_source_path($base);
             if (!$path || !is_file($path)) {
                 $failed++;
                 $errors[] = (string)$base['title'] . ' [' . (string)$base['source_post_id'] . '] ' . (string)$base['source_url'] . ': source image file not found';
@@ -308,12 +308,15 @@ if (!function_exists('social_studio_visual_references')) {
                 'image' => '',
             ],
         ];
-        foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" AND (source_type <> "instagram" OR published_at >= "2026-03-16") ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
+        foreach (db_all('SELECT id, source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
             $key = 'base_' . (int)$base['id'];
             $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
             $bundledImage = $safePostId !== '' ? 'assets/social-studio/instagram/' . $safePostId . '.jpg' : '';
             $bundledPath = $bundledImage !== '' ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $bundledImage) : '';
             $storedPath = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
+            if ((string)($base['source_type'] ?? '') === 'instagram' && social_studio_base_source_path($base) === '') {
+                continue;
+            }
             if (str_starts_with((string)($base['source_post_id'] ?? ''), 'draft_') && (!$storedPath || !is_file($storedPath))) {
                 continue;
             }

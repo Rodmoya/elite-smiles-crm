@@ -96,6 +96,10 @@ function social_studio_badge_class(string $status): string
                     <textarea name="posts_json" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","source_url":"...","image_url":"..."}]'></textarea>
                     <button type="submit" class="mt-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Import and analyze library</button>
                 </form>
+                <form method="post" action="<?= e(base_url('app/actions/social_studio_refresh_images.php')) ?>" class="mt-2" id="social-refresh-images-form">
+                    <?= csrf_input() ?><input type="hidden" name="posts_json" id="social-refresh-images-json" value="">
+                    <button type="submit" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700">Refresh image cache</button>
+                </form>
             </details>
 
         <section class="mb-8">

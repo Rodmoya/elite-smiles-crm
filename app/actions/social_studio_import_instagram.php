@@ -76,6 +76,11 @@ if (!$batch) {
     foreach ($results as $result) $byId[(string)($result['post_id'] ?? '')] = $result;
     foreach ($valid as $post) {
         $data = $byId[(string)$post['post_id']] ?? null;
+        // A single-image request has an unambiguous source even when the model
+        // normalizes or drops the opaque Instagram ID in its response.
+        if (!is_array($data) && count($valid) === 1 && count($results) === 1 && is_array($results[0])) {
+            $data = $results[0];
+        }
         if (!is_array($data)) { $failed++; continue; }
         try {
             social_studio_upsert_base_creative([

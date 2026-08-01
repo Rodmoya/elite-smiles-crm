@@ -158,6 +158,15 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
         foreach ($bases as $base) {
             $path = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
             if (!$path || !is_file($path)) {
+                $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
+                $bundledPath = $safePostId !== ''
+                    ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'social-studio' . DIRECTORY_SEPARATOR . 'instagram' . DIRECTORY_SEPARATOR . $safePostId . '.jpg'
+                    : '';
+                if ($bundledPath !== '' && is_file($bundledPath)) {
+                    $path = $bundledPath;
+                }
+            }
+            if (!$path || !is_file($path)) {
                 $failed++;
                 continue;
             }

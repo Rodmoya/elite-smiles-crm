@@ -61,6 +61,11 @@ if (!function_exists('social_studio_ensure_schema')) {
             INDEX idx_social_scheduled_at (scheduled_at),
             INDEX idx_social_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        try {
+            db_query("ALTER TABLE social_studio_base_creatives MODIFY COLUMN source_image_url TEXT NULL");
+        } catch (Throwable $e) {
+            // The column may already be migrated or the hosting DB may not allow DDL here.
+        }
 
         foreach ([
             'image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url",

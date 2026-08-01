@@ -23,7 +23,7 @@ if ($creationMode !== 'manual' && (!$visualReference || !str_starts_with($visual
 $baseAnalysis = null;
 if (str_starts_with($visualReferenceKey, 'base_')) {
     $baseId = (int)substr($visualReferenceKey, 5);
-    $baseAnalysis = $baseId > 0 ? db_one('SELECT title, source_url, group_name, analysis_json, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE id = :id AND status = "active" LIMIT 1', ['id' => $baseId]) : null;
+    $baseAnalysis = $baseId > 0 ? db_one('SELECT title, source_url, source_post_id, group_name, analysis_json, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE id = :id AND status = "active" LIMIT 1', ['id' => $baseId]) : null;
     if ($creationMode !== 'manual' && !$baseAnalysis) {
         flash_set('error', 'That Instagram base post is no longer available.');
         redirect(base_url('social-studio.php'));
@@ -61,6 +61,7 @@ $instruction = $brief . "\n" . $instruction;
 $remixTemplate = $baseAnalysis ? [
     'reference_key' => $visualReferenceKey,
     'title' => (string)$baseAnalysis['title'],
+    'source_post_id' => (string)$baseAnalysis['source_post_id'],
     'analysis_json' => (string)$baseAnalysis['analysis_json'],
     'base_prompt' => (string)$baseAnalysis['base_prompt'],
     'overlay_spec' => (string)$baseAnalysis['overlay_spec'],
@@ -69,6 +70,7 @@ $remixTemplate = $baseAnalysis ? [
     'audience' => (string)post('audience', 'any'),
     'age_range' => (string)post('age_range', 'any'),
     'text_position' => (string)post('text_position', 'left'),
+    'replica_mode' => $creationMode === 'replica',
 ] : [];
 $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl, $remixTemplate);
 

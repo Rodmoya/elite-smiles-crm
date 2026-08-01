@@ -98,6 +98,7 @@ function social_studio_preview_overlay(array $draft): array
         'theme' => preg_match('/\b(?:dark|black|charcoal|navy)\b.{0,30}\b(?:background|panel|canvas|field)\b|\b(?:background|panel|canvas|field)\b.{0,30}\b(?:dark|black|charcoal|navy)\b/', $overlaySpec) ? 'dark' : 'light',
         'font' => preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:sans-serif|sans serif|grotesk)\b/', $overlaySpec) && !preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:serif|didot|bodoni)\b/', $overlaySpec) ? 'sans' : 'serif',
         'scale' => preg_match('/\b(?:compact|small|restrained)\b.{0,20}\b(?:headline|title|display)\b|\b(?:headline|title|display)\b.{0,20}\b(?:compact|small|restrained)\b/', $overlaySpec) ? 'compact' : 'large',
+        'template' => str_contains($overlaySpec, 'replica_template: confidence_starts') ? 'confidence_starts' : '',
     ];
 }
 ?>
@@ -140,6 +141,18 @@ function social_studio_preview_overlay(array $draft): array
         .creative-overlay.overlay-theme-dark { color: white; background: linear-gradient(90deg, rgba(12,16,22,.94) 0%, rgba(12,16,22,.78) 38%, rgba(12,16,22,.08) 68%); }
         .creative-overlay.overlay-theme-dark h3, .creative-overlay.overlay-theme-dark .overlay-eyebrow { color: white; }
         .creative-overlay.overlay-theme-dark .benefits span { color: white; border-color: #d7b98e; background: rgba(15,23,42,.82); }
+        .replica-confidence { position: absolute; inset: 0; padding: 7.5% 0 6.5% 7.8%; color: #171b24; pointer-events: none; }
+        .replica-confidence .replica-copy { width: 40%; }
+        .replica-confidence .replica-kicker { font: 400 clamp(.8rem, 2vw, 1.45rem)/1 Arial, sans-serif; letter-spacing: .17em; }
+        .replica-confidence .replica-title { margin-top: 4%; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2rem, 5.1vw, 3.85rem); font-weight: 400; line-height: .93; letter-spacing: -.04em; }
+        .replica-confidence .replica-script { margin-top: 1%; color: #9c7a4d; font-family: 'Segoe Script', 'Brush Script MT', cursive; font-size: clamp(1.25rem, 3vw, 2.35rem); font-style: italic; line-height: 1; white-space: nowrap; }
+        .replica-confidence .replica-rule { width: 30%; margin: 7% 0 8%; border-top: 1px solid #9c7a4d; }
+        .replica-confidence .replica-deck { width: 95%; font: 500 clamp(.65rem, 1.35vw, 1rem)/1.42 Arial, sans-serif; letter-spacing: .01em; }
+        .replica-confidence .replica-features { display: grid; gap: .45rem; margin-top: 8%; }
+        .replica-confidence .replica-feature { display: grid; grid-template-columns: 2.2rem 1fr; align-items: center; gap: .65rem; font: 500 clamp(.48rem, 1vw, .72rem)/1.28 Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+        .replica-confidence .replica-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid #a8895c; border-radius: 999px; color: #8c6d43; font-size: .9rem; }
+        .replica-confidence .replica-footer { position: absolute; bottom: 5.5%; left: 7.8%; font: 600 clamp(.48rem, 1vw, .72rem)/1.5 Arial, sans-serif; letter-spacing: .15em; text-transform: uppercase; }
+        .replica-confidence .replica-footer span { display: block; margin-top: .45rem; color: #9c7a4d; }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
@@ -241,6 +254,7 @@ function social_studio_preview_overlay(array $draft): array
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Creation mode
                                 <select name="creation_mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
                                     <option value="remix">Remix selected post</option>
+                                    <option value="replica">1:1 template test</option>
                                     <option value="manual">Manual brief</option>
                                 </select>
                                 <span class="mt-1 block text-xs font-normal text-slate-500">Remix keeps the selected ad’s structure and style. Manual uses your written direction as the source.</span>
@@ -393,7 +407,28 @@ function social_studio_preview_overlay(array $draft): array
                                 <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
-                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?> overlay-theme-<?= e((string)$selectedOverlay['theme']) ?> overlay-font-<?= e((string)$selectedOverlay['font']) ?> overlay-title-<?= e((string)$selectedOverlay['scale']) ?>"><div><?php if ($selectedOverlay['eyebrow'] !== ''): ?><p class="overlay-eyebrow"><?= e((string)$selectedOverlay['eyebrow']) ?></p><?php endif; ?><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><?php if ($selectedOverlay['benefits'] !== []): ?><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><?php endif; ?><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div></div>
+                                <div class="creative-frame">
+                                    <img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
+                                    <?php if ($selectedOverlay['template'] === 'confidence_starts'): ?>
+                                        <div class="replica-confidence">
+                                            <div class="replica-copy">
+                                                <p class="replica-kicker">YOUR</p>
+                                                <h3 class="replica-title">CONFIDENCE<br>STARTS</h3>
+                                                <p class="replica-script">with your smile</p>
+                                                <div class="replica-rule"></div>
+                                                <p class="replica-deck">Custom veneers designed to enhance your natural beauty and help you feel confident every day.</p>
+                                                <div class="replica-features">
+                                                    <div class="replica-feature"><span class="replica-icon">◇</span><span>Custom veneers<br>Natural. Beautiful. You.</span></div>
+                                                    <div class="replica-feature"><span class="replica-icon">◡</span><span>Complimentary<br>consultation</span></div>
+                                                    <div class="replica-feature"><span class="replica-icon">$</span><span>Flexible financing<br>options</span></div>
+                                                </div>
+                                            </div>
+                                            <div class="replica-footer">● Draper, Utah<span>Invest in yourself.<br>Love your smile.</span></div>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?> overlay-theme-<?= e((string)$selectedOverlay['theme']) ?> overlay-font-<?= e((string)$selectedOverlay['font']) ?> overlay-title-<?= e((string)$selectedOverlay['scale']) ?>"><div><?php if ($selectedOverlay['eyebrow'] !== ''): ?><p class="overlay-eyebrow"><?= e((string)$selectedOverlay['eyebrow']) ?></p><?php endif; ?><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><?php if ($selectedOverlay['benefits'] !== []): ?><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><?php endif; ?><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div>
+                                    <?php endif; ?>
+                                </div>
                             <?php else: ?>
                                 <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
                                     <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>

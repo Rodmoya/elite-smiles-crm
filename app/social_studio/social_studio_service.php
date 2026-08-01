@@ -413,6 +413,15 @@ if (!function_exists('social_studio_seed_drafts')) {
                 $topic['overlay_spec'] = social_studio_locked_overlay_spec($remixTemplate);
                 $topic['image_prompt'] = social_studio_locked_remix_image_prompt($remixTemplate, $topic, $focus);
                 $topic['post_type'] = (string)($remixTemplate['purpose'] ?? 'educational') === 'social_ad' ? 'social_ad' : 'education';
+                if (!empty($remixTemplate['replica_mode']) && (string)($remixTemplate['source_post_id'] ?? '') === 'DZME24slvGK') {
+                    $topic['title'] = 'Your Confidence Starts With Your Smile';
+                    $topic['caption'] = 'Custom veneers designed to enhance your natural beauty and help you feel confident every day. Custom veneers. Natural. Beautiful. You. Complimentary consultation and flexible financing options in Draper, Utah.';
+                    $topic['cta'] = 'Complimentary Consultation';
+                    $topic['overlay_eyebrow'] = 'YOUR';
+                    $topic['overlay_blocks'] = ['Custom veneers — Natural. Beautiful. You.', 'Complimentary consultation', 'Flexible financing options'];
+                    $topic['overlay_spec'] = "REPLICA_TEMPLATE: confidence_starts\n" . $topic['overlay_spec'];
+                    $topic['image_prompt'] .= "\n\n1:1 CONTROL TEST: use the supplied source creative as the exact visual reference. Preserve the same woman, head tilt, expression, hair, wardrobe, indoor background, camera crop, lighting, and subject placement. Remove all existing words, icons, dividers, and graphic marks from the left side and reconstruct that area as clean softly blurred ivory background so the CRM can rebuild the typography separately. Do not add any text or symbols.";
+                }
             }
             $scheduledAt = social_studio_next_slot($index);
             $caption = trim((string)($topic['caption'] ?? ''));
@@ -719,7 +728,18 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         }
 
         $prompt = social_studio_refine_image_prompt($draft);
-        $generated = social_studio_generate_image_binary($prompt);
+        $referenceImage = [];
+        if (preg_match('/^base_(\d+)$/', (string)($draft['base_reference_key'] ?? ''), $baseMatch)) {
+            $base = db_one('SELECT source_url, source_post_id, local_image_key FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
+            $referencePath = $base ? social_studio_base_source_path($base) : '';
+            if ($referencePath !== '' && is_file($referencePath)) {
+                $referenceBytes = @file_get_contents($referencePath);
+                if (is_string($referenceBytes) && $referenceBytes !== '') {
+                    $referenceImage = ['bytes' => $referenceBytes, 'mime_type' => (string)(@mime_content_type($referencePath) ?: 'image/jpeg')];
+                }
+            }
+        }
+        $generated = social_studio_generate_image_binary($prompt, $referenceImage);
         if (empty($generated['ok']) || !is_string($generated['bytes'] ?? null) || $generated['bytes'] === '') {
             return ['ok' => false, 'message' => (string)($generated['message'] ?? 'Could not generate image.')];
         }
@@ -792,7 +812,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
 }
 
 if (!function_exists('social_studio_generate_image_binary')) {
-    function social_studio_generate_image_binary(string $prompt): array
+    function social_studio_generate_image_binary(string $prompt, array $referenceImage = []): array
     {
         if (!elite_gemini_is_configured()) {
             return social_studio_placeholder_image_binary($prompt);
@@ -811,12 +831,22 @@ if (!function_exists('social_studio_generate_image_binary')) {
             $imageFormat['imageSize'] = 'IMAGE_SIZE_TWO_K';
         }
 
+        $parts = [[
+            'text' => $prompt . "\n\nOutput requirement: return one vertical 4:5 portrait image composed for an Instagram feed post.",
+        ]];
+        if (is_string($referenceImage['bytes'] ?? null) && $referenceImage['bytes'] !== '') {
+            $parts[] = [
+                'inlineData' => [
+                    'mimeType' => (string)($referenceImage['mime_type'] ?? 'image/jpeg'),
+                    'data' => base64_encode($referenceImage['bytes']),
+                ],
+            ];
+        }
+
         $payload = [
             'contents' => [[
                 'role' => 'user',
-                'parts' => [[
-                    'text' => $prompt . "\n\nOutput requirement: return one vertical 4:5 portrait image composed for an Instagram feed post.",
-                ]],
+                'parts' => $parts,
             ]],
             'generationConfig' => [
                 'responseModalities' => ['IMAGE'],

@@ -629,10 +629,10 @@ if (!function_exists('social_studio_generate_image_binary')) {
         }
 
         $imageFormat = [
-            'aspectRatio' => '4:5',
+            'aspectRatio' => 'ASPECT_RATIO_FOUR_BY_FIVE',
         ];
         if (str_contains(strtolower($model), 'gemini-3')) {
-            $imageFormat['imageSize'] = '2K';
+            $imageFormat['imageSize'] = 'IMAGE_SIZE_TWO_K';
         }
 
         $payload = [

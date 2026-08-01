@@ -10,6 +10,12 @@ require_once __DIR__ . '/app/social_studio/social_studio_service.php';
 require_auth();
 social_studio_ensure_schema();
 
+if (is_get() && get('clear_queue') === '1') {
+    $deleted = social_studio_delete_all_drafts();
+    flash_set('success', $deleted > 0 ? "Cleared {$deleted} social drafts." : 'The social review queue was already empty.');
+    redirect(base_url('social-studio.php'));
+}
+
 if (is_post() && post('action') === 'logout') {
     require_csrf();
     auth_logout();

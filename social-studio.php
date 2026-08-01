@@ -87,7 +87,6 @@ function social_studio_badge_class(string $status): string
         <?php if ($errorMessage !== ''): ?>
             <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><?= e((string)$errorMessage) ?></div>
         <?php endif; ?>
-        <?php if (auth_user_can('admin')): ?>
             <details class="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
                 <summary class="cursor-pointer text-sm font-semibold text-slate-800">Instagram library importer</summary>
                 <p class="mt-2 text-xs leading-5 text-slate-500">Paste the authenticated Instagram inventory JSON to import every post from March 16, 2026 through today. Each image is analyzed in batches and stored as a reusable base creative.</p>
@@ -97,7 +96,6 @@ function social_studio_badge_class(string $status): string
                     <button type="submit" class="mt-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Import and analyze library</button>
                 </form>
             </details>
-        <?php endif; ?>
 
         <section class="mb-8">
             <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">

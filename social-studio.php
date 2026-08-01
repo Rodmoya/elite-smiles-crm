@@ -231,7 +231,7 @@ function social_studio_badge_class(string $status): string
                                         </button>
                                     <?php endforeach; ?>
                                 </div>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Choose a current Instagram post to create a new version. The selected post supplies the content angle, structure, style, and CTA pattern; your audience, age, and text position refine it.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">Choose a current Instagram post to create a new version. The selected post supplies the content angle, structure, style, and CTA pattern; Focus, audience, age, and text position refine it.</span>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Or upload inspiration image <span class="font-normal text-slate-500">(optional)</span>
                                 <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm">

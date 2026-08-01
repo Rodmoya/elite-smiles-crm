@@ -46,6 +46,7 @@ if (!$batch) {
         redirect(base_url('social-studio.php'));
     }
     $downloadedImages = [];
+    $localImageKeys = [];
     foreach ($valid as $validPost) {
         $url = (string)$validPost['image_url'];
         $imageBytes = false;
@@ -58,7 +59,8 @@ if (!$batch) {
             $imageBytes = @file_get_contents($url);
         }
         $isImage = is_string($imageBytes) && $imageBytes !== '' && function_exists('getimagesizefromstring') && @getimagesizefromstring($imageBytes) !== false;
-        $downloadedImages[] = $isImage ? 'data:image/jpeg;base64,' . base64_encode($imageBytes) : $url;
+        $localImageKeys[(string)$validPost['post_id']] = $isImage ? social_studio_store_imported_image((string)$validPost['post_id'], (string)$imageBytes) : '';
+        $downloadedImages[] = $isImage ? 'data:' . ((string)(@getimagesizefromstring($imageBytes)['mime'] ?? 'image/jpeg')) . ';base64,' . base64_encode($imageBytes) : $url;
     }
     $schema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['items' => ['type' => 'array', 'items' => $itemSchema]], 'required' => ['items']];
     $prompt = 'Analyze every post in this batch. Use the metadata to match each image to its post_id. Do not omit any item. Metadata: ' . json_encode($valid, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -90,7 +92,7 @@ if (!$batch) {
                 'source_type' => 'instagram', 'source_url' => (string)($post['source_url'] ?? ''),
                 'source_post_id' => (string)$post['post_id'], 'title' => (string)$data['title'],
                 'published_at' => (string)($post['published_at'] ?? ''), 'group_name' => (string)$data['group_name'],
-                'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($post['local_image_key'] ?? ''),
+                'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($localImageKeys[(string)$post['post_id']] ?? ($post['local_image_key'] ?? '')),
                 'analysis_json' => json_encode($data['analysis'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'base_prompt' => (string)$data['base_prompt'], 'overlay_spec' => (string)$data['overlay_spec'],
             ]);

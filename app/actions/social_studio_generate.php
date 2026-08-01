@@ -34,6 +34,7 @@ $brief = implode("\n", [
     'Creative angle group: ' . ($visualReference['group'] ?? 'Other'),
     'Instagram visual inspiration: ' . $visualReference['label'],
     'Instagram reference window: March 16, 2026 through today only.',
+    'Remix mode: create a new version of the selected Instagram ad. Preserve its angle, content structure, hierarchy, CTA pattern, and visual language; change the subject, wording, facts, and image so the result is original. Apply Focus, audience, age, and text position as controlled variations.',
     'Reference style direction: ' . $visualReference['description'],
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);

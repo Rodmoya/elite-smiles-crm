@@ -68,8 +68,8 @@ if (!$batch) {
         redirect(base_url('social-studio.php'));
     }
     $results = is_array($analysis['data']['items'] ?? null) ? $analysis['data']['items'] : [];
-    if (!$results && !empty($analysis['message'])) {
-        flash_set('error', 'Instagram analysis error: ' . substr((string)$analysis['message'], 0, 220));
+    if (!$results) {
+        flash_set('error', 'Instagram analysis error: ' . substr((string)($analysis['message'] ?? 'No structured items returned.'), 0, 220));
         redirect(base_url('social-studio.php'));
     }
     $byId = [];

@@ -10,6 +10,26 @@ require_once __DIR__ . '/elite_smiles_master_cmo.php';
 if (!function_exists('social_studio_ensure_schema')) {
     function social_studio_ensure_schema(): void
     {
+        db_query("CREATE TABLE IF NOT EXISTS social_studio_base_creatives (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            source_type VARCHAR(32) NOT NULL DEFAULT 'instagram',
+            source_url VARCHAR(500) NULL,
+            source_post_id VARCHAR(180) NULL,
+            title VARCHAR(180) NOT NULL,
+            published_at DATE NULL,
+            group_name VARCHAR(120) NOT NULL DEFAULT 'Other',
+            source_image_url VARCHAR(500) NULL,
+            local_image_key VARCHAR(255) NULL,
+            analysis_json LONGTEXT NULL,
+            base_prompt TEXT NULL,
+            overlay_spec TEXT NULL,
+            status VARCHAR(32) NOT NULL DEFAULT 'active',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_social_source (source_type, source_post_id),
+            INDEX idx_social_base_status (status),
+            INDEX idx_social_base_date (published_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         db_query("CREATE TABLE IF NOT EXISTS social_studio_drafts (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             title VARCHAR(180) NOT NULL,
@@ -103,6 +123,35 @@ if (!function_exists('social_studio_focus_label')) {
             'lip_repositioning' => 'Lip Repositioning',
             default => 'Veneers',
         };
+    }
+}
+
+if (!function_exists('social_studio_upsert_base_creative')) {
+    function social_studio_upsert_base_creative(array $creative): int
+    {
+        social_studio_ensure_schema();
+        $existing = db_one('SELECT id FROM social_studio_base_creatives WHERE source_type = :source_type AND source_post_id = :source_post_id LIMIT 1', [
+            'source_type' => (string)($creative['source_type'] ?? 'instagram'),
+            'source_post_id' => (string)($creative['source_post_id'] ?? ''),
+        ]);
+        $params = [
+            'source_type' => (string)($creative['source_type'] ?? 'instagram'),
+            'source_url' => (string)($creative['source_url'] ?? ''),
+            'source_post_id' => (string)($creative['source_post_id'] ?? ''),
+            'title' => (string)($creative['title'] ?? 'Untitled base creative'),
+            'published_at' => !empty($creative['published_at']) ? $creative['published_at'] : null,
+            'group_name' => (string)($creative['group_name'] ?? 'Other'),
+            'source_image_url' => (string)($creative['source_image_url'] ?? ''),
+            'local_image_key' => (string)($creative['local_image_key'] ?? ''),
+            'analysis_json' => is_array($creative['analysis'] ?? null) ? json_encode($creative['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)($creative['analysis_json'] ?? ''),
+            'base_prompt' => (string)($creative['base_prompt'] ?? ''),
+            'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
+        ];
+        if ($existing) {
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec WHERE id=:id LIMIT 1', $params + ['id' => (int)$existing['id']]);
+            return (int)$existing['id'];
+        }
+        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec)', $params);
     }
 }
 

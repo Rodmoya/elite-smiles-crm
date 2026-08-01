@@ -45,6 +45,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             base_reference_key VARCHAR(180) NULL,
             base_post_prompt TEXT NULL,
             overlay_spec TEXT NULL,
+            overlay_eyebrow VARCHAR(180) NULL,
+            overlay_blocks_json TEXT NULL,
             image_url VARCHAR(500) NULL,
             image_storage_key VARCHAR(255) NULL,
             branded_image_storage_key VARCHAR(255) NULL,
@@ -78,6 +80,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             'base_reference_key' => "ALTER TABLE social_studio_drafts ADD COLUMN base_reference_key VARCHAR(180) NULL AFTER image_prompt",
             'base_post_prompt' => "ALTER TABLE social_studio_drafts ADD COLUMN base_post_prompt TEXT NULL AFTER base_reference_key",
             'overlay_spec' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_spec TEXT NULL AFTER base_post_prompt",
+            'overlay_eyebrow' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_eyebrow VARCHAR(180) NULL AFTER overlay_spec",
+            'overlay_blocks_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_blocks_json TEXT NULL AFTER overlay_eyebrow",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -410,9 +414,9 @@ if (!function_exists('social_studio_seed_drafts')) {
 
             db_insert(
                 "INSERT INTO social_studio_drafts
-                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, scheduled_at, created_by)
+                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, scheduled_at, created_by)
                  VALUES
-                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :scheduled_at, :created_by)",
+                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :scheduled_at, :created_by)",
                 [
                     'title' => $title,
                     'platform' => 'facebook_instagram',
@@ -425,6 +429,8 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'base_reference_key' => trim((string)($topic['base_reference_key'] ?? '')) ?: null,
                     'base_post_prompt' => trim((string)($topic['base_post_prompt'] ?? '')) ?: null,
                     'overlay_spec' => trim((string)($topic['overlay_spec'] ?? '')) ?: null,
+                    'overlay_eyebrow' => trim((string)($topic['overlay_eyebrow'] ?? '')) ?: null,
+                    'overlay_blocks_json' => json_encode(array_values(array_filter((array)($topic['overlay_blocks'] ?? []), static fn($item): bool => is_string($item) && trim($item) !== '')), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null,
                     'scheduled_at' => $scheduledAt,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
                 ]
@@ -463,8 +469,10 @@ if (!function_exists('social_studio_generate_topics')) {
                             'base_reference_key' => ['type' => 'string'],
                             'base_post_prompt' => ['type' => 'string'],
                             'overlay_spec' => ['type' => 'string'],
+                            'overlay_eyebrow' => ['type' => 'string'],
+                            'overlay_blocks' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string']],
                         ],
-                        'required' => ['title', 'post_type', 'caption', 'cta', 'image_prompt', 'base_reference_key', 'base_post_prompt', 'overlay_spec'],
+                        'required' => ['title', 'post_type', 'caption', 'cta', 'image_prompt', 'base_reference_key', 'base_post_prompt', 'overlay_spec', 'overlay_eyebrow', 'overlay_blocks'],
                     ],
                 ],
             ],
@@ -472,7 +480,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return overlay_eyebrow as the short overline/kicker used by the base (empty string if the base has none). Return overlay_blocks with exactly the same number and role of supporting text blocks/bullets as the base (empty array if it has none); these are concise on-image words, not caption paragraphs. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);
@@ -493,6 +501,8 @@ if (!function_exists('social_studio_fallback_topics')) {
                 'caption' => social_studio_fallback_caption($focus, $i),
                 'cta' => $focus === 'veneers' ? 'Request a veneer quote today.' : 'Schedule a consult with Elite Smiles.',
                 'image_prompt' => social_studio_fallback_image_prompt($focus, social_studio_fallback_title($focus, $i)),
+                'overlay_eyebrow' => '',
+                'overlay_blocks' => [],
             ];
         }
         return $items;

@@ -56,8 +56,10 @@ function social_studio_preview_overlay(array $draft): array
     $cta = trim((string)($draft['cta'] ?? ''));
     $overlaySpec = strtolower(trim((string)($draft['overlay_spec'] ?? '')));
 
-    $benefits = [];
-    if ($caption !== '' && preg_match_all('/(?:^|\s)[\-•✦✨]\s*([^\-•✦✨\r\n]{3,80})/u', $caption, $matches)) {
+    $hasStoredBlocks = array_key_exists('overlay_blocks_json', $draft) && $draft['overlay_blocks_json'] !== null;
+    $storedBlocks = json_decode((string)($draft['overlay_blocks_json'] ?? '[]'), true);
+    $benefits = is_array($storedBlocks) ? array_values(array_filter($storedBlocks, static fn($item): bool => is_string($item) && trim($item) !== '')) : [];
+    if (!$hasStoredBlocks && $caption !== '' && preg_match_all('/(?:^|\s)[\-•✦✨]\s*([^\-•✦✨\r\n]{3,80})/u', $caption, $matches)) {
         foreach ($matches[1] as $benefit) {
             $benefit = trim((string)$benefit, " \t\n\r\0\x0B.,;:");
             if ($benefit !== '' && !in_array($benefit, $benefits, true)) {
@@ -69,7 +71,7 @@ function social_studio_preview_overlay(array $draft): array
         }
     }
 
-    if ($benefits === []) {
+    if (!$hasStoredBlocks && $benefits === []) {
         $focus = (string)($draft['content_focus'] ?? 'smile_makeover');
         $benefits = match ($focus) {
             'implants' => ['Natural look and feel', 'Restore everyday confidence', 'Designed for lasting function'],
@@ -92,6 +94,10 @@ function social_studio_preview_overlay(array $draft): array
         'benefits' => array_slice($benefits, 0, 3),
         'cta' => $cta !== '' ? $cta : 'Schedule your consultation',
         'position' => $position,
+        'eyebrow' => trim((string)($draft['overlay_eyebrow'] ?? '')),
+        'theme' => preg_match('/\b(?:dark|black|charcoal|navy)\b.{0,30}\b(?:background|panel|canvas|field)\b|\b(?:background|panel|canvas|field)\b.{0,30}\b(?:dark|black|charcoal|navy)\b/', $overlaySpec) ? 'dark' : 'light',
+        'font' => preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:sans-serif|sans serif|grotesk)\b/', $overlaySpec) && !preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:serif|didot|bodoni)\b/', $overlaySpec) ? 'sans' : 'serif',
+        'scale' => preg_match('/\b(?:compact|small|restrained)\b.{0,20}\b(?:headline|title|display)\b|\b(?:headline|title|display)\b.{0,20}\b(?:compact|small|restrained)\b/', $overlaySpec) ? 'compact' : 'large',
     ];
 }
 ?>
@@ -129,6 +135,11 @@ function social_studio_preview_overlay(array $draft): array
         .creative-overlay.overlay-top .benefits, .creative-overlay.overlay-bottom .benefits { margin-top: .65rem; }
         .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #20242b; color: white; padding: .5rem .65rem; font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
         .creative-overlay.overlay-right .creative-cta { align-self: flex-end; }
+        .creative-overlay.overlay-font-sans h3 { font-family: Arial, Helvetica, sans-serif; font-weight: 800; letter-spacing: -.035em; }
+        .creative-overlay.overlay-title-compact h3 { max-width: 13rem; font-size: clamp(1.1rem, 2.25vw, 1.55rem); line-height: 1.02; }
+        .creative-overlay.overlay-theme-dark { color: white; background: linear-gradient(90deg, rgba(12,16,22,.94) 0%, rgba(12,16,22,.78) 38%, rgba(12,16,22,.08) 68%); }
+        .creative-overlay.overlay-theme-dark h3, .creative-overlay.overlay-theme-dark .overlay-eyebrow { color: white; }
+        .creative-overlay.overlay-theme-dark .benefits span { color: white; border-color: #d7b98e; background: rgba(15,23,42,.82); }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
@@ -382,7 +393,7 @@ function social_studio_preview_overlay(array $draft): array
                                 <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
-                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?>"><div><p class="overlay-eyebrow">Elite Smiles &middot; Draper, Utah</p><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div></div>
+                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?> overlay-theme-<?= e((string)$selectedOverlay['theme']) ?> overlay-font-<?= e((string)$selectedOverlay['font']) ?> overlay-title-<?= e((string)$selectedOverlay['scale']) ?>"><div><?php if ($selectedOverlay['eyebrow'] !== ''): ?><p class="overlay-eyebrow"><?= e((string)$selectedOverlay['eyebrow']) ?></p><?php endif; ?><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><?php if ($selectedOverlay['benefits'] !== []): ?><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><?php endif; ?><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div></div>
                             <?php else: ?>
                                 <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
                                     <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>

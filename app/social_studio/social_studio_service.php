@@ -106,46 +106,55 @@ if (!function_exists('social_studio_visual_references')) {
         return [
             'instagram_2026_veneers_confidence' => [
                 'label' => 'Instagram 2026 — Veneers confidence',
+                'group' => 'Confidence / life experience',
                 'description' => 'Current Elite Smiles creative: warm patient portrait, editorial magazine composition, serif headline, short emotional promise, complimentary consultation CTA.',
                 'image' => 'assets/img/social-studio/instagram-2026/veneers-confidence.jpg',
             ],
             'instagram_2026_veneers_benefits' => [
                 'label' => 'Instagram 2026 — Veneers benefits',
+                'group' => 'Educational / benefits',
                 'description' => 'Current Elite Smiles creative: ivory education card, large serif title, compact benefit list, restrained gold accents, consultation and qualified-financing footer.',
                 'image' => 'assets/img/social-studio/instagram-2026/veneers-benefits.jpg',
             ],
             'instagram_2026_lip_repositioning' => [
                 'label' => 'Instagram 2026 — Lip repositioning',
+                'group' => 'Treatment education',
                 'description' => 'Current Elite Smiles creative: close lifestyle portrait, treatment name clearly framed, before/after education, natural-looking results, Draper location and concise CTA.',
                 'image' => 'assets/img/social-studio/instagram-2026/lip-repositioning.jpg',
             ],
             'instagram_2026_all_on_x' => [
                 'label' => 'Instagram 2026 — All-on-X',
+                'group' => 'Treatment education',
                 'description' => 'Current Elite Smiles creative: dark premium clinical panel, benefit-led hierarchy, qualified-patient financing note, confidence/lifestyle close, Draper consultation CTA.',
                 'image' => 'assets/img/social-studio/instagram-2026/all-on-x.jpg',
             ],
             'editorial_veneers' => [
                 'label' => 'Veneers editorial card',
+                'group' => 'Educational / benefits',
                 'description' => 'Cream background, elegant serif headline, close smile detail, structured benefit copy.',
                 'image' => 'assets/img/landings/veneers-ad-final.png',
             ],
             'premium_patient' => [
                 'label' => 'Premium patient portrait',
+                'group' => 'Confidence / life experience',
                 'description' => 'Warm luxury portrait, natural expression, generous negative space for overlay copy.',
                 'image' => 'assets/img/landings/veneers-draper-hero-v1.jpg',
             ],
             'implant_education' => [
                 'label' => 'Implant education layout',
+                'group' => 'Educational / benefits',
                 'description' => 'Clinical education with clean hierarchy, neutral ivory palette, and benefit-led structure.',
                 'image' => 'assets/img/landings/implants-hero-education-comparison.jpg',
             ],
             'lifestyle_confidence' => [
                 'label' => 'Life experience / confidence',
+                'group' => 'Confidence / life experience',
                 'description' => 'Human lifestyle moment, calm premium lighting, emotionally confident but never staged.',
                 'image' => 'assets/img/landings/implants-patient-lifestyle.jpg',
             ],
             'none' => [
                 'label' => 'Let the Master CMO choose',
+                'group' => 'Master CMO recommendation',
                 'description' => 'Use the strongest existing Elite Smiles pattern for the selected topic and audience.',
                 'image' => '',
             ],

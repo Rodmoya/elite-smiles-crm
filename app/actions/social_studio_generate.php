@@ -23,6 +23,7 @@ $brief = implode("\n", [
     'Financing: ' . ((string)post('financing', 'exclude') === 'include_0' ? 'Mention 0% financing for qualified patients' : 'Do not mention financing'),
     'Editable overlay logo: ' . (!empty($_POST['include_logo']) ? 'include logo' : 'no logo'),
     'Text position: ' . (string)post('text_position', 'left'),
+    'Creative angle group: ' . ($visualReference['group'] ?? 'Other'),
     'Instagram visual inspiration: ' . $visualReference['label'],
     'Reference style direction: ' . $visualReference['description'],
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',

@@ -208,12 +208,17 @@ if (!function_exists('social_studio_visual_references')) {
         ];
         foreach (db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
             $key = 'base_' . (int)$base['id'];
+            $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
+            $bundledImage = $safePostId !== '' ? 'assets/social-studio/instagram/' . $safePostId . '.jpg' : '';
+            $bundledPath = $bundledImage !== '' ? dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $bundledImage) : '';
             $references[$key] = [
                 'label' => (string)$base['title'],
                 'group' => (string)($base['group_name'] ?: 'Instagram base creatives'),
                 'date' => (string)($base['published_at'] ?? ''),
                 'description' => 'Analyzed base creative. ' . trim((string)($base['overlay_spec'] ?? '')),
-                'image_url' => base_url('app/actions/social_studio_base_image.php?base_id=' . (int)$base['id']),
+                'image_url' => $bundledPath !== '' && is_file($bundledPath)
+                    ? base_url($bundledImage)
+                    : base_url('app/actions/social_studio_base_image.php?base_id=' . (int)$base['id']),
                 'base_prompt' => (string)($base['base_prompt'] ?? ''),
                 'source_url' => (string)($base['source_url'] ?? ''),
                 'source_image_url' => (string)($base['source_image_url'] ?? ''),

@@ -23,6 +23,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             analysis_json LONGTEXT NULL,
             base_prompt TEXT NULL,
             overlay_spec TEXT NULL,
+            analysis_version TINYINT UNSIGNED NOT NULL DEFAULT 1,
             status VARCHAR(32) NOT NULL DEFAULT 'active',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -65,6 +66,9 @@ if (!function_exists('social_studio_ensure_schema')) {
             db_query("ALTER TABLE social_studio_base_creatives MODIFY COLUMN source_image_url TEXT NULL");
         } catch (Throwable $e) {
             // The column may already be migrated or the hosting DB may not allow DDL here.
+        }
+        if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE 'analysis_version'")) {
+            db_query("ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_version TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER overlay_spec");
         }
 
         foreach ([
@@ -128,6 +132,64 @@ if (!function_exists('social_studio_focus_label')) {
             'lip_repositioning' => 'Lip Repositioning',
             default => 'Veneers',
         };
+    }
+}
+
+if (!function_exists('social_studio_base_analysis_progress')) {
+    function social_studio_base_analysis_progress(): array
+    {
+        social_studio_ensure_schema();
+        $row = db_one('SELECT COUNT(*) AS total, SUM(CASE WHEN analysis_version >= 2 THEN 1 ELSE 0 END) AS ready FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram"');
+        $total = (int)($row['total'] ?? 0);
+        $ready = (int)($row['ready'] ?? 0);
+        return ['total' => $total, 'ready' => $ready, 'remaining' => max(0, $total - $ready)];
+    }
+}
+
+if (!function_exists('social_studio_reanalyze_base_creatives')) {
+    function social_studio_reanalyze_base_creatives(int $limit = 1): array
+    {
+        social_studio_ensure_schema();
+        $limit = max(1, min(3, $limit));
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT ' . $limit);
+        $updated = 0;
+        $failed = 0;
+
+        foreach ($bases as $base) {
+            $path = social_studio_safe_storage_path((string)($base['local_image_key'] ?? ''));
+            if (!$path || !is_file($path)) {
+                $failed++;
+                continue;
+            }
+            $bytes = @file_get_contents($path);
+            if (!is_string($bytes) || $bytes === '') {
+                $failed++;
+                continue;
+            }
+            $mime = function_exists('mime_content_type') ? (string)(@mime_content_type($path) ?: 'image/jpeg') : 'image/jpeg';
+            $post = $base;
+            $post['image_url'] = 'data:' . $mime . ';base64,' . base64_encode($bytes);
+            $analysis = social_studio_analyze_base_creative($post);
+            if (empty($analysis['ok']) || !is_array($analysis['data'] ?? null)) {
+                $failed++;
+                continue;
+            }
+            $data = $analysis['data'];
+            $analysisJson = is_array($data['analysis'] ?? null)
+                ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : (string)($data['analysis'] ?? '');
+            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, analysis_version=2 WHERE id=:id LIMIT 1', [
+                'id' => (int)$base['id'],
+                'title' => trim((string)($data['title'] ?? '')) ?: (string)$base['title'],
+                'group_name' => trim((string)($data['group_name'] ?? '')) ?: (string)$base['group_name'],
+                'analysis_json' => $analysisJson,
+                'base_prompt' => trim((string)($data['base_prompt'] ?? '')),
+                'overlay_spec' => trim((string)($data['overlay_spec'] ?? '')),
+            ]);
+            $updated++;
+        }
+
+        return ['updated' => $updated, 'failed' => $failed] + social_studio_base_analysis_progress();
     }
 }
 
@@ -260,14 +322,14 @@ if (!function_exists('social_studio_seed_drafts')) {
             'properties' => [
                 'title' => ['type' => 'string'],
                 'group_name' => ['type' => 'string'],
-                'analysis' => ['type' => 'object', 'additionalProperties' => true],
+                'analysis' => ['type' => 'string'],
                 'base_prompt' => ['type' => 'string'],
                 'overlay_spec' => ['type' => 'string'],
             ],
             'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
         ];
-        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a LOCKED reusable design template. Identify exact composition, crop, subject scale, lighting, palette, typography families, relative font sizes, capitalization, line breaks, text hierarchy, content-block count, spacing, safe zones, CTA treatment, and logo treatment. The base_prompt must be self-contained and specific enough to recreate the same design language while changing only Focus, Purpose, Audience, Age range, and Text position. Never ask for or reproduce a logo inside the generated image; the CRM overlay remains editable.';
-        $user = 'Analyze this existing Elite Smiles Instagram post. Return a locked reusable base image prompt and a precise editable overlay specification. Explicitly document what must remain unchanged and expose only these variables: {{FOCUS}}, {{PURPOSE}}, {{AUDIENCE}}, {{AGE_RANGE}}, and {{TEXT_POSITION}}. Source metadata: ' . json_encode($post, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a LOCKED reusable design template. Identify exact composition, crop, subject scale, lighting, background, palette, typography families, relative font sizes, capitalization, line breaks, text hierarchy, content-block count, spacing, safe zones, CTA treatment, and logo treatment. The base_prompt must be a detailed 300–600 word, self-contained Nano Banana visual recipe—not a generic marketing sentence—and must describe the image layer separately from the editable text layer. The overlay_spec must precisely record every visible text role, approximate wording length, font category, weight, case, relative size, alignment, color, spacing, position, and CTA container style. Never ask the image model to reproduce a logo, words, or typography; the CRM overlay remains editable.';
+        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Return a locked reusable base image prompt and a precise editable overlay specification. Explicitly document what must remain unchanged and expose only these variables: {{FOCUS}}, {{PURPOSE}}, {{AUDIENCE}}, {{AGE_RANGE}}, and {{TEXT_POSITION}}. Describe subject placement as percentages of the 4:5 canvas, face/smile crop, negative-space boundaries, background depth, exact color families, and the complete text hierarchy. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
     }
 

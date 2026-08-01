@@ -36,6 +36,7 @@ $counts = $data['counts'];
 $drafts = $data['drafts'];
 $selected = $data['selected'];
 $schedule = $data['schedule'];
+$baseAnalysisProgress = social_studio_base_analysis_progress();
 
 function social_studio_badge_class(string $status): string
 {
@@ -152,6 +153,11 @@ function social_studio_preview_overlay(array $draft): array
                 <form method="post" action="<?= e(base_url('app/actions/social_studio_refresh_images.php')) ?>" class="mt-2" id="social-refresh-images-form">
                     <?= csrf_input() ?><textarea name="posts_json" id="social-refresh-images-json" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-[10px]" rows="2" placeholder="Paste inventory JSON to refresh stored images"></textarea>
                     <button type="submit" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700">Refresh image cache</button>
+                </form>
+                <form method="post" action="<?= e(base_url('app/actions/social_studio_reanalyze_bases.php')) ?>" class="mt-3 flex flex-wrap items-center gap-3">
+                    <?= csrf_input() ?><input type="hidden" name="limit" value="2">
+                    <button type="submit" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">Rebuild next 2 template prompts</button>
+                    <span class="text-xs text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> templates fully analyzed<?= $baseAnalysisProgress['remaining'] > 0 ? ' · ' . e((string)$baseAnalysisProgress['remaining']) . ' remaining' : ' · complete' ?></span>
                 </form>
             </details>
 

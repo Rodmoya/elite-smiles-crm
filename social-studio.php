@@ -161,7 +161,7 @@ function social_studio_badge_class(string $status): string
                                 <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Use Elite Smiles voice. Keep it friendly, premium, and conversion focused. Goal: schedule veneer consults."></textarea>
                             </label>
                             <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800 sm:col-span-2">
-                                OpenAI writes the post title, caption, CTA, hashtags, and exact image prompt. Nano Banana creates the image with no text or logo, then the CRM adds the Elite Smiles logo.
+                                OpenAI writes the post title, caption, CTA, benefit points, hashtags, and exact image prompt. Nano Banana creates a clean image with no text, logo, or watermark; the CRM adds a separate editable editorial layer.
                             </div>
                             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2">
                                 <button type="submit" class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Generate Drafts</button>
@@ -300,7 +300,7 @@ function social_studio_badge_class(string $status): string
                     <div class="mt-4 space-y-3 text-sm text-slate-600">
                         <p><span class="font-semibold text-slate-900">Publishing:</span> require approval before schedule.</p>
                         <p><span class="font-semibold text-slate-900">Frequency:</span> 1 post per day.</p>
-                        <p><span class="font-semibold text-slate-900">Images:</span> OpenAI prompt first, Nano Banana art second, CRM logo last.</p>
+                        <p><span class="font-semibold text-slate-900">Images:</span> clean Nano Banana visual, separate editable editorial layer. No logos inside the image.</p>
                         <p><span class="font-semibold text-slate-900">Meta:</span> publishing disabled for this MVP.</p>
                     </div>
                 </section>

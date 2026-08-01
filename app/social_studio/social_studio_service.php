@@ -196,7 +196,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             }
             if (!$path || !is_file($path)) {
                 $failed++;
-                $errors[] = (string)$base['title'] . ': source image file not found';
+                $errors[] = (string)$base['title'] . ' [' . (string)$base['source_post_id'] . '] ' . (string)$base['source_url'] . ': source image file not found';
                 continue;
             }
             $bytes = @file_get_contents($path);

@@ -56,7 +56,8 @@ if (!$batch) {
         } else {
             $imageBytes = @file_get_contents($url);
         }
-        $downloadedImages[] = is_string($imageBytes) && $imageBytes !== '' ? 'data:image/jpeg;base64,' . base64_encode($imageBytes) : $url;
+        $isImage = is_string($imageBytes) && $imageBytes !== '' && function_exists('getimagesizefromstring') && @getimagesizefromstring($imageBytes) !== false;
+        $downloadedImages[] = $isImage ? 'data:image/jpeg;base64,' . base64_encode($imageBytes) : $url;
     }
     $schema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['items' => ['type' => 'array', 'items' => $itemSchema]], 'required' => ['items']];
     $prompt = 'Analyze every post in this batch. Use the metadata to match each image to its post_id. Do not omit any item. Metadata: ' . json_encode($valid, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

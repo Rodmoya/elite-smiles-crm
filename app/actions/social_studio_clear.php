@@ -13,7 +13,6 @@ $deleted = 0;
 try {
     // The queue reset is intentionally database-first. Image files are optional
     // artifacts; a stale file must never prevent clearing the review queue.
-    social_studio_ensure_schema();
     $deleted = (int) db_query('DELETE FROM social_studio_drafts')->rowCount();
 } catch (Throwable $error) {
     esm_log('social_studio', 'Bulk draft reset failed.', ['message' => $error->getMessage()]);

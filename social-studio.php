@@ -61,6 +61,12 @@ function social_studio_badge_class(string $status): string
         }
         .instagram-review { max-width: 430px; margin: 0 auto; }
         .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
+        .creative-frame { position: relative; overflow: hidden; }
+        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.25rem; background: linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,0) 38%, rgba(2,6,23,.08) 68%, rgba(2,6,23,.72) 100%); pointer-events: none; }
+        .creative-overlay h3 { max-width: 15rem; font-family: Georgia, serif; font-size: clamp(1.5rem, 3vw, 2.25rem); line-height: .95; letter-spacing: -.04em; color: #1e293b; }
+        .creative-overlay .benefits { align-self: flex-start; margin-top: auto; margin-bottom: .8rem; display: grid; gap: .35rem; color: #1e293b; font-size: .68rem; font-weight: 700; }
+        .creative-overlay .benefits span { display: block; padding: .35rem .55rem; border-left: 2px solid #b08b62; background: rgba(255,255,255,.84); }
+        .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #1e293b; color: white; padding: .55rem .75rem; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
@@ -237,7 +243,7 @@ function social_studio_badge_class(string $status): string
                                 <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
-                                <img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
+                                <div class="creative-frame"><img class="review-image w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><div class="creative-overlay"><h3>The Power of Veneers</h3><div class="benefits"><span>Natural-looking results</span><span>Customized shape and shade</span><span>Confidence for every moment</span></div><div class="creative-cta">Complimentary consultation</div></div></div>
                             <?php else: ?>
                                 <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
                                     <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>

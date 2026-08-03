@@ -466,7 +466,7 @@ if (!function_exists('social_studio_seed_drafts')) {
             $text("CONFIDENCE\nSTARTS", 7.8, 12.6, 38, 13, 'serif', 5.4, 400, .9, -.02, '#20252d', true),
             $text('with your smile', 12.2, 25.5, 35, 5, 'script', 4.2, 400, 1, 0, '#9b794e'),
             ['type'=>'line','text'=>'','x'=>7.8,'y'=>32.2,'width'=>12,'height'=>.18,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
-            $text('Custom veneers designed to enhance your natural beauty and help you feel confident every day.', 7.8, 36.5, 37, 10, 'sans', 1.75, 500, 1.35, .01, '#20252d'),
+            $text("Custom veneers designed to\nenhance your natural beauty and\nhelp you feel confident every day.", 7.8, 36.5, 37, 10, 'sans', 1.75, 500, 1.35, .01, '#20252d'),
             $text("◇   CUSTOM VENEERS\n     NATURAL. BEAUTIFUL. YOU.", 7.8, 52, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
             $text("□   COMPLIMENTARY\n     CONSULTATION", 7.8, 62, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
             $text("$   FLEXIBLE FINANCING\n     OPTIONS", 7.8, 72, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
@@ -734,6 +734,14 @@ if (!function_exists('social_studio_dashboard_data')) {
     function social_studio_dashboard_data(): array
     {
         social_studio_ensure_schema();
+        foreach (db_all('SELECT id, source_post_id, overlay_template_json FROM social_studio_base_creatives WHERE status="active" AND source_post_id="DZME24slvGK"') as $curatedBase) {
+            $curatedTemplate = social_studio_curated_overlay_template((string)$curatedBase['source_post_id']);
+            $curatedJson = social_studio_encode_overlay_template($curatedTemplate);
+            if ($curatedJson !== null && $curatedJson !== (string)($curatedBase['overlay_template_json'] ?? '')) {
+                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:template, analysis_version=3 WHERE id=:id LIMIT 1', ['id'=>(int)$curatedBase['id'], 'template'=>$curatedJson]);
+                db_execute('UPDATE social_studio_drafts SET overlay_template_json=:template WHERE base_reference_key=:reference_key', ['template'=>$curatedJson, 'reference_key'=>'base_' . (int)$curatedBase['id']]);
+            }
+        }
         $counts = [
             'review' => 0,
             'approved' => 0,

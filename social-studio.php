@@ -107,7 +107,7 @@ function social_studio_preview_overlay(array $draft): array
 
 function social_studio_overlay_element_style(array $element): string
 {
-    $font = match ((string)$element['font_role']) { 'serif' => "Georgia,'Times New Roman',serif", 'script' => "'Segoe Script','Brush Script MT',cursive", default => 'Arial,Helvetica,sans-serif' };
+    $font = match ((string)$element['font_role']) { 'serif' => "'Bodoni MT',Didot,'Times New Roman',serif", 'script' => "'Segoe Script','Brush Script MT',cursive", default => 'Arial,Helvetica,sans-serif' };
     return implode(';', [
         'left:' . (float)$element['x'] . '%', 'top:' . (float)$element['y'] . '%',
         'width:' . (float)$element['width'] . '%', 'height:' . (float)$element['height'] . '%',

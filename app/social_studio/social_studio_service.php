@@ -462,15 +462,15 @@ if (!function_exists('social_studio_seed_drafts')) {
             return ['type'=>'text','text'=>$value,'x'=>$x,'y'=>$y,'width'=>$width,'height'=>$height,'font_role'=>$role,'font_size'=>$size,'font_weight'=>$weight,'line_height'=>$lineHeight,'letter_spacing'=>$spacing,'color'=>$color,'background_color'=>'transparent','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>$uppercase];
         };
         $elements = [
-            $text('YOUR', 7.8, 7.2, 35, 4, 'sans', 2.2, 400, 1, .16, '#20252d', true),
-            $text("CONFIDENCE\nSTARTS", 7.8, 12.6, 38, 13, 'serif', 5.4, 400, .9, -.02, '#20252d', true),
-            $text('with your smile', 12.2, 25.5, 35, 5, 'script', 4.2, 400, 1, 0, '#9b794e'),
-            ['type'=>'line','text'=>'','x'=>7.8,'y'=>32.2,'width'=>12,'height'=>.18,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
-            $text("Custom veneers designed to\nenhance your natural beauty and\nhelp you feel confident every day.", 7.8, 36.5, 37, 10, 'sans', 1.75, 500, 1.35, .01, '#20252d'),
-            $text("◇   CUSTOM VENEERS\n     NATURAL. BEAUTIFUL. YOU.", 7.8, 52, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
-            $text("□   COMPLIMENTARY\n     CONSULTATION", 7.8, 62, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
-            $text("$   FLEXIBLE FINANCING\n     OPTIONS", 7.8, 72, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
-            $text("●  DRAPER, UTAH\n\nINVEST IN YOURSELF.\nLOVE YOUR SMILE.", 7.8, 84, 38, 13, 'sans', 1.25, 600, 1.35, .12, '#7f6749', true),
+            $text('YOUR', 7.8, 8.3, 35, 4.5, 'sans', 3.05, 400, 1, .18, '#20252d', true),
+            $text("CONFIDENCE\nSTARTS", 7.8, 13.2, 41, 15, 'serif', 6.15, 400, .88, -.025, '#20252d', true),
+            $text('with your smile', 7.8, 27.8, 39, 5.5, 'script', 4.7, 400, 1, 0, '#9b794e'),
+            ['type'=>'line','text'=>'','x'=>7.8,'y'=>36.1,'width'=>9.3,'height'=>.12,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
+            $text("Custom veneers designed\nto enhance your natural\nbeauty and help you feel\nconfident every day.", 7.8, 40.3, 32, 12, 'sans', 1.92, 500, 1.35, .01, '#20252d'),
+            $text("◯   CUSTOM VENEERS\n     NATURAL. BEAUTIFUL. YOU.", 7.8, 55.5, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
+            $text("◯   COMPLIMENTARY\n     CONSULTATION", 7.8, 63.8, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
+            $text("◯   FLEXIBLE FINANCING\n     OPTIONS", 7.8, 72, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
+            $text("●  DRAPER, UTAH\n\nINVEST IN YOURSELF.\nLOVE YOUR SMILE.", 7.8, 88.5, 38, 11, 'sans', 1.22, 600, 1.35, .14, '#7f6749', true),
         ];
         return social_studio_normalize_overlay_template(['version'=>1,'aspect_ratio'=>'1:1','canvas_background'=>'transparent','image_fit'=>'cover','elements'=>$elements]);
     }
@@ -1171,7 +1171,7 @@ if (!function_exists('social_studio_create_branded_svg')) {
                 $svg .= '<rect x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" rx="' . ((float)$element['border_radius'] * $width / 100) . '" fill="' . $fill . '" stroke="' . $stroke . '" stroke-width="' . $strokeWidth . '"/>';
                 continue;
             }
-            $fontFamily = match ((string)$element['font_role']) { 'serif' => 'Georgia,Times New Roman,serif', 'script' => 'Brush Script MT,Segoe Script,cursive', default => 'Arial,Helvetica,sans-serif' };
+            $fontFamily = match ((string)$element['font_role']) { 'serif' => 'Bodoni MT,Didot,Times New Roman,serif', 'script' => 'Segoe Script,Brush Script MT,cursive', default => 'Arial,Helvetica,sans-serif' };
             $fontSize = (float)$element['font_size'] * $width / 100;
             $anchor = match ((string)$element['align']) { 'center' => 'middle', 'right' => 'end', default => 'start' };
             $textX = $x + ((string)$element['align'] === 'center' ? $w / 2 : ((string)$element['align'] === 'right' ? $w : 0));

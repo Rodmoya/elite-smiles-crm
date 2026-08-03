@@ -455,6 +455,26 @@ if (!function_exists('social_studio_seed_drafts')) {
         return $template === [] ? null : (json_encode($template, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null);
     }
 
+    function social_studio_curated_overlay_template(string $sourcePostId): array
+    {
+        if ($sourcePostId !== 'DZME24slvGK') return [];
+        $text = static function (string $value, float $x, float $y, float $width, float $height, string $role, float $size, int $weight, float $lineHeight, float $spacing, string $color, bool $uppercase = false): array {
+            return ['type'=>'text','text'=>$value,'x'=>$x,'y'=>$y,'width'=>$width,'height'=>$height,'font_role'=>$role,'font_size'=>$size,'font_weight'=>$weight,'line_height'=>$lineHeight,'letter_spacing'=>$spacing,'color'=>$color,'background_color'=>'transparent','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>$uppercase];
+        };
+        $elements = [
+            $text('YOUR', 7.8, 7.2, 35, 4, 'sans', 2.2, 400, 1, .16, '#20252d', true),
+            $text("CONFIDENCE\nSTARTS", 7.8, 12.6, 38, 13, 'serif', 5.4, 400, .9, -.02, '#20252d', true),
+            $text('with your smile', 12.2, 25.5, 35, 5, 'script', 4.2, 400, 1, 0, '#9b794e'),
+            ['type'=>'line','text'=>'','x'=>7.8,'y'=>32.2,'width'=>12,'height'=>.18,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
+            $text('Custom veneers designed to enhance your natural beauty and help you feel confident every day.', 7.8, 36.5, 37, 10, 'sans', 1.75, 500, 1.35, .01, '#20252d'),
+            $text("◇   CUSTOM VENEERS\n     NATURAL. BEAUTIFUL. YOU.", 7.8, 52, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
+            $text("□   COMPLIMENTARY\n     CONSULTATION", 7.8, 62, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
+            $text("$   FLEXIBLE FINANCING\n     OPTIONS", 7.8, 72, 39, 7, 'sans', 1.35, 500, 1.35, .10, '#20252d', true),
+            $text("●  DRAPER, UTAH\n\nINVEST IN YOURSELF.\nLOVE YOUR SMILE.", 7.8, 84, 38, 13, 'sans', 1.25, 600, 1.35, .12, '#7f6749', true),
+        ];
+        return social_studio_normalize_overlay_template(['version'=>1,'aspect_ratio'=>'1:1','canvas_background'=>'transparent','image_fit'=>'cover','elements'=>$elements]);
+    }
+
     function social_studio_analyze_base_creative(array $post): array
     {
         require_once dirname(__DIR__) . '/core/openai.php';
@@ -478,6 +498,13 @@ if (!function_exists('social_studio_seed_drafts')) {
 
     function social_studio_get_or_create_overlay_template(array $base): array
     {
+        $curated = social_studio_curated_overlay_template((string)($base['source_post_id'] ?? ''));
+        if ($curated !== []) {
+            if (!empty($base['id'])) {
+                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', ['id'=>(int)$base['id'], 'overlay_template_json'=>social_studio_encode_overlay_template($curated)]);
+            }
+            return $curated;
+        }
         $stored = json_decode((string)($base['overlay_template_json'] ?? ''), true);
         $stored = is_array($stored) ? social_studio_normalize_overlay_template($stored) : [];
         if ($stored !== [] && ($stored['elements'] ?? []) !== []) {

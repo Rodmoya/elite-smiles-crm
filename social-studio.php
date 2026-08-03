@@ -550,7 +550,7 @@ function social_studio_overlay_element_style(array $element): string
             card.classList.add('border-slate-950');
         }));
         document.querySelectorAll('[data-social-open]').forEach((button) => button.addEventListener('click', () => {
-            socialModalTitle.textContent = button.dataset.title || 'Selected draft';
+            if (socialModalTitle) socialModalTitle.textContent = button.dataset.title || 'Selected draft';
             socialModalCaption.textContent = button.dataset.caption || '';
             socialModalStatus.textContent = button.dataset.status || 'Review';
             socialModalImage.src = button.dataset.image || '';

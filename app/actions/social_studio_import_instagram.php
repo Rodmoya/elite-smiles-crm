@@ -22,15 +22,16 @@ $imported = 0;
 $failed = 0;
 $errors = [];
 $batchIndex = max(0, (int)post('batch_index', 0));
-$system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze each supplied Instagram creative as a reusable design system. Return one result per post_id. Identify composition, subject framing, lighting, palette, typography family and scale, text hierarchy, safe zones, CTA treatment, logo treatment, and clinical-ad compliance. The CRM overlay remains editable; generated images must not bake text or logos.';
+$system = 'You are the Elite Smiles Master CMO and visual production director. Analyze each supplied Instagram creative as a locked reusable production template. Return one result per post_id. OCR every visible overlay word exactly, preserving line breaks and capitalization. Encode every text block, line, and box in overlay_template using percentages of the source canvas; font_size is percentage of canvas width. Do not include logos. base_prompt describes only the clean photo layer with no text, logo, watermark, icons, or graphics.';
 $itemSchema = [
     'type' => 'object', 'additionalProperties' => false,
     'properties' => [
         'post_id' => ['type' => 'string'], 'title' => ['type' => 'string'], 'group_name' => ['type' => 'string'],
         'analysis' => ['type' => 'string'],
         'base_prompt' => ['type' => 'string'], 'overlay_spec' => ['type' => 'string'],
+        'overlay_template' => social_studio_overlay_template_schema(),
     ],
-    'required' => ['post_id', 'title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
+    'required' => ['post_id', 'title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec', 'overlay_template'],
 ];
 $batches = array_chunk($posts, 1);
 $batch = $batches[$batchIndex] ?? [];
@@ -95,6 +96,7 @@ if (!$batch) {
                 'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($localImageKeys[(string)$post['post_id']] ?? ($post['local_image_key'] ?? '')),
                 'analysis_json' => json_encode($data['analysis'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'base_prompt' => (string)$data['base_prompt'], 'overlay_spec' => (string)$data['overlay_spec'],
+                'overlay_template' => (array)($data['overlay_template'] ?? []),
             ]);
             $imported++;
         } catch (Throwable $exception) {

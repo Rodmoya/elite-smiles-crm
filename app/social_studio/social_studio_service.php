@@ -23,6 +23,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             analysis_json LONGTEXT NULL,
             base_prompt TEXT NULL,
             overlay_spec TEXT NULL,
+            overlay_template_json LONGTEXT NULL,
             analysis_version TINYINT UNSIGNED NOT NULL DEFAULT 1,
             status VARCHAR(32) NOT NULL DEFAULT 'active',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -47,6 +48,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             overlay_spec TEXT NULL,
             overlay_eyebrow VARCHAR(180) NULL,
             overlay_blocks_json TEXT NULL,
+            overlay_template_json LONGTEXT NULL,
             image_url VARCHAR(500) NULL,
             image_storage_key VARCHAR(255) NULL,
             branded_image_storage_key VARCHAR(255) NULL,
@@ -72,6 +74,9 @@ if (!function_exists('social_studio_ensure_schema')) {
         if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE 'analysis_version'")) {
             db_query("ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_version TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER overlay_spec");
         }
+        if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE 'overlay_template_json'")) {
+            db_query("ALTER TABLE social_studio_base_creatives ADD COLUMN overlay_template_json LONGTEXT NULL AFTER overlay_spec");
+        }
 
         foreach ([
             'image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url",
@@ -82,6 +87,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             'overlay_spec' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_spec TEXT NULL AFTER base_post_prompt",
             'overlay_eyebrow' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_eyebrow VARCHAR(180) NULL AFTER overlay_spec",
             'overlay_blocks_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_blocks_json TEXT NULL AFTER overlay_eyebrow",
+            'overlay_template_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_template_json LONGTEXT NULL AFTER overlay_blocks_json",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -190,7 +196,7 @@ if (!function_exists('social_studio_base_analysis_progress')) {
                 continue;
             }
             $total++;
-            if ((int)($base['analysis_version'] ?? 1) >= 2) {
+            if ((int)($base['analysis_version'] ?? 1) >= 3) {
                 $ready++;
             }
         }
@@ -203,7 +209,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
     {
         social_studio_ensure_schema();
         $limit = max(1, min(3, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 2 ORDER BY published_at DESC, id DESC LIMIT 100');
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 3 ORDER BY published_at DESC, id DESC LIMIT 100');
         $bases = array_values(array_filter($bases, static fn(array $base): bool => social_studio_base_source_path($base) !== ''));
         $updated = 0;
         $failed = 0;
@@ -238,13 +244,14 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             $analysisJson = is_array($data['analysis'] ?? null)
                 ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : (string)($data['analysis'] ?? '');
-            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, analysis_version=2 WHERE id=:id LIMIT 1', [
+            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', [
                 'id' => (int)$base['id'],
                 'title' => trim((string)($data['title'] ?? '')) ?: (string)$base['title'],
                 'group_name' => trim((string)($data['group_name'] ?? '')) ?: (string)$base['group_name'],
                 'analysis_json' => $analysisJson,
                 'base_prompt' => trim((string)($data['base_prompt'] ?? '')),
                 'overlay_spec' => trim((string)($data['overlay_spec'] ?? '')),
+                'overlay_template_json' => social_studio_encode_overlay_template((array)($data['overlay_template'] ?? [])),
             ]);
             $updated++;
         }
@@ -273,13 +280,14 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'analysis_json' => is_array($creative['analysis'] ?? null) ? json_encode($creative['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)($creative['analysis_json'] ?? ''),
             'base_prompt' => (string)($creative['base_prompt'] ?? ''),
             'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
+            'overlay_template_json' => social_studio_encode_overlay_template((array)($creative['overlay_template'] ?? [])),
         ];
         if ($existing) {
-            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec']));
-            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
+            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json']));
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
             return (int)$existing['id'];
         }
-        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec)', $params);
+        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec, overlay_template_json) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json)', $params);
     }
 }
 
@@ -376,6 +384,77 @@ if (!function_exists('social_studio_visual_references')) {
 }
 
 if (!function_exists('social_studio_seed_drafts')) {
+    function social_studio_overlay_template_schema(): array
+    {
+        $element = [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'properties' => [
+                'type' => ['type' => 'string', 'enum' => ['text', 'line', 'box']],
+                'text' => ['type' => 'string'],
+                'x' => ['type' => 'number'], 'y' => ['type' => 'number'],
+                'width' => ['type' => 'number'], 'height' => ['type' => 'number'],
+                'font_role' => ['type' => 'string', 'enum' => ['serif', 'sans', 'script']],
+                'font_size' => ['type' => 'number'], 'font_weight' => ['type' => 'integer'],
+                'line_height' => ['type' => 'number'], 'letter_spacing' => ['type' => 'number'],
+                'color' => ['type' => 'string'], 'background_color' => ['type' => 'string'],
+                'border_color' => ['type' => 'string'], 'border_width' => ['type' => 'number'],
+                'border_radius' => ['type' => 'number'],
+                'align' => ['type' => 'string', 'enum' => ['left', 'center', 'right']],
+                'uppercase' => ['type' => 'boolean'],
+            ],
+            'required' => ['type', 'text', 'x', 'y', 'width', 'height', 'font_role', 'font_size', 'font_weight', 'line_height', 'letter_spacing', 'color', 'background_color', 'border_color', 'border_width', 'border_radius', 'align', 'uppercase'],
+        ];
+        return [
+            'type' => 'object', 'additionalProperties' => false,
+            'properties' => [
+                'version' => ['type' => 'integer'],
+                'aspect_ratio' => ['type' => 'string', 'enum' => ['1:1', '4:5']],
+                'canvas_background' => ['type' => 'string'],
+                'image_fit' => ['type' => 'string', 'enum' => ['cover', 'contain']],
+                'elements' => ['type' => 'array', 'items' => $element],
+            ],
+            'required' => ['version', 'aspect_ratio', 'canvas_background', 'image_fit', 'elements'],
+        ];
+    }
+
+    function social_studio_safe_css_color(string $color, string $fallback = 'transparent'): string
+    {
+        $color = trim(strtolower($color));
+        return $color === 'transparent' || preg_match('/^#[0-9a-f]{3,8}$/', $color) || preg_match('/^rgba?\([0-9.,%\s]+\)$/', $color) ? $color : $fallback;
+    }
+
+    function social_studio_normalize_overlay_template(array $template): array
+    {
+        if (!is_array($template['elements'] ?? null)) return [];
+        $elements = [];
+        foreach (array_slice($template['elements'], 0, 30) as $element) {
+            if (!is_array($element)) continue;
+            $elements[] = [
+                'type' => in_array((string)($element['type'] ?? ''), ['text', 'line', 'box'], true) ? (string)$element['type'] : 'text',
+                'text' => mb_substr((string)($element['text'] ?? ''), 0, 500),
+                'x' => max(0, min(100, (float)($element['x'] ?? 0))), 'y' => max(0, min(100, (float)($element['y'] ?? 0))),
+                'width' => max(.1, min(100, (float)($element['width'] ?? 10))), 'height' => max(.1, min(100, (float)($element['height'] ?? 5))),
+                'font_role' => in_array((string)($element['font_role'] ?? ''), ['serif', 'sans', 'script'], true) ? (string)$element['font_role'] : 'sans',
+                'font_size' => max(.5, min(20, (float)($element['font_size'] ?? 3))), 'font_weight' => max(100, min(900, (int)($element['font_weight'] ?? 400))),
+                'line_height' => max(.7, min(2.5, (float)($element['line_height'] ?? 1.1))), 'letter_spacing' => max(-.1, min(1, (float)($element['letter_spacing'] ?? 0))),
+                'color' => social_studio_safe_css_color((string)($element['color'] ?? '#17202a'), '#17202a'),
+                'background_color' => social_studio_safe_css_color((string)($element['background_color'] ?? 'transparent')),
+                'border_color' => social_studio_safe_css_color((string)($element['border_color'] ?? 'transparent')),
+                'border_width' => max(0, min(2, (float)($element['border_width'] ?? 0))), 'border_radius' => max(0, min(50, (float)($element['border_radius'] ?? 0))),
+                'align' => in_array((string)($element['align'] ?? ''), ['left', 'center', 'right'], true) ? (string)$element['align'] : 'left',
+                'uppercase' => !empty($element['uppercase']),
+            ];
+        }
+        return ['version' => 1, 'aspect_ratio' => (string)($template['aspect_ratio'] ?? '') === '1:1' ? '1:1' : '4:5', 'canvas_background' => social_studio_safe_css_color((string)($template['canvas_background'] ?? 'transparent')), 'image_fit' => (string)($template['image_fit'] ?? '') === 'contain' ? 'contain' : 'cover', 'elements' => $elements];
+    }
+
+    function social_studio_encode_overlay_template(array $template): ?string
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        return $template === [] ? null : (json_encode($template, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null);
+    }
+
     function social_studio_analyze_base_creative(array $post): array
     {
         require_once dirname(__DIR__) . '/core/openai.php';
@@ -388,12 +467,47 @@ if (!function_exists('social_studio_seed_drafts')) {
                 'analysis' => ['type' => 'string'],
                 'base_prompt' => ['type' => 'string'],
                 'overlay_spec' => ['type' => 'string'],
+                'overlay_template' => social_studio_overlay_template_schema(),
             ],
-            'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec'],
+            'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec', 'overlay_template'],
         ];
-        $system = 'You are the Elite Smiles Master CMO and visual editorial director. Analyze the supplied Instagram creative as a LOCKED reusable design template. Identify exact composition, crop, subject scale, lighting, background, palette, typography families, relative font sizes, capitalization, line breaks, text hierarchy, content-block count, spacing, safe zones, CTA treatment, and logo treatment. The base_prompt must be a detailed 300–600 word, self-contained Nano Banana visual recipe—not a generic marketing sentence—and must describe the image layer separately from the editable text layer. The overlay_spec must precisely record every visible text role, approximate wording length, font category, weight, case, relative size, alignment, color, spacing, position, and CTA container style. Never ask the image model to reproduce a logo, words, or typography; the CRM overlay remains editable.';
-        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Return a locked reusable base image prompt and a precise editable overlay specification. Explicitly document what must remain unchanged and expose only these variables: {{FOCUS}}, {{PURPOSE}}, {{AUDIENCE}}, {{AGE_RANGE}}, and {{TEXT_POSITION}}. Describe subject placement as percentages of the 4:5 canvas, face/smile crop, negative-space boundaries, background depth, exact color families, and the complete text hierarchy. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $system = 'You are the Elite Smiles Master CMO and visual production director. Analyze the supplied Instagram creative as a LOCKED reusable production template. OCR every visible word exactly, preserving capitalization, punctuation, and line breaks. Represent each text block, divider line, and background box as a separate overlay_template element using percentages of the original canvas. font_size is a percentage of canvas width. Keep logos out of the template. base_prompt must describe ONLY the clean photographic layer and explicitly request no words, logo, watermark, icons, or graphic text. overlay_spec is a human-readable audit. This is extraction, not redesign: never improve, paraphrase, shorten, or invent overlay copy.';
+        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR the exact overlay copy and encode a deterministic overlay_template with precise x, y, width, height, typography role, scale, color, and decoration. Use transparent when a fill or border is absent. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
+    }
+
+    function social_studio_get_or_create_overlay_template(array $base): array
+    {
+        $stored = json_decode((string)($base['overlay_template_json'] ?? ''), true);
+        $stored = is_array($stored) ? social_studio_normalize_overlay_template($stored) : [];
+        if ($stored !== [] && ($stored['elements'] ?? []) !== []) {
+            return $stored;
+        }
+
+        $path = social_studio_base_source_path($base);
+        $bytes = $path !== '' ? @file_get_contents($path) : false;
+        if (!is_string($bytes) || $bytes === '') {
+            return [];
+        }
+        $post = $base;
+        $mime = function_exists('mime_content_type') ? (string)(@mime_content_type($path) ?: 'image/jpeg') : 'image/jpeg';
+        $post['image_url'] = 'data:' . $mime . ';base64,' . base64_encode($bytes);
+        $analysis = social_studio_analyze_base_creative($post);
+        $data = is_array($analysis['data'] ?? null) ? $analysis['data'] : [];
+        $template = social_studio_normalize_overlay_template((array)($data['overlay_template'] ?? []));
+        if ($template === [] || ($template['elements'] ?? []) === []) {
+            return [];
+        }
+        if (!empty($base['id'])) {
+            db_execute('UPDATE social_studio_base_creatives SET analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', [
+                'id' => (int)$base['id'],
+                'analysis_json' => is_array($data['analysis'] ?? null) ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)($data['analysis'] ?? ''),
+                'base_prompt' => trim((string)($data['base_prompt'] ?? ($base['base_prompt'] ?? ''))),
+                'overlay_spec' => trim((string)($data['overlay_spec'] ?? ($base['overlay_spec'] ?? ''))),
+                'overlay_template_json' => social_studio_encode_overlay_template($template),
+            ]);
+        }
+        return $template;
     }
 
     function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = []): int
@@ -411,6 +525,7 @@ if (!function_exists('social_studio_seed_drafts')) {
                 $topic['base_reference_key'] = (string)($remixTemplate['reference_key'] ?? '');
                 $topic['base_post_prompt'] = (string)($remixTemplate['base_prompt'] ?? '');
                 $topic['overlay_spec'] = social_studio_locked_overlay_spec($remixTemplate);
+                $topic['overlay_template'] = (array)($remixTemplate['overlay_template'] ?? []);
                 $topic['image_prompt'] = social_studio_locked_remix_image_prompt($remixTemplate, $topic, $focus);
                 $topic['post_type'] = (string)($remixTemplate['purpose'] ?? 'educational') === 'social_ad' ? 'social_ad' : 'education';
                 if (!empty($remixTemplate['replica_mode']) && (string)($remixTemplate['source_post_id'] ?? '') === 'DZME24slvGK') {
@@ -439,9 +554,9 @@ if (!function_exists('social_studio_seed_drafts')) {
 
             db_insert(
                 "INSERT INTO social_studio_drafts
-                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, scheduled_at, created_by)
+                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, scheduled_at, created_by)
                  VALUES
-                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :scheduled_at, :created_by)",
+                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :overlay_template_json, :scheduled_at, :created_by)",
                 [
                     'title' => $title,
                     'platform' => 'facebook_instagram',
@@ -456,6 +571,7 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'overlay_spec' => trim((string)($topic['overlay_spec'] ?? '')) ?: null,
                     'overlay_eyebrow' => trim((string)($topic['overlay_eyebrow'] ?? '')) ?: null,
                     'overlay_blocks_json' => json_encode(array_values(array_filter((array)($topic['overlay_blocks'] ?? []), static fn($item): bool => is_string($item) && trim($item) !== '')), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null,
+                    'overlay_template_json' => social_studio_encode_overlay_template((array)($topic['overlay_template'] ?? [])),
                     'scheduled_at' => $scheduledAt,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
                 ]
@@ -739,8 +855,9 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
                 }
             }
         }
-        $replicaSquare = str_contains(strtolower((string)($draft['overlay_spec'] ?? '')), 'replica_template: confidence_starts');
-        $generated = social_studio_generate_image_binary($prompt, $referenceImage, $replicaSquare ? [
+        $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
+        $templateSquare = is_array($overlayTemplate) && (string)($overlayTemplate['aspect_ratio'] ?? '') === '1:1';
+        $generated = social_studio_generate_image_binary($prompt, $referenceImage, $templateSquare ? [
             'aspect_ratio' => 'ASPECT_RATIO_ONE_BY_ONE',
             'image_size' => 'IMAGE_SIZE_TWO_K',
             'output_requirement' => 'Return one square 1:1 image matching the supplied Instagram source canvas.',
@@ -757,10 +874,11 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             return ['ok' => false, 'message' => 'Could not save generated image.'];
         }
 
-        $brandedExt = social_studio_can_raster_brand_images() ? 'png' : 'svg';
+        $hasOverlayTemplate = is_array($overlayTemplate) && ($overlayTemplate['elements'] ?? []) !== [];
+        $brandedExt = $hasOverlayTemplate ? 'svg' : (social_studio_can_raster_brand_images() ? 'png' : 'svg');
         $brandedKey = $storagePrefix . '/branded-' . date('Ymd-His') . '.' . $brandedExt;
         $brandedPath = social_studio_safe_storage_path($brandedKey);
-        if (!$brandedPath || !social_studio_create_branded_image($rawPath, $brandedPath)) {
+        if (!$brandedPath || !social_studio_create_branded_image($rawPath, $brandedPath, $hasOverlayTemplate ? $overlayTemplate : [])) {
             $brandedKey = $rawKey;
         }
 
@@ -789,7 +907,9 @@ if (!function_exists('social_studio_refine_image_prompt')) {
         $focus = social_studio_focus_label((string)($draft['content_focus'] ?? 'veneers'));
 
         if (str_starts_with((string)($draft['base_reference_key'] ?? ''), 'base_') && trim((string)($draft['base_post_prompt'] ?? '')) !== '') {
-            return $basePrompt . "\n\nFinal output safeguards: vertical 4:5 Instagram composition. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. No text, logo, watermark, typography, soft focus, haze, or cut-off face.";
+            $template = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
+            $ratio = is_array($template) && (string)($template['aspect_ratio'] ?? '') === '1:1' ? 'square 1:1' : 'vertical 4:5';
+            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus, haze, or cut-off face.";
         }
 
         if (elite_openai_is_configured()) {
@@ -955,9 +1075,11 @@ if (!function_exists('social_studio_can_raster_brand_images')) {
 }
 
 if (!function_exists('social_studio_create_branded_image')) {
-    function social_studio_create_branded_image(string $sourcePath, string $targetPath): bool
+    function social_studio_create_branded_image(string $sourcePath, string $targetPath, array $overlayTemplate = []): bool
     {
-        // Preserve the generated image exactly; social creatives must remain unbranded.
+        if ($overlayTemplate !== []) {
+            return social_studio_create_branded_svg($sourcePath, $targetPath, $overlayTemplate);
+        }
         if (@copy($sourcePath, $targetPath)) {
             return true;
         }
@@ -986,7 +1108,7 @@ if (!function_exists('social_studio_create_branded_image')) {
 }
 
 if (!function_exists('social_studio_create_branded_svg')) {
-    function social_studio_create_branded_svg(string $sourcePath, string $targetPath): bool
+    function social_studio_create_branded_svg(string $sourcePath, string $targetPath, array $overlayTemplate = []): bool
     {
         $sourceBytes = @file_get_contents($sourcePath);
         if (!is_string($sourceBytes) || $sourceBytes === '') {
@@ -1000,8 +1122,33 @@ if (!function_exists('social_studio_create_branded_svg')) {
         $width = is_array($size) && !empty($size[0]) ? (int)$size[0] : 1080;
         $height = is_array($size) && !empty($size[1]) ? (int)$size[1] : 1080;
         $sourceData = 'data:' . $sourceMime . ';base64,' . base64_encode($sourceBytes);
+        $template = social_studio_normalize_overlay_template($overlayTemplate);
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
-            . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/></svg>';
+            . '<rect width="100%" height="100%" fill="' . htmlspecialchars((string)($template['canvas_background'] ?? 'transparent'), ENT_QUOTES, 'UTF-8') . '"/>'
+            . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/>';
+        foreach (($template['elements'] ?? []) as $element) {
+            $x = (float)$element['x'] * $width / 100; $y = (float)$element['y'] * $height / 100;
+            $w = (float)$element['width'] * $width / 100; $h = (float)$element['height'] * $height / 100;
+            $fill = htmlspecialchars((string)$element['background_color'], ENT_QUOTES, 'UTF-8');
+            $stroke = htmlspecialchars((string)$element['border_color'], ENT_QUOTES, 'UTF-8');
+            $strokeWidth = (float)$element['border_width'] * $width / 100;
+            if ($element['type'] === 'box' || $element['type'] === 'line') {
+                $svg .= '<rect x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" rx="' . ((float)$element['border_radius'] * $width / 100) . '" fill="' . $fill . '" stroke="' . $stroke . '" stroke-width="' . $strokeWidth . '"/>';
+                continue;
+            }
+            $fontFamily = match ((string)$element['font_role']) { 'serif' => 'Georgia,Times New Roman,serif', 'script' => 'Brush Script MT,Segoe Script,cursive', default => 'Arial,Helvetica,sans-serif' };
+            $fontSize = (float)$element['font_size'] * $width / 100;
+            $anchor = match ((string)$element['align']) { 'center' => 'middle', 'right' => 'end', default => 'start' };
+            $textX = $x + ((string)$element['align'] === 'center' ? $w / 2 : ((string)$element['align'] === 'right' ? $w : 0));
+            $text = !empty($element['uppercase']) ? mb_strtoupper((string)$element['text']) : (string)$element['text'];
+            $lines = preg_split('/\R/u', $text) ?: [$text];
+            $svg .= '<text x="' . $textX . '" y="' . ($y + $fontSize) . '" fill="' . htmlspecialchars((string)$element['color'], ENT_QUOTES, 'UTF-8') . '" font-family="' . htmlspecialchars($fontFamily, ENT_QUOTES, 'UTF-8') . '" font-size="' . $fontSize . '" font-weight="' . (int)$element['font_weight'] . '" letter-spacing="' . ((float)$element['letter_spacing'] * $fontSize) . '" text-anchor="' . $anchor . '">';
+            foreach ($lines as $lineIndex => $line) {
+                $svg .= '<tspan x="' . $textX . '" dy="' . ($lineIndex === 0 ? 0 : ((float)$element['line_height'] * $fontSize)) . '">' . htmlspecialchars((string)$line, ENT_QUOTES | ENT_XML1, 'UTF-8') . '</tspan>';
+            }
+            $svg .= '</text>';
+        }
+        $svg .= '</svg>';
         return @file_put_contents($targetPath, $svg) !== false;
     }
 }
@@ -1070,6 +1217,7 @@ if (!function_exists('social_studio_update_status')) {
             'analysis_json' => $analysis ?: '{}',
             'base_prompt' => (string)($draft['base_post_prompt'] ?: ($draft['image_prompt'] ?? '')),
             'overlay_spec' => (string)($draft['overlay_spec'] ?? ''),
+            'overlay_template' => (array)(json_decode((string)($draft['overlay_template_json'] ?? ''), true) ?: []),
         ]);
         return true;
     }

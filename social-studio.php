@@ -55,6 +55,8 @@ function social_studio_preview_overlay(array $draft): array
     $caption = trim((string)($draft['caption'] ?? ''));
     $cta = trim((string)($draft['cta'] ?? ''));
     $overlaySpec = strtolower(trim((string)($draft['overlay_spec'] ?? '')));
+    $structuredTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
+    $structuredTemplate = is_array($structuredTemplate) ? social_studio_normalize_overlay_template($structuredTemplate) : [];
 
     $hasStoredBlocks = array_key_exists('overlay_blocks_json', $draft) && $draft['overlay_blocks_json'] !== null;
     $storedBlocks = json_decode((string)($draft['overlay_blocks_json'] ?? '[]'), true);
@@ -99,7 +101,23 @@ function social_studio_preview_overlay(array $draft): array
         'font' => preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:sans-serif|sans serif|grotesk)\b/', $overlaySpec) && !preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:serif|didot|bodoni)\b/', $overlaySpec) ? 'sans' : 'serif',
         'scale' => preg_match('/\b(?:compact|small|restrained)\b.{0,20}\b(?:headline|title|display)\b|\b(?:headline|title|display)\b.{0,20}\b(?:compact|small|restrained)\b/', $overlaySpec) ? 'compact' : 'large',
         'template' => str_contains($overlaySpec, 'replica_template: confidence_starts') ? 'confidence_starts' : '',
+        'structured' => $structuredTemplate,
     ];
+}
+
+function social_studio_overlay_element_style(array $element): string
+{
+    $font = match ((string)$element['font_role']) { 'serif' => "Georgia,'Times New Roman',serif", 'script' => "'Segoe Script','Brush Script MT',cursive", default => 'Arial,Helvetica,sans-serif' };
+    return implode(';', [
+        'left:' . (float)$element['x'] . '%', 'top:' . (float)$element['y'] . '%',
+        'width:' . (float)$element['width'] . '%', 'height:' . (float)$element['height'] . '%',
+        'font-family:' . $font, 'font-size:' . (float)$element['font_size'] . 'cqw',
+        'font-weight:' . (int)$element['font_weight'], 'line-height:' . (float)$element['line_height'],
+        'letter-spacing:' . (float)$element['letter_spacing'] . 'em', 'color:' . $element['color'],
+        'background:' . $element['background_color'], 'border-color:' . $element['border_color'],
+        'border-width:' . (float)$element['border_width'] . 'cqw', 'border-radius:' . (float)$element['border_radius'] . 'cqw',
+        'text-align:' . $element['align'], 'text-transform:' . (!empty($element['uppercase']) ? 'uppercase' : 'none'),
+    ]);
 }
 ?>
 <!DOCTYPE html>
@@ -124,6 +142,9 @@ function social_studio_preview_overlay(array $draft): array
         .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
         .instagram-review .review-image.review-image-square { aspect-ratio: 1 / 1; }
         .creative-frame { position: relative; overflow: hidden; }
+        .structured-overlay { position: absolute; inset: 0; container-type: inline-size; pointer-events: none; }
+        .structured-overlay-element { position: absolute; box-sizing: border-box; white-space: pre-line; overflow: visible; border-style: solid; }
+        .structured-overlay-element.type-line, .structured-overlay-element.type-box { color: transparent !important; }
         .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; pointer-events: none; }
         .creative-overlay.overlay-left { align-items: flex-start; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
         .creative-overlay.overlay-right { align-items: flex-end; text-align: right; background: linear-gradient(270deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
@@ -254,11 +275,10 @@ function social_studio_preview_overlay(array $draft): array
                         <div class="grid gap-4 sm:grid-cols-2">
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Creation mode
                                 <select name="creation_mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="remix">Remix selected post</option>
-                                    <option value="replica">1:1 template test</option>
+                                    <option value="remix">New photo, same ad</option>
                                     <option value="manual">Manual brief</option>
                                 </select>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Remix keeps the selected ad’s structure and style. Manual uses your written direction as the source.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">The selected ad keeps its exact saved copy, typography, and layout. Nano Banana changes only the clean photo layer.</span>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800">Focus
                                 <select name="focus" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
@@ -315,7 +335,7 @@ function social_studio_preview_overlay(array $draft): array
                                         </button>
                                     <?php endforeach; ?>
                                 </div>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Choose a current Instagram post to create a new version. The selected post supplies the content angle, structure, style, and CTA pattern; Focus, audience, age, and text position refine it.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">Choose the ad first. Its exact overlay becomes the locked template; Focus, purpose, audience, age, and text position direct only the new photo.</span>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Or upload inspiration image <span class="font-normal text-slate-500">(optional)</span>
                                 <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm">
@@ -325,7 +345,7 @@ function social_studio_preview_overlay(array $draft): array
                                 <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Use Elite Smiles voice. Keep it friendly, premium, and conversion focused. Goal: schedule veneer consults."></textarea>
                             </label>
                             <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800 sm:col-span-2">
-                                OpenAI writes the post title, caption, CTA, benefit points, hashtags, and exact image prompt. Nano Banana creates a clean image with no text, logo, or watermark; the CRM adds a separate editable editorial layer.
+                                OpenAI prepares the caption and clean-photo prompt. Nano Banana creates the photo with no text, logo, or watermark. The CRM then merges the selected ad’s saved overlay exactly for review.
                             </div>
                             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2">
                                 <button type="submit" class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Generate Drafts</button>
@@ -399,7 +419,7 @@ function social_studio_preview_overlay(array $draft): array
                         <h2 class="mt-2 text-xl font-semibold text-slate-900">Selected draft</h2>
                     </div>
                     <?php if ($selected): ?>
-                        <?php $selectedImageUrl = social_studio_image_url($selected); ?>
+                        <?php $selectedImageUrl = social_studio_image_url($selected, false); ?>
                         <?php $selectedOverlay = social_studio_preview_overlay($selected); ?>
                         <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
                                 <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
@@ -409,8 +429,15 @@ function social_studio_preview_overlay(array $draft): array
                             </div>
                             <?php if ($selectedImageUrl !== ''): ?>
                                 <div class="creative-frame">
-                                    <img class="review-image <?= $selectedOverlay['template'] === 'confidence_starts' ? 'review-image-square' : '' ?> w-full bg-slate-100" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
-                                    <?php if ($selectedOverlay['template'] === 'confidence_starts'): ?>
+                                    <?php $structured = (array)($selectedOverlay['structured'] ?? []); ?>
+                                    <img class="review-image <?= (string)($structured['aspect_ratio'] ?? '') === '1:1' || $selectedOverlay['template'] === 'confidence_starts' ? 'review-image-square' : '' ?> w-full bg-slate-100" style="object-fit:<?= e((string)($structured['image_fit'] ?? 'cover')) ?>" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
+                                    <?php if (($structured['elements'] ?? []) !== []): ?>
+                                        <div class="structured-overlay" style="background:<?= e((string)($structured['canvas_background'] ?? 'transparent')) ?>">
+                                            <?php foreach ($structured['elements'] as $element): ?>
+                                                <div class="structured-overlay-element type-<?= e((string)$element['type']) ?>" style="<?= e(social_studio_overlay_element_style($element)) ?>"><?= e((string)$element['text']) ?></div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php elseif ($selectedOverlay['template'] === 'confidence_starts'): ?>
                                         <div class="replica-confidence">
                                             <div class="replica-copy">
                                                 <p class="replica-kicker">YOUR</p>

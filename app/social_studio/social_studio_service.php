@@ -879,6 +879,8 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         }
 
         $prompt = social_studio_refine_image_prompt($draft);
+        $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
+        $overlayTemplate = is_array($overlayTemplate) ? social_studio_normalize_overlay_template($overlayTemplate) : [];
         $referenceImage = [];
         if (preg_match('/^base_(\d+)$/', (string)($draft['base_reference_key'] ?? ''), $baseMatch)) {
             $base = db_one('SELECT source_url, source_post_id, local_image_key FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
@@ -886,11 +888,12 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             if ($referencePath !== '' && is_file($referencePath)) {
                 $referenceBytes = @file_get_contents($referencePath);
                 if (is_string($referenceBytes) && $referenceBytes !== '') {
-                    $referenceImage = ['bytes' => $referenceBytes, 'mime_type' => (string)(@mime_content_type($referencePath) ?: 'image/jpeg')];
+                    $referenceMime = (string)(@mime_content_type($referencePath) ?: 'image/jpeg');
+                    $referenceBytes = social_studio_remove_reference_overlay($referenceBytes, $overlayTemplate) ?: $referenceBytes;
+                    $referenceImage = ['bytes' => $referenceBytes, 'mime_type' => $referenceMime];
                 }
             }
         }
-        $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
         $templateSquare = is_array($overlayTemplate) && (string)($overlayTemplate['aspect_ratio'] ?? '') === '1:1';
         $generated = social_studio_generate_image_binary($prompt, $referenceImage, $templateSquare ? [
             'aspect_ratio' => 'ASPECT_RATIO_ONE_BY_ONE',
@@ -930,6 +933,33 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         );
 
         return ['ok' => true, 'message' => 'Image generated.', 'image_storage_key' => $rawKey, 'branded_image_storage_key' => $brandedKey];
+    }
+}
+
+if (!function_exists('social_studio_remove_reference_overlay')) {
+    function social_studio_remove_reference_overlay(string $bytes, array $template): string
+    {
+        if (!function_exists('imagecreatefromstring') || ($template['elements'] ?? []) === []) return '';
+        $image = @imagecreatefromstring($bytes);
+        if (!$image) return '';
+        $width = imagesx($image); $height = imagesy($image);
+        $minX = 100.0; $minY = 100.0; $maxX = 0.0; $maxY = 0.0;
+        foreach ($template['elements'] as $element) {
+            $minX = min($minX, (float)$element['x']); $minY = min($minY, (float)$element['y']);
+            $maxX = max($maxX, (float)$element['x'] + (float)$element['width']);
+            $maxY = max($maxY, (float)$element['y'] + (float)$element['height']);
+        }
+        if ($maxX <= $minX || $maxY <= $minY) { imagedestroy($image); return ''; }
+        $x1 = max(0, (int)floor(($minX - 4) * $width / 100));
+        $y1 = max(0, (int)floor(($minY - 4) * $height / 100));
+        $x2 = min($width, (int)ceil(($maxX + 3) * $width / 100));
+        $y2 = min($height, (int)ceil(($maxY + 3) * $height / 100));
+        $sampleX = max(0, min($width - 1, $x1)); $sampleY = max(0, min($height - 1, (int)($height * .08)));
+        $sample = imagecolorat($image, $sampleX, $sampleY);
+        $color = imagecolorallocate($image, ($sample >> 16) & 0xFF, ($sample >> 8) & 0xFF, $sample & 0xFF);
+        imagefilledrectangle($image, $x1, $y1, $x2, $y2, $color);
+        ob_start(); imagejpeg($image, null, 92); $clean = (string)ob_get_clean(); imagedestroy($image);
+        return $clean;
     }
 }
 

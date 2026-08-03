@@ -462,15 +462,23 @@ if (!function_exists('social_studio_seed_drafts')) {
             return ['type'=>'text','text'=>$value,'x'=>$x,'y'=>$y,'width'=>$width,'height'=>$height,'font_role'=>$role,'font_size'=>$size,'font_weight'=>$weight,'line_height'=>$lineHeight,'letter_spacing'=>$spacing,'color'=>$color,'background_color'=>'transparent','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>$uppercase];
         };
         $elements = [
-            $text('YOUR', 7.8, 8.3, 35, 4.5, 'sans', 3.05, 400, 1, .18, '#20252d', true),
-            $text("CONFIDENCE\nSTARTS", 7.8, 13.2, 41, 15, 'serif', 6.15, 400, .88, -.025, '#20252d', true),
+            $text('YOUR', 7.8, 8.3, 35, 4.5, 'sans', 3.65, 400, 1, .18, '#20252d', true),
+            $text("CONFIDENCE\nSTARTS", 7.8, 13.2, 43, 16, 'serif', 7.45, 400, .86, -.025, '#20252d', true),
             $text('with your smile', 7.8, 27.8, 39, 5.5, 'script', 4.7, 400, 1, 0, '#9b794e'),
             ['type'=>'line','text'=>'','x'=>7.8,'y'=>36.1,'width'=>9.3,'height'=>.12,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
-            $text("Custom veneers designed\nto enhance your natural\nbeauty and help you feel\nconfident every day.", 7.8, 40.3, 32, 12, 'sans', 1.92, 500, 1.35, .01, '#20252d'),
-            $text("◯   CUSTOM VENEERS\n     NATURAL. BEAUTIFUL. YOU.", 7.8, 55.5, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
-            $text("◯   COMPLIMENTARY\n     CONSULTATION", 7.8, 63.8, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
-            $text("◯   FLEXIBLE FINANCING\n     OPTIONS", 7.8, 72, 39, 7, 'sans', 1.25, 500, 1.45, .10, '#20252d', true),
-            $text("●  DRAPER, UTAH\n\nINVEST IN YOURSELF.\nLOVE YOUR SMILE.", 7.8, 88.5, 38, 11, 'sans', 1.22, 600, 1.35, .14, '#7f6749', true),
+            $text("Custom veneers designed\nto enhance your natural\nbeauty and help you feel\nconfident every day.", 7.8, 40.3, 34, 12, 'sans', 2.28, 500, 1.32, .01, '#20252d'),
+            ['type'=>'box','text'=>'','x'=>7.8,'y'=>55.2,'width'=>5.2,'height'=>5.2,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'transparent','border_color'=>'#a8895c','border_width'=>.12,'border_radius'=>50,'align'=>'left','uppercase'=>false],
+            $text('◇', 9.05, 56.05, 2.7, 2.7, 'sans', 2.15, 400, 1, 0, '#9b794e'),
+            $text("CUSTOM VENEERS\nNATURAL. BEAUTIFUL. YOU.", 14.7, 56.0, 27, 5, 'sans', 1.43, 500, 1.42, .10, '#20252d', true),
+            ['type'=>'line','text'=>'','x'=>14.7,'y'=>61.8,'width'=>18.4,'height'=>.08,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#c9bba8','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
+            ['type'=>'box','text'=>'','x'=>7.8,'y'=>63.5,'width'=>5.2,'height'=>5.2,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'transparent','border_color'=>'#a8895c','border_width'=>.12,'border_radius'=>50,'align'=>'left','uppercase'=>false],
+            $text('⌣', 9.05, 64.25, 2.7, 2.7, 'sans', 2.15, 400, 1, 0, '#9b794e'),
+            $text("COMPLIMENTARY\nCONSULTATION", 14.7, 64.3, 27, 5, 'sans', 1.43, 500, 1.42, .10, '#20252d', true),
+            ['type'=>'line','text'=>'','x'=>14.7,'y'=>70.1,'width'=>18.4,'height'=>.08,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#c9bba8','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
+            ['type'=>'box','text'=>'','x'=>7.8,'y'=>71.8,'width'=>5.2,'height'=>5.2,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'transparent','border_color'=>'#a8895c','border_width'=>.12,'border_radius'=>50,'align'=>'left','uppercase'=>false],
+            $text('$', 9.35, 72.55, 2.2, 2.7, 'sans', 2.05, 400, 1, 0, '#9b794e'),
+            $text("FLEXIBLE FINANCING\nOPTIONS", 14.7, 72.6, 27, 5, 'sans', 1.43, 500, 1.42, .10, '#20252d', true),
+            $text("●  DRAPER, UTAH\n\nINVEST IN YOURSELF.\nLOVE YOUR SMILE.", 7.8, 88.5, 38, 11, 'sans', 1.38, 600, 1.35, .14, '#7f6749', true),
         ];
         return social_studio_normalize_overlay_template(['version'=>1,'aspect_ratio'=>'1:1','canvas_background'=>'transparent','image_fit'=>'cover','elements'=>$elements]);
     }
@@ -954,10 +962,19 @@ if (!function_exists('social_studio_remove_reference_overlay')) {
         $y1 = max(0, (int)floor(($minY - 4) * $height / 100));
         $x2 = min($width, (int)ceil(($maxX + 3) * $width / 100));
         $y2 = min($height, (int)ceil(($maxY + 3) * $height / 100));
-        $sampleX = max(0, min($width - 1, $x1)); $sampleY = max(0, min($height - 1, (int)($height * .08)));
-        $sample = imagecolorat($image, $sampleX, $sampleY);
-        $color = imagecolorallocate($image, ($sample >> 16) & 0xFF, ($sample >> 8) & 0xFF, $sample & 0xFF);
-        imagefilledrectangle($image, $x1, $y1, $x2, $y2, $color);
+        if ($minX < 12) $x1 = 0;
+        if ($minY < 12 && $maxY > 85) { $y1 = 0; $y2 = $height; }
+
+        $zoneWidth = max(1, $x2 - $x1); $zoneHeight = max(1, $y2 - $y1);
+        $zone = imagecrop($image, ['x'=>$x1, 'y'=>$y1, 'width'=>$zoneWidth, 'height'=>$zoneHeight]);
+        if (!$zone) { imagedestroy($image); return ''; }
+        for ($pass = 0; $pass < 22; $pass++) imagefilter($zone, IMG_FILTER_GAUSSIAN_BLUR);
+        imagefilter($zone, IMG_FILTER_SMOOTH, 10);
+        imagealphablending($zone, true);
+        $wash = imagecolorallocatealpha($zone, 245, 241, 233, 48);
+        imagefilledrectangle($zone, 0, 0, $zoneWidth, $zoneHeight, $wash);
+        imagecopy($image, $zone, $x1, $y1, 0, 0, $zoneWidth, $zoneHeight);
+        imagedestroy($zone);
         ob_start(); imagejpeg($image, null, 92); $clean = (string)ob_get_clean(); imagedestroy($image);
         return $clean;
     }
@@ -974,7 +991,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
         if (str_starts_with((string)($draft['base_reference_key'] ?? ''), 'base_') && trim((string)($draft['base_post_prompt'] ?? '')) !== '') {
             $template = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
             $ratio = is_array($template) && (string)($template['aspect_ratio'] ?? '') === '1:1' ? 'square 1:1' : 'vertical 4:5';
-            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus, haze, or cut-off face.";
+            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. Reconstruct the cleared text zone as a seamless softly detailed continuation of the surrounding background with natural light and depth; never create a hard-edged rectangle, flat color panel, card, or visible boundary. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus on the subject, haze, or cut-off face.";
         }
 
         if (elite_openai_is_configured()) {

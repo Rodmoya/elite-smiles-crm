@@ -22,7 +22,7 @@ $imported = 0;
 $failed = 0;
 $errors = [];
 $batchIndex = max(0, (int)post('batch_index', 0));
-$system = 'You are the Elite Smiles Master CMO and visual production director. Analyze each supplied Instagram creative as a locked reusable production template. Return one result per post_id. OCR every visible overlay word exactly, preserving line breaks and capitalization. Encode every text block, line, and box in overlay_template using percentages of the source canvas; font_size is percentage of canvas width. Do not include logos. base_prompt describes only the clean photo layer with no text, logo, watermark, icons, or graphics.';
+$system = 'You are the Elite Smiles Master CMO and visual production director. Analyze each supplied Instagram creative as an immutable approved production template. Return one result per post_id. OCR every visible overlay word exactly, preserving spelling, punctuation, manual line breaks, and capitalization. Encode every text block, line, and box in overlay_template using percentages of the source canvas; font_size is percentage of canvas width. Select the closest visual font_family from bodoni, didot, playfair, garamond, georgia, montserrat, helvetica, arial, arial_narrow, or script, plus font_style, weight, tracking, line height, alignment, colors, and exact geometry. Do not include logos. base_prompt describes only the clean photo layer with no text, logo, watermark, icons, or graphics. Never redesign or paraphrase the overlay.';
 $itemSchema = [
     'type' => 'object', 'additionalProperties' => false,
     'properties' => [

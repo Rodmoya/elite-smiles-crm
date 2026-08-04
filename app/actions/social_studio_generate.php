@@ -14,6 +14,8 @@ $count = (int)post('count', 7);
 $instruction = (string)post('instruction', '');
 $visualReferenceKey = (string)post('visual_reference', 'none');
 $creationMode = (string)post('creation_mode', 'remix');
+$copyMode = (string)post('copy_mode', 'preserve');
+$copyMode = $copyMode === 'rewrite' ? 'rewrite' : 'preserve';
 $visualReferences = social_studio_visual_references();
 $visualReference = $visualReferences[$visualReferenceKey] ?? null;
 if ($creationMode !== 'manual' && (!$visualReference || !str_starts_with($visualReferenceKey, 'base_'))) {
@@ -34,6 +36,14 @@ if (str_starts_with($visualReferenceKey, 'base_')) {
             flash_set('error', 'The selected ad could not be converted into an exact overlay template. Please choose another ad or reanalyze the library.');
             redirect(base_url('social-studio.php'));
         }
+        if ($copyMode === 'rewrite') {
+            $rewritten = social_studio_rewrite_overlay_copy($overlayTemplate, $focus, $instruction);
+            if (empty($rewritten['ok']) || !is_array($rewritten['template'] ?? null)) {
+                flash_set('error', 'The new overlay copy could not be created safely: ' . (string)($rewritten['message'] ?? 'unknown error'));
+                redirect(base_url('social-studio.php'));
+            }
+            $overlayTemplate = $rewritten['template'];
+        }
         $baseAnalysis = db_one('SELECT * FROM social_studio_base_creatives WHERE id = :id LIMIT 1', ['id' => $baseId]) ?: $baseAnalysis;
         $baseAnalysis['overlay_template'] = $overlayTemplate;
     }
@@ -47,17 +57,20 @@ if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES
     }
 }
 $brief = implode("\n", [
-    'Creation mode: ' . ($creationMode === 'manual' ? 'Manual brief' : 'New photo, same ad'),
+    'Creation mode: ' . ($creationMode === 'manual' ? 'Manual brief' : 'New photo using approved template'),
+    'Overlay copy: ' . ($copyMode === 'rewrite' ? 'Explicit new wording in the same approved structure' : 'Preserve every approved word exactly'),
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
     'Focus: ' . $focus,
     'Audience: ' . (string)post('audience', 'any'),
     'Age range: ' . (string)post('age_range', 'any'),
-    'Text position: ' . (string)post('text_position', 'left'),
+    'Text position: ' . (string)post('text_position', 'source'),
     'Instagram base post: ' . ($visualReference['label'] ?? 'Manual brief'),
     'Instagram reference window: March 16, 2026 through today only.',
     $creationMode === 'manual'
         ? 'Manual mode: treat the user instruction as the primary creative direction and use the Master CMO system for quality, compliance, and consistency.'
-        : 'LOCKED PRODUCTION MODE: generate only a new clean photographic layer. The CRM will reproduce the selected Instagram ad overlay from saved deterministic template data. Never ask OpenAI or Nano Banana to recreate, rewrite, paraphrase, position, or style the overlay. The selected ad copy remains exact.',
+        : ($copyMode === 'rewrite'
+            ? 'LOCKED REWRITE MODE: generate only a clean photographic layer. CRM changes wording only, then applies the selected ad font, scale, line structure, spacing, palette, and geometry unchanged.'
+            : 'LOCKED PRODUCTION MODE: generate only a new clean photographic layer. The CRM reproduces the selected Instagram ad overlay from saved deterministic template data. Never ask OpenAI or Nano Banana to recreate, rewrite, paraphrase, position, or style the overlay. The selected ad copy remains exact.'),
     'Reference style direction: ' . ($visualReference['description'] ?? 'Use the Elite Smiles Master CMO system.'),
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
@@ -79,7 +92,8 @@ $remixTemplate = $baseAnalysis ? [
     'purpose' => (string)post('purpose', 'educational'),
     'audience' => (string)post('audience', 'any'),
     'age_range' => (string)post('age_range', 'any'),
-    'text_position' => (string)post('text_position', 'left'),
+    'text_position' => (string)post('text_position', 'source'),
+    'copy_mode' => $copyMode,
 ] : [];
 $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl, $remixTemplate);
 

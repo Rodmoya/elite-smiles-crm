@@ -107,11 +107,12 @@ function social_studio_preview_overlay(array $draft): array
 
 function social_studio_overlay_element_style(array $element): string
 {
-    $font = match ((string)$element['font_role']) { 'serif' => "'Bodoni MT',Didot,'Times New Roman',serif", 'script' => "'Segoe Script','Brush Script MT',cursive", default => 'Arial,Helvetica,sans-serif' };
+    $font = social_studio_overlay_font_stack($element);
     return implode(';', [
         'left:' . (float)$element['x'] . '%', 'top:' . (float)$element['y'] . '%',
         'width:' . (float)$element['width'] . '%', 'height:' . (float)$element['height'] . '%',
         'font-family:' . $font, 'font-size:' . (float)$element['font_size'] . 'cqw',
+        'font-style:' . ((string)($element['font_style'] ?? 'normal') === 'italic' ? 'italic' : 'normal'),
         'font-weight:' . (int)$element['font_weight'], 'line-height:' . (float)$element['line_height'],
         'letter-spacing:' . (float)$element['letter_spacing'] . 'em', 'color:' . $element['color'],
         'background:' . $element['background_color'], 'border-color:' . $element['border_color'],
@@ -201,8 +202,8 @@ function social_studio_overlay_element_style(array $element): string
                     <button type="submit" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700">Refresh image cache</button>
                 </form>
                 <form method="post" action="<?= e(base_url('app/actions/social_studio_reanalyze_bases.php')) ?>" class="mt-3 flex flex-wrap items-center gap-3">
-                    <?= csrf_input() ?><input type="hidden" name="limit" value="2">
-                    <button type="submit" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">Rebuild next 2 template prompts</button>
+                    <?= csrf_input() ?><input type="hidden" name="limit" value="5">
+                    <button type="submit" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">Rebuild next 5 exact templates</button>
                     <span class="text-xs text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> templates fully analyzed<?= $baseAnalysisProgress['remaining'] > 0 ? ' · ' . e((string)$baseAnalysisProgress['remaining']) . ' remaining' : ' · complete' ?></span>
                 </form>
             </details>
@@ -275,10 +276,17 @@ function social_studio_overlay_element_style(array $element): string
                         <div class="grid gap-4 sm:grid-cols-2">
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Creation mode
                                 <select name="creation_mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="remix">New photo, same ad</option>
+                                    <option value="remix">New photo using approved Instagram template</option>
                                     <option value="manual">Manual brief</option>
                                 </select>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">The selected ad keeps its exact saved copy, typography, and layout. Nano Banana changes only the clean photo layer.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">The template is immutable by default. Nano Banana changes the clean photo; CRM applies the approved overlay afterward.</span>
+                            </label>
+                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Overlay wording
+                                <select name="copy_mode" id="social-copy-mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="preserve">Keep every approved word exactly</option>
+                                    <option value="rewrite">Create an explicit new version of the wording</option>
+                                </select>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">Rewrite changes words only. Font family, size, weight, line structure, spacing, colors, and geometry stay locked.</span>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800">Focus
                                 <select name="focus" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
@@ -319,13 +327,12 @@ function social_studio_overlay_element_style(array $element): string
                             </label>
                             <label class="block text-sm font-semibold text-slate-800">Text position
                                 <select name="text_position" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
+                                    <option value="source">Original approved position</option>
                                     <option value="left">Left</option>
                                     <option value="right">Right</option>
-                                    <option value="top">Top</option>
-                                    <option value="bottom">Bottom</option>
                                 </select>
                             </label>
-                            <label class="order-first block text-sm font-semibold text-slate-800 sm:col-span-2" id="social-remix-reference">Instagram post to remix <span class="font-normal text-slate-500">(optional)</span>
+                            <label class="order-first block text-sm font-semibold text-slate-800 sm:col-span-2" id="social-remix-reference">Choose the approved Instagram template
                                 <input type="hidden" name="visual_reference" id="social-visual-reference" value="none">
                                 <div class="mt-2 flex gap-3 overflow-x-auto pb-2" id="social-reference-carousel">
                                     <?php foreach ($visualReferences as $referenceKey => $reference): ?>
@@ -335,17 +342,17 @@ function social_studio_overlay_element_style(array $element): string
                                         </button>
                                     <?php endforeach; ?>
                                 </div>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Choose the ad first. Its exact overlay becomes the locked template; Focus, purpose, audience, age, and text position direct only the new photo.</span>
+                                <span class="mt-1 block text-xs font-normal text-slate-500">All downloaded posts from March 16 onward appear here. The selected post supplies the exact approved overlay and visual composition.</span>
                             </label>
                             <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Or upload inspiration image <span class="font-normal text-slate-500">(optional)</span>
                                 <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm">
                                 <span class="mt-1 block text-xs font-normal text-slate-500">OpenAI will analyze layout, typography, color, framing, and CTA treatment, then create a new Nano Banana prompt.</span>
                             </label>
-                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Instruction
-                                <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Use Elite Smiles voice. Keep it friendly, premium, and conversion focused. Goal: schedule veneer consults."></textarea>
+                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Photo and caption direction <span class="font-normal text-slate-500">(optional)</span>
+                                <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Example: confident man in his 40s, bright natural smile, warm Draper lifestyle background."></textarea>
                             </label>
                             <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800 sm:col-span-2">
-                                OpenAI prepares the caption and clean-photo prompt. Nano Banana creates the photo with no text, logo, or watermark. The CRM then merges the selected ad’s saved overlay exactly for review.
+                                The caption is newly written and hashtags stay close to the approved topic. The image contains no baked-in words or logos. CRM then applies the selected overlay deterministically for review.
                             </div>
                             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2">
                                 <button type="submit" class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Generate Drafts</button>

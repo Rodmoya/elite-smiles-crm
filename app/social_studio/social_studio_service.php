@@ -88,6 +88,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             'overlay_eyebrow' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_eyebrow VARCHAR(180) NULL AFTER overlay_spec",
             'overlay_blocks_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_blocks_json TEXT NULL AFTER overlay_eyebrow",
             'overlay_template_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_template_json LONGTEXT NULL AFTER overlay_blocks_json",
+            'copy_mode' => "ALTER TABLE social_studio_drafts ADD COLUMN copy_mode VARCHAR(32) NOT NULL DEFAULT 'preserve' AFTER overlay_template_json",
+            'text_position' => "ALTER TABLE social_studio_drafts ADD COLUMN text_position VARCHAR(16) NOT NULL DEFAULT 'source' AFTER copy_mode",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -186,9 +188,33 @@ if (!function_exists('social_studio_base_source_path')) {
 }
 
 if (!function_exists('social_studio_base_analysis_progress')) {
+    function social_studio_sync_bundled_creatives(): int
+    {
+        $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'social-studio' . DIRECTORY_SEPARATOR . 'instagram';
+        if (!is_dir($directory)) return 0;
+        $existing = [];
+        foreach (db_all('SELECT source_post_id FROM social_studio_base_creatives WHERE source_type="instagram"') as $row) {
+            $existing[(string)$row['source_post_id']] = true;
+        }
+        $created = 0;
+        foreach (glob($directory . DIRECTORY_SEPARATOR . '*.jpg') ?: [] as $path) {
+            $postId = pathinfo($path, PATHINFO_FILENAME);
+            if ($postId === '' || isset($existing[$postId])) continue;
+            db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, group_name, analysis_version, status) VALUES ("instagram", :source_url, :source_post_id, :title, "Pending analysis", 0, "active")', [
+                'source_url' => 'https://www.instagram.com/p/' . rawurlencode($postId) . '/',
+                'source_post_id' => $postId,
+                'title' => 'Instagram post ' . $postId,
+            ]);
+            $existing[$postId] = true;
+            $created++;
+        }
+        return $created;
+    }
+
     function social_studio_base_analysis_progress(): array
     {
         social_studio_ensure_schema();
+        social_studio_sync_bundled_creatives();
         $total = 0;
         $ready = 0;
         foreach (db_all('SELECT source_url, source_post_id, local_image_key, analysis_version FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram"') as $base) {
@@ -196,7 +222,7 @@ if (!function_exists('social_studio_base_analysis_progress')) {
                 continue;
             }
             $total++;
-            if ((int)($base['analysis_version'] ?? 1) >= 3) {
+            if ((int)($base['analysis_version'] ?? 0) >= 4) {
                 $ready++;
             }
         }
@@ -208,8 +234,9 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
     function social_studio_reanalyze_base_creatives(int $limit = 1): array
     {
         social_studio_ensure_schema();
-        $limit = max(1, min(3, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 3 ORDER BY published_at DESC, id DESC LIMIT 100');
+        social_studio_sync_bundled_creatives();
+        $limit = max(1, min(5, $limit));
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 4 ORDER BY published_at DESC, id DESC LIMIT 100');
         $bases = array_values(array_filter($bases, static fn(array $base): bool => social_studio_base_source_path($base) !== ''));
         $updated = 0;
         $failed = 0;
@@ -244,7 +271,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             $analysisJson = is_array($data['analysis'] ?? null)
                 ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : (string)($data['analysis'] ?? '');
-            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', [
+            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=4 WHERE id=:id LIMIT 1', [
                 'id' => (int)$base['id'],
                 'title' => trim((string)($data['title'] ?? '')) ?: (string)$base['title'],
                 'group_name' => trim((string)($data['group_name'] ?? '')) ?: (string)$base['group_name'],
@@ -281,13 +308,14 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'base_prompt' => (string)($creative['base_prompt'] ?? ''),
             'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
             'overlay_template_json' => social_studio_encode_overlay_template((array)($creative['overlay_template'] ?? [])),
+            'analysis_version' => !empty($creative['overlay_template']) ? 4 : 0,
         ];
         if ($existing) {
-            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json']));
-            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
+            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json', 'analysis_version']));
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=:analysis_version WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
             return (int)$existing['id'];
         }
-        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec, overlay_template_json) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json)', $params);
+        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec, overlay_template_json, analysis_version) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json,:analysis_version)', $params);
     }
 }
 
@@ -295,6 +323,7 @@ if (!function_exists('social_studio_visual_references')) {
     function social_studio_visual_references(): array
     {
         social_studio_ensure_schema();
+        social_studio_sync_bundled_creatives();
         $references = [];
         /* The library is intentionally database-backed. Static placeholders made
          * it possible to remix four examples without importing the full window. */
@@ -395,6 +424,8 @@ if (!function_exists('social_studio_seed_drafts')) {
                 'x' => ['type' => 'number'], 'y' => ['type' => 'number'],
                 'width' => ['type' => 'number'], 'height' => ['type' => 'number'],
                 'font_role' => ['type' => 'string', 'enum' => ['serif', 'sans', 'script']],
+                'font_family' => ['type' => 'string', 'enum' => ['bodoni', 'didot', 'playfair', 'garamond', 'georgia', 'montserrat', 'helvetica', 'arial', 'arial_narrow', 'script']],
+                'font_style' => ['type' => 'string', 'enum' => ['normal', 'italic']],
                 'font_size' => ['type' => 'number'], 'font_weight' => ['type' => 'integer'],
                 'line_height' => ['type' => 'number'], 'letter_spacing' => ['type' => 'number'],
                 'color' => ['type' => 'string'], 'background_color' => ['type' => 'string'],
@@ -403,7 +434,7 @@ if (!function_exists('social_studio_seed_drafts')) {
                 'align' => ['type' => 'string', 'enum' => ['left', 'center', 'right']],
                 'uppercase' => ['type' => 'boolean'],
             ],
-            'required' => ['type', 'text', 'x', 'y', 'width', 'height', 'font_role', 'font_size', 'font_weight', 'line_height', 'letter_spacing', 'color', 'background_color', 'border_color', 'border_width', 'border_radius', 'align', 'uppercase'],
+            'required' => ['type', 'text', 'x', 'y', 'width', 'height', 'font_role', 'font_family', 'font_style', 'font_size', 'font_weight', 'line_height', 'letter_spacing', 'color', 'background_color', 'border_color', 'border_width', 'border_radius', 'align', 'uppercase'],
         ];
         return [
             'type' => 'object', 'additionalProperties' => false,
@@ -424,18 +455,41 @@ if (!function_exists('social_studio_seed_drafts')) {
         return $color === 'transparent' || preg_match('/^#[0-9a-f]{3,8}$/', $color) || preg_match('/^rgba?\([0-9.,%\s]+\)$/', $color) ? $color : $fallback;
     }
 
+    function social_studio_overlay_font_stack(array $element): string
+    {
+        return match ((string)($element['font_family'] ?? '')) {
+            'didot' => "Didot,'Bodoni MT','Times New Roman',serif",
+            'playfair' => "'Playfair Display',Georgia,'Times New Roman',serif",
+            'garamond' => "Garamond,'EB Garamond',Georgia,serif",
+            'georgia' => "Georgia,'Times New Roman',serif",
+            'montserrat' => "Montserrat,'Avenir Next',Arial,sans-serif",
+            'arial' => "Arial,Helvetica,sans-serif",
+            'arial_narrow' => "'Arial Narrow','Aptos Narrow',Arial,sans-serif",
+            'script' => "'Segoe Script','Brush Script MT',cursive",
+            'bodoni' => "'Bodoni MT',Didot,'Times New Roman',serif",
+            default => (string)($element['font_role'] ?? '') === 'serif'
+                ? "'Bodoni MT',Didot,'Times New Roman',serif"
+                : ((string)($element['font_role'] ?? '') === 'script' ? "'Segoe Script','Brush Script MT',cursive" : "Helvetica,Arial,sans-serif"),
+        };
+    }
+
     function social_studio_normalize_overlay_template(array $template): array
     {
         if (!is_array($template['elements'] ?? null)) return [];
         $elements = [];
         foreach (array_slice($template['elements'], 0, 30) as $element) {
             if (!is_array($element)) continue;
+            $role = in_array((string)($element['font_role'] ?? ''), ['serif', 'sans', 'script'], true) ? (string)$element['font_role'] : 'sans';
+            $defaultFamily = match ($role) { 'serif' => 'bodoni', 'script' => 'script', default => 'helvetica' };
+            $family = in_array((string)($element['font_family'] ?? ''), ['bodoni', 'didot', 'playfair', 'garamond', 'georgia', 'montserrat', 'helvetica', 'arial', 'arial_narrow', 'script'], true) ? (string)$element['font_family'] : $defaultFamily;
             $elements[] = [
                 'type' => in_array((string)($element['type'] ?? ''), ['text', 'line', 'box'], true) ? (string)$element['type'] : 'text',
                 'text' => mb_substr((string)($element['text'] ?? ''), 0, 500),
                 'x' => max(0, min(100, (float)($element['x'] ?? 0))), 'y' => max(0, min(100, (float)($element['y'] ?? 0))),
                 'width' => max(.1, min(100, (float)($element['width'] ?? 10))), 'height' => max(.1, min(100, (float)($element['height'] ?? 5))),
-                'font_role' => in_array((string)($element['font_role'] ?? ''), ['serif', 'sans', 'script'], true) ? (string)$element['font_role'] : 'sans',
+                'font_role' => $role,
+                'font_family' => $family,
+                'font_style' => (string)($element['font_style'] ?? '') === 'italic' ? 'italic' : 'normal',
                 'font_size' => max(.5, min(20, (float)($element['font_size'] ?? 3))), 'font_weight' => max(100, min(900, (int)($element['font_weight'] ?? 400))),
                 'line_height' => max(.7, min(2.5, (float)($element['line_height'] ?? 1.1))), 'letter_spacing' => max(-.1, min(1, (float)($element['letter_spacing'] ?? 0))),
                 'color' => social_studio_safe_css_color((string)($element['color'] ?? '#17202a'), '#17202a'),
@@ -459,13 +513,13 @@ if (!function_exists('social_studio_seed_drafts')) {
     {
         if ($sourcePostId !== 'DZME24slvGK') return [];
         $text = static function (string $value, float $x, float $y, float $width, float $height, string $role, float $size, int $weight, float $lineHeight, float $spacing, string $color, bool $uppercase = false): array {
-            return ['type'=>'text','text'=>$value,'x'=>$x,'y'=>$y,'width'=>$width,'height'=>$height,'font_role'=>$role,'font_size'=>$size,'font_weight'=>$weight,'line_height'=>$lineHeight,'letter_spacing'=>$spacing,'color'=>$color,'background_color'=>'transparent','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>$uppercase];
+            return ['type'=>'text','text'=>$value,'x'=>$x,'y'=>$y,'width'=>$width,'height'=>$height,'font_role'=>$role,'font_family'=>match($role){'serif'=>'bodoni','script'=>'script',default=>'helvetica'},'font_style'=>$role === 'script' ? 'italic' : 'normal','font_size'=>$size,'font_weight'=>$weight,'line_height'=>$lineHeight,'letter_spacing'=>$spacing,'color'=>$color,'background_color'=>'transparent','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>$uppercase];
         };
         $elements = [
             $text('YOUR', 7.8, 8.3, 35, 4.5, 'sans', 3.65, 400, 1, .18, '#20252d', true),
             $text("CONFIDENCE\nSTARTS", 7.8, 13.2, 43, 16, 'serif', 7.45, 400, .86, -.025, '#20252d', true),
             $text('with your smile', 7.8, 27.8, 39, 5.5, 'script', 4.7, 400, 1, 0, '#9b794e'),
-            ['type'=>'line','text'=>'','x'=>7.8,'y'=>36.1,'width'=>9.3,'height'=>.12,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
+            ['type'=>'line','text'=>'','x'=>7.8,'y'=>36.1,'width'=>9.3,'height'=>.12,'font_role'=>'sans','font_family'=>'helvetica','font_style'=>'normal','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'#9b794e','border_color'=>'transparent','border_width'=>0,'border_radius'=>0,'align'=>'left','uppercase'=>false],
             $text("Custom veneers designed\nto enhance your natural\nbeauty and help you feel\nconfident every day.", 7.8, 40.3, 34, 12, 'sans', 2.28, 500, 1.32, .01, '#20252d'),
             ['type'=>'box','text'=>'','x'=>7.8,'y'=>55.2,'width'=>5.2,'height'=>5.2,'font_role'=>'sans','font_size'=>1,'font_weight'=>400,'line_height'=>1,'letter_spacing'=>0,'color'=>'transparent','background_color'=>'transparent','border_color'=>'#a8895c','border_width'=>.12,'border_radius'=>50,'align'=>'left','uppercase'=>false],
             $text('◇', 9.05, 56.05, 2.7, 2.7, 'sans', 2.15, 400, 1, 0, '#9b794e'),
@@ -499,8 +553,8 @@ if (!function_exists('social_studio_seed_drafts')) {
             ],
             'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec', 'overlay_template'],
         ];
-        $system = 'You are the Elite Smiles Master CMO and visual production director. Analyze the supplied Instagram creative as a LOCKED reusable production template. OCR every visible word exactly, preserving capitalization, punctuation, and line breaks. Represent each text block, divider line, and background box as a separate overlay_template element using percentages of the original canvas. font_size is a percentage of canvas width. Keep logos out of the template. base_prompt must describe ONLY the clean photographic layer and explicitly request no words, logo, watermark, icons, or graphic text. overlay_spec is a human-readable audit. This is extraction, not redesign: never improve, paraphrase, shorten, or invent overlay copy.';
-        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR the exact overlay copy and encode a deterministic overlay_template with precise x, y, width, height, typography role, scale, color, and decoration. Use transparent when a fill or border is absent. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $system = 'You are the Elite Smiles Master CMO and visual production director. Analyze the supplied Instagram creative as an IMMUTABLE approved production template. OCR every visible word exactly, preserving capitalization, punctuation, spelling, and manual line breaks. Measure each text block, divider line, and background box against the source pixels and encode it as a separate overlay_template element using percentages of the original canvas. font_size is percentage of canvas width. Select the closest available font_family by visual anatomy: bodoni, didot, playfair, garamond, georgia, montserrat, helvetica, arial, arial_narrow, or script. Record normal/italic style, weight, tracking, line height, alignment, colors, fills, borders, and geometry. Keep logos out of the template. base_prompt describes ONLY the clean photographic layer and explicitly requests no words, logo, watermark, icons, or graphic text. overlay_spec is a human-readable fidelity audit. This is forensic extraction, never redesign: do not improve, paraphrase, shorten, normalize, or invent any overlay copy.';
+        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR the exact overlay copy and encode a deterministic overlay_template with precise x, y, width, height, font family, font style, scale, weight, tracking, color, alignment, and decoration. Preserve deliberate whitespace and the exact relationship between text and subject. Use transparent when a fill or border is absent. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
     }
 
@@ -509,7 +563,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         $curated = social_studio_curated_overlay_template((string)($base['source_post_id'] ?? ''));
         if ($curated !== []) {
             if (!empty($base['id'])) {
-                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', ['id'=>(int)$base['id'], 'overlay_template_json'=>social_studio_encode_overlay_template($curated)]);
+                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:overlay_template_json, analysis_version=4 WHERE id=:id LIMIT 1', ['id'=>(int)$base['id'], 'overlay_template_json'=>social_studio_encode_overlay_template($curated)]);
             }
             return $curated;
         }
@@ -534,7 +588,7 @@ if (!function_exists('social_studio_seed_drafts')) {
             return [];
         }
         if (!empty($base['id'])) {
-            db_execute('UPDATE social_studio_base_creatives SET analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=3 WHERE id=:id LIMIT 1', [
+            db_execute('UPDATE social_studio_base_creatives SET analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=4 WHERE id=:id LIMIT 1', [
                 'id' => (int)$base['id'],
                 'analysis_json' => is_array($data['analysis'] ?? null) ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)($data['analysis'] ?? ''),
                 'base_prompt' => trim((string)($data['base_prompt'] ?? ($base['base_prompt'] ?? ''))),
@@ -543,6 +597,57 @@ if (!function_exists('social_studio_seed_drafts')) {
             ]);
         }
         return $template;
+    }
+
+    function social_studio_position_overlay_template(array $template, string $position): array
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        if ($template === [] || !in_array($position, ['left', 'right'], true)) return $template;
+        $elements = (array)($template['elements'] ?? []);
+        if ($elements === []) return $template;
+        $minX = 100.0; $maxX = 0.0;
+        foreach ($elements as $element) {
+            $minX = min($minX, (float)$element['x']);
+            $maxX = max($maxX, (float)$element['x'] + (float)$element['width']);
+        }
+        $sourcePosition = (($minX + $maxX) / 2) < 50 ? 'left' : 'right';
+        if ($sourcePosition === $position) return $template;
+        foreach ($elements as &$element) {
+            $element['x'] = max(0, min(100, 100 - (float)$element['x'] - (float)$element['width']));
+            if ((string)$element['align'] === 'left') $element['align'] = 'right';
+            elseif ((string)$element['align'] === 'right') $element['align'] = 'left';
+        }
+        unset($element);
+        $template['elements'] = $elements;
+        return social_studio_normalize_overlay_template($template);
+    }
+
+    function social_studio_rewrite_overlay_copy(array $template, string $focus, string $instruction = ''): array
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        if ($template === [] || !elite_openai_is_configured()) return ['ok'=>false, 'message'=>'OpenAI is not configured for overlay rewriting.'];
+        $editable = [];
+        foreach (($template['elements'] ?? []) as $index => $element) {
+            if ((string)$element['type'] !== 'text') continue;
+            $text = trim((string)$element['text']);
+            if ($text === '' || mb_strlen($text) <= 2 || preg_match('/^[\p{S}\p{P}\$]+$/u', $text)) continue;
+            $editable[] = ['index'=>$index, 'text'=>(string)$element['text']];
+        }
+        if ($editable === []) return ['ok'=>false, 'message'=>'The selected template has no editable copy blocks.'];
+        $itemSchema = ['type'=>'object','additionalProperties'=>false,'properties'=>['index'=>['type'=>'integer'],'text'=>['type'=>'string']],'required'=>['index','text']];
+        $schema = ['type'=>'object','additionalProperties'=>false,'properties'=>['replacements'=>['type'=>'array','minItems'=>count($editable),'maxItems'=>count($editable),'items'=>$itemSchema]],'required'=>['replacements']];
+        $system = 'You are the Elite Smiles Master CMO. Rewrite only the supplied approved overlay wording. Keep the exact concept, treatment claims, CTA intent, location, financing qualifications, capitalization pattern, number of blocks, and manual line count. Each replacement must fit the same visual box: stay close to the original character count per line. Do not change typography, geometry, colors, icons, or layout. Return every supplied index exactly once.';
+        $user = 'Focus: ' . social_studio_focus_label($focus) . "\nOptional direction: " . trim($instruction) . "\nApproved text blocks:\n" . json_encode($editable, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        $response = elite_openai_json_response($system, $user, $schema, 'social_studio_overlay_rewrite');
+        if (empty($response['ok']) || !is_array($response['data']['replacements'] ?? null)) return ['ok'=>false, 'message'=>(string)($response['message'] ?? 'Overlay rewrite failed.')];
+        $replacements = [];
+        foreach ($response['data']['replacements'] as $replacement) $replacements[(int)($replacement['index'] ?? -1)] = (string)($replacement['text'] ?? '');
+        foreach ($editable as $source) {
+            $index = (int)$source['index'];
+            if (!isset($replacements[$index]) || trim($replacements[$index]) === '') return ['ok'=>false, 'message'=>'Overlay rewrite returned an incomplete template.'];
+            $template['elements'][$index]['text'] = $replacements[$index];
+        }
+        return ['ok'=>true, 'template'=>social_studio_normalize_overlay_template($template)];
     }
 
     function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = []): int
@@ -560,7 +665,7 @@ if (!function_exists('social_studio_seed_drafts')) {
                 $topic['base_reference_key'] = (string)($remixTemplate['reference_key'] ?? '');
                 $topic['base_post_prompt'] = (string)($remixTemplate['base_prompt'] ?? '');
                 $topic['overlay_spec'] = social_studio_locked_overlay_spec($remixTemplate);
-                $topic['overlay_template'] = (array)($remixTemplate['overlay_template'] ?? []);
+                $topic['overlay_template'] = social_studio_position_overlay_template((array)($remixTemplate['overlay_template'] ?? []), (string)($remixTemplate['text_position'] ?? 'source'));
                 $topic['image_prompt'] = social_studio_locked_remix_image_prompt($remixTemplate, $topic, $focus);
                 $topic['post_type'] = (string)($remixTemplate['purpose'] ?? 'educational') === 'social_ad' ? 'social_ad' : 'education';
                 if (!empty($remixTemplate['replica_mode']) && (string)($remixTemplate['source_post_id'] ?? '') === 'DZME24slvGK') {
@@ -589,9 +694,9 @@ if (!function_exists('social_studio_seed_drafts')) {
 
             db_insert(
                 "INSERT INTO social_studio_drafts
-                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, scheduled_at, created_by)
+                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, copy_mode, text_position, scheduled_at, created_by)
                  VALUES
-                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :overlay_template_json, :scheduled_at, :created_by)",
+                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :overlay_template_json, :copy_mode, :text_position, :scheduled_at, :created_by)",
                 [
                     'title' => $title,
                     'platform' => 'facebook_instagram',
@@ -607,6 +712,8 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'overlay_eyebrow' => trim((string)($topic['overlay_eyebrow'] ?? '')) ?: null,
                     'overlay_blocks_json' => json_encode(array_values(array_filter((array)($topic['overlay_blocks'] ?? []), static fn($item): bool => is_string($item) && trim($item) !== '')), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null,
                     'overlay_template_json' => social_studio_encode_overlay_template((array)($topic['overlay_template'] ?? [])),
+                    'copy_mode' => (string)($remixTemplate['copy_mode'] ?? 'preserve'),
+                    'text_position' => (string)($remixTemplate['text_position'] ?? 'source'),
                     'scheduled_at' => $scheduledAt,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
                 ]
@@ -656,7 +763,7 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography families, relative font sizes, capitalization pattern, line-break rhythm, exact content-block count, hierarchy, benefit format, CTA treatment, and overlay structure. Change only Focus, Purpose, Audience, Age range, and Text position. Treatment-specific wording may be substituted inside the same content structure; do not add or remove sections. Return overlay_eyebrow as the short overline/kicker used by the base (empty string if the base has none). Return overlay_blocks with exactly the same number and role of supporting text blocks/bullets as the base (empty array if it has none); these are concise on-image words, not caption paragraphs. The CTA must match the base CTA's approximate word count and may never exceed seven words; longer action language belongs in the caption. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography, hierarchy, and CTA treatment. The deterministic overlay is handled separately by CRM; do not recreate, paraphrase, or position any on-image copy in these drafts. Create a fresh caption and closely related hashtags while directing only the clean photo through Focus, Purpose, Audience, Age range, and Text position. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the approved overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             return social_studio_fallback_topics($focus, $count);
@@ -746,7 +853,7 @@ if (!function_exists('social_studio_dashboard_data')) {
             $curatedTemplate = social_studio_curated_overlay_template((string)$curatedBase['source_post_id']);
             $curatedJson = social_studio_encode_overlay_template($curatedTemplate);
             if ($curatedJson !== null && $curatedJson !== (string)($curatedBase['overlay_template_json'] ?? '')) {
-                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:template, analysis_version=3 WHERE id=:id LIMIT 1', ['id'=>(int)$curatedBase['id'], 'template'=>$curatedJson]);
+                db_execute('UPDATE social_studio_base_creatives SET overlay_template_json=:template, analysis_version=4 WHERE id=:id LIMIT 1', ['id'=>(int)$curatedBase['id'], 'template'=>$curatedJson]);
                 db_execute('UPDATE social_studio_drafts SET overlay_template_json=:template WHERE base_reference_key=:reference_key', ['template'=>$curatedJson, 'reference_key'=>'base_' . (int)$curatedBase['id']]);
             }
         }
@@ -819,11 +926,11 @@ if (!function_exists('social_studio_image_url')) {
 if (!function_exists('social_studio_locked_overlay_spec')) {
     function social_studio_locked_overlay_spec(array $template): string
     {
-        $position = (string)($template['text_position'] ?? 'left');
-        if (!in_array($position, ['left', 'right', 'top', 'bottom'], true)) {
-            $position = 'left';
+        $position = (string)($template['text_position'] ?? 'source');
+        if (!in_array($position, ['source', 'left', 'right'], true)) {
+            $position = 'source';
         }
-        return "Text position: {$position}. This is the only permitted layout substitution.\n"
+        return "Text position: {$position}. Source preserves the approved coordinates; left or right mirrors only the overlay geometry. This is the only permitted layout substitution.\n"
             . "LOCKED BASE OVERLAY — preserve typography families, relative font sizes, capitalization, line breaks, block count, spacing, hierarchy, palette, and CTA treatment exactly:\n"
             . trim((string)($template['overlay_spec'] ?? ''));
     }
@@ -837,7 +944,7 @@ if (!function_exists('social_studio_locked_remix_image_prompt')) {
             '{{PURPOSE}}' => (string)($template['purpose'] ?? 'educational'),
             '{{AUDIENCE}}' => (string)($template['audience'] ?? 'any adult'),
             '{{AGE_RANGE}}' => (string)($template['age_range'] ?? 'any adult'),
-            '{{TEXT_POSITION}}' => (string)($template['text_position'] ?? 'left'),
+            '{{TEXT_POSITION}}' => (string)($template['text_position'] ?? 'source'),
         ];
         $basePrompt = strtr(trim((string)($template['base_prompt'] ?? '')), $variables);
         $topicDirection = trim((string)($topic['image_prompt'] ?? ''));
@@ -1218,13 +1325,13 @@ if (!function_exists('social_studio_create_branded_svg')) {
                 $svg .= '<rect x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" rx="' . ((float)$element['border_radius'] * $width / 100) . '" fill="' . $fill . '" stroke="' . $stroke . '" stroke-width="' . $strokeWidth . '"/>';
                 continue;
             }
-            $fontFamily = match ((string)$element['font_role']) { 'serif' => 'Bodoni MT,Didot,Times New Roman,serif', 'script' => 'Segoe Script,Brush Script MT,cursive', default => 'Arial,Helvetica,sans-serif' };
+            $fontFamily = social_studio_overlay_font_stack($element);
             $fontSize = (float)$element['font_size'] * $width / 100;
             $anchor = match ((string)$element['align']) { 'center' => 'middle', 'right' => 'end', default => 'start' };
             $textX = $x + ((string)$element['align'] === 'center' ? $w / 2 : ((string)$element['align'] === 'right' ? $w : 0));
             $text = !empty($element['uppercase']) ? mb_strtoupper((string)$element['text']) : (string)$element['text'];
             $lines = preg_split('/\R/u', $text) ?: [$text];
-            $svg .= '<text x="' . $textX . '" y="' . ($y + $fontSize) . '" fill="' . htmlspecialchars((string)$element['color'], ENT_QUOTES, 'UTF-8') . '" font-family="' . htmlspecialchars($fontFamily, ENT_QUOTES, 'UTF-8') . '" font-size="' . $fontSize . '" font-weight="' . (int)$element['font_weight'] . '" letter-spacing="' . ((float)$element['letter_spacing'] * $fontSize) . '" text-anchor="' . $anchor . '">';
+            $svg .= '<text x="' . $textX . '" y="' . ($y + $fontSize) . '" fill="' . htmlspecialchars((string)$element['color'], ENT_QUOTES, 'UTF-8') . '" font-family="' . htmlspecialchars($fontFamily, ENT_QUOTES, 'UTF-8') . '" font-style="' . ((string)($element['font_style'] ?? 'normal') === 'italic' ? 'italic' : 'normal') . '" font-size="' . $fontSize . '" font-weight="' . (int)$element['font_weight'] . '" letter-spacing="' . ((float)$element['letter_spacing'] * $fontSize) . '" text-anchor="' . $anchor . '">';
             foreach ($lines as $lineIndex => $line) {
                 $svg .= '<tspan x="' . $textX . '" dy="' . ($lineIndex === 0 ? 0 : ((float)$element['line_height'] * $fontSize)) . '">' . htmlspecialchars((string)$line, ENT_QUOTES | ENT_XML1, 'UTF-8') . '</tspan>';
             }

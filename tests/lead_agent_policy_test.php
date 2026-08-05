@@ -66,6 +66,7 @@ $reportCopy = lead_agent_report_copy('2026-08-05', [
     'actions_completed' => 2,
     'sms_sent' => 1,
     'emails_sent' => 1,
+    'outbound_total' => 2,
     'inbound_handled' => 0,
     'ready_to_schedule_today' => 0,
     'needs_attention_today' => 0,

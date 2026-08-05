@@ -23,8 +23,8 @@ $crmHasPatientMailings = is_file(dirname(__DIR__, 2) . '/patient-mailings.php');
 
 $crmNavItems = [
     ['key' => 'leads', 'label' => 'Leads', 'href' => base_url('leads.php'), 'icon' => 'M4 6h16M4 12h16M4 18h10', 'show' => true],
-    ['key' => 'lead_agent_operations', 'label' => 'Lead Agent', 'href' => base_url('lead-agent-operations.php'), 'icon' => 'M4 19V9m5 10V5m5 14v-7m5 7V3M3 19h18', 'show' => true],
     ['key' => 'dashboard', 'label' => 'Command Center', 'href' => base_url('dashboard.php'), 'icon' => 'M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10.5z', 'show' => true],
+    ['key' => 'elite_ai_lab', 'label' => 'Elite AI Lab', 'href' => base_url('elite-ai-lab.php'), 'icon' => 'M8 5h8M7 9h10M6 13h8m-6 4h4M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager') : false],
     ['key' => 'smile_design', 'label' => 'Smile Design', 'href' => base_url('smile-design'), 'icon' => 'M12 3c3.5 0 6.5 2.1 7.8 5.1C18.4 15.2 15.8 21 12 21S5.6 15.2 4.2 8.1C5.5 5.1 8.5 3 12 3zM8.5 10c.8 1.2 2 1.8 3.5 1.8s2.7-.6 3.5-1.8', 'show' => true],
     ['key' => 'dental_models', 'label' => '3D Design', 'href' => base_url('dental-models'), 'icon' => 'M4 3h16v8H4zM4 13h16v8H4zm2 2h12M4 7h4v4M16 7h2M20 7h0M20 15h-2M4 16h3M4 20h3', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : false],
     ['key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php'), 'icon' => 'M12 21s7-4.4 7-11a7 7 0 0 0-14 0c0 6.6 7 11 7 11zM9 10h6M12 7v6', 'show' => function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : false],
@@ -155,19 +155,43 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
     <?php require __DIR__ . '/crm_mobile_nav.php'; ?>
 
+    <style>
+        @media (max-width: 1023px) {
+            html.crm-ai-mobile-open,
+            body.crm-ai-mobile-open {
+                overflow: hidden !important;
+                overscroll-behavior: none;
+            }
+
+            #crm-ai-panel {
+                overscroll-behavior: contain;
+            }
+
+            #crm-ai-quick-actions {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+
+            #crm-ai-quick-actions::-webkit-scrollbar {
+                display: none;
+            }
+        }
+    </style>
+
     <aside
         id="crm-ai-panel"
-        class="pointer-events-none fixed inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[70] flex max-h-[calc(100dvh-6rem)] overflow-hidden rounded-[22px] border border-slate-200 bg-white opacity-0 shadow-2xl transition duration-200 ease-out lg:inset-x-auto lg:bottom-auto lg:top-4 lg:w-[380px] lg:max-w-[calc(100vw-2rem)] lg:rounded-[26px]"
+        class="pointer-events-none fixed inset-0 z-[90] flex max-h-none overflow-hidden border-0 bg-white opacity-0 shadow-none transition duration-200 ease-out lg:inset-x-auto lg:bottom-auto lg:top-4 lg:h-auto lg:max-h-[calc(100dvh-2rem)] lg:w-[380px] lg:max-w-[calc(100vw-2rem)] lg:rounded-[26px] lg:border lg:border-slate-200 lg:shadow-2xl"
         data-endpoint="<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>"
         data-auth-token="<?= e($assistantAuthToken) ?>"
+        data-csrf-token="<?= e(csrf_token()) ?>"
         data-page="<?= e((string) $currentPage) ?>"
         data-page-title="<?= e((string) $pageTitle) ?>"
         data-current-url="<?= e($assistantCurrentUrl) ?>"
         data-lead-id="<?= e((string) $assistantLeadId) ?>"
         aria-hidden="true"
     >
-        <div class="flex h-[min(78vh,720px)] w-full flex-col">
-            <div class="border-b border-slate-200 px-5 py-4">
+        <div class="flex h-full min-h-0 w-full flex-col lg:h-[min(78vh,720px)]">
+            <div class="shrink-0 border-b border-slate-200 bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] lg:px-5 lg:py-4">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-lg font-semibold tracking-tight text-slate-900">Elite AI</h2>
                     <div class="flex items-center gap-2">
@@ -185,15 +209,15 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     </div>
                 </div>
             </div>
-            <div id="crm-ai-thread" class="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-5 py-4">
+            <div id="crm-ai-thread" class="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-4 lg:px-5">
                 <article class="max-w-[88%] rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-sm leading-6 text-slate-700">Good morning, <?= e($firstName !== '' ? $firstName : 'Rodrigo') ?>. What do you want to do?</p>
                 </article>
             </div>
-            <div class="border-t border-slate-200 bg-white px-5 py-4">
-                <div id="crm-ai-quick-actions" class="mb-3 flex flex-wrap gap-2"></div>
+            <div class="shrink-0 border-t border-slate-200 bg-white px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-5 lg:py-4">
+                <div id="crm-ai-quick-actions" class="mb-3 flex flex-nowrap gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0"></div>
                 <form id="crm-ai-form" class="flex items-center gap-3">
-                    <input id="crm-ai-input" type="text" enterkeyhint="send" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do...">
+                    <input id="crm-ai-input" type="text" enterkeyhint="done" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Ask Elite AI what to do..." autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" inputmode="text">
                     <button type="button" id="crm-ai-mic" class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100" aria-label="Microphone placeholder">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
@@ -292,8 +316,26 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         });
     }
 
+    function assistantUsesMobileLayout() {
+        return window.matchMedia('(max-width: 1023px)').matches;
+    }
+
     function positionAssistantPanel() {
         if (!aiPanel) return;
+        if (assistantUsesMobileLayout()) {
+            const viewport = window.visualViewport;
+            const viewportHeight = viewport ? viewport.height : window.innerHeight;
+            const viewportTop = viewport ? viewport.offsetTop : 0;
+            aiPanel.style.left = '0px';
+            aiPanel.style.top = Math.max(0, viewportTop) + 'px';
+            aiPanel.style.bottom = 'auto';
+            aiPanel.style.height = Math.max(320, viewportHeight) + 'px';
+            return;
+        }
+
+        aiPanel.style.top = '';
+        aiPanel.style.bottom = '';
+        aiPanel.style.height = '';
         const sidebar = document.getElementById('crm-sidebar');
         if (!sidebar) return;
         const rect = sidebar.getBoundingClientRect();
@@ -307,10 +349,16 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         aiPanel.classList.toggle('pointer-events-none', !open);
         aiPanel.classList.toggle('opacity-0', !open);
         aiPanel.classList.toggle('translate-y-2', !open);
+        document.documentElement.classList.toggle('crm-ai-mobile-open', open && assistantUsesMobileLayout());
+        document.body.classList.toggle('crm-ai-mobile-open', open && assistantUsesMobileLayout());
         if (open) {
             positionAssistantPanel();
             buildQuickActions();
             if (aiInput) aiInput.focus();
+        } else {
+            aiPanel.style.top = '';
+            aiPanel.style.bottom = '';
+            aiPanel.style.height = '';
         }
     }
 
@@ -415,7 +463,11 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         };
+        const csrfToken = String(aiPanel.dataset.csrfToken || '');
         const token = assistantToken();
+        if (csrfToken) {
+            headers['X-CSRF-Token'] = csrfToken;
+        }
         if (token) {
             headers['X-Elite-AI-Token'] = token;
         }
@@ -541,6 +593,12 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
                     assistant_action: action.type,
                     lead_id: Number(action.lead_id || 0),
                     action_id: Number(action.action_id || 0),
+                    target_status: String(action.target_status || ''),
+                    consultation_date: String(action.consultation_date || action.appointment_at || ''),
+                    note: String(action.note || ''),
+                    send_approved: action.type === 'send_draft',
+                    stage_approved: action.type === 'move_stage',
+                    schedule_approved: action.type === 'schedule_consultation',
                     prompt: action.help || '',
                     instruction: action.help || '',
                     quick_action: '',
@@ -639,12 +697,32 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
         }
         window.addEventListener('resize', function () {
             if (aiPanel.getAttribute('aria-hidden') === 'false') {
+                document.documentElement.classList.toggle('crm-ai-mobile-open', assistantUsesMobileLayout());
+                document.body.classList.toggle('crm-ai-mobile-open', assistantUsesMobileLayout());
                 positionAssistantPanel();
             }
         });
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', function () {
+                if (aiPanel.getAttribute('aria-hidden') === 'false') {
+                    positionAssistantPanel();
+                }
+            });
+            window.visualViewport.addEventListener('scroll', function () {
+                if (aiPanel.getAttribute('aria-hidden') === 'false') {
+                    positionAssistantPanel();
+                }
+            });
+        }
     }
 
     if (aiForm && aiInput) {
+        aiInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                aiInput.blur();
+            }
+        });
         aiForm.addEventListener('submit', function (event) {
             event.preventDefault();
             const prompt = aiInput.value;

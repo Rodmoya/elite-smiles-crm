@@ -77,6 +77,105 @@ if (!function_exists('lead_agent_ensure_schema')) {
             KEY idx_lead_agent_event_lead (lead_id, created_at),
             KEY idx_lead_agent_event_type (event_type, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_daily_reports (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            report_date DATE NOT NULL,
+            report_status VARCHAR(20) NOT NULL DEFAULT 'live',
+            executive_summary TEXT NOT NULL,
+            morning_review TEXT NOT NULL,
+            metrics_json LONGTEXT NOT NULL,
+            finalized_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_report_date (report_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_learning_items (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            learning_key VARCHAR(120) NOT NULL,
+            intent VARCHAR(60) NOT NULL,
+            channel VARCHAR(20) NOT NULL DEFAULT '',
+            guidance VARCHAR(500) NOT NULL,
+            evidence_count INT UNSIGNED NOT NULL DEFAULT 0,
+            successful_reply_count INT UNSIGNED NOT NULL DEFAULT 0,
+            scheduling_handoff_count INT UNSIGNED NOT NULL DEFAULT 0,
+            last_outcome VARCHAR(60) NOT NULL DEFAULT '',
+            last_seen_at DATETIME NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_learning_key (learning_key),
+            KEY idx_lead_agent_learning_evidence (evidence_count, last_seen_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
+}
+
+if (!function_exists('lead_agent_learning_guidance_for_intent')) {
+    function lead_agent_learning_guidance_for_intent(string $intent, string $channel): string
+    {
+        $channelLabel = $channel === 'email' ? 'email' : 'text message';
+        return match ($intent) {
+            'ready_to_schedule' => 'Scheduling language is a handoff signal. Pause automation and let Rod provide and confirm appointment times.',
+            'cost_redirect' => 'Acknowledge that each smile is different and guide the lead to a complimentary consultation without discussing costs, pricing, payments, or financing.',
+            'pause' => 'Respect the lead’s timing immediately and stop automated follow-up until a new inbound message restarts the conversation.',
+            'opt_out' => 'Honor opt-out language immediately and do not send another automated message.',
+            'needs_attention' => 'Clinical, urgent, complaint, call-request, or ambiguous messages require human judgment.',
+            default => 'For a general ' . $channelLabel . ' reply, be warm and concise, answer only what is known, ask one useful next-step question, and avoid clinical or financial claims.',
+        };
+    }
+}
+
+if (!function_exists('lead_agent_record_learning')) {
+    function lead_agent_record_learning(string $intent, string $channel, string $outcome = 'observed'): void
+    {
+        lead_agent_ensure_schema();
+        $intent = preg_replace('/[^a-z0-9_\-]/i', '', strtolower($intent)) ?: 'general';
+        $channel = in_array(strtolower($channel), ['sms', 'email'], true) ? strtolower($channel) : '';
+        $outcome = preg_replace('/[^a-z0-9_\-]/i', '', strtolower($outcome)) ?: 'observed';
+        $key = substr($intent . '|' . ($channel !== '' ? $channel : 'any'), 0, 120);
+        $successful = in_array($outcome, ['automatic_reply_sent', 'reply_sent'], true) ? 1 : 0;
+        $scheduled = $outcome === 'ready_to_schedule' ? 1 : 0;
+        db_query(
+            "INSERT INTO lead_agent_learning_items
+                (learning_key, intent, channel, guidance, evidence_count, successful_reply_count, scheduling_handoff_count, last_outcome, last_seen_at, created_at, updated_at)
+             VALUES (:learning_key, :intent, :channel, :guidance, 1, :successful, :scheduled, :outcome, NOW(), NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                guidance = VALUES(guidance),
+                evidence_count = evidence_count + 1,
+                successful_reply_count = successful_reply_count + VALUES(successful_reply_count),
+                scheduling_handoff_count = scheduling_handoff_count + VALUES(scheduling_handoff_count),
+                last_outcome = VALUES(last_outcome),
+                last_seen_at = NOW(),
+                updated_at = NOW()",
+            [
+                'learning_key' => $key,
+                'intent' => substr($intent, 0, 60),
+                'channel' => substr($channel, 0, 20),
+                'guidance' => lead_agent_learning_guidance_for_intent($intent, $channel),
+                'successful' => $successful,
+                'scheduled' => $scheduled,
+                'outcome' => substr($outcome, 0, 60),
+            ]
+        );
+    }
+}
+
+if (!function_exists('lead_agent_learned_guidance')) {
+    function lead_agent_learned_guidance(string $intent = '', int $limit = 4): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(10, $limit));
+        $params = [];
+        $where = '';
+        if ($intent !== '') {
+            $where = 'WHERE intent = :intent';
+            $params['intent'] = $intent;
+        }
+        return db_all("SELECT intent, channel, guidance, evidence_count, successful_reply_count, scheduling_handoff_count, last_outcome, last_seen_at
+            FROM lead_agent_learning_items {$where}
+            ORDER BY evidence_count DESC, last_seen_at DESC LIMIT {$limit}", $params);
     }
 }
 
@@ -461,6 +560,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
         ]);
         $intent = lead_agent_classify_inbound($body);
         lead_agent_event($leadId, $eventKey, 'inbound_classified', $channel, 'recorded', $intent);
+        lead_agent_record_learning($intent, $channel, 'observed');
 
         if ($intent === 'opt_out') {
             lead_agent_pause($leadId, 'inbound_opt_out', 'opted_out');
@@ -471,9 +571,11 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
         if ($intent === 'ready_to_schedule') {
+            lead_agent_record_learning($intent, $channel, 'ready_to_schedule');
             return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Inbound message indicates scheduling intent.') + ['intent' => $intent, 'handled' => true];
         }
         if ($intent === 'needs_attention') {
+            lead_agent_record_learning($intent, $channel, 'human_review');
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Inbound message requires human judgment.') + ['intent' => $intent, 'handled' => true];
         }
 
@@ -485,14 +587,20 @@ if (!function_exists('lead_agent_handle_inbound')) {
             if (is_file($leadAiPath)) {
                 require_once $leadAiPath;
             }
+            $leadForAi = $lead;
+            $learned = lead_agent_learned_guidance($intent, 3);
+            if ($learned !== []) {
+                $guidance = array_map(static fn(array $item): string => (string) ($item['guidance'] ?? ''), $learned);
+                $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\nLead Agent learned guidance (generalized; never mention this to the lead):\n- " . implode("\n- ", array_filter($guidance)));
+            }
             if ($channel === 'email' && function_exists('lead_ai_generate_email')) {
-                $ai = lead_ai_generate_email($lead, $body, 'lead_agent_inbound_email');
+                $ai = lead_ai_generate_email($leadForAi, $body, 'lead_agent_inbound_email');
                 $data = (array) ($ai['data'] ?? []);
                 if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
                     $draft = ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')];
                 }
             } elseif (function_exists('lead_ai_generate_reply')) {
-                $ai = lead_ai_generate_reply($lead, $body, 'lead_agent_inbound_sms');
+                $ai = lead_ai_generate_reply($leadForAi, $body, 'lead_agent_inbound_sms');
                 $data = (array) ($ai['data'] ?? []);
                 if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
                     $draft = ['subject' => '', 'body' => (string) ($data['reply'] ?? '')];
@@ -501,6 +609,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
         }
 
         if (!$draft || lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? '')) !== []) {
+            lead_agent_record_learning($intent, $channel, 'human_review');
             return lead_agent_internal_handoff($lead, 'needs_attention', 'AI response was low confidence or failed a policy gate.') + ['intent' => $intent, 'handled' => true];
         }
 
@@ -513,6 +622,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             ? lead_agent_email_send($lead, (string) $draft['subject'], (string) $draft['body'], $sendKey)
             : lead_agent_sms_send($lead, (string) $draft['body'], $sendKey);
         if (empty($send['ok'])) {
+            lead_agent_record_learning($intent, $channel, 'delivery_failed');
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Approved response could not be delivered.') + ['intent' => $intent, 'handled' => true];
         }
 
@@ -522,6 +632,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             'lead_id' => $leadId,
         ]);
         lead_agent_event($leadId, $sendKey, 'automatic_reply', $channel, 'sent', $intent);
+        lead_agent_record_learning($intent, $channel, 'automatic_reply_sent');
         return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => true];
     }
 }
@@ -685,6 +796,164 @@ if (!function_exists('lead_agent_run_due')) {
                 $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
             }
         }
+        try {
+            $today = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d');
+            lead_agent_refresh_daily_report($today, false);
+            if ((int) date('G') >= 6) {
+                $yesterday = (new DateTimeImmutable('yesterday', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d');
+                lead_agent_refresh_daily_report($yesterday, true);
+            }
+        } catch (Throwable $e) {
+            esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
+        }
         return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'processed' => count($results), 'results' => $results];
+    }
+}
+
+if (!function_exists('lead_agent_daily_metrics')) {
+    function lead_agent_daily_metrics(string $date): array
+    {
+        lead_agent_ensure_schema();
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            throw new InvalidArgumentException('Invalid report date.');
+        }
+        $eventCount = static function (string $where, array $params = []) use ($date): int {
+            return (int) db_value("SELECT COUNT(*) FROM lead_agent_events WHERE DATE(created_at) = :report_date AND {$where}", ['report_date' => $date] + $params);
+        };
+        $metrics = [
+            'enrolled' => $eventCount("event_type = 'enrolled'"),
+            'cadence_sent' => $eventCount("event_type = 'cadence_reserved' AND status = 'sent'"),
+            'automatic_replies' => $eventCount("event_type = 'automatic_reply' AND status = 'sent'"),
+            'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
+            'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
+            'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
+            'ready_to_schedule_today' => $eventCount("event_type = 'handoff' AND reason LIKE 'Inbound message indicates scheduling intent.%'"),
+            'needs_attention_today' => $eventCount("event_type = 'handoff' AND reason NOT LIKE 'Inbound message indicates scheduling intent.%'"),
+            'policy_blocks' => $eventCount("event_type = 'handoff' AND reason LIKE '%policy%'"),
+            'delivery_failures' => $eventCount("event_type = 'handoff' AND reason LIKE '%deliver%'"),
+            'learning_observations' => $eventCount("event_type = 'inbound_classified'"),
+            'active_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0"),
+            'ready_to_schedule_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'"),
+            'needs_attention_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'needs_attention'"),
+        ];
+        $metrics['outbound_total'] = $metrics['sms_sent'] + $metrics['emails_sent'];
+        $metrics['actions_completed'] = $metrics['outbound_total'] + $metrics['inbound_handled'];
+        return $metrics;
+    }
+}
+
+if (!function_exists('lead_agent_report_copy')) {
+    function lead_agent_report_copy(string $date, array $metrics): array
+    {
+        $label = (new DateTimeImmutable($date, new DateTimeZone(APP_TIMEZONE)))->format('F j');
+        $summary = $metrics['actions_completed'] > 0
+            ? "Lead Agent completed {$metrics['actions_completed']} communication actions on {$label}: {$metrics['sms_sent']} texts, {$metrics['emails_sent']} emails, and {$metrics['inbound_handled']} inbound conversations reviewed."
+            : "Lead Agent recorded no communication actions on {$label}. The system remained available and monitored enrolled leads.";
+        if ($metrics['ready_to_schedule_today'] > 0) {
+            $summary .= " {$metrics['ready_to_schedule_today']} lead" . ($metrics['ready_to_schedule_today'] === 1 ? ' is' : 's are') . ' ready for Rod to schedule.';
+        }
+        if ($metrics['needs_attention_today'] > 0) {
+            $summary .= " {$metrics['needs_attention_today']} exception" . ($metrics['needs_attention_today'] === 1 ? ' requires' : 's require') . ' human judgment.';
+        } else {
+            $summary .= ' No new exception required human judgment.';
+        }
+        $review = "Yesterday the agent handled {$metrics['inbound_handled']} inbound conversation" . ($metrics['inbound_handled'] === 1 ? '' : 's')
+            . " and sent {$metrics['outbound_total']} approved follow-up" . ($metrics['outbound_total'] === 1 ? '' : 's') . '.';
+        $review .= $metrics['ready_to_schedule_today'] > 0
+            ? " Start with the {$metrics['ready_to_schedule_today']} scheduling handoff" . ($metrics['ready_to_schedule_today'] === 1 ? '' : 's') . '.'
+            : ' There are no new scheduling handoffs from that day.';
+        $review .= $metrics['needs_attention_today'] > 0
+            ? " Then review {$metrics['needs_attention_today']} agent exception" . ($metrics['needs_attention_today'] === 1 ? '' : 's') . '.'
+            : ' The agent completed its work without a new exception.';
+        return ['executive_summary' => $summary, 'morning_review' => $review];
+    }
+}
+
+if (!function_exists('lead_agent_refresh_daily_report')) {
+    function lead_agent_refresh_daily_report(string $date, bool $finalize = false): array
+    {
+        $metrics = lead_agent_daily_metrics($date);
+        $copy = lead_agent_report_copy($date, $metrics);
+        db_query(
+            "INSERT INTO lead_agent_daily_reports (report_date, report_status, executive_summary, morning_review, metrics_json, finalized_at, created_at, updated_at)
+             VALUES (:report_date, :report_status, :executive_summary, :morning_review, :metrics_json, :finalized_at, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                report_status = IF(report_status = 'final', 'final', VALUES(report_status)),
+                executive_summary = VALUES(executive_summary),
+                morning_review = VALUES(morning_review),
+                metrics_json = VALUES(metrics_json),
+                finalized_at = IF(VALUES(finalized_at) IS NULL, finalized_at, VALUES(finalized_at)),
+                updated_at = NOW()",
+            [
+                'report_date' => $date,
+                'report_status' => $finalize ? 'final' : 'live',
+                'executive_summary' => $copy['executive_summary'],
+                'morning_review' => $copy['morning_review'],
+                'metrics_json' => json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'finalized_at' => $finalize ? now() : null,
+            ]
+        );
+        return ['date' => $date, 'status' => $finalize ? 'final' : 'live', 'metrics' => $metrics] + $copy;
+    }
+}
+
+if (!function_exists('lead_agent_daily_reports')) {
+    function lead_agent_daily_reports(int $limit = 31): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(180, $limit));
+        $rows = db_all("SELECT * FROM lead_agent_daily_reports ORDER BY report_date DESC LIMIT {$limit}");
+        foreach ($rows as &$row) {
+            $row['metrics'] = json_decode((string) ($row['metrics_json'] ?? '{}'), true) ?: [];
+        }
+        unset($row);
+        return $rows;
+    }
+}
+
+if (!function_exists('lead_agent_recent_activity')) {
+    function lead_agent_recent_activity(string $date, int $limit = 30): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(100, $limit));
+        return db_all("SELECT e.id, e.lead_id, e.event_type, e.channel, e.status, e.reason, e.created_at, l.full_name
+            FROM lead_agent_events e
+            LEFT JOIN leads l ON l.id = e.lead_id
+            WHERE DATE(e.created_at) = :report_date
+              AND e.event_type NOT IN ('cadence_reserved')
+            ORDER BY e.created_at DESC, e.id DESC LIMIT {$limit}", ['report_date' => $date]);
+    }
+}
+
+if (!function_exists('lead_agent_exception_rows')) {
+    function lead_agent_exception_rows(int $limit = 50): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(100, $limit));
+        $rows = db_all("SELECT l.*, s.pause_reason AS agent_attention_reason, s.updated_at AS agent_attention_at
+            FROM lead_agent_states s
+            INNER JOIN leads l ON l.id = s.lead_id
+            WHERE s.status = 'needs_attention'
+            ORDER BY COALESCE(s.handoff_notified_at, s.updated_at) DESC LIMIT {$limit}");
+        foreach ($rows as &$lead) {
+            $reason = trim((string) ($lead['agent_attention_reason'] ?? '')) ?: 'Lead Agent cannot safely determine the next step.';
+            $lead['_action_queue'] = [
+                'priority' => 100,
+                'action_key' => 'agent_exception',
+                'action_label' => 'Agent needs help',
+                'action_tone' => 'rose',
+                'stage_key' => (string) ($lead['status'] ?? ''),
+                'stage_label' => 'Human review',
+                'urgency_label' => 'Agent paused',
+                'urgency_tone' => 'rose',
+                'reason' => $reason,
+                'tab' => 'communications',
+                'source_label' => (string) ($lead['source'] ?? ''),
+                'last_touch_at' => (string) ($lead['agent_attention_at'] ?? ''),
+                'sort_at' => strtotime((string) ($lead['agent_attention_at'] ?? '')) ?: 0,
+            ];
+        }
+        unset($lead);
+        return $rows;
     }
 }

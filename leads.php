@@ -15,6 +15,7 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/leads/lead_meta.php';
 require_once __DIR__ . '/app/leads/lead_service.php';
 require_once __DIR__ . '/app/leads/lead_communications.php';
+require_once __DIR__ . '/app/leads/lead_agent.php';
 require_once __DIR__ . '/app/dentrix/dentrix_bridge.php';
 
 require_auth();
@@ -71,7 +72,7 @@ $stageMap = function_exists('lead_pipeline_display_stage_map') ? lead_pipeline_d
 $pipelineCounts = lead_pipeline_counts();
 $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
-$actionQueueRows = lead_action_queue_rows(50);
+$actionQueueRows = lead_agent_exception_rows(50);
 $actionQueueSummary = lead_action_queue_summary($actionQueueRows);
 $leadAttentionDisplayLimit = 12;
 $leadAttentionVisibleCount = min($leadAttentionDisplayLimit, count($actionQueueRows));

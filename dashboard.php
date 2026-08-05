@@ -16,6 +16,7 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/leads/lead_meta.php';
 require_once __DIR__ . '/app/leads/lead_service.php';
 require_once __DIR__ . '/app/leads/lead_communications.php';
+require_once __DIR__ . '/app/leads/lead_agent.php';
 require_once __DIR__ . '/app/ai/elite_ai_service.php';
 
 require_auth();
@@ -51,7 +52,7 @@ $totalLandingPages = (int) ($landingPageTotals['total_pages'] ?? 0);
 $recentLeads = lead_recent_rows(8);
 $dashboardNotifications = function_exists('elite_ai_notification_rows') ? elite_ai_notification_rows(8) : [];
 $unreadNotificationCount = count(array_filter($dashboardNotifications, static fn(array $row): bool => !empty($row['is_new'])));
-$actionQueueRows = function_exists('lead_action_queue_rows') ? lead_action_queue_rows(50) : [];
+$actionQueueRows = function_exists('lead_agent_exception_rows') ? lead_agent_exception_rows(50) : [];
 $actionQueueSummary = function_exists('lead_action_queue_summary') ? lead_action_queue_summary($actionQueueRows) : ['total' => count($actionQueueRows)];
 ?>
 <!DOCTYPE html>

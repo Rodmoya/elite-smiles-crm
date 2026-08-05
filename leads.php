@@ -45,10 +45,42 @@ if (!function_exists('lead_pipeline_version_snapshot')) {
     }
 }
 
+if (!function_exists('lead_notification_state_snapshot')) {
+    function lead_notification_state_snapshot(int $limit = 20): array
+    {
+        require_once __DIR__ . '/app/ai/elite_ai_service.php';
+
+        $notifications = elite_ai_notification_rows(max(1, min(50, $limit)));
+
+        return [
+            'notifications' => $notifications,
+            'notification_unread_total' => count(array_filter($notifications, static fn (array $item): bool => !empty($item['is_new']))),
+            'notification_version' => hash('sha256', json_encode($notifications, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+        ];
+    }
+}
+
 if (get('action') === 'pipeline_version') {
+    $snapshot = lead_pipeline_version_snapshot();
+    $notificationSnapshot = lead_notification_state_snapshot(20);
+    $since = trim((string) get('since', ''));
+    $notificationSince = trim((string) get('notification_since', ''));
+    $changed = $since === '' || !hash_equals((string) $snapshot['version'], $since);
+    $notificationChanged = $notificationSince === '' || !hash_equals((string) $notificationSnapshot['notification_version'], $notificationSince);
+    $notifications = ($changed || $notificationChanged) ? $notificationSnapshot['notifications'] : [];
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    echo json_encode(['ok' => true] + lead_pipeline_version_snapshot(), JSON_UNESCAPED_SLASHES);
+    echo json_encode([
+        'ok' => true,
+        'changed' => $changed,
+        'notification_changed' => $notificationChanged,
+        'server_time' => now(),
+        'poll_after_ms' => 2000,
+        'notifications' => $notifications,
+    ] + $snapshot + [
+        'notification_version' => $notificationSnapshot['notification_version'],
+        'notification_unread_total' => $notificationSnapshot['notification_unread_total'],
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -74,6 +106,11 @@ $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
 $actionQueueRows = lead_agent_exception_rows(50);
 $actionQueueSummary = lead_action_queue_summary($actionQueueRows);
+$leadAgentHeaderDate = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d');
+$leadAgentHeaderReport = lead_agent_refresh_daily_report($leadAgentHeaderDate, false);
+$leadAgentHeaderMetrics = (array) ($leadAgentHeaderReport['metrics'] ?? []);
+$leadAgentHeaderSummary = trim((string) ($leadAgentHeaderReport['executive_summary'] ?? ''));
+$leadAgentHeaderMode = lead_agent_mode();
 $leadAttentionDisplayLimit = 12;
 $leadAttentionVisibleCount = min($leadAttentionDisplayLimit, count($actionQueueRows));
 $dentrixCalendarSlots = dentrix_bridge_calendar_slots();
@@ -205,14 +242,17 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
     })();
 
     (() => {
-        const refreshMs = 10000;
+        const activeRefreshMs = 2000;
+        const backgroundRefreshMs = 12000;
         const quietMs = 2000;
         const versionUrl = <?= json_encode(base_url('leads.php?action=pipeline_version'), JSON_UNESCAPED_SLASHES) ?>;
         const scrollKey = 'elite-leads-scroll-y';
         let currentVersion = <?= json_encode($pipelineVersion, JSON_UNESCAPED_SLASHES) ?>;
+        let currentNotificationVersion = '';
         let lastInteractionAt = Date.now();
         let refreshPending = false;
         let requestInFlight = false;
+        let refreshTimer = null;
 
         const savedScroll = Number(window.sessionStorage.getItem(scrollKey) || 0);
         if (savedScroll > 0) {
@@ -237,6 +277,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             const activeElement = document.activeElement;
             const isEditing = activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName);
             if (document.hidden || isEditing) return false;
+            if (typeof window.eliteAiShouldHoldPageRefresh === 'function' && window.eliteAiShouldHoldPageRefresh()) return false;
             if (isOpen('#lead-detail-modal') || isOpen('#new-lead-modal')) return false;
             return Date.now() - lastInteractionAt >= quietMs;
         };
@@ -246,23 +287,52 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             window.location.reload();
         };
 
+        const scheduleNextCheck = (delay = null) => {
+            if (refreshTimer) window.clearTimeout(refreshTimer);
+            const nextDelay = delay ?? (document.hidden ? backgroundRefreshMs : activeRefreshMs);
+            refreshTimer = window.setTimeout(() => checkPipelineVersion(), nextDelay);
+        };
+
         const checkPipelineVersion = async (acceptCurrent = false) => {
-            if (requestInFlight || document.hidden) return;
+            if (requestInFlight) return;
             requestInFlight = true;
+            let nextPollMs = null;
             try {
-                const response = await fetch(versionUrl, {
+                const requestUrl = new URL(versionUrl, window.location.href);
+                if (currentVersion) requestUrl.searchParams.set('since', currentVersion);
+                if (currentNotificationVersion) requestUrl.searchParams.set('notification_since', currentNotificationVersion);
+                const response = await fetch(requestUrl.toString(), {
                     credentials: 'same-origin',
                     cache: 'no-store',
                     headers: { 'Accept': 'application/json' }
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok || !data.version) return;
+                nextPollMs = Number(data.poll_after_ms || 0) || null;
+                const boardChanged = String(data.version) !== currentVersion;
+                const notificationsChanged = Boolean(data.notification_changed);
+                if (typeof data.notification_version === 'string' && data.notification_version !== '') {
+                    currentNotificationVersion = String(data.notification_version);
+                }
+                if ((boardChanged || notificationsChanged) && Array.isArray(data.notifications)) {
+                    window.dispatchEvent(new CustomEvent('crm:realtime-state', {
+                        detail: {
+                            version: String(data.version),
+                            unreadTotal: Number(data.unread_total || 0),
+                            notificationVersion: String(data.notification_version || ''),
+                            notificationsChanged: notificationsChanged,
+                            boardChanged: boardChanged,
+                            notifications: data.notifications
+                        }
+                    }));
+                }
                 if (acceptCurrent || currentVersion === '') {
                     currentVersion = String(data.version);
                     refreshPending = false;
                     return;
                 }
-                if (String(data.version) !== currentVersion) {
+                if (boardChanged) {
+                    currentVersion = String(data.version);
                     refreshPending = true;
                 }
                 if (refreshPending && canRefresh()) {
@@ -272,6 +342,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                 // Keep the current board usable when a background check fails.
             } finally {
                 requestInFlight = false;
+                scheduleNextCheck(nextPollMs);
             }
         };
 
@@ -289,9 +360,14 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
         });
 
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) checkPipelineVersion();
+            if (!document.hidden) {
+                checkPipelineVersion();
+            } else {
+                scheduleNextCheck(backgroundRefreshMs);
+            }
         });
-        window.setInterval(() => checkPipelineVersion(), refreshMs);
+        window.addEventListener('focus', () => checkPipelineVersion());
+        scheduleNextCheck(activeRefreshMs);
     })();
     </script>
 </body>

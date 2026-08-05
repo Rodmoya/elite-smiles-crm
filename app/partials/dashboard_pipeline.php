@@ -223,6 +223,57 @@ $consultationOptions = [
                         <div id="pipeline-notifications-list" class="max-h-96 overflow-y-auto p-2"></div>
                     </div>
                 </div>
+
+                <div class="relative">
+                    <button
+                        type="button"
+                        id="lead-agent-summary-button"
+                        class="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-controls="lead-agent-summary-menu"
+                        aria-label="Open Lead Agent summary: <?= e((string) ((int) ($leadAgentHeaderMetrics['actions_completed'] ?? 0))) ?> actions today"
+                    >
+                        <span class="relative flex h-5 w-5 items-center justify-center" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="6" width="16" height="13" rx="3"></rect>
+                                <path d="M9 10h.01M15 10h.01M9 15h6M12 3v3"></path>
+                            </svg>
+                            <span class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full <?= $leadAgentHeaderMode === 'active' ? 'bg-emerald-500' : ($leadAgentHeaderMode === 'shadow' ? 'bg-amber-500' : 'bg-slate-400') ?> ring-2 ring-white"></span>
+                        </span>
+                        <span class="hidden sm:inline">Lead Agent</span>
+                        <span class="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-slate-700"><?= e((string) ((int) ($leadAgentHeaderMetrics['actions_completed'] ?? 0))) ?></span>
+                    </button>
+
+                    <div
+                        id="lead-agent-summary-menu"
+                        class="hidden absolute right-0 top-[3.25rem] z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15"
+                        role="region"
+                        aria-label="Lead Agent daily summary"
+                    >
+                        <div class="border-b border-slate-100 px-5 py-4">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-sm font-semibold text-slate-950">Lead Agent</p>
+                                    <p class="mt-0.5 text-xs text-slate-500">Today’s executive summary</p>
+                                </div>
+                                <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold <?= $leadAgentHeaderMode === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ($leadAgentHeaderMode === 'shadow' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-100 text-slate-600') ?>">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span><?= e(ucfirst($leadAgentHeaderMode)) ?>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="px-5 py-4">
+                            <p class="text-sm leading-6 text-slate-700"><?= e($leadAgentHeaderSummary !== '' ? $leadAgentHeaderSummary : 'The agent has not recorded an action today yet.') ?></p>
+                            <dl class="mt-4 grid grid-cols-3 gap-2" aria-label="Lead Agent metrics today">
+                                <div class="rounded-2xl bg-slate-50 px-3 py-3"><dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Texts</dt><dd class="mt-1 text-lg font-semibold tabular-nums text-slate-950"><?= e((string) ((int) ($leadAgentHeaderMetrics['sms_sent'] ?? 0))) ?></dd></div>
+                                <div class="rounded-2xl bg-slate-50 px-3 py-3"><dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Emails</dt><dd class="mt-1 text-lg font-semibold tabular-nums text-slate-950"><?= e((string) ((int) ($leadAgentHeaderMetrics['emails_sent'] ?? 0))) ?></dd></div>
+                                <div class="rounded-2xl bg-slate-50 px-3 py-3"><dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Exceptions</dt><dd class="mt-1 text-lg font-semibold tabular-nums <?= ((int) ($leadAgentHeaderMetrics['needs_attention_now'] ?? 0)) > 0 ? 'text-rose-700' : 'text-slate-950' ?>"><?= e((string) ((int) ($leadAgentHeaderMetrics['needs_attention_now'] ?? 0))) ?></dd></div>
+                            </dl>
+                            <a href="<?= e(base_url('lead-agent-operations.php')) ?>" class="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2">Open full daily report</a>
+                        </div>
+                    </div>
+                </div>
+
                 <button
                     type="button"
                     id="open-new-lead-modal"
@@ -2551,6 +2602,8 @@ $consultationOptions = [
     const pipelineNotificationsCount = document.getElementById('pipeline-notifications-count');
     const pipelineNotificationsMenu = document.getElementById('pipeline-notifications-menu');
     const pipelineNotificationsList = document.getElementById('pipeline-notifications-list');
+    const leadAgentSummaryButton = document.getElementById('lead-agent-summary-button');
+    const leadAgentSummaryMenu = document.getElementById('lead-agent-summary-menu');
     const pipelineMobileStageFilter = document.getElementById('pipeline-mobile-stage-filter');
     const attentionReviewModal = document.getElementById('attention-review-modal');
     const attentionReviewClose = document.getElementById('attention-review-close');
@@ -2906,7 +2959,7 @@ $consultationOptions = [
     const followupCheckUrl = <?= json_encode(base_url('app/actions/lead_followup_check.php')) ?>;
     const smsTemplates = <?= json_encode($smsTemplateOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const stageLabelMap = <?= json_encode($legacyStageMap) ?>;
-    const pipelineNotificationSeed = <?= json_encode($pipelineNotificationSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    let pipelineNotificationSeed = <?= json_encode($pipelineNotificationSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const dentrixCalendarSlots = <?= json_encode($dentrixCalendarSlots, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const importLeadsButton = document.getElementById('open-import-leads-picker');
     const importLeadsFileInput = document.getElementById('import-leads-file');
@@ -3443,6 +3496,80 @@ $consultationOptions = [
         window.setTimeout(() => openLeadModal(item.card, item.tab || 'communications'), 350);
     }
 
+    let pipelineNotificationAudioUnlocked = false;
+    const pipelineNotificationSeenKey = 'elite_ai_seen_pipeline_notifications_v1';
+
+    function pipelineNotificationIdentity(item) {
+        return [
+            String(item?.leadId || item?.card?.dataset?.leadId || ''),
+            String(item?.timestamp || ''),
+            String(item?.label || ''),
+            String(item?.detail || '').slice(0, 80),
+        ].join('|');
+    }
+
+    function pipelineSeenNotificationIds() {
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(pipelineNotificationSeenKey) || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function savePipelineSeenNotificationIds(ids) {
+        try {
+            window.localStorage.setItem(pipelineNotificationSeenKey, JSON.stringify(ids.slice(-120)));
+        } catch (error) {
+            // Ignore storage failures; notification sound is best-effort.
+        }
+    }
+
+    function unlockPipelineNotificationAudio() {
+        pipelineNotificationAudioUnlocked = true;
+    }
+
+    ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
+        window.addEventListener(eventName, unlockPipelineNotificationAudio, { once: true, passive: true });
+    });
+
+    function playPipelineNotificationSound() {
+        try {
+            if (!pipelineNotificationAudioUnlocked && document.visibilityState !== 'visible') return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = window.__eliteAIPipelineAudio || new AudioContext();
+            window.__eliteAIPipelineAudio = ctx;
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            const now = ctx.currentTime;
+            const gain = ctx.createGain();
+            const oscillator = ctx.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, now);
+            oscillator.frequency.setValueAtTime(660, now + 0.12);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+            oscillator.start(now);
+            oscillator.stop(now + 0.35);
+        } catch (error) {
+            // Browser audio may be blocked until the next user gesture.
+        }
+    }
+
+    function announcePipelineNotifications(items) {
+        const unread = (Array.isArray(items) ? items : []).filter((item) => item?.isNew);
+        if (unread.length === 0) return;
+        const seen = new Set(pipelineSeenNotificationIds());
+        const fresh = unread.filter((item) => !seen.has(pipelineNotificationIdentity(item)));
+        if (fresh.length === 0) return;
+        fresh.forEach((item) => seen.add(pipelineNotificationIdentity(item)));
+        savePipelineSeenNotificationIds(Array.from(seen));
+        playPipelineNotificationSound();
+    }
+
     function clearPipelineLeadDeepLink() {
         if (!window.history || !window.history.replaceState) {
             return;
@@ -3464,6 +3591,7 @@ $consultationOptions = [
         }
 
         const items = pipelineNotificationItems();
+        announcePipelineNotifications(items);
         const total = items.reduce((sum, item) => sum + (item.isNew ? Math.max(1, item.count || 1) : 0), 0);
         pipelineNotificationsCount.textContent = total > 99 ? '99+' : String(total);
         pipelineNotificationsCount.classList.toggle('hidden', total === 0);
@@ -3499,12 +3627,50 @@ $consultationOptions = [
         });
     }
 
+    function markPipelineNotificationsReadLocally(leadIds) {
+        const reviewed = new Set((Array.isArray(leadIds) ? leadIds : [])
+            .map((leadId) => Number(leadId))
+            .filter((leadId) => leadId > 0));
+        if (reviewed.size === 0) return;
+
+        pipelineNotificationSeed.forEach((item) => {
+            if (reviewed.has(Number(item.lead_id || 0))) item.is_new = false;
+        });
+        reviewed.forEach((leadId) => {
+            const card = board?.querySelector('.lead-card[data-lead-id="' + leadId + '"]');
+            if (!card) return;
+            card.dataset.leadUnreadMessageCount = '0';
+            card.querySelectorAll('.lead-unread-badge').forEach((badge) => badge.remove());
+        });
+        renderPipelineNotifications();
+    }
+
+    window.addEventListener('crm:realtime-state', (event) => {
+        const notifications = event.detail?.notifications;
+        if (!Array.isArray(notifications)) return;
+
+        pipelineNotificationSeed = notifications;
+        renderPipelineNotifications();
+
+        const activeLeadId = Number(activeCard?.dataset?.leadId || 0);
+        const activeLeadChanged = activeLeadId > 0 && notifications.some((item) => (
+            Number(item?.lead_id || 0) === activeLeadId && Boolean(item?.is_new)
+        ));
+        if (activeLeadChanged && modal && !modal.classList.contains('hidden')) {
+            loadLeadThread({ silent: true, poll: true });
+        }
+    });
+
     async function markPipelineNotificationsReadOnOpen() {
         const unreadItems = pipelineNotificationItems().filter((item) => item.isNew && Number(item.leadId || item.card?.dataset?.leadId || 0) > 0);
         if (unreadItems.length === 0) return;
-
         const assistantPanel = document.getElementById('crm-ai-panel');
         if (!assistantPanel?.dataset?.endpoint) return;
+
+        const optimisticLeadIds = Array.from(new Set(unreadItems
+            .map((item) => Number(item.leadId || item.card?.dataset?.leadId || 0))
+            .filter((leadId) => leadId > 0)));
+        markPipelineNotificationsReadLocally(optimisticLeadIds);
 
         const token = String(assistantPanel.dataset.authToken || '').trim();
         const headers = {
@@ -3531,24 +3697,25 @@ $consultationOptions = [
                 })
             });
             const data = await response.json();
-            if (!response.ok || !data.ok || !Array.isArray(data.reviewed_lead_ids)) return;
+            if (!response.ok || !data.ok || !Array.isArray(data.reviewed_lead_ids)) {
+                throw new Error(data.message || 'Could not mark notifications read.');
+            }
 
             const reviewed = new Set(data.reviewed_lead_ids.map((leadId) => Number(leadId)));
-            pipelineNotificationSeed.forEach((item) => {
-                if (reviewed.has(Number(item.lead_id || 0))) item.is_new = false;
-            });
-            reviewed.forEach((leadId) => {
-                const card = board?.querySelector('.lead-card[data-lead-id="' + leadId + '"]');
-                if (!card) return;
-                card.dataset.leadUnreadMessageCount = '0';
-                card.querySelectorAll('.lead-unread-badge').forEach((badge) => badge.remove());
-            });
-            renderPipelineNotifications();
+            markPipelineNotificationsReadLocally(Array.from(reviewed));
             window.dispatchEvent(new CustomEvent('crm:notifications-read', {
                 detail: { leadIds: Array.from(reviewed) }
             }));
         } catch (error) {
-            // Leave unread state intact if the acknowledgement request fails.
+            unreadItems.forEach((item) => {
+                const leadId = Number(item.leadId || item.card?.dataset?.leadId || 0);
+                pipelineNotificationSeed.forEach((seed) => {
+                    if (Number(seed.lead_id || 0) === leadId) seed.is_new = true;
+                });
+                const card = item.card || board?.querySelector('.lead-card[data-lead-id="' + leadId + '"]');
+                if (card) card.dataset.leadUnreadMessageCount = String(Math.max(1, Number(item.count || 1)));
+            });
+            renderPipelineNotifications();
         }
     }
     function setText(id, value, fallback = '-') {
@@ -5388,7 +5555,7 @@ $consultationOptions = [
                 return;
             }
             loadLeadThread({ silent: true, poll: true });
-        }, 5000);
+        }, 2000);
     }
 
 
@@ -5452,7 +5619,14 @@ $consultationOptions = [
 
             }
 
+            const hadUnreadMessages = Number.parseInt(activeCard.dataset.leadUnreadMessageCount || '0', 10) > 0;
             clearUnreadBadge(activeCard);
+            if (hadUnreadMessages) {
+                markPipelineNotificationsReadLocally([Number(leadId)]);
+                window.dispatchEvent(new CustomEvent('crm:notifications-read', {
+                    detail: { leadIds: [Number(leadId)] }
+                }));
+            }
 
             return true;
 
@@ -8735,6 +8909,7 @@ function applyCommunicationViewportFit() {
             && !isPipelineModalOpen()
             && !isCalendarOpen()
             && !isPipelineBusy()
+            && !(typeof window.eliteAiShouldHoldPageRefresh === 'function' && window.eliteAiShouldHoldPageRefresh())
             && Date.now() - pipelineLastInteractionAt > pipelineIdleRefreshGraceMs;
     }
 
@@ -8816,6 +8991,10 @@ function applyCommunicationViewportFit() {
     if (pipelineNotificationsButton && pipelineNotificationsMenu) {
         pipelineNotificationsButton.addEventListener('click', (event) => {
             event.stopPropagation();
+            if (leadAgentSummaryMenu && leadAgentSummaryButton) {
+                leadAgentSummaryMenu.classList.add('hidden');
+                leadAgentSummaryButton.setAttribute('aria-expanded', 'false');
+            }
             renderPipelineNotifications();
             const isHidden = pipelineNotificationsMenu.classList.toggle('hidden');
             pipelineNotificationsButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
@@ -8833,6 +9012,38 @@ function applyCommunicationViewportFit() {
             }
             pipelineNotificationsMenu.classList.add('hidden');
             pipelineNotificationsButton.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    if (leadAgentSummaryButton && leadAgentSummaryMenu) {
+        leadAgentSummaryButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (pipelineNotificationsMenu && pipelineNotificationsButton) {
+                pipelineNotificationsMenu.classList.add('hidden');
+                pipelineNotificationsButton.setAttribute('aria-expanded', 'false');
+            }
+            const isHidden = leadAgentSummaryMenu.classList.toggle('hidden');
+            leadAgentSummaryButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+        });
+
+        document.addEventListener('click', (event) => {
+            if (leadAgentSummaryMenu.classList.contains('hidden')) {
+                return;
+            }
+            if (leadAgentSummaryMenu.contains(event.target) || leadAgentSummaryButton.contains(event.target)) {
+                return;
+            }
+            leadAgentSummaryMenu.classList.add('hidden');
+            leadAgentSummaryButton.setAttribute('aria-expanded', 'false');
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || leadAgentSummaryMenu.classList.contains('hidden')) {
+                return;
+            }
+            leadAgentSummaryMenu.classList.add('hidden');
+            leadAgentSummaryButton.setAttribute('aria-expanded', 'false');
+            leadAgentSummaryButton.focus();
         });
     }
 

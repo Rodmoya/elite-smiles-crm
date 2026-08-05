@@ -20,6 +20,10 @@ if (!auth_check()) {
     json_response(['ok' => false, 'message' => 'Unauthorized.'], 401);
 }
 
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+    json_response(['ok' => false, 'message' => 'Forbidden. Your role is read-only.'], 403);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     json_response(['ok' => false, 'message' => 'Method not allowed.'], 405);
 }
@@ -49,6 +53,10 @@ if (empty($result['ok'])) {
         'message' => (string)($result['message'] ?? 'Email failed.'),
         'lead_id' => $leadId,
     ], 502);
+}
+
+if (function_exists('lead_comm_clear_follow_up_attention')) {
+    lead_comm_clear_follow_up_attention($leadId);
 }
 
 $aiNoteResult = function_exists('lead_ai_create_outbound_note')

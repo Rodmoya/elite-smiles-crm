@@ -464,6 +464,13 @@ if (!function_exists('lead_conversion_follow_up_needed')) {
         $now = new DateTimeImmutable('now');
         $nextFollowUp = lead_conversion_datetime($lead['next_follow_up_at'] ?? '');
         if ($nextFollowUp !== null && $nextFollowUp <= $now) {
+            // A successful outbound touch resolves any older due marker. This
+            // protects the live queue even if a legacy row still has a stale
+            // next_follow_up_at value.
+            $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
+            if ($lastOutbound !== null && $lastOutbound >= $nextFollowUp) {
+                return false;
+            }
             return true;
         }
 

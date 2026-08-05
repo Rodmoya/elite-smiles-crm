@@ -23,6 +23,12 @@ if (!auth_check()) {
     exit;
 }
 
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'message' => 'Forbidden. Your role is read-only.']);
+    exit;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     http_response_code(405);
     echo json_encode(['ok' => false, 'message' => 'Method not allowed.']);
@@ -56,6 +62,7 @@ foreach ([
     'unread_message_count',
     'next_follow_up_at',
     'follow_up_status',
+    'updated_at',
 ] as $field) {
     if (leads_has_column($field)) {
         $fields[] = $field;
@@ -63,9 +70,50 @@ foreach ([
 }
 
 $openStages = ['new_lead', 'attempted_contact', 'contacted'];
+$nurtureStages = ['no_answer'];
 $now = time();
 $marked = [];
 $checked = 0;
+
+function lead_followup_check_touch_count(int $leadId): int
+{
+    if (!lead_related_table_exists('lead_messages')) {
+        return 0;
+    }
+
+    $row = db_one(
+        "SELECT COUNT(*) AS total
+         FROM lead_messages
+         WHERE lead_id = :lead_id
+           AND direction = 'outbound'",
+        ['lead_id' => $leadId]
+    );
+
+    return (int)($row['total'] ?? 0);
+}
+
+function lead_followup_check_nurture_interval_days(array $lead, int $touchCount): int
+{
+    $createdAt = trim((string)($lead['created_at'] ?? ''));
+    $updatedAt = trim((string)($lead['updated_at'] ?? ''));
+    $anchor = $updatedAt !== '' ? strtotime($updatedAt) : false;
+    if ($anchor === false && $createdAt !== '') {
+        $anchor = strtotime($createdAt);
+    }
+
+    $daysInNurture = $anchor !== false ? (int)floor((time() - $anchor) / 86400) : 0;
+
+    if ($daysInNurture < 14) {
+        return 3;
+    }
+    if ($daysInNurture < 42) {
+        return 7;
+    }
+    if ($touchCount >= 10) {
+        return 28;
+    }
+    return 14;
+}
 
 try {
     $orderBy = leads_has_column('updated_at') ? 'updated_at DESC, id DESC' : 'id DESC';
@@ -74,7 +122,7 @@ try {
     foreach ($rows as $lead) {
         $leadId = (int)($lead['id'] ?? 0);
         $stage = trim((string)($lead['status'] ?? ''));
-        if ($leadId <= 0 || !in_array($stage, $openStages, true)) {
+        if ($leadId <= 0 || (!in_array($stage, $openStages, true) && !in_array($stage, $nurtureStages, true))) {
             continue;
         }
 
@@ -82,30 +130,67 @@ try {
         $reasons = [];
         $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
         $lastContacted = trim((string)($lead['last_contacted_at'] ?? ''));
+        $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
         $createdAt = trim((string)($lead['created_at'] ?? ''));
         $unread = (int)($lead['unread_message_count'] ?? 0);
+        $isNurtureLead = in_array($stage, $nurtureStages, true);
 
         if ($unread > 0) {
             $reasons[] = 'Unread patient reply';
         }
 
-        if ($nextFollowUp !== '' && strtotime($nextFollowUp) !== false && strtotime($nextFollowUp) <= $now) {
+        $nextFollowUpTs = $nextFollowUp !== '' ? strtotime($nextFollowUp) : false;
+        $lastOutboundTs = $lastOutbound !== '' ? strtotime($lastOutbound) : false;
+        $staleDueResolvedByOutbound = $nextFollowUpTs !== false
+            && $nextFollowUpTs <= $now
+            && $lastOutboundTs !== false
+            && $lastOutboundTs >= $nextFollowUpTs;
+
+        if ($nextFollowUpTs !== false && $nextFollowUpTs <= $now && !$staleDueResolvedByOutbound) {
             $reasons[] = 'Follow-up due';
         }
 
-        if ($lastContacted === '' && $createdAt !== '' && strtotime($createdAt) !== false && ($now - strtotime($createdAt)) >= 1800) {
+        if (!$isNurtureLead && $lastContacted === '' && $createdAt !== '' && strtotime($createdAt) !== false && ($now - strtotime($createdAt)) >= 1800) {
             $reasons[] = 'New lead not contacted yet';
         }
 
-        if ($lastContacted !== '' && strtotime($lastContacted) !== false && ($now - strtotime($lastContacted)) >= 86400) {
+        if (!$isNurtureLead && $lastContacted !== '' && strtotime($lastContacted) !== false && ($now - strtotime($lastContacted)) >= 86400) {
             $reasons[] = 'No touch in 24 hours';
         }
 
+        if ($isNurtureLead && $unread <= 0 && $nextFollowUp === '') {
+            $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+            $lastTouch = $lastOutbound !== '' ? strtotime($lastOutbound) : false;
+            if ($lastTouch === false && $lastContacted !== '') {
+                $lastTouch = strtotime($lastContacted);
+            }
+            if ($lastTouch === false && $createdAt !== '') {
+                $lastTouch = strtotime($createdAt);
+            }
+
+            $touchCount = lead_followup_check_touch_count($leadId);
+            $intervalDays = lead_followup_check_nurture_interval_days($lead, $touchCount);
+            if ($lastTouch === false || ($now - $lastTouch) >= ($intervalDays * 86400)) {
+                $reasons[] = 'Nurture reactivation due (' . $intervalDays . '-day cadence)';
+            }
+        }
+
         if (!$reasons) {
+            $clearParts = [];
+            $clearParams = ['id' => $leadId, 'checked_at' => now()];
+            if (leads_has_column('follow_up_status')) {
+                $clearParts[] = "follow_up_status = 'ok'";
+            }
             if (leads_has_column('last_follow_up_check_at')) {
+                $clearParts[] = 'last_follow_up_check_at = :checked_at';
+            }
+            if ($staleDueResolvedByOutbound && leads_has_column('next_follow_up_at')) {
+                $clearParts[] = 'next_follow_up_at = NULL';
+            }
+            if ($clearParts) {
                 db_query(
-                    "UPDATE leads SET follow_up_status = 'ok', last_follow_up_check_at = :checked_at WHERE id = :id LIMIT 1",
-                    ['id' => $leadId, 'checked_at' => now()]
+                    'UPDATE leads SET ' . implode(', ', $clearParts) . ' WHERE id = :id LIMIT 1',
+                    $clearParams
                 );
             }
             continue;

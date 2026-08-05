@@ -78,6 +78,10 @@ if (!auth_check()) {
     lead_sms_json_response(401, ['ok' => false, 'message' => 'Unauthorized.']);
 }
 
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+    lead_sms_json_response(403, ['ok' => false, 'message' => 'Forbidden. Your role is read-only.']);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     lead_sms_json_response(405, ['ok' => false, 'message' => 'Method not allowed.']);
 }
@@ -118,10 +122,10 @@ if (!$lead) {
 }
 
 $smsOptStatus = trim((string) ($lead['sms_opt_status'] ?? 'unknown'));
-if ($smsOptStatus === 'opted_out') {
+if (in_array($smsOptStatus, ['dnd', 'opted_out'], true)) {
     lead_sms_json_response(409, [
         'ok' => false,
-        'message' => 'This lead has opted out of SMS. Do not send text messages unless they opt back in.',
+        'message' => 'This lead is marked Do Not Text. Do not send text messages unless they opt back in.',
         'lead_id' => $leadId,
     ]);
 }

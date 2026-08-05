@@ -19,6 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/helpers.php';
 require_once __DIR__ . '/../core/mailer.php';
+require_once __DIR__ . '/../notifications/internal_sms.php';
 require_once __DIR__ . '/lead_meta.php';
 require_once __DIR__ . '/lead_email.php';
 
@@ -364,6 +365,138 @@ if (!function_exists('lead_pipeline_save_stage_order')) {
 
             return false;
         }
+    }
+}
+
+if (!function_exists('lead_consultation_booked_internal_recipient')) {
+    function lead_consultation_booked_internal_recipient(): array
+    {
+        $saved = function_exists('crm_settings_get_json')
+            ? crm_settings_get_json('consultation_booked_internal_sms_recipient', null)
+            : null;
+
+        if (is_array($saved)) {
+            $rows = isset($saved[0]) && is_array($saved[0]) ? $saved : [$saved];
+            $sanitized = function_exists('internal_sms_sanitize_recipients')
+                ? internal_sms_sanitize_recipients($rows)
+                : [];
+            if (!empty($sanitized[0])) {
+                return $sanitized[0];
+            }
+        }
+
+        return [
+            'key' => 'consultation_booked_dr_meden',
+            'name' => 'Dr. Walter Meden',
+            'phone' => '8016887200',
+            'enabled' => true,
+        ];
+    }
+}
+
+if (!function_exists('lead_consultation_booked_internal_message')) {
+    function lead_consultation_booked_internal_message(array $lead): string
+    {
+        $name = trim((string)($lead['full_name'] ?? 'Lead'));
+        if ($name === '') {
+            $name = 'Lead #' . (int)($lead['id'] ?? 0);
+        }
+
+        $rawPhone = trim((string)($lead['phone'] ?? ''));
+        $phoneDigits = preg_replace('/\D+/', '', $rawPhone) ?? '';
+        if (strlen($phoneDigits) === 11 && str_starts_with($phoneDigits, '1')) {
+            $phoneDigits = substr($phoneDigits, 1);
+        }
+        $phoneLabel = strlen($phoneDigits) === 10
+            ? sprintf('(%s) %s-%s', substr($phoneDigits, 0, 3), substr($phoneDigits, 3, 3), substr($phoneDigits, 6, 4))
+            : ($rawPhone !== '' ? $rawPhone : 'Not set in CRM');
+
+        $consultationRaw = trim((string)($lead['consultation_date'] ?? ''));
+        $consultationLabel = 'Not set in CRM';
+        if ($consultationRaw !== '') {
+            $timestamp = strtotime($consultationRaw);
+            if ($timestamp !== false) {
+                $consultationLabel = date('D, M j, Y g:i A', $timestamp);
+            } else {
+                $consultationLabel = $consultationRaw;
+            }
+        }
+
+        return 'Consultation booked: '
+            . $name
+            . '. Patient phone: '
+            . $phoneLabel
+            . '. Consultation date: '
+            . $consultationLabel
+            . '.';
+    }
+}
+
+if (!function_exists('lead_send_consultation_booked_internal_sms')) {
+    function lead_send_consultation_booked_internal_sms(int $leadId, string $oldStage = '', array $context = []): array
+    {
+        $leadId = (int) $leadId;
+        $oldStage = trim($oldStage);
+
+        if ($leadId <= 0) {
+            return ['ok' => false, 'skipped' => true, 'message' => 'Lead id is required.'];
+        }
+
+        if ($oldStage === 'consultation_booked') {
+            return ['ok' => true, 'skipped' => true, 'message' => 'Lead is already in Consultation Booked.'];
+        }
+
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'skipped' => true, 'message' => 'Lead not found.'];
+        }
+
+        $newStage = trim((string)($lead['status'] ?? ''));
+        if ($newStage !== 'consultation_booked') {
+            return ['ok' => true, 'skipped' => true, 'message' => 'Lead is not in Consultation Booked.'];
+        }
+
+        $recipient = lead_consultation_booked_internal_recipient();
+        if (empty($recipient['enabled'])) {
+            return ['ok' => false, 'skipped' => true, 'message' => 'Consultation-booked internal recipient is disabled.'];
+        }
+
+        $body = lead_consultation_booked_internal_message($lead);
+        $result = internal_sms_send($recipient, $body, 0);
+        $activityType = !empty($result['ok'])
+            ? 'consultation_booked_internal_sms'
+            : 'consultation_booked_internal_sms_failed';
+        $activityBody = !empty($result['ok'])
+            ? 'Sent consultation-booked internal SMS to ' . trim((string)($recipient['name'] ?? 'Dr. Meden')) . '.'
+            : 'Consultation-booked internal SMS failed: ' . trim((string)($result['message'] ?? 'Unknown error')) . '.';
+
+        if (function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity(
+                $leadId,
+                $activityType,
+                $activityBody,
+                [
+                    'source' => (string)($context['source'] ?? 'system'),
+                    'from_stage' => $oldStage,
+                    'to_stage' => $newStage,
+                    'recipient_key' => (string)($recipient['key'] ?? ''),
+                    'recipient_name' => (string)($recipient['name'] ?? ''),
+                    'to_number' => (string)($result['to'] ?? $recipient['phone'] ?? ''),
+                    'consultation_date' => (string)($lead['consultation_date'] ?? ''),
+                    'message_body' => $body,
+                    'twilio_sid' => (string)($result['twilio_sid'] ?? ''),
+                    'twilio_status' => (string)($result['twilio_status'] ?? ''),
+                    'status_code' => (int)($result['status_code'] ?? 0),
+                ],
+                trim((string)($context['created_by'] ?? 'System'))
+            );
+        }
+
+        return array_merge($result, [
+            'lead' => $lead,
+            'recipient' => $recipient,
+            'body' => $body,
+        ]);
     }
 }
 
@@ -953,10 +1086,19 @@ if (!function_exists('lead_action_queue_priority')) {
             return 0;
         }
 
+        if ($status === 'no_answer') {
+            if ($smsOptStatus === 'opted_out') {
+                return 0;
+            }
+            $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+            $followUpStatus = trim((string)($lead['follow_up_status'] ?? ''));
+            $isDue = $nextFollowUp !== '' && strtotime($nextFollowUp) !== false && strtotime($nextFollowUp) <= time();
+            return ($isDue || $followUpStatus === 'needs_follow_up') ? 46 : 0;
+        }
+
         if ($smsOptStatus === 'opted_out' || in_array($status, [
             'opted_out',
             'lost_lead',
-            'no_answer',
             'consultation_booked',
             'consult_completed',
             'treatment_accepted',
@@ -970,7 +1112,6 @@ if (!function_exists('lead_action_queue_priority')) {
             'consult_completed',
             'treatment_accepted',
             'treatment_completed',
-            'nurture_lost',
         ], true)) {
             return 0;
         }
@@ -1005,6 +1146,241 @@ if (!function_exists('lead_action_queue_priority')) {
     }
 }
 
+if (!function_exists('lead_operator_text_contains')) {
+    function lead_operator_text_contains(string $body, array $patterns): bool
+    {
+        if ($body === '') {
+            return false;
+        }
+
+        foreach ($patterns as $pattern) {
+            if (@preg_match($pattern, $body)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('lead_operator_recent_thread_signals')) {
+    function lead_operator_recent_thread_signals(int $leadId): array
+    {
+        static $cache = [];
+
+        if (isset($cache[$leadId])) {
+            return $cache[$leadId];
+        }
+
+        $signals = [
+            'call_requested' => false,
+        ];
+
+        if ($leadId <= 0 || !lead_related_table_exists('lead_messages')) {
+            $cache[$leadId] = $signals;
+            return $signals;
+        }
+
+        try {
+            $messages = db_all(
+                "SELECT direction, body
+                 FROM lead_messages
+                 WHERE lead_id = :lead_id
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 12",
+                ['lead_id' => $leadId]
+            );
+        } catch (Throwable $e) {
+            $cache[$leadId] = $signals;
+            return $signals;
+        }
+
+        foreach ($messages as $message) {
+            if ((string)($message['direction'] ?? '') !== 'inbound') {
+                continue;
+            }
+
+            $body = trim((string)($message['body'] ?? ''));
+            if ($body === '') {
+                continue;
+            }
+
+            if (lead_operator_text_contains($body, [
+                '/\bcall\b/i',
+                '/\bphone\b/i',
+                '/\bll[aá]mame\b/i',
+                '/\bllamar\b/i',
+                '/\btalk\s+on\s+the\s+phone\b/i',
+            ])) {
+                $signals['call_requested'] = true;
+                break;
+            }
+        }
+
+        $cache[$leadId] = $signals;
+        return $signals;
+    }
+}
+
+if (!function_exists('lead_operator_resolved_lost_lead')) {
+    function lead_operator_resolved_lost_lead(array $lead): bool
+    {
+        $status = trim((string)($lead['status'] ?? ''));
+        $stageKey = function_exists('lead_conversion_stage_key') ? lead_conversion_stage_key($lead) : '';
+        $lostReason = strtolower(trim((string)($lead['lost_reason'] ?? '')));
+        $notes = strtolower(trim((string)($lead['notes'] ?? '')));
+
+        if ($status === 'lost_lead' || $stageKey === 'nurture_lost') {
+            return true;
+        }
+        if ($lostReason !== '') {
+            return true;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:decided|chose|went|going)\s+(?:to\s+)?(?:do\s+)?(?:treatment\s+)?with\s+(?:another|other)\s+provider\b|\bother\s+provider\b|\banother\s+provider\b|\bnot\s+an\s+active\s+scheduling\s+lead\b/i',
+            $notes
+        );
+    }
+}
+
+if (!function_exists('lead_operator_is_internal_user_lead')) {
+    function lead_operator_is_internal_user_lead(array $lead): bool
+    {
+        static $cache = [];
+
+        $email = strtolower(trim((string)($lead['email'] ?? '')));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+        if (array_key_exists($email, $cache)) {
+            return $cache[$email];
+        }
+        if (!lead_related_table_exists('users')) {
+            $cache[$email] = false;
+            return false;
+        }
+
+        try {
+            $cache[$email] = (int) db_value(
+                "SELECT COUNT(*)
+                 FROM users
+                 WHERE LOWER(email) = :email
+                   AND COALESCE(is_active, 1) = 1",
+                ['email' => $email]
+            ) > 0;
+        } catch (Throwable $e) {
+            $cache[$email] = false;
+        }
+
+        return $cache[$email];
+    }
+}
+
+if (!function_exists('lead_operator_has_sms_cleanup_issue')) {
+    function lead_operator_has_sms_cleanup_issue(array $lead): bool
+    {
+        static $cache = [];
+
+        $leadId = (int)($lead['id'] ?? 0);
+        if ($leadId <= 0 || !lead_related_table_exists('lead_activities')) {
+            return false;
+        }
+        if (array_key_exists($leadId, $cache)) {
+            return $cache[$leadId];
+        }
+
+        $latestIssueAt = '';
+        try {
+            $latestIssueAt = trim((string) db_value(
+                "SELECT created_at
+                 FROM lead_activities
+                 WHERE lead_id = :lead_id
+                   AND type = 'sms_delivery_issue'
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1",
+                ['lead_id' => $leadId]
+            ));
+        } catch (Throwable $e) {
+            $cache[$leadId] = false;
+            return false;
+        }
+
+        if ($latestIssueAt === '') {
+            $cache[$leadId] = false;
+            return false;
+        }
+
+        $smsOptStatus = trim((string)($lead['sms_opt_status'] ?? 'unknown'));
+
+        if (lead_related_table_exists('lead_messages')) {
+            try {
+                $recoveredBySms = (int) db_value(
+                    "SELECT COUNT(*)
+                     FROM lead_messages
+                     WHERE lead_id = :lead_id
+                       AND channel = 'sms'
+                       AND created_at > :issue_at
+                       AND (
+                            direction = 'inbound'
+                            OR COALESCE(delivered_at, '') <> ''
+                            OR COALESCE(twilio_status, '') IN ('accepted', 'queued', 'sent', 'delivered', 'received')
+                       )",
+                    ['lead_id' => $leadId, 'issue_at' => $latestIssueAt]
+                ) > 0;
+                if ($recoveredBySms) {
+                    $cache[$leadId] = false;
+                    return false;
+                }
+            } catch (Throwable $e) {
+                // Keep evaluating other signals below.
+            }
+        }
+
+        if (in_array($smsOptStatus, ['dnd', 'opted_out'], true)) {
+            $resolvedFallback = false;
+
+            if (lead_related_table_exists('lead_emails')) {
+                try {
+                    $resolvedFallback = (int) db_value(
+                        "SELECT COUNT(*)
+                         FROM lead_emails
+                         WHERE lead_id = :lead_id
+                           AND direction = 'outbound'
+                           AND created_at > :issue_at",
+                        ['lead_id' => $leadId, 'issue_at' => $latestIssueAt]
+                    ) > 0;
+                } catch (Throwable $e) {
+                    $resolvedFallback = false;
+                }
+            }
+
+            if (!$resolvedFallback) {
+                try {
+                    $resolvedFallback = (int) db_value(
+                        "SELECT COUNT(*)
+                         FROM lead_activities
+                         WHERE lead_id = :lead_id
+                           AND created_at > :issue_at
+                           AND type IN ('internal_note', 'operator_follow_up', 'lead_updated')",
+                        ['lead_id' => $leadId, 'issue_at' => $latestIssueAt]
+                    ) > 0;
+                } catch (Throwable $e) {
+                    $resolvedFallback = false;
+                }
+            }
+
+            if ($resolvedFallback) {
+                $cache[$leadId] = false;
+                return false;
+            }
+        }
+
+        $cache[$leadId] = true;
+        return true;
+    }
+}
+
 if (!function_exists('lead_action_queue_reason')) {
     function lead_action_queue_reason(array $lead, array $summary): string
     {
@@ -1018,16 +1394,22 @@ if (!function_exists('lead_action_queue_reason')) {
             'reply_needed' => $lastInbound !== ''
                 ? 'Patient replied after the last outbound touch. Review the thread and answer in context.'
                 : 'Inbound reply needs review before the next step.',
+            'wait_for_reply' => $nextFollowUp !== ''
+                ? 'Follow-up is due from the saved next-follow-up time.'
+                : 'Last outbound touch is old enough that this lead should get the next follow-up.',
             'first_touch' => 'New lead is ready for first contact.',
             'overdue_follow_up' => 'Follow-up is overdue. Re-engage with a short, specific message.',
             'second_follow_up' => $nextFollowUp !== ''
                 ? 'Follow-up is due from the saved next-follow-up time.'
                 : 'Last outbound touch is more than 24 hours old with no newer reply.',
+            'offer_dates' => 'Lead is engaged and ready for concrete scheduling options.',
             'reschedule' => 'No-show or missed consult needs a reschedule attempt.',
             'confirm_appointment' => 'Consult is tomorrow. Confirm appointment details.',
             'ask_dob' => 'Scheduling data is missing DOB for the Dentrix-ready package.',
             'close_consult_status' => 'Lead is in consult completed stage, but consultation status still needs to be closed.',
             'bad_phone' => 'Phone looks invalid or placeholder. Clean contact info before texting.',
+            'delivery_issue' => 'SMS delivery issue still needs cleanup or a verified fallback channel.',
+            'nurture_reactivate' => 'No-answer nurture lead is due for a soft reactivation touch. Keep it low-pressure and invite a reply.',
             default => 'Review next step in ' . $stageLabel . '.',
         };
     }
@@ -1050,6 +1432,7 @@ if (!function_exists('lead_action_queue_rows')) {
         $limit = max(1, min(50, $limit));
         $groupedRows = lead_pipeline_rows(1000);
         $rows = [];
+        $now = time();
 
         foreach ($groupedRows as $stageRows) {
             if (!is_array($stageRows)) {
@@ -1062,7 +1445,71 @@ if (!function_exists('lead_action_queue_rows')) {
                 }
 
                 $summary = lead_conversion_summary($lead);
-                $priority = lead_action_queue_priority($lead, $summary);
+                $leadId = (int)($lead['id'] ?? 0);
+                if ($leadId <= 0) {
+                    continue;
+                }
+                if (lead_operator_resolved_lost_lead($lead)) {
+                    continue;
+                }
+                if (lead_operator_is_internal_user_lead($lead)) {
+                    continue;
+                }
+
+                $status = trim((string)($lead['status'] ?? ''));
+                $stageKey = (string)($summary['stage_key'] ?? '');
+                $actionKey = (string)($summary['next_action']['key'] ?? '');
+                $actionLabel = (string)($summary['next_action']['label'] ?? 'Review next step');
+                $actionTone = (string)($summary['next_action']['tone'] ?? 'slate');
+                $reason = lead_action_queue_reason($lead, $summary);
+                $priority = 0;
+                $tab = lead_action_queue_tab($summary);
+
+                $lastInboundAt = trim((string)($lead['last_inbound_at'] ?? ''));
+                $lastOutboundAt = trim((string)($lead['last_outbound_at'] ?? ''));
+                $nextFollowUpAt = trim((string)($lead['next_follow_up_at'] ?? ''));
+                $nextFollowUpTs = $nextFollowUpAt !== '' ? strtotime($nextFollowUpAt) ?: null : null;
+                $lastOutboundTs = $lastOutboundAt !== '' ? strtotime($lastOutboundAt) ?: null : null;
+                $hasOutboundAfterDue = $nextFollowUpTs !== null
+                    && $lastOutboundTs !== null
+                    && $lastOutboundTs >= $nextFollowUpTs;
+                $isDue = $nextFollowUpTs !== null && $nextFollowUpTs <= $now && !$hasOutboundAfterDue;
+                $recentlyContacted = false;
+                if ($lastOutboundAt !== '' && ($lastOutboundTs = strtotime($lastOutboundAt)) !== false) {
+                    $recentlyContacted = ($now - $lastOutboundTs) < 20 * 3600;
+                }
+
+                if ($status === 'treatment_completed' || $stageKey === 'treatment_completed') {
+                    continue;
+                }
+
+                $signals = lead_operator_recent_thread_signals($leadId);
+                if ($signals['call_requested'] && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt)) {
+                    $priority = 100;
+                    $actionKey = 'reply_needed';
+                    $actionLabel = 'Call requested';
+                    $actionTone = 'blue';
+                    $reason = 'Lead asked for a phone call after the last outbound touch. Call first before sending another standard follow-up.';
+                } elseif ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && !$recentlyContacted)) {
+                    $priority = 95;
+                } elseif ($actionKey === 'first_touch') {
+                    $priority = 85;
+                    $reason = 'New lead has not received first contact yet.';
+                } elseif (lead_operator_has_sms_cleanup_issue($lead)) {
+                    $priority = 70;
+                    $actionKey = 'delivery_issue';
+                    $actionLabel = trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd' ? 'Email only' : 'Delivery issue';
+                    $actionTone = 'rose';
+                    $reason = trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd'
+                        ? 'SMS failed before and this lead is now DND for texting. Keep follow-up on email unless the number is corrected.'
+                        : 'Recent SMS delivery issue still needs phone verification or an email fallback.';
+                } elseif ($isDue && !$recentlyContacted && in_array($actionKey, ['second_follow_up', 'overdue_follow_up', 'wait_for_reply', 'reschedule', 'ask_dob', 'offer_dates', 'nurture_reactivate'], true)) {
+                    $priority = in_array($actionKey, ['ask_dob', 'reschedule'], true) ? 60 : 75;
+                    if ($actionKey === 'offer_dates') {
+                        $reason = 'Lead is engaged and ready for concrete scheduling options. Review context and offer dates.';
+                    }
+                }
+
                 if ($priority <= 0) {
                     continue;
                 }
@@ -1070,15 +1517,15 @@ if (!function_exists('lead_action_queue_rows')) {
                 $touchDate = lead_conversion_last_touch_datetime($lead);
                 $lead['_action_queue'] = [
                     'priority' => $priority,
-                    'action_key' => (string)($summary['next_action']['key'] ?? ''),
-                    'action_label' => (string)($summary['next_action']['label'] ?? 'Review next step'),
-                    'action_tone' => (string)($summary['next_action']['tone'] ?? 'slate'),
-                    'stage_key' => (string)($summary['stage_key'] ?? ''),
+                    'action_key' => $actionKey,
+                    'action_label' => $actionLabel,
+                    'action_tone' => $actionTone,
+                    'stage_key' => $stageKey,
                     'stage_label' => (string)($summary['stage_label'] ?? ''),
                     'urgency_label' => (string)($summary['urgency']['label'] ?? ''),
                     'urgency_tone' => (string)($summary['urgency']['tone'] ?? 'slate'),
-                    'reason' => lead_action_queue_reason($lead, $summary),
-                    'tab' => lead_action_queue_tab($summary),
+                    'reason' => $reason,
+                    'tab' => $tab,
                     'source_label' => function_exists('lead_operator_source_label') ? lead_operator_source_label($lead) : trim((string)($lead['source'] ?? '')),
                     'last_touch_at' => $touchDate ? $touchDate->format('Y-m-d H:i:s') : '',
                     'sort_at' => $touchDate ? $touchDate->getTimestamp() : 0,
@@ -1110,6 +1557,7 @@ if (!function_exists('lead_action_queue_summary')) {
             'reply_needed' => 0,
             'first_touch' => 0,
             'follow_up' => 0,
+            'nurture' => 0,
             'schedule' => 0,
             'cleanup' => 0,
         ];
@@ -1120,11 +1568,13 @@ if (!function_exists('lead_action_queue_summary')) {
                 $summary['reply_needed']++;
             } elseif ($actionKey === 'first_touch') {
                 $summary['first_touch']++;
-            } elseif (in_array($actionKey, ['overdue_follow_up', 'second_follow_up'], true)) {
+            } elseif ($actionKey === 'nurture_reactivate') {
+                $summary['nurture']++;
+            } elseif (in_array($actionKey, ['overdue_follow_up', 'second_follow_up', 'wait_for_reply'], true)) {
                 $summary['follow_up']++;
-            } elseif (in_array($actionKey, ['reschedule', 'confirm_appointment', 'ask_dob'], true)) {
+            } elseif (in_array($actionKey, ['reschedule', 'confirm_appointment', 'ask_dob', 'offer_dates'], true)) {
                 $summary['schedule']++;
-            } elseif (in_array($actionKey, ['bad_phone', 'close_consult_status'], true)) {
+            } elseif (in_array($actionKey, ['bad_phone', 'close_consult_status', 'delivery_issue'], true)) {
                 $summary['cleanup']++;
             }
         }
@@ -1948,6 +2398,21 @@ if (!function_exists('lead_create_minimal')) {
                             }
                         }
                     }
+
+                    $mobilePushPath = dirname(__DIR__) . '/core/mobile_ai_push.php';
+                    if (is_file($mobilePushPath)) {
+                        require_once $mobilePushPath;
+                    }
+                    if (function_exists('mobile_ai_send_lead_event_push')) {
+                        $freshLeadForPush = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                        mobile_ai_send_lead_event_push($freshLeadForPush ?: $data, [
+                            'lead_id' => $leadId,
+                            'type' => 'new_lead',
+                            'source_label' => ($data['source_type'] ?? '') === 'meta_instant_form' ? 'Meta Lead Form' : 'CRM',
+                            'first_touch_sent' => $firstTouchSent,
+                            'notification_id' => 'lead-' . $leadId,
+                        ]);
+                    }
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('lead_workflow', 'Automatic new-lead first-touch workflow failed.', [
@@ -2159,6 +2624,119 @@ if (!function_exists('lead_import_meta_rows')) {
             'duplicate_count' => count($duplicates),
             'failed_count' => count($failed),
             'total_count' => count($rows),
+        ];
+    }
+}
+
+if (!function_exists('lead_delete_permanently')) {
+    function lead_delete_permanently(int $leadId, array $leadRow = []): array
+    {
+        if ($leadId <= 0) {
+            throw new InvalidArgumentException('Invalid lead selected.');
+        }
+
+        if (!leads_table_exists()) {
+            throw new RuntimeException('Leads table not found.');
+        }
+
+        $lead = $leadRow;
+        if (!$lead) {
+            $lead = db_one(
+                'SELECT id, full_name, email, phone, status FROM leads WHERE id = :id LIMIT 1',
+                ['id' => $leadId]
+            );
+        }
+
+        if (!$lead) {
+            throw new RuntimeException('Lead not found.');
+        }
+
+        $excludedTables = [
+            'codex_api_audit_logs' => true,
+        ];
+
+        $relatedTables = [];
+        try {
+            $rows = db_all(
+                "SELECT DISTINCT table_name
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND column_name = 'lead_id'
+                   AND table_name <> 'leads'
+                 ORDER BY table_name"
+            );
+
+            foreach ($rows as $row) {
+                $table = trim((string) ($row['table_name'] ?? $row['TABLE_NAME'] ?? ''));
+                if ($table === '' || isset($excludedTables[$table])) {
+                    continue;
+                }
+                if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+                    continue;
+                }
+                $relatedTables[] = $table;
+            }
+        } catch (Throwable $e) {
+            $relatedTables = [
+                'lead_messages',
+                'lead_activities',
+                'lead_emails',
+            ];
+        }
+
+        $relatedTables = array_values(array_unique($relatedTables));
+        $deletedCounts = [];
+
+        db_begin();
+        try {
+            foreach ($relatedTables as $table) {
+                if (!lead_related_table_exists($table)) {
+                    continue;
+                }
+
+                $statement = db_query(
+                    'DELETE FROM `' . $table . '` WHERE lead_id = :lead_id',
+                    ['lead_id' => $leadId]
+                );
+                $deletedCounts[$table] = (int) $statement->rowCount();
+            }
+
+            $leadDelete = db_query(
+                'DELETE FROM leads WHERE id = :id LIMIT 1',
+                ['id' => $leadId]
+            );
+
+            if ((int) $leadDelete->rowCount() < 1) {
+                throw new RuntimeException('Lead delete did not affect any rows.');
+            }
+
+            $deletedCounts['leads'] = (int) $leadDelete->rowCount();
+
+            if (db()->inTransaction()) {
+                db_commit();
+            }
+        } catch (Throwable $e) {
+            if (db()->inTransaction()) {
+                db_rollBack();
+            }
+            throw $e;
+        }
+
+        if (function_exists('esm_log')) {
+            esm_log('lead_delete', 'Lead permanently deleted.', [
+                'lead_id' => $leadId,
+                'full_name' => (string) ($lead['full_name'] ?? ''),
+                'deleted_counts' => $deletedCounts,
+            ]);
+        }
+
+        return [
+            'lead_id' => $leadId,
+            'full_name' => (string) ($lead['full_name'] ?? ''),
+            'email' => (string) ($lead['email'] ?? ''),
+            'phone' => (string) ($lead['phone'] ?? ''),
+            'status' => (string) ($lead['status'] ?? ''),
+            'deleted_counts' => $deletedCounts,
         ];
     }
 }

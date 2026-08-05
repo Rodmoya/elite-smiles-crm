@@ -1023,8 +1023,11 @@ if (!function_exists('lead_agent_report_copy')) {
     function lead_agent_report_copy(string $date, array $metrics): array
     {
         $label = (new DateTimeImmutable($date, new DateTimeZone(APP_TIMEZONE)))->format('F j');
+        $textLabel = (int) $metrics['sms_sent'] === 1 ? 'text' : 'texts';
+        $emailLabel = (int) $metrics['emails_sent'] === 1 ? 'email' : 'emails';
+        $inboundLabel = (int) $metrics['inbound_handled'] === 1 ? 'conversation' : 'conversations';
         $summary = $metrics['actions_completed'] > 0
-            ? "Lead Agent completed {$metrics['actions_completed']} communication actions on {$label}: {$metrics['sms_sent']} texts, {$metrics['emails_sent']} emails, and {$metrics['inbound_handled']} inbound conversations reviewed."
+            ? "Lead Agent completed {$metrics['actions_completed']} communication actions on {$label}: {$metrics['sms_sent']} {$textLabel}, {$metrics['emails_sent']} {$emailLabel}, and {$metrics['inbound_handled']} inbound {$inboundLabel} reviewed."
             : "Lead Agent recorded no communication actions on {$label}. The system remained available and monitored enrolled leads.";
         if ($metrics['ready_to_schedule_today'] > 0) {
             $summary .= " {$metrics['ready_to_schedule_today']} lead" . ($metrics['ready_to_schedule_today'] === 1 ? ' is' : 's are') . ' ready for Rod to schedule.';

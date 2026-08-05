@@ -62,6 +62,16 @@ foreach ($plan as $step => $item) {
 $redirect = lead_agent_cost_redirect($sampleLead, 'sms');
 expect_true(lead_agent_policy_flags((string) $redirect['body']) === [], 'Approved question redirect must not discuss treatment cost.');
 
+$reportCopy = lead_agent_report_copy('2026-08-05', [
+    'actions_completed' => 2,
+    'sms_sent' => 1,
+    'emails_sent' => 1,
+    'inbound_handled' => 0,
+    'ready_to_schedule_today' => 0,
+    'needs_attention_today' => 0,
+]);
+expect_true(str_contains($reportCopy['executive_summary'], '1 text, 1 email'), 'Executive summary copy should use singular channel labels correctly.');
+
 $alignedMorning = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 06:15:00', new DateTimeZone(APP_TIMEZONE)));
 $alignedNight = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 21:15:00', new DateTimeZone(APP_TIMEZONE)));
 expect_true($alignedMorning->format('Y-m-d H:i') === '2026-08-06 08:00', 'Morning sends should move to 8 AM.');

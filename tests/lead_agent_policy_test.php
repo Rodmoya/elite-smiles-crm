@@ -48,6 +48,9 @@ expect_true($plan[7]['hours'] === 72 && $plan[7]['phase'] === 'active_sprint', '
 expect_true($plan[11]['hours'] === 168 && $plan[11]['phase'] === 'daily_taper', 'Daily taper should run through day seven.');
 expect_true($plan[12]['phase'] === 'twice_weekly', 'Long-term nurture should be twice weekly.');
 
+$incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
+expect_true($incremental['at'] === '2026-08-06 08:00:00', 'An overdue catch-up must schedule the next step from the send time instead of an expired start date.');
+
 $sampleLead = ['full_name' => 'Taylor Example'];
 foreach ($plan as $step => $item) {
     $draft = lead_agent_approved_followup($sampleLead, (string) $item['channel'], (int) $step);

@@ -234,6 +234,50 @@ if (!function_exists('lead_agent_step_schedule')) {
     }
 }
 
+if (!function_exists('lead_agent_incremental_schedule')) {
+    function lead_agent_incremental_schedule(string $baseAt, int $completedStep): array
+    {
+        $current = lead_agent_step_schedule($baseAt, $completedStep);
+        $following = lead_agent_step_schedule($baseAt, $completedStep + 1);
+        $delayHours = max(3.5, (float) ($following['hours'] ?? 0) - (float) ($current['hours'] ?? 0));
+        $base = new DateTimeImmutable($baseAt !== '' ? $baseAt : 'now', new DateTimeZone(APP_TIMEZONE));
+        $at = lead_agent_align_contact_time($base->modify('+' . (int) round($delayHours * 3600) . ' seconds'));
+        $following['at'] = $at->format('Y-m-d H:i:s');
+        return $following;
+    }
+}
+
+if (!function_exists('lead_agent_repair_compressed_catchup')) {
+    function lead_agent_repair_compressed_catchup(): int
+    {
+        lead_agent_ensure_schema();
+        $rows = db_all("SELECT * FROM lead_agent_states
+            WHERE status IN ('active', 'engaged')
+              AND cadence_step > 0
+              AND last_action_at IS NOT NULL
+              AND next_action_at IS NOT NULL
+              AND next_action_at <= NOW()");
+        $repaired = 0;
+        foreach ($rows as $state) {
+            $lastActionAt = trim((string) ($state['last_action_at'] ?? ''));
+            if ($lastActionAt === '' || strtotime($lastActionAt) === false) {
+                continue;
+            }
+            $following = lead_agent_incremental_schedule($lastActionAt, (int) ($state['cadence_step'] ?? 0));
+            if (strtotime((string) $following['at']) <= time()) {
+                continue;
+            }
+            $repaired += db_execute(
+                "UPDATE lead_agent_states
+                 SET next_action_at = :next_action_at, last_decision = 'repaired_compressed_catchup', updated_at = NOW()
+                 WHERE lead_id = :lead_id AND next_action_at <= NOW()",
+                ['next_action_at' => $following['at'], 'lead_id' => (int) ($state['lead_id'] ?? 0)]
+            );
+        }
+        return $repaired;
+    }
+}
+
 if (!function_exists('lead_agent_policy_flags')) {
     function lead_agent_policy_flags(string $body): array
     {
@@ -876,6 +920,9 @@ if (!function_exists('lead_agent_process_state')) {
         }
 
         $following = lead_agent_step_schedule((string) $state['started_at'], $nextStep + 1);
+        if (strtotime((string) $following['at']) <= time()) {
+            $following = lead_agent_incremental_schedule(now(), $nextStep);
+        }
         db_execute("UPDATE lead_agent_states SET status = 'active', cadence_step = :step, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = :decision, lock_token = '', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", [
             'step' => $nextStep,
             'next_action_at' => $following['at'],
@@ -893,6 +940,7 @@ if (!function_exists('lead_agent_run_due')) {
         lead_agent_ensure_schema();
         $limit = max(1, min(50, $limit));
         $backfill = lead_agent_backfill_eligible(200, $dryRun);
+        $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
         $rows = db_all("SELECT * FROM lead_agent_states
             WHERE status IN ('active', 'engaged')
               AND human_takeover = 0
@@ -935,7 +983,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'processed' => count($results), 'results' => $results];
     }
 }
 

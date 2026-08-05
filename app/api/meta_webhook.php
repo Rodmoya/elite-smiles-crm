@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/meta/meta_config.php';
 require_once dirname(__DIR__) . '/meta/meta_queue.php';
+require_once dirname(__DIR__) . '/meta/meta_webhook_security.php';
 
 function meta_webhook_json(array $payload, int $statusCode = 200): void
 {
@@ -32,12 +33,7 @@ function meta_webhook_signature_valid(string $rawBody): bool
     $appSecret = meta_cfg_app_secret();
     $signature = trim((string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? $_SERVER['X_HUB_SIGNATURE_256'] ?? ''));
 
-    if ($appSecret === '' || $signature === '') {
-        return false;
-    }
-
-    $expected = 'sha256=' . hash_hmac('sha256', $rawBody, $appSecret);
-    return hash_equals($expected, $signature);
+    return meta_webhook_signature_matches($rawBody, $signature, $appSecret);
 }
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -76,14 +72,52 @@ if (!is_array($payload)) {
     meta_webhook_json(['ok' => false, 'message' => 'Invalid Meta webhook JSON.'], 400);
 }
 
+if (!meta_webhook_payload_valid($payload)) {
+    meta_webhook_json(['ok' => false, 'message' => 'Invalid Meta lead payload.'], 422);
+}
+
 $queued = meta_queue_enqueue($payload);
 if (empty($queued['ok'])) {
     meta_webhook_json(['ok' => false, 'message' => 'Could not queue Meta webhook payload.'], 500);
 }
 
-meta_webhook_json([
+$response = [
     'ok' => true,
     'queued' => true,
+    'duplicate' => !empty($queued['duplicate']),
     'event_id' => (string) ($queued['event_id'] ?? ''),
     'candidate_count' => (int) ($queued['record']['candidate_count'] ?? 0),
-]);
+];
+
+http_response_code(200);
+header('Content-Type: application/json; charset=utf-8');
+header('Connection: close');
+echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+} elseif (function_exists('litespeed_finish_request')) {
+    litespeed_finish_request();
+} else {
+    @ob_flush();
+    @flush();
+}
+
+if (empty($queued['duplicate']) || (string) ($queued['record']['status'] ?? '') === 'pending') {
+    try {
+        if (!defined('META_PROCESSOR_LIBRARY_ONLY')) {
+            define('META_PROCESSOR_LIBRARY_ONLY', true);
+        }
+        require_once __DIR__ . '/meta_webhook_process.php';
+        $immediate = meta_processor_run(1, (string) ($queued['event_id'] ?? ''), false);
+        esm_log('meta_webhook', 'Meta webhook immediate processing completed.', [
+            'event_id' => (string) ($queued['event_id'] ?? ''),
+            'claimed' => (int) ($immediate['claimed'] ?? 0),
+            'status' => (string) ($immediate['results'][0]['status'] ?? 'not_claimed'),
+        ]);
+    } catch (Throwable $e) {
+        esm_log('meta_webhook', 'Meta webhook immediate processing failed; event remains recoverable.', [
+            'event_id' => (string) ($queued['event_id'] ?? ''),
+            'message' => $e->getMessage(),
+        ]);
+    }
+}

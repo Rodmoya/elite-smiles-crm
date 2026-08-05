@@ -31,12 +31,7 @@ function meta_processor_json(array $payload, int $statusCode = 200): void
 
 function meta_processor_secret_input(): string
 {
-    $header = trim((string) ($_SERVER['HTTP_X_ELITE_CRON_SECRET'] ?? $_SERVER['HTTP_X_META_PROCESSOR_SECRET'] ?? ''));
-    if ($header !== '') {
-        return $header;
-    }
-
-    return trim((string) ($_GET['secret'] ?? $_POST['secret'] ?? ''));
+    return trim((string) ($_SERVER['HTTP_X_ELITE_CRON_SECRET'] ?? $_SERVER['HTTP_X_META_PROCESSOR_SECRET'] ?? ''));
 }
 
 function meta_processor_require_auth(): void
@@ -146,6 +141,7 @@ function meta_processor_retry_or_fail_claim(array $claim, string $message, bool 
         && $record['attempts'] < $maxAttempts;
 
     if ($shouldRetry) {
+        $record['retryable'] = true;
         meta_queue_requeue_record((string) $claim['path'], $record, $message);
         return [
             'event_id' => (string) ($record['event_id'] ?? ''),
@@ -155,6 +151,7 @@ function meta_processor_retry_or_fail_claim(array $claim, string $message, bool 
         ];
     }
 
+    $record['retryable'] = $record['attempts'] < $maxAttempts && meta_processor_is_retryable_message($message);
     meta_queue_finalize_record((string) $claim['path'], 'failed', $record);
     return [
         'event_id' => (string) ($record['event_id'] ?? ''),
@@ -164,11 +161,11 @@ function meta_processor_retry_or_fail_claim(array $claim, string $message, bool 
     ];
 }
 
-function meta_processor_claims(int $limit): array
+function meta_processor_claims(int $limit, string $eventId = ''): array
 {
     $claims = [];
 
-    foreach (meta_queue_list_pending_paths($limit) as $path) {
+    foreach (meta_queue_list_recoverable_paths($limit, $eventId) as $path) {
         $claim = meta_queue_claim_record($path);
         if ($claim !== null) {
             $claims[] = $claim;
@@ -336,103 +333,109 @@ function meta_processor_payload_from_record(array $record): array
     ];
 }
 
-try {
-    meta_processor_require_auth();
-    meta_queue_ensure_directories();
+if (!function_exists('meta_processor_run')) {
+    function meta_processor_run(int $limit = 20, string $eventId = '', bool $pollForms = false, array $options = []): array
+    {
+        meta_queue_ensure_directories();
+        $limit = max(1, min(100, $limit));
+        $dbReadyResolver = is_callable($options['db_ready'] ?? null)
+            ? $options['db_ready']
+            : static fn(): array => meta_processor_db_ready();
+        $processResolver = is_callable($options['process'] ?? null)
+            ? $options['process']
+            : static fn(string $raw, array $payload): array => meta_lead_process($raw, $payload);
+        $accessTokenAvailable = array_key_exists('access_token_available', $options)
+            ? (bool) $options['access_token_available']
+            : trim((string) meta_cfg_access_token()) !== '';
 
-    $limit = meta_processor_limit();
-    $pollResults = [];
-    $dbReady = meta_processor_db_ready();
+        $pollResults = [];
+        $dbReady = $dbReadyResolver();
+        if ($pollForms && $accessTokenAvailable && !empty($dbReady['ok'])) {
+            $pollResults = meta_processor_poll_form_leads($limit);
+        }
 
-    if (trim((string) meta_cfg_access_token()) !== '' && !empty($dbReady['ok'])) {
-        $pollResults = meta_processor_poll_form_leads($limit);
-    }
+        $claims = meta_processor_claims($limit, $eventId);
+        $results = [];
+        foreach ($claims as $claim) {
+            $record = $claim['record'];
+            $record['attempts'] = (int) ($record['attempts'] ?? 0) + 1;
+            $record['last_attempt_at'] = now();
+            $payload = meta_processor_payload_from_record($record);
 
-    $claims = meta_processor_claims($limit);
-    $results = [];
+            if ((int) ($record['candidate_count'] ?? 0) <= 0) {
+                $record['error_summary'] = '';
+                $record['retryable'] = false;
+                meta_queue_finalize_record((string) $claim['path'], 'ignored', $record);
+                $results[] = ['event_id' => (string) ($record['event_id'] ?? ''), 'status' => 'ignored', 'message' => 'No leadgen payload found.'];
+                continue;
+            }
+            if (!$accessTokenAvailable) {
+                $results[] = meta_processor_retry_or_fail_claim($claim, 'META_ACCESS_TOKEN is required for processing Meta lead events.');
+                continue;
+            }
 
-    foreach ($claims as $claim) {
-        $record = $claim['record'];
-        $record['attempts'] = (int) ($record['attempts'] ?? 0) + 1;
-        $record['last_attempt_at'] = now();
+            $dbReady = $dbReadyResolver();
+            if (empty($dbReady['ok'])) {
+                $results[] = meta_processor_retry_or_fail_claim($claim, (string) ($dbReady['message'] ?? 'Database is not reachable.'));
+                continue;
+            }
 
-        $payload = meta_processor_payload_from_record($record);
-        $candidateCount = (int) ($record['candidate_count'] ?? 0);
+            try {
+                $result = $processResolver(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', $payload);
+            } catch (Throwable $e) {
+                $results[] = meta_processor_retry_or_fail_claim($claim, 'Meta processing threw an exception: ' . $e->getMessage());
+                continue;
+            }
 
-        if ($candidateCount <= 0) {
+            $failedMessages = [];
+            foreach (($result['results'] ?? []) as $item) {
+                if (empty($item['ok'])) {
+                    $failedMessages[] = trim((string) ($item['message'] ?? 'Unknown processing failure.'));
+                }
+            }
+            if ($failedMessages !== []) {
+                $results[] = meta_processor_retry_or_fail_claim($claim, implode(' | ', array_slice($failedMessages, 0, 5)));
+                continue;
+            }
+
             $record['error_summary'] = '';
-            meta_queue_finalize_record((string) $claim['path'], 'ignored', $record);
+            $record['retryable'] = false;
+            meta_queue_finalize_record((string) $claim['path'], 'processed', $record);
             $results[] = [
                 'event_id' => (string) ($record['event_id'] ?? ''),
-                'status' => 'ignored',
-                'message' => 'No leadgen payload found.',
+                'status' => 'processed',
+                'message' => (string) ($result['message'] ?? 'Processed.'),
+                'result_count' => count($result['results'] ?? []),
             ];
-            continue;
         }
 
-        if (trim((string) meta_cfg_access_token()) === '') {
-            $results[] = meta_processor_retry_or_fail_claim($claim, 'META_ACCESS_TOKEN is required for processing Meta lead events.');
-            continue;
-        }
-
-        $dbReady = meta_processor_db_ready();
-        if (empty($dbReady['ok'])) {
-            $results[] = meta_processor_retry_or_fail_claim($claim, (string) ($dbReady['message'] ?? 'Database is not reachable.'));
-            continue;
-        }
-
-        try {
-            $result = meta_lead_process(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', $payload);
-        } catch (Throwable $e) {
-            $results[] = meta_processor_retry_or_fail_claim($claim, 'Meta processing threw an exception: ' . $e->getMessage());
-            continue;
-        }
-
-        $failedMessages = [];
-        foreach (($result['results'] ?? []) as $item) {
-            if (empty($item['ok'])) {
-                $failedMessages[] = trim((string) ($item['message'] ?? 'Unknown processing failure.'));
+        foreach ($results as $item) {
+            if (function_exists('esm_log')) {
+                esm_log('meta_webhook_process', 'Meta queue event completed an attempt.', [
+                    'event_id' => (string) ($item['event_id'] ?? ''),
+                    'status' => (string) ($item['status'] ?? ''),
+                    'attempts' => (int) ($item['attempts'] ?? 0),
+                ]);
             }
         }
 
-        if ($failedMessages !== []) {
-            $results[] = meta_processor_retry_or_fail_claim(
-                $claim,
-                implode(' | ', array_slice($failedMessages, 0, 5))
-            );
-            continue;
-        }
-
-        $record['error_summary'] = '';
-        meta_queue_finalize_record((string) $claim['path'], 'processed', $record);
-        $results[] = [
-            'event_id' => (string) ($record['event_id'] ?? ''),
-            'status' => 'processed',
-            'message' => (string) ($result['message'] ?? 'Processed.'),
-            'result_count' => count($result['results'] ?? []),
+        return [
+            'ok' => true,
+            'polled' => count($pollResults),
+            'claimed' => count($claims),
+            'results' => array_merge($pollResults, $results),
         ];
     }
+}
 
-    meta_processor_json([
-        'ok' => true,
-        'polled' => count($pollResults),
-        'claimed' => count($claims),
-        'results' => array_merge($pollResults, $results),
-    ]);
-} catch (Throwable $e) {
-    if (function_exists('esm_log')) {
-        esm_log('meta_webhook_process', 'Meta processor crashed.', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
+if (!defined('META_PROCESSOR_LIBRARY_ONLY')) {
+    try {
+        meta_processor_require_auth();
+        meta_processor_json(meta_processor_run(meta_processor_limit(), '', false));
+    } catch (Throwable $e) {
+        if (function_exists('esm_log')) {
+            esm_log('meta_webhook_process', 'Meta processor crashed.', ['message' => $e->getMessage()]);
+        }
+        meta_processor_json(['ok' => false, 'message' => 'Meta processor crashed.'], 500);
     }
-
-    meta_processor_json([
-        'ok' => false,
-        'message' => 'Meta processor crashed.',
-        'error' => $e->getMessage(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
-    ], 500);
 }

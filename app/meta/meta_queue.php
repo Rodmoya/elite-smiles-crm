@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
+require_once __DIR__ . '/meta_config.php';
 
 if (!function_exists('meta_queue_root_path')) {
     function meta_queue_root_path(): string
@@ -34,10 +35,30 @@ if (!function_exists('meta_queue_ensure_directories')) {
     }
 }
 
-if (!function_exists('meta_queue_event_id')) {
-    function meta_queue_event_id(): string
+if (!function_exists('meta_queue_payload_fingerprint')) {
+    function meta_queue_payload_fingerprint(array $payload): string
     {
-        return gmdate('Ymd_His') . '_' . bin2hex(random_bytes(6));
+        $candidateIds = [];
+        foreach (meta_queue_extract_candidates($payload) as $candidate) {
+            $leadgenId = trim((string) ($candidate['leadgen_id'] ?? ''));
+            if ($leadgenId !== '') {
+                $candidateIds[] = $leadgenId;
+            }
+        }
+        if ($candidateIds !== []) {
+            sort($candidateIds, SORT_STRING);
+            return hash('sha256', 'leadgen:' . implode('|', array_values(array_unique($candidateIds))));
+        }
+
+        $normalized = meta_queue_sanitize_value($payload);
+        return hash('sha256', json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'invalid');
+    }
+}
+
+if (!function_exists('meta_queue_event_id')) {
+    function meta_queue_event_id(array $payload): string
+    {
+        return 'meta_' . substr(meta_queue_payload_fingerprint($payload), 0, 40);
     }
 }
 
@@ -170,7 +191,7 @@ if (!function_exists('meta_queue_build_record')) {
     {
         $receivedAt = now();
         $candidates = meta_queue_extract_candidates($payload);
-        $eventId = meta_queue_event_id();
+        $eventId = meta_queue_event_id($payload);
 
         return [
             'event_id' => $eventId,
@@ -230,15 +251,79 @@ if (!function_exists('meta_queue_enqueue')) {
         meta_queue_ensure_directories();
 
         $record = meta_queue_build_record($payload);
+        foreach (['pending', 'processing', 'done', 'failed'] as $existingStatus) {
+            $existingPath = meta_queue_record_path($existingStatus, (string) $record['event_id']);
+            $existing = meta_queue_load_record($existingPath);
+            if ($existing !== null) {
+                return [
+                    'ok' => true,
+                    'duplicate' => true,
+                    'event_id' => (string) $record['event_id'],
+                    'path' => $existingPath,
+                    'record' => $existing,
+                ];
+            }
+        }
         $path = meta_queue_record_path('pending', (string) $record['event_id']);
         $ok = meta_queue_write_record($path, $record);
 
         return [
             'ok' => $ok,
+            'duplicate' => false,
             'event_id' => (string) $record['event_id'],
             'path' => $path,
             'record' => $record,
         ];
+    }
+}
+
+if (!function_exists('meta_queue_list_recoverable_paths')) {
+    function meta_queue_list_recoverable_paths(int $limit = 20, string $eventId = ''): array
+    {
+        meta_queue_ensure_directories();
+        $limit = max(1, $limit);
+        $eventId = trim($eventId);
+        if ($eventId !== '') {
+            $paths = [];
+            foreach (['pending', 'failed'] as $status) {
+                $path = meta_queue_record_path($status, $eventId);
+                if (is_file($path)) {
+                    $record = meta_queue_load_record($path);
+                    if ($status === 'pending' || (!empty($record['retryable']) && (int) ($record['attempts'] ?? 0) < meta_cfg_queue_max_attempts())) {
+                        $paths[] = $path;
+                    }
+                }
+            }
+            return array_slice($paths, 0, $limit);
+        }
+
+        $paths = glob(meta_queue_dir('pending') . '/*.json') ?: [];
+        $failed = glob(meta_queue_dir('failed') . '/*.json') ?: [];
+        foreach ($failed as $path) {
+            $record = meta_queue_load_record($path);
+            if ($record !== null && !empty($record['retryable']) && (int) ($record['attempts'] ?? 0) < meta_cfg_queue_max_attempts()) {
+                $paths[] = $path;
+            }
+        }
+
+        $processing = glob(meta_queue_dir('processing') . '/*.json') ?: [];
+        foreach ($processing as $path) {
+            $record = meta_queue_load_record($path);
+            $lastAttempt = strtotime((string) ($record['last_attempt_at'] ?? $record['received_at'] ?? '')) ?: 0;
+            if ($record !== null && $lastAttempt > 0 && $lastAttempt <= time() - 300) {
+                $record['status'] = 'pending';
+                $record['error_summary'] = 'Recovered stale processing claim.';
+                meta_queue_write_record($path, $record);
+                $pendingPath = meta_queue_record_path('pending', (string) ($record['event_id'] ?? ''));
+                if (@rename($path, $pendingPath)) {
+                    $paths[] = $pendingPath;
+                }
+            }
+        }
+
+        $paths = array_values(array_unique($paths));
+        usort($paths, static fn(string $a, string $b): int => (filemtime($a) ?: 0) <=> (filemtime($b) ?: 0));
+        return array_slice($paths, 0, $limit);
     }
 }
 

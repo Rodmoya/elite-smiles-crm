@@ -1,0 +1,690 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Guarded lead-nurture agent.
+ *
+ * New leads are explicitly enrolled after the existing first-touch workflow.
+ * Historical leads are never enrolled automatically.
+ */
+
+require_once dirname(__DIR__) . '/config/config.php';
+require_once dirname(__DIR__) . '/core/db.php';
+require_once dirname(__DIR__) . '/core/helpers.php';
+require_once dirname(__DIR__) . '/core/twilio.php';
+require_once dirname(__DIR__) . '/notifications/internal_sms.php';
+require_once __DIR__ . '/lead_communications.php';
+require_once __DIR__ . '/lead_email.php';
+
+if (!function_exists('lead_agent_enabled')) {
+    function lead_agent_enabled(): bool
+    {
+        return defined('ELITE_LEAD_AGENT_ENABLED') && ELITE_LEAD_AGENT_ENABLED;
+    }
+}
+if (!function_exists('lead_agent_mode')) {
+    function lead_agent_mode(): string
+    {
+        $mode = defined('ELITE_LEAD_AGENT_MODE') ? strtolower(trim((string) ELITE_LEAD_AGENT_MODE)) : 'active';
+        return in_array($mode, ['active', 'shadow', 'off'], true) ? $mode : 'shadow';
+    }
+}
+
+if (!function_exists('lead_agent_ensure_schema')) {
+    function lead_agent_ensure_schema(): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
+
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_states (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            lead_id INT UNSIGNED NOT NULL,
+            status VARCHAR(40) NOT NULL DEFAULT 'active',
+            cadence_step INT UNSIGNED NOT NULL DEFAULT 0,
+            started_at DATETIME NOT NULL,
+            next_action_at DATETIME NULL,
+            last_action_at DATETIME NULL,
+            last_inbound_event_key VARCHAR(160) NOT NULL DEFAULT '',
+            last_decision VARCHAR(80) NOT NULL DEFAULT '',
+            handoff_notified_at DATETIME NULL,
+            human_takeover TINYINT(1) NOT NULL DEFAULT 0,
+            pause_reason VARCHAR(190) NOT NULL DEFAULT '',
+            lock_token VARCHAR(80) NOT NULL DEFAULT '',
+            locked_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_lead (lead_id),
+            KEY idx_lead_agent_due (status, next_action_at),
+            KEY idx_lead_agent_lock (locked_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_events (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            lead_id INT UNSIGNED NOT NULL,
+            event_key VARCHAR(190) NOT NULL,
+            event_type VARCHAR(60) NOT NULL,
+            channel VARCHAR(20) NOT NULL DEFAULT '',
+            status VARCHAR(30) NOT NULL DEFAULT 'recorded',
+            reason VARCHAR(190) NOT NULL DEFAULT '',
+            payload_json LONGTEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_event (event_key),
+            KEY idx_lead_agent_event_lead (lead_id, created_at),
+            KEY idx_lead_agent_event_type (event_type, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
+}
+
+if (!function_exists('lead_agent_cadence_plan')) {
+    function lead_agent_cadence_plan(): array
+    {
+        return [
+            1 => ['hours' => 3.5, 'channel' => 'sms', 'phase' => 'same_day'],
+            2 => ['hours' => 18, 'channel' => 'email', 'phase' => 'active_sprint'],
+            3 => ['hours' => 24, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            4 => ['hours' => 42, 'channel' => 'email', 'phase' => 'active_sprint'],
+            5 => ['hours' => 48, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            6 => ['hours' => 66, 'channel' => 'email', 'phase' => 'active_sprint'],
+            7 => ['hours' => 72, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            8 => ['hours' => 96, 'channel' => 'email', 'phase' => 'daily_taper'],
+            9 => ['hours' => 120, 'channel' => 'sms', 'phase' => 'daily_taper'],
+            10 => ['hours' => 144, 'channel' => 'email', 'phase' => 'daily_taper'],
+            11 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'daily_taper'],
+            12 => ['hours' => 252, 'channel' => 'email', 'phase' => 'twice_weekly'],
+            13 => ['hours' => 336, 'channel' => 'sms', 'phase' => 'twice_weekly'],
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_align_contact_time')) {
+    function lead_agent_align_contact_time(DateTimeImmutable $candidate): DateTimeImmutable
+    {
+        $hour = (int) $candidate->format('G');
+        if ($hour < 8) {
+            return $candidate->setTime(8, 0);
+        }
+        if ($hour >= 21) {
+            return $candidate->modify('+1 day')->setTime(8, 0);
+        }
+        return $candidate;
+    }
+}
+
+if (!function_exists('lead_agent_step_schedule')) {
+    function lead_agent_step_schedule(string $startedAt, int $step): array
+    {
+        $plan = lead_agent_cadence_plan();
+        $start = new DateTimeImmutable($startedAt !== '' ? $startedAt : 'now', new DateTimeZone(APP_TIMEZONE));
+        if (isset($plan[$step])) {
+            $hours = (float) $plan[$step]['hours'];
+            $seconds = (int) round($hours * 3600);
+            $at = lead_agent_align_contact_time($start->modify('+' . $seconds . ' seconds'));
+            return $plan[$step] + ['step' => $step, 'at' => $at->format('Y-m-d H:i:s')];
+        }
+
+        $extra = max(1, $step - count($plan));
+        $hours = 336 + ($extra * 84);
+        $channel = $extra % 2 === 0 ? 'sms' : 'email';
+        $at = lead_agent_align_contact_time($start->modify('+' . ($hours * 3600) . ' seconds'));
+        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'twice_weekly', 'at' => $at->format('Y-m-d H:i:s')];
+    }
+}
+
+if (!function_exists('lead_agent_policy_flags')) {
+    function lead_agent_policy_flags(string $body): array
+    {
+        $flags = [];
+        $text = strtolower(trim($body));
+        if ($text === '') {
+            return ['empty_message'];
+        }
+        if (preg_match('/\b(cost|price|pricing|payment|payments|financ(?:e|ing)|monthly payment|credit approval|quote)\b|\$\s*\d/i', $text)) {
+            $flags[] = 'treatment_cost_language';
+        }
+        if (preg_match('/\b(guarantee|guaranteed|perfect result|will fix|best treatment for you|you are a candidate)\b/i', $text)) {
+            $flags[] = 'outcome_or_clinical_claim';
+        }
+        if (preg_match('/\b(card number|social security|ssn)\b|\b\d{3}-\d{2}-\d{4}\b/i', $text)) {
+            $flags[] = 'sensitive_information';
+        }
+        return array_values(array_unique($flags));
+    }
+}
+
+if (!function_exists('lead_agent_classify_inbound')) {
+    function lead_agent_classify_inbound(string $body): string
+    {
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        if ($text === '') {
+            return 'needs_attention';
+        }
+        if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text)\b/i', $text)) {
+            return 'opt_out';
+        }
+        if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause)\b/i', $text)) {
+            return 'pause';
+        }
+        if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
+            return 'cost_redirect';
+        }
+        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|afternoon|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
+            return 'ready_to_schedule';
+        }
+        if (preg_match('/\b(call me|please call|can you call|complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
+            return 'needs_attention';
+        }
+        return 'general';
+    }
+}
+
+if (!function_exists('lead_agent_event')) {
+    function lead_agent_event(int $leadId, string $eventKey, string $type, string $channel, string $status, string $reason, array $payload = []): bool
+    {
+        lead_agent_ensure_schema();
+        try {
+            db_insert(
+                'INSERT INTO lead_agent_events (lead_id, event_key, event_type, channel, status, reason, payload_json, created_at)
+                 VALUES (:lead_id, :event_key, :event_type, :channel, :status, :reason, :payload_json, NOW())',
+                [
+                    'lead_id' => $leadId,
+                    'event_key' => substr($eventKey, 0, 190),
+                    'event_type' => substr($type, 0, 60),
+                    'channel' => substr($channel, 0, 20),
+                    'status' => substr($status, 0, 30),
+                    'reason' => substr($reason, 0, 190),
+                    'payload_json' => $payload ? json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null,
+                ]
+            );
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
+if (!function_exists('lead_agent_enroll')) {
+    function lead_agent_enroll(int $leadId, array $context = []): array
+    {
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+            return ['ok' => true, 'enrolled' => false, 'message' => 'Lead agent is disabled.'];
+        }
+        lead_agent_ensure_schema();
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'enrolled' => false, 'message' => 'Lead not found.'];
+        }
+        if (in_array(trim((string) ($lead['status'] ?? '')), ['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead'], true)) {
+            return ['ok' => true, 'enrolled' => false, 'message' => 'Lead stage is not eligible for nurture.'];
+        }
+
+        $startedAt = now();
+        $next = lead_agent_step_schedule($startedAt, 1);
+        db_query(
+            "INSERT INTO lead_agent_states (lead_id, status, cadence_step, started_at, next_action_at, last_action_at, last_decision, created_at, updated_at)
+             VALUES (:lead_id, 'active', 0, :started_at, :next_action_at, :last_action_at, 'enrolled_after_first_touch', NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                status = IF(human_takeover = 1, status, 'active'),
+                next_action_at = IF(human_takeover = 1, next_action_at, VALUES(next_action_at)),
+                last_action_at = IF(human_takeover = 1, last_action_at, VALUES(last_action_at)),
+                last_decision = IF(human_takeover = 1, last_decision, 'reenrolled_after_first_touch'),
+                updated_at = NOW()",
+            ['lead_id' => $leadId, 'started_at' => $startedAt, 'next_action_at' => $next['at'], 'last_action_at' => $startedAt]
+        );
+        lead_agent_event($leadId, 'enroll-' . $leadId . '-' . date('YmdHis'), 'enrolled', '', 'recorded', 'first_touch_completed', $context + ['next_action_at' => $next['at']]);
+        if (function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity($leadId, 'lead_agent_enrolled', 'Lead Agent started the active-sprint nurture sequence.', [
+                'next_action_at' => $next['at'],
+                'mode' => lead_agent_mode(),
+                'source' => (string) ($context['source'] ?? 'new_lead_first_touch'),
+            ], 'Lead Agent');
+        }
+        return ['ok' => true, 'enrolled' => true, 'next_action_at' => $next['at']];
+    }
+}
+
+if (!function_exists('lead_agent_pause')) {
+    function lead_agent_pause(int $leadId, string $reason, string $status = 'paused'): void
+    {
+        lead_agent_ensure_schema();
+        db_execute(
+            'UPDATE lead_agent_states SET status = :status, next_action_at = NULL, pause_reason = :reason, lock_token = \'\', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id',
+            ['status' => $status, 'reason' => substr($reason, 0, 190), 'lead_id' => $leadId]
+        );
+    }
+}
+
+if (!function_exists('lead_agent_internal_handoff')) {
+    function lead_agent_internal_handoff(array $lead, string $kind, string $reason): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $status = $kind === 'ready_to_schedule' ? 'ready_to_schedule' : 'needs_attention';
+        lead_agent_pause($leadId, $reason, $status);
+
+        if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+            db_execute('UPDATE leads SET follow_up_status = :status, next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1', [
+                'status' => $status === 'ready_to_schedule' ? 'ready_to_schedule' : 'needs_follow_up',
+                'id' => $leadId,
+            ]);
+        }
+
+        $push = ['sent' => false, 'configured' => false];
+        try {
+            $pushPath = dirname(__DIR__) . '/core/mobile_ai_push.php';
+            if (is_file($pushPath)) {
+                require_once $pushPath;
+            }
+            if (function_exists('mobile_ai_send_lead_event_push')) {
+                $push = mobile_ai_send_lead_event_push($lead, [
+                    'lead_id' => $leadId,
+                    'type' => 'reply',
+                    'message' => $status === 'ready_to_schedule'
+                        ? 'Ready to schedule. Lead Agent paused; Rod must provide appointment times.'
+                        : 'Lead Agent needs help deciding the next response and has paused.',
+                    'notification_id' => 'lead-agent-' . $status . '-' . $leadId . '-' . time(),
+                ]);
+            }
+        } catch (Throwable $e) {
+            esm_log('lead_agent', 'Elite AI handoff push failed.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+        }
+
+        $internal = ['ok' => false, 'message' => 'Rod recipient is unavailable.'];
+        $recipient = internal_sms_find_recipient('rod_moya');
+        if ($recipient && !empty($recipient['enabled'])) {
+            $internal = internal_sms_send(
+                $recipient,
+                $status === 'ready_to_schedule'
+                    ? 'Elite AI: A lead is ready to schedule. Lead Agent is paused. Open CRM lead #' . $leadId . ' to provide and confirm appointment times.'
+                    : 'Elite AI: Lead Agent needs your review for CRM lead #' . $leadId . '. Automation is paused.',
+                0
+            );
+        }
+
+        db_execute('UPDATE lead_agent_states SET handoff_notified_at = NOW(), last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id', [
+            'decision' => $status,
+            'lead_id' => $leadId,
+        ]);
+        lead_agent_event($leadId, 'handoff-' . $status . '-' . $leadId . '-' . time(), 'handoff', '', 'recorded', $reason, [
+            'elite_ai_push_sent' => !empty($push['sent']),
+            'internal_sms_sent' => !empty($internal['ok']),
+        ]);
+        lead_comm_insert_activity($leadId, 'lead_agent_handoff', $status === 'ready_to_schedule'
+            ? 'Lead Agent paused and handed this lead to Rod for scheduling.'
+            : 'Lead Agent paused and requested human review.', [
+                'kind' => $status,
+                'reason' => $reason,
+                'elite_ai_push_sent' => !empty($push['sent']),
+                'internal_sms_sent' => !empty($internal['ok']),
+            ], 'Lead Agent');
+
+        return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal];
+    }
+}
+
+if (!function_exists('lead_agent_sms_send')) {
+    function lead_agent_sms_send(array $lead, string $body, string $eventKey): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $flags = lead_agent_policy_flags($body);
+        if ($flags !== []) {
+            return ['ok' => false, 'message' => 'Policy blocked SMS.', 'policy_flags' => $flags];
+        }
+        $result = elite_twilio_send_sms((string) ($lead['phone'] ?? ''), $body, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Lead Agent SMS could not be delivered. Open the CRM to review.',
+            'original_body' => $body,
+        ]);
+        if (empty($result['ok'])) {
+            return $result;
+        }
+        $sentBody = (string) ($result['body'] ?? $body);
+        $messageId = lead_comm_insert_message([
+            'lead_id' => $leadId,
+            'direction' => 'outbound',
+            'channel' => 'sms',
+            'from_number' => (string) ($result['from'] ?? ''),
+            'to_number' => (string) ($result['to'] ?? $lead['phone'] ?? ''),
+            'body' => $sentBody,
+            'twilio_message_sid' => (string) ($result['twilio_sid'] ?? ''),
+            'twilio_status' => (string) ($result['twilio_status'] ?? ''),
+            'is_read' => 1,
+        ]);
+        lead_comm_insert_activity($leadId, 'lead_agent_sms_outbound', 'Lead Agent sent an approved SMS.', [
+            'message_id' => $messageId,
+            'event_key' => $eventKey,
+            'twilio_sid' => (string) ($result['twilio_sid'] ?? ''),
+        ], 'Lead Agent');
+        lead_comm_update_rollup($leadId);
+        return ['ok' => true, 'message_id' => $messageId, 'body' => $sentBody];
+    }
+}
+
+if (!function_exists('lead_agent_email_send')) {
+    function lead_agent_email_send(array $lead, string $subject, string $body, string $eventKey): array
+    {
+        $flags = lead_agent_policy_flags($subject . ' ' . $body);
+        if ($flags !== []) {
+            return ['ok' => false, 'message' => 'Policy blocked email.', 'policy_flags' => $flags];
+        }
+        $result = lead_email_send((int) ($lead['id'] ?? 0), $subject, $body, 'Lead Agent');
+        if (!empty($result['ok'])) {
+            lead_comm_insert_activity((int) $lead['id'], 'lead_agent_email_outbound', 'Lead Agent sent an approved email.', [
+                'email_id' => (int) ($result['email_id'] ?? 0),
+                'event_key' => $eventKey,
+            ], 'Lead Agent');
+        }
+        return $result;
+    }
+}
+
+if (!function_exists('lead_agent_first_name')) {
+    function lead_agent_first_name(array $lead): string
+    {
+        $name = trim((string) ($lead['full_name'] ?? ''));
+        $first = preg_split('/\s+/', $name)[0] ?? '';
+        return preg_replace('/[^\p{L}\p{M}\'\-]/u', '', $first) ?: '';
+    }
+}
+
+if (!function_exists('lead_agent_approved_followup')) {
+    function lead_agent_approved_followup(array $lead, string $channel, int $step): array
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $sms = [
+            1 => $hello . ' Rod with Elite Smiles checking back. What would you most like to improve about your smile? I can help you with the next step. Reply STOP to opt out.',
+            3 => $hello . ' if a brighter, more even smile is still on your mind, I can help you arrange a complimentary consultation with Dr. Meden. Do mornings or afternoons usually work better?',
+            5 => $hello . ' just making sure your questions did not get lost. What would help you feel comfortable taking the next step toward your smile consultation?',
+            7 => $hello . ' I am still here to help with your smile goals. Would you like Rod to help arrange your complimentary consultation?',
+            9 => $hello . ' checking in from Elite Smiles. If you are still exploring your options, a complimentary consultation is the easiest next step. Would you like help getting started?',
+            11 => $hello . ' your smile consultation is here whenever you are ready. Reply with the best day of the week and Rod can help from there.',
+            13 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply when you are ready and we will help with the next step.',
+        ];
+        if ($channel === 'sms') {
+            $body = $sms[$step] ?? $hello . ' Elite Smiles checking in. Is improving your smile still something you would like help with? Reply STOP to opt out.';
+            return ['subject' => '', 'body' => $body];
+        }
+
+        $subject = $step <= 4 ? 'Your smile goals' : 'Still thinking about your smile?';
+        $body = $hello . "\n\n"
+            . ($step <= 4
+                ? 'I wanted to make sure you have an easy way to continue the conversation. Dr. Meden can review your goals during a complimentary consultation and explain which options fit your smile.'
+                : 'Whenever you are ready, Elite Smiles can help you understand what is possible for your smile through a complimentary consultation with Dr. Meden.')
+            . "\n\nWould mornings or afternoons usually be easier for you?\n\nElite Smiles";
+        return ['subject' => $subject, 'body' => $body];
+    }
+}
+
+if (!function_exists('lead_agent_cost_redirect')) {
+    function lead_agent_cost_redirect(array $lead, string $channel): array
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $body = $hello . ' every smile is different, so Dr. Meden reviews your goals and clinical needs during the complimentary consultation. Would you like Rod to help get that scheduled?';
+        return $channel === 'email'
+            ? ['subject' => 'Your Elite Smiles consultation', 'body' => $body . "\n\nElite Smiles"]
+            : ['subject' => '', 'body' => $body];
+    }
+}
+
+if (!function_exists('lead_agent_handle_inbound')) {
+    function lead_agent_handle_inbound(int $leadId, string $body, string $channel = 'sms', string $eventKey = ''): array
+    {
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+            return ['ok' => true, 'handled' => false, 'message' => 'Lead agent is disabled.'];
+        }
+        lead_agent_ensure_schema();
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'handled' => false, 'message' => 'Lead not found.'];
+        }
+
+        $eventKey = $eventKey !== '' ? $eventKey : 'inbound-' . $channel . '-' . $leadId . '-' . hash('sha256', $body);
+        $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        if (!$state) {
+            lead_agent_enroll($leadId, ['source' => 'inbound_message']);
+            $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        }
+        if ((string) ($state['last_inbound_event_key'] ?? '') === $eventKey) {
+            return ['ok' => true, 'handled' => false, 'duplicate' => true];
+        }
+
+        db_execute('UPDATE lead_agent_states SET last_inbound_event_key = :event_key, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
+            'event_key' => substr($eventKey, 0, 160),
+            'lead_id' => $leadId,
+        ]);
+        $intent = lead_agent_classify_inbound($body);
+        lead_agent_event($leadId, $eventKey, 'inbound_classified', $channel, 'recorded', $intent);
+
+        if ($intent === 'opt_out') {
+            lead_agent_pause($leadId, 'inbound_opt_out', 'opted_out');
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
+        }
+        if ($intent === 'pause') {
+            lead_agent_pause($leadId, 'lead_not_ready', 'paused');
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
+        }
+        if ($intent === 'ready_to_schedule') {
+            return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Inbound message indicates scheduling intent.') + ['intent' => $intent, 'handled' => true];
+        }
+        if ($intent === 'needs_attention') {
+            return lead_agent_internal_handoff($lead, 'needs_attention', 'Inbound message requires human judgment.') + ['intent' => $intent, 'handled' => true];
+        }
+
+        $draft = null;
+        if ($intent === 'cost_redirect') {
+            $draft = lead_agent_cost_redirect($lead, $channel);
+        } else {
+            $leadAiPath = __DIR__ . '/lead_ai.php';
+            if (is_file($leadAiPath)) {
+                require_once $leadAiPath;
+            }
+            if ($channel === 'email' && function_exists('lead_ai_generate_email')) {
+                $ai = lead_ai_generate_email($lead, $body, 'lead_agent_inbound_email');
+                $data = (array) ($ai['data'] ?? []);
+                if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
+                    $draft = ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')];
+                }
+            } elseif (function_exists('lead_ai_generate_reply')) {
+                $ai = lead_ai_generate_reply($lead, $body, 'lead_agent_inbound_sms');
+                $data = (array) ($ai['data'] ?? []);
+                if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
+                    $draft = ['subject' => '', 'body' => (string) ($data['reply'] ?? '')];
+                }
+            }
+        }
+
+        if (!$draft || lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? '')) !== []) {
+            return lead_agent_internal_handoff($lead, 'needs_attention', 'AI response was low confidence or failed a policy gate.') + ['intent' => $intent, 'handled' => true];
+        }
+
+        $sendKey = 'reply-' . $eventKey;
+        if (lead_agent_mode() === 'shadow') {
+            lead_agent_event($leadId, $sendKey, 'shadow_reply', $channel, 'would_send', $intent, $draft);
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false, 'shadow' => true];
+        }
+        $send = $channel === 'email'
+            ? lead_agent_email_send($lead, (string) $draft['subject'], (string) $draft['body'], $sendKey)
+            : lead_agent_sms_send($lead, (string) $draft['body'], $sendKey);
+        if (empty($send['ok'])) {
+            return lead_agent_internal_handoff($lead, 'needs_attention', 'Approved response could not be delivered.') + ['intent' => $intent, 'handled' => true];
+        }
+
+        $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+24 hours'));
+        db_execute("UPDATE lead_agent_states SET status = 'engaged', last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
+            'next_action_at' => $next->format('Y-m-d H:i:s'),
+            'lead_id' => $leadId,
+        ]);
+        lead_agent_event($leadId, $sendKey, 'automatic_reply', $channel, 'sent', $intent);
+        return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => true];
+    }
+}
+
+if (!function_exists('lead_agent_daily_outbound_count')) {
+    function lead_agent_daily_outbound_count(int $leadId, string $date): int
+    {
+        $sms = (int) db_value("SELECT COUNT(*) FROM lead_messages WHERE lead_id = :lead_id AND direction = 'outbound' AND DATE(created_at) = :day", ['lead_id' => $leadId, 'day' => $date]);
+        $email = 0;
+        try {
+            $email = (int) db_value("SELECT COUNT(*) FROM lead_emails WHERE lead_id = :lead_id AND direction = 'outbound' AND DATE(created_at) = :day", ['lead_id' => $leadId, 'day' => $date]);
+        } catch (Throwable $e) {
+            $email = 0;
+        }
+        return $sms + $email;
+    }
+}
+
+if (!function_exists('lead_agent_guardrail_reason')) {
+    function lead_agent_guardrail_reason(array $lead, array $state, array $schedule): string
+    {
+        if (!empty($state['human_takeover'])) {
+            return 'human_takeover';
+        }
+        $stage = trim((string) ($lead['status'] ?? ''));
+        if (in_array($stage, ['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead'], true)) {
+            return 'terminal_or_human_stage';
+        }
+        if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
+            return 'consultation_date_present';
+        }
+        if ((string) ($lead['sms_opt_status'] ?? '') === 'opted_out' && (string) ($lead['email_opt_status'] ?? '') === 'unsubscribed') {
+            return 'all_channels_opted_out';
+        }
+        $hour = (int) date('G');
+        if ($hour < 8 || $hour >= 21) {
+            return 'quiet_hours';
+        }
+        $startedDay = substr((string) ($state['started_at'] ?? ''), 0, 10);
+        $today = date('Y-m-d');
+        $max = $today === $startedDay ? 3 : (((int) ($schedule['hours'] ?? 0)) <= 72 ? 2 : 1);
+        if (lead_agent_daily_outbound_count((int) $lead['id'], $today) >= $max) {
+            return 'daily_cap';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lead_agent_process_state')) {
+    function lead_agent_process_state(array $state, bool $dryRun = false): array
+    {
+        $leadId = (int) ($state['lead_id'] ?? 0);
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            lead_agent_pause($leadId, 'lead_missing', 'paused');
+            return ['lead_id' => $leadId, 'action' => 'paused', 'reason' => 'lead_missing'];
+        }
+
+        $nextStep = (int) ($state['cadence_step'] ?? 0) + 1;
+        $schedule = lead_agent_step_schedule((string) ($state['started_at'] ?? now()), $nextStep);
+        $reason = lead_agent_guardrail_reason($lead, $state, $schedule);
+        if ($reason !== '') {
+            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'all_channels_opted_out', 'human_takeover'], true)) {
+                lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
+            } else {
+                $deferred = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify($reason === 'daily_cap' ? '+1 day' : '+1 hour'));
+                db_execute('UPDATE lead_agent_states SET next_action_at = :next_action_at, last_decision = :decision, lock_token = \'\', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
+                    'next_action_at' => $deferred->format('Y-m-d H:i:s'), 'decision' => 'deferred_' . $reason, 'lead_id' => $leadId,
+                ]);
+            }
+            return ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => $reason];
+        }
+
+        $channel = (string) $schedule['channel'];
+        if ($channel === 'sms' && ((string) ($lead['sms_opt_status'] ?? '') === 'opted_out' || trim((string) ($lead['phone'] ?? '')) === '')) {
+            $channel = 'email';
+        }
+        if ($channel === 'email' && ((string) ($lead['email_opt_status'] ?? '') === 'unsubscribed' || !filter_var((string) ($lead['email'] ?? ''), FILTER_VALIDATE_EMAIL))) {
+            $channel = 'sms';
+        }
+        if (($channel === 'sms' && trim((string) ($lead['phone'] ?? '')) === '') || ($channel === 'email' && !filter_var((string) ($lead['email'] ?? ''), FILTER_VALIDATE_EMAIL))) {
+            lead_agent_internal_handoff($lead, 'needs_attention', 'No consented, deliverable contact channel remains.');
+            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'no_delivery_channel'];
+        }
+
+        $eventKey = 'cadence-' . $leadId . '-' . $nextStep;
+        $draft = lead_agent_approved_followup($lead, $channel, $nextStep);
+        $flags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
+        if ($flags !== []) {
+            lead_agent_internal_handoff($lead, 'needs_attention', 'Cadence content failed a policy gate.');
+            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'policy_gate', 'flags' => $flags];
+        }
+        if ($dryRun || lead_agent_mode() === 'shadow') {
+            lead_agent_event($leadId, $eventKey . '-shadow-' . date('YmdHi'), 'shadow_cadence', $channel, 'would_send', (string) $schedule['phase'], ['step' => $nextStep]);
+            db_execute('UPDATE lead_agent_states SET lock_token = \'\', locked_at = NULL, last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id', [
+                'decision' => 'shadow_would_send_step_' . $nextStep, 'lead_id' => $leadId,
+            ]);
+            return ['lead_id' => $leadId, 'action' => 'would_send', 'channel' => $channel, 'step' => $nextStep];
+        }
+
+        if (!lead_agent_event($leadId, $eventKey, 'cadence_reserved', $channel, 'pending', (string) $schedule['phase'], ['step' => $nextStep])) {
+            return ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'duplicate_event'];
+        }
+        $send = $channel === 'email'
+            ? lead_agent_email_send($lead, (string) $draft['subject'], (string) $draft['body'], $eventKey)
+            : lead_agent_sms_send($lead, (string) $draft['body'], $eventKey);
+        if (empty($send['ok'])) {
+            db_execute("UPDATE lead_agent_events SET status = 'failed', reason = :reason WHERE event_key = :event_key", [
+                'reason' => substr((string) ($send['message'] ?? 'delivery_failed'), 0, 190), 'event_key' => $eventKey,
+            ]);
+            lead_agent_internal_handoff($lead, 'needs_attention', 'Automated follow-up delivery failed.');
+            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'delivery_failed'];
+        }
+
+        $following = lead_agent_step_schedule((string) $state['started_at'], $nextStep + 1);
+        db_execute("UPDATE lead_agent_states SET status = 'active', cadence_step = :step, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = :decision, lock_token = '', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", [
+            'step' => $nextStep,
+            'next_action_at' => $following['at'],
+            'decision' => 'sent_step_' . $nextStep,
+            'lead_id' => $leadId,
+        ]);
+        db_execute("UPDATE lead_agent_events SET status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at']];
+    }
+}
+
+if (!function_exists('lead_agent_run_due')) {
+    function lead_agent_run_due(int $limit = 20, bool $dryRun = false): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(50, $limit));
+        $rows = db_all("SELECT * FROM lead_agent_states
+            WHERE status IN ('active', 'engaged')
+              AND human_takeover = 0
+              AND next_action_at IS NOT NULL
+              AND next_action_at <= NOW()
+              AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
+            ORDER BY next_action_at ASC, id ASC
+            LIMIT {$limit}");
+
+        $results = [];
+        foreach ($rows as $row) {
+            $leadId = (int) ($row['lead_id'] ?? 0);
+            $token = bin2hex(random_bytes(16));
+            $locked = db_execute("UPDATE lead_agent_states SET lock_token = :token, locked_at = NOW(), updated_at = NOW()
+                WHERE lead_id = :lead_id AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))", [
+                'token' => $token, 'lead_id' => $leadId,
+            ]);
+            if ($locked < 1) {
+                continue;
+            }
+            $fresh = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id AND lock_token = :token LIMIT 1', ['lead_id' => $leadId, 'token' => $token]);
+            if (!$fresh) {
+                continue;
+            }
+            try {
+                $results[] = lead_agent_process_state($fresh, $dryRun);
+            } catch (Throwable $e) {
+                db_execute("UPDATE lead_agent_states SET lock_token = '', locked_at = NULL, last_decision = 'worker_error', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+                esm_log('lead_agent', 'Lead agent worker failed.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+                $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
+            }
+        }
+        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'processed' => count($results), 'results' => $results];
+    }
+}

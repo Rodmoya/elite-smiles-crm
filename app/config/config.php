@@ -51,6 +51,9 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_AI_AUTOREPLY_ENABLED', ($_ENV['ELITE_AI_AUTOREPLY_ENABLED'] ?? 'false') === 'true');
     define('ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED', ($_ENV['ELITE_AI_NEW_LEAD_AUTOTEXT_ENABLED'] ?? 'true') === 'true');
     define('ELITE_AI_MIN_CONFIDENCE', is_numeric($_ENV['ELITE_AI_MIN_CONFIDENCE'] ?? null) ? (float) $_ENV['ELITE_AI_MIN_CONFIDENCE'] : 0.82);
+    define('ELITE_LEAD_AGENT_ENABLED', ($_ENV['ELITE_LEAD_AGENT_ENABLED'] ?? 'true') === 'true');
+    define('ELITE_LEAD_AGENT_MODE', strtolower(trim((string) ($_ENV['ELITE_LEAD_AGENT_MODE'] ?? 'active'))));
+    define('ELITE_LEAD_AGENT_CRON_SECRET', $_ENV['ELITE_LEAD_AGENT_CRON_SECRET'] ?? ($_ENV['ELITE_EMAIL_FOLLOWUP_CRON_SECRET'] ?? ''));
 
     define('ELITE_PUSHOVER_APP_TOKEN', $_ENV['ELITE_PUSHOVER_APP_TOKEN'] ?? '');
     define('ELITE_PUSHOVER_USER_KEY',  $_ENV['ELITE_PUSHOVER_USER_KEY']  ?? '');

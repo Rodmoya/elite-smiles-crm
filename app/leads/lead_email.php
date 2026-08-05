@@ -624,6 +624,19 @@ if (!function_exists('lead_email_record_inbound')) {
             }
         }
 
+        $leadAgentPath = __DIR__ . '/lead_agent.php';
+        if (is_file($leadAgentPath)) {
+            require_once $leadAgentPath;
+        }
+        if (function_exists('lead_agent_enabled') && lead_agent_enabled()) {
+            lead_agent_handle_inbound(
+                $leadId,
+                lead_email_new_reply_text($subject, $body),
+                'email',
+                'email-' . ($sourceId !== '' ? $sourceId : (string) $emailId)
+            );
+        }
+
         return ['ok' => true, 'message' => 'Inbound email logged.', 'lead_id' => $leadId, 'email_id' => $emailId];
     }
 }

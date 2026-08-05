@@ -2413,6 +2413,20 @@ if (!function_exists('lead_create_minimal')) {
                             'notification_id' => 'lead-' . $leadId,
                         ]);
                     }
+
+                    if ($firstTouchSent) {
+                        $leadAgentPath = __DIR__ . '/lead_agent.php';
+                        if (is_file($leadAgentPath)) {
+                            require_once $leadAgentPath;
+                        }
+                        if (function_exists('lead_agent_enroll')) {
+                            lead_agent_enroll($leadId, [
+                                'source' => 'lead_create_minimal_auto_workflow',
+                                'email_sent' => !empty($firstTouchEmail['sent']),
+                                'sms_sent' => !empty($firstTouchSms['sent']),
+                            ]);
+                        }
+                    }
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('lead_workflow', 'Automatic new-lead first-touch workflow failed.', [

@@ -1227,7 +1227,7 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
             ];
             if (function_exists('leads_has_column') && leads_has_column('next_follow_up_at')) {
                 $updates[] = 'next_follow_up_at = :next_follow_up_at';
-                $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+20 minutes'));
+                $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+3 hours 30 minutes'));
             }
             if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
                 $updates[] = "follow_up_status = 'ok'";

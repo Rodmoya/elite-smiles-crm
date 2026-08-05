@@ -1,0 +1,25 @@
+name: Lead Agent
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Evaluate due leads without sending'
+        required: false
+        default: 'false'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run guarded lead agent
+        env:
+          CRON_SECRET: ${{ secrets.ELITE_LEAD_AGENT_CRON_SECRET }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            -H "X-Elite-Cron-Secret: $CRON_SECRET" \
+            "https://hi.elitesmilesutah.com/crm/app/api/lead_agent_cron.php?limit=20&dry_run=${DRY_RUN}"

@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/leads/lead_agent.php';
 
 header('Content-Type: text/xml; charset=utf-8');
 
@@ -162,6 +163,10 @@ if ($command === 'help') {
     exit;
 }
 
-lead_ai_maybe_autoreply_inbound($leadId, $body, $command);
+if (lead_agent_enabled()) {
+    lead_agent_handle_inbound($leadId, $body, 'sms', 'sms-' . ($messageSid !== '' ? $messageSid : (string) $messageId));
+} else {
+    lead_ai_maybe_autoreply_inbound($leadId, $body, $command);
+}
 
 echo '<Response></Response>';

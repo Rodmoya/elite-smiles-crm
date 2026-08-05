@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Guarded lead-nurture agent.
  *
  * New leads are explicitly enrolled after the existing first-touch workflow.
- * Historical leads are never enrolled automatically.
+ * Eligible first-touch records that predate the agent are backfilled safely.
  */
 
 require_once dirname(__DIR__) . '/config/config.php';
@@ -306,6 +306,66 @@ if (!function_exists('lead_agent_event')) {
     }
 }
 
+if (!function_exists('lead_agent_sms_blocked')) {
+    function lead_agent_sms_blocked(array $lead): bool
+    {
+        return in_array(strtolower(trim((string) ($lead['sms_opt_status'] ?? ''))), ['dnd', 'opted_out'], true)
+            || trim((string) ($lead['phone'] ?? '')) === '';
+    }
+}
+
+if (!function_exists('lead_agent_email_blocked')) {
+    function lead_agent_email_blocked(array $lead): bool
+    {
+        return strtolower(trim((string) ($lead['email_opt_status'] ?? ''))) === 'unsubscribed'
+            || !filter_var(trim((string) ($lead['email'] ?? '')), FILTER_VALIDATE_EMAIL);
+    }
+}
+
+if (!function_exists('lead_agent_internal_or_test_record')) {
+    function lead_agent_internal_or_test_record(array $lead): bool
+    {
+        $name = strtolower(trim((string) ($lead['full_name'] ?? '')));
+        if ($name === 'rodrigo moya') {
+            return true;
+        }
+        return $name !== '' && (bool) preg_match('/(?:^|\b)(?:test test|test lead|dummy data|integration test)(?:\b|$)/i', $name);
+    }
+}
+
+if (!function_exists('lead_agent_backfill_ineligible_reason')) {
+    function lead_agent_backfill_ineligible_reason(array $lead): string
+    {
+        if (lead_agent_internal_or_test_record($lead)) {
+            return 'internal_or_test_record';
+        }
+        if (!in_array(trim((string) ($lead['status'] ?? '')), ['contacted', 'attempted_contact'], true)) {
+            return 'stage_not_first_touch';
+        }
+        if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
+            return 'consultation_date_present';
+        }
+        if (in_array(trim((string) ($lead['consultation_status'] ?? '')), ['requested', 'scheduling', 'booked', 'confirmed', 'completed'], true)) {
+            return 'scheduling_or_consultation';
+        }
+        if (in_array(trim((string) ($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)) {
+            return 'human_follow_up_state';
+        }
+        $lastOutbound = trim((string) ($lead['last_outbound_at'] ?? ''));
+        if ($lastOutbound === '' || strtotime($lastOutbound) === false) {
+            return 'first_touch_not_recorded';
+        }
+        $lastInbound = trim((string) ($lead['last_inbound_at'] ?? ''));
+        if ($lastInbound !== '' && strtotime($lastInbound) !== false && strtotime($lastInbound) >= strtotime($lastOutbound)) {
+            return 'newer_inbound_requires_review';
+        }
+        if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
+            return 'no_consented_delivery_channel';
+        }
+        return '';
+    }
+}
+
 if (!function_exists('lead_agent_enroll')) {
     function lead_agent_enroll(int $leadId, array $context = []): array
     {
@@ -321,8 +381,13 @@ if (!function_exists('lead_agent_enroll')) {
             return ['ok' => true, 'enrolled' => false, 'message' => 'Lead stage is not eligible for nurture.'];
         }
 
-        $startedAt = now();
+        $requestedStart = trim((string) ($context['started_at'] ?? ''));
+        $startedAt = $requestedStart !== '' && strtotime($requestedStart) !== false ? $requestedStart : now();
         $next = lead_agent_step_schedule($startedAt, 1);
+        $requestedNext = trim((string) ($context['next_action_at'] ?? ''));
+        if ($requestedNext !== '' && strtotime($requestedNext) !== false) {
+            $next['at'] = $requestedNext;
+        }
         db_query(
             "INSERT INTO lead_agent_states (lead_id, status, cadence_step, started_at, next_action_at, last_action_at, last_decision, created_at, updated_at)
              VALUES (:lead_id, 'active', 0, :started_at, :next_action_at, :last_action_at, 'enrolled_after_first_touch', NOW(), NOW())
@@ -343,6 +408,66 @@ if (!function_exists('lead_agent_enroll')) {
             ], 'Lead Agent');
         }
         return ['ok' => true, 'enrolled' => true, 'next_action_at' => $next['at']];
+    }
+}
+
+if (!function_exists('lead_agent_backfill_eligible')) {
+    function lead_agent_backfill_eligible(int $limit = 200, bool $dryRun = false): array
+    {
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+            return ['ok' => true, 'evaluated' => 0, 'enrolled' => 0, 'candidates' => []];
+        }
+        lead_agent_ensure_schema();
+        $limit = max(1, min(500, $limit));
+        $rows = db_all("SELECT l.*
+            FROM leads l
+            LEFT JOIN lead_agent_states s ON s.lead_id = l.id
+            WHERE s.id IS NULL
+              AND l.status IN ('contacted', 'attempted_contact')
+            ORDER BY COALESCE(l.last_outbound_at, l.updated_at, l.created_at) ASC, l.id ASC
+            LIMIT {$limit}");
+
+        $candidates = [];
+        $enrolled = 0;
+        foreach ($rows as $lead) {
+            $reason = lead_agent_backfill_ineligible_reason($lead);
+            if ($reason !== '') {
+                continue;
+            }
+            $startedAt = (string) $lead['last_outbound_at'];
+            $nextActionAt = lead_agent_step_schedule($startedAt, 1)['at'];
+            $existingNext = trim((string) ($lead['next_follow_up_at'] ?? ''));
+            if ($existingNext !== '' && strtotime($existingNext) !== false && strtotime($existingNext) > time()) {
+                $nextActionAt = $existingNext;
+            }
+            $candidate = [
+                'lead_id' => (int) ($lead['id'] ?? 0),
+                'full_name' => (string) ($lead['full_name'] ?? ''),
+                'started_at' => $startedAt,
+                'next_action_at' => $nextActionAt,
+                'channel' => lead_agent_sms_blocked($lead) ? 'email' : 'sms',
+            ];
+            $candidates[] = $candidate;
+            if ($dryRun) {
+                continue;
+            }
+            $result = lead_agent_enroll((int) $candidate['lead_id'], [
+                'source' => 'eligible_first_touch_backfill',
+                'started_at' => $startedAt,
+                'next_action_at' => $nextActionAt,
+            ]);
+            if (!empty($result['enrolled'])) {
+                $enrolled++;
+            }
+        }
+
+        return [
+            'ok' => true,
+            'evaluated' => count($rows),
+            'enrolled' => $enrolled,
+            'dry_run' => $dryRun,
+            'candidates' => $candidates,
+        ];
     }
 }
 
@@ -664,7 +789,7 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
             return 'consultation_date_present';
         }
-        if ((string) ($lead['sms_opt_status'] ?? '') === 'opted_out' && (string) ($lead['email_opt_status'] ?? '') === 'unsubscribed') {
+        if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
             return 'all_channels_opted_out';
         }
         $hour = (int) date('G');
@@ -707,13 +832,13 @@ if (!function_exists('lead_agent_process_state')) {
         }
 
         $channel = (string) $schedule['channel'];
-        if ($channel === 'sms' && ((string) ($lead['sms_opt_status'] ?? '') === 'opted_out' || trim((string) ($lead['phone'] ?? '')) === '')) {
+        if ($channel === 'sms' && lead_agent_sms_blocked($lead)) {
             $channel = 'email';
         }
-        if ($channel === 'email' && ((string) ($lead['email_opt_status'] ?? '') === 'unsubscribed' || !filter_var((string) ($lead['email'] ?? ''), FILTER_VALIDATE_EMAIL))) {
+        if ($channel === 'email' && lead_agent_email_blocked($lead)) {
             $channel = 'sms';
         }
-        if (($channel === 'sms' && trim((string) ($lead['phone'] ?? '')) === '') || ($channel === 'email' && !filter_var((string) ($lead['email'] ?? ''), FILTER_VALIDATE_EMAIL))) {
+        if (($channel === 'sms' && lead_agent_sms_blocked($lead)) || ($channel === 'email' && lead_agent_email_blocked($lead))) {
             lead_agent_internal_handoff($lead, 'needs_attention', 'No consented, deliverable contact channel remains.');
             return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'no_delivery_channel'];
         }
@@ -764,6 +889,7 @@ if (!function_exists('lead_agent_run_due')) {
     {
         lead_agent_ensure_schema();
         $limit = max(1, min(50, $limit));
+        $backfill = lead_agent_backfill_eligible(200, $dryRun);
         $rows = db_all("SELECT * FROM lead_agent_states
             WHERE status IN ('active', 'engaged')
               AND human_takeover = 0
@@ -806,7 +932,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'processed' => count($results), 'results' => $results];
     }
 }
 

@@ -18,6 +18,27 @@ expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_a
 expect_true(lead_agent_policy_flags('Your treatment price is $500') === ['treatment_cost_language'], 'Treatment price language should be blocked.');
 expect_true(lead_agent_policy_flags('Would mornings or afternoons work better?') === [], 'Approved scheduling language should pass.');
 
+$eligibleBackfill = [
+    'full_name' => 'Real Lead',
+    'status' => 'contacted',
+    'phone' => '+18015550199',
+    'email' => 'lead@example.com',
+    'sms_opt_status' => 'unknown',
+    'email_opt_status' => 'subscribed',
+    'last_outbound_at' => '2026-08-05 10:00:00',
+];
+expect_true(lead_agent_backfill_ineligible_reason($eligibleBackfill) === '', 'A completed first touch should be eligible for safe backfill.');
+expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['full_name' => 'Rodrigo Moya'])) === 'internal_or_test_record', 'The owner record must never be enrolled.');
+expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['last_inbound_at' => '2026-08-05 10:01:00'])) === 'newer_inbound_requires_review', 'A newer inbound reply must block backfill.');
+expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['consultation_date' => '2026-08-10 09:00:00'])) === 'consultation_date_present', 'A consultation must block backfill.');
+$emailOnlyBackfill = $eligibleBackfill;
+$emailOnlyBackfill['sms_opt_status'] = 'dnd';
+expect_true(lead_agent_backfill_ineligible_reason($emailOnlyBackfill) === '', 'An SMS DND lead with subscribed email remains email eligible.');
+expect_true(lead_agent_sms_blocked($emailOnlyBackfill), 'DND must block every automated SMS path.');
+$noChannelBackfill = $emailOnlyBackfill;
+$noChannelBackfill['email_opt_status'] = 'unsubscribed';
+expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
+
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 13, 'Cadence should contain the active sprint, daily taper, and nurture steps.');
 expect_true($plan[1]['hours'] === 3.5 && $plan[1]['channel'] === 'sms', 'First follow-up should be an SMS after 3.5 hours.');

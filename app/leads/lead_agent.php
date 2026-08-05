@@ -345,7 +345,10 @@ if (!function_exists('lead_agent_backfill_ineligible_reason')) {
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
             return 'consultation_date_present';
         }
-        if (in_array(trim((string) ($lead['consultation_status'] ?? '')), ['requested', 'scheduling', 'booked', 'confirmed', 'completed'], true)) {
+        // "requested" is the normal intake default and does not mean an
+        // appointment is being scheduled. Only durable scheduling states stop
+        // automated follow-up.
+        if (in_array(trim((string) ($lead['consultation_status'] ?? '')), ['scheduling', 'booked', 'confirmed', 'completed'], true)) {
             return 'scheduling_or_consultation';
         }
         if (in_array(trim((string) ($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)) {

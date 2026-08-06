@@ -8,6 +8,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the validated main branch to production
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   deploy:
@@ -43,7 +49,7 @@ jobs:
           done
 
       - name: Deploy via FTPS
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
         uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -78,7 +84,7 @@ jobs:
             HANDOFF_*.md
 
       - name: Verify deployed CRM health
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
         env:
           HEALTH_SECRET: ${{ secrets.META_PROCESSOR_SECRET }}
         run: |

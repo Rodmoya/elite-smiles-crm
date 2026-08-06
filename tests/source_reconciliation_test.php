@@ -39,6 +39,8 @@ reconciliation_expect(str_contains($push, "defined('ELITE_WEB_PUSH_PUBLIC_KEY')"
 
 $workflow = $read('.github/workflows/deploy.yml');
 reconciliation_expect(str_contains($workflow, 'composer install --no-interaction'), 'Deployment must install locked Composer dependencies.');
-reconciliation_expect(str_contains($workflow, "if: github.event_name == 'push'"), 'Pull-request validation must not deploy production.');
+reconciliation_expect(str_contains($workflow, "github.ref == 'refs/heads/main'"), 'Production deployment must remain restricted to main.');
+reconciliation_expect(str_contains($workflow, "github.event_name == 'workflow_dispatch' && inputs.deploy"), 'Manual production deployment must require explicit confirmation.');
+reconciliation_expect(!str_contains($workflow, "github.event_name == 'pull_request'"), 'Pull-request validation must not deploy production.');
 
 echo "Source reconciliation safety tests passed.\n";

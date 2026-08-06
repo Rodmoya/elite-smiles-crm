@@ -7,12 +7,13 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     name: validate-and-deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -23,7 +24,11 @@ jobs:
         uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: "8.3"
+          extensions: curl
           coverage: none
+
+      - name: Install production dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
 
       - name: Validate PHP syntax
         run: |

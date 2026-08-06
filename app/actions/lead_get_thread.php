@@ -42,7 +42,11 @@ if (!$lead) {
     exit;
 }
 
-lead_comm_mark_read($leadId);
+$canManageLeads = function_exists('auth_can_manage_leads') && auth_can_manage_leads();
+if ($canManageLeads) {
+    lead_comm_mark_read($leadId);
+}
+
 $snapshot = lead_comm_snapshot($leadId);
 $snapshot['emails'] = lead_email_recent($leadId, 20);
 
@@ -50,6 +54,6 @@ echo json_encode([
     'ok' => true,
     'lead_id' => $leadId,
     'sms_opt_status' => (string)($lead['sms_opt_status'] ?? 'unknown'),
-    'unread_message_count' => 0,
+    'unread_message_count' => $canManageLeads ? 0 : (int)($lead['unread_message_count'] ?? 0),
     'thread' => $snapshot,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

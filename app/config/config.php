@@ -79,6 +79,9 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_CODEX_V1_REQUEST_TTL_SECONDS', is_numeric($_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS'] ?? null)
         ? max(30, min(300, (int)$_ENV['ELITE_CODEX_V1_REQUEST_TTL_SECONDS']))
         : 60);
+    define('ELITE_WEB_PUSH_SUBJECT', $_ENV['ELITE_WEB_PUSH_SUBJECT'] ?? 'mailto:hello@hi.elitesmilesutah.com');
+    define('ELITE_WEB_PUSH_PUBLIC_KEY', $_ENV['ELITE_WEB_PUSH_PUBLIC_KEY'] ?? '');
+    define('ELITE_WEB_PUSH_PRIVATE_KEY', $_ENV['ELITE_WEB_PUSH_PRIVATE_KEY'] ?? '');
     define('ELITE_DENTRIX_WORKER_URL', $_ENV['ELITE_DENTRIX_WORKER_URL'] ?? '');
     define('ELITE_DENTRIX_BRIDGE_SECRET', $_ENV['ELITE_DENTRIX_BRIDGE_SECRET'] ?? '');
 
@@ -190,6 +193,10 @@ if (!defined('ESM_CONFIG_LOADED')) {
             'legacy_enabled' => ELITE_CODEX_LEGACY_API_ENABLED && ELITE_CODEX_API_TOKEN !== '',
             'trust_proxy_https' => ELITE_CODEX_TRUST_PROXY_HTTPS,
             'v1_request_ttl_seconds' => ELITE_CODEX_V1_REQUEST_TTL_SECONDS,
+        ],
+        'web_push' => [
+            'configured' => ELITE_WEB_PUSH_PUBLIC_KEY !== '' && ELITE_WEB_PUSH_PRIVATE_KEY !== '',
+            'public_key' => ELITE_WEB_PUSH_PUBLIC_KEY,
         ],
         'dentrix_bridge' => [
             'worker_url_configured' => ELITE_DENTRIX_WORKER_URL !== '',

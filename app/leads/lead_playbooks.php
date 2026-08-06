@@ -28,6 +28,10 @@ if (!function_exists('lead_playbook_sms_templates')) {
                 'label' => 'Active Follow-Up',
                 'body' => 'No pressure, {first_name}. Most people who reach out are just trying to understand what is possible. A complimentary consultation with Dr. Meden is the easiest way to get clear, custom options instead of guessing. Would morning or afternoon be easier?',
             ],
+            'nurture_reactivation' => [
+                'label' => 'Nurture Reactivation',
+                'body' => 'Hi {first_name}, Rod from Elite Smiles. Just checking in softly. If you are still curious what veneers could look like for your smile, the consultation is complimentary and completely custom. Want me to send a couple times this week? Reply STOP to opt out.',
+            ],
             'financing_concern' => [
                 'label' => 'Financing Concern',
                 'body' => 'That makes sense, {first_name}. Financing depends on the treatment plan, and the plan depends on what Dr. Meden sees clinically. The complimentary consultation is where we can review what fits your smile and what payment options may apply.',

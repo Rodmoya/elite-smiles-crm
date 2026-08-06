@@ -22,7 +22,8 @@ if (!is_array($credential) || empty($credential['token']) || empty($credential['
 
 $method = strtoupper((string)($options['method'] ?? 'GET'));
 $action = trim((string)($options['action'] ?? 'health'));
-$json = trim((string)($options['json'] ?? ''));
+$jsonFile = trim((string)($options['json-file'] ?? ''));
+$json = $jsonFile !== '' ? trim((string)@file_get_contents($jsonFile)) : trim((string)($options['json'] ?? ''));
 $body = $json !== '' ? json_decode($json, true) : [];
 if (!is_array($body)) {
     fwrite(STDERR, "--json must contain a JSON object.\n");

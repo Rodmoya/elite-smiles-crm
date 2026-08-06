@@ -15,7 +15,9 @@ require_once dirname(__DIR__) . '/meta/meta_config.php';
 require_once dirname(__DIR__) . '/meta/meta_queue.php';
 require_once dirname(__DIR__) . '/meta/meta_lead_service.php';
 
-header('Content-Type: application/json; charset=utf-8');
+if (!defined('META_PROCESSOR_LIBRARY_ONLY')) {
+    header('Content-Type: application/json; charset=utf-8');
+}
 
 function meta_processor_is_cli(): bool
 {

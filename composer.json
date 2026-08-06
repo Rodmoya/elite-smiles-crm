@@ -1,0 +1,7 @@
+{
+    "require": {
+        "minishlink/web-push": "^9.0",
+        "chillerlan/php-qrcode": "^5.0"
+    },
+    "license": "proprietary"
+}

@@ -29,7 +29,7 @@ if (!function_exists('internal_sms_default_recipients')) {
     function internal_sms_default_recipients(): array
     {
         return [
-            ['key' => 'dr_meden', 'name' => 'Dr. Walter Meden', 'phone' => '8015029005', 'enabled' => true],
+            ['key' => 'dr_meden', 'name' => 'Dr. Walter Meden', 'phone' => '8016887200', 'enabled' => true],
             ['key' => 'rod_moya', 'name' => 'Rod Moya', 'phone' => '8014994831', 'enabled' => true],
         ];
     }

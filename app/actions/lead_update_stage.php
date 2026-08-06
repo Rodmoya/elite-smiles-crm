@@ -28,7 +28,25 @@ if (!auth_check()) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+
+    http_response_code(403);
+
+    echo json_encode([
+
+        'ok' => false,
+
+        'message' => 'Forbidden. Your role is read-only.',
+
+    ]);
+
+    exit;
+
+}
+
+
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode([
         'ok' => false,
@@ -207,6 +225,13 @@ try {
                         'recipients' => $recipientText,
                     ]
                 );
+            }
+
+            if ($newStage === 'consultation_booked' && function_exists('lead_send_consultation_booked_internal_sms')) {
+                lead_send_consultation_booked_internal_sms($leadId, $oldStage, [
+                    'source' => 'lead_update_stage',
+                    'created_by' => auth_name(),
+                ]);
             }
         }
 

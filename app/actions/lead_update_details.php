@@ -165,7 +165,21 @@ if (!auth_check()) {
     ]);
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+
+    lead_update_json_response(403, [
+
+        'ok' => false,
+
+        'message' => 'Forbidden. Your role is read-only.',
+
+    ]);
+
+}
+
+
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     lead_update_json_response(405, [
         'ok' => false,
         'message' => 'Method not allowed.',

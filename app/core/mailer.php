@@ -1195,6 +1195,7 @@ if (!function_exists('elite_send_lead_notification_pushover')) {
         }
 
         $title = 'New lead from ' . $source;
+        $quickActionUrl = elite_quick_action_url($lead, $context);
 
         $lines = [];
         $lines[] = 'Name: ' . $fullName;

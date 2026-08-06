@@ -219,6 +219,7 @@ if (!function_exists('elite_ai_tool_run')) {
                     $request = $input + [
                         'surface' => $surface,
                         'lead_id' => (int) ($input['lead_id'] ?? $context['lead_id'] ?? 0),
+                        'context' => $context,
                     ];
                     return ['tool' => $toolName] + elite_ai_handle_move_stage_action($user, $request, $surface);
 
@@ -229,6 +230,7 @@ if (!function_exists('elite_ai_tool_run')) {
                     $request = $input + [
                         'surface' => $surface,
                         'lead_id' => (int) ($input['lead_id'] ?? $context['lead_id'] ?? 0),
+                        'context' => $context,
                     ];
                     return ['tool' => $toolName] + elite_ai_handle_add_note_action($user, $request, $surface);
 
@@ -241,6 +243,7 @@ if (!function_exists('elite_ai_tool_run')) {
                         'surface' => $surface,
                         'assistant_action' => $toolName === 'lead.draft_sms' ? 'draft_sms' : 'draft_email',
                         'lead_id' => (int) ($input['lead_id'] ?? $context['lead_id'] ?? 0),
+                        'context' => $context,
                     ];
                     return ['tool' => $toolName] + elite_ai_prepare_action_draft($user, $request, $surface);
 

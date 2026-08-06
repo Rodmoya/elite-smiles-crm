@@ -23,15 +23,63 @@ if (is_post() && post('action') === 'logout_mobile_ai') {
 }
 
 $mobileUser = mobile_ai_require_user_session();
+if (is_post()) {
+    $request = json_decode((string) file_get_contents('php://input'), true);
+    if (is_array($request) && ($request['action'] ?? '') === 'save_push_subscription') {
+        $csrfToken = trim((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($request['_csrf_token'] ?? '')));
+        if (!csrf_validate($csrfToken)) {
+            http_response_code(419);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Invalid session token.',
+            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $subscription = (array) ($request['subscription'] ?? []);
+        $saved = mobile_ai_save_push_subscription(
+            (int) ($mobileUser['id'] ?? 0),
+            $subscription,
+            substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 150),
+            'Elite AI Home Screen'
+        );
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => $saved,
+            'message' => $saved ? 'Notifications connected.' : 'Could not save the notification connection.',
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+if (get('notification_feed') === '1') {
+    $feedNotifications = elite_ai_notification_rows(20);
+    $feedVersion = hash('sha256', json_encode($feedNotifications, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode([
+        'ok' => true,
+        'version' => $feedVersion,
+        'server_time' => now(),
+        'poll_after_ms' => 2000,
+        'notifications' => $feedNotifications,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $tab = strtolower(trim((string) get('tab', 'assistant')));
 if (!in_array($tab, ['assistant', 'notifications'], true)) {
     $tab = 'assistant';
 }
 $showWelcome = get('welcome') === '1';
-$notifications = elite_ai_notification_rows(5);
+$notificationFeedSeed = elite_ai_notification_rows(20);
+$notifications = array_slice($notificationFeedSeed, 0, 5);
+$notificationVersion = hash('sha256', json_encode($notificationFeedSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+$mobileUnreadCount = count(array_filter($notificationFeedSeed, static fn (array $item): bool => !empty($item['is_new'])));
 $fullName = trim(($mobileUser['first_name'] ?? '') . ' ' . ($mobileUser['last_name'] ?? ''));
 $firstName = trim((string) ($mobileUser['first_name'] ?? ''));
-$displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 'Rodrigo');
+$displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 'there');
 ?>
 <!doctype html>
 <html lang="en">
@@ -53,22 +101,34 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             --accent: #111827;
             --danger: #b91c1c;
             --shadow: 0 16px 38px rgba(17, 24, 39, 0.08);
+            --app-height: 100dvh;
+            --app-top: 0px;
         }
         * { box-sizing: border-box; }
-        html, body { margin: 0; min-height: 100%; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
         body {
-            min-height: 100vh;
             background: var(--bg);
             color: var(--ink);
             font-family: Arial, Helvetica, sans-serif;
         }
         .app {
+            position: fixed;
+            inset-inline: 0;
+            top: var(--app-top);
             width: min(100%, 760px);
-            min-height: 100vh;
+            height: var(--app-height);
+            min-height: 0;
             margin: 0 auto;
             display: grid;
-            grid-template-rows: auto 1fr auto;
-            padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom);
+            grid-template-rows: auto minmax(0, 1fr) auto auto;
+            overflow: hidden;
+            padding: env(safe-area-inset-top) 14px 0;
         }
         .topbar {
             position: sticky;
@@ -90,6 +150,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             letter-spacing: 0;
         }
         .icon-btn {
+            position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -107,12 +168,34 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             border-color: var(--accent);
             color: #fff;
         }
+        .icon-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            display: inline-flex;
+            min-width: 20px;
+            height: 20px;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--bg);
+            border-radius: 999px;
+            padding: 0 5px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
+        }
         .thread {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-height: 0;
             padding: 12px 0 18px;
-            overflow: visible;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scroll-padding-bottom: 12px;
         }
         .hidden {
             display: none !important;
@@ -338,8 +421,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             line-height: 1.45;
         }
         .composer-wrap {
-            position: sticky;
-            bottom: 0;
+            position: relative;
             z-index: 4;
             padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px);
             background: linear-gradient(180deg, rgba(248,250,252,0), rgba(248,250,252,0.96) 24%, #f8fafc);
@@ -362,7 +444,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             outline: 0;
             background: transparent;
             color: var(--ink);
-            font-size: 15px;
+            font-size: 16px;
             padding: 0 8px;
         }
         .composer button {
@@ -381,6 +463,18 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             border-color: var(--accent);
             background: var(--accent);
             color: #fff;
+        }
+        body.keyboard-open .quick-actions-shell {
+            display: none;
+        }
+        body.keyboard-open .composer-wrap {
+            padding-top: 6px;
+            padding-bottom: 6px;
+            background: var(--bg);
+        }
+        body.keyboard-open .thread {
+            padding-top: 8px;
+            padding-bottom: 8px;
         }
         .notifications {
             display: grid;
@@ -460,11 +554,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
     <main class="app">
         <header class="topbar">
             <h1 class="title">Elite AI</h1>
-            <a class="icon-btn <?= $tab === 'notifications' ? 'active' : '' ?>" href="<?= e(base_url($tab === 'notifications' ? 'mobile-ai/?tab=assistant' : 'mobile-ai/?tab=notifications')) ?>" aria-label="<?= $tab === 'notifications' ? 'Back to assistant' : 'Open notifications' ?>">
+            <a id="mobile-notifications-link" class="icon-btn <?= $tab === 'notifications' ? 'active' : '' ?>" href="<?= e(base_url($tab === 'notifications' ? 'mobile-ai/?tab=assistant' : 'mobile-ai/?tab=notifications')) ?>" aria-label="<?= $tab === 'notifications' ? 'Back to assistant' : 'Open notifications' ?>">
                 <?php if ($tab === 'notifications'): ?>
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
                 <?php else: ?>
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path></svg>
+                    <span id="mobile-notifications-count" class="icon-badge <?= $mobileUnreadCount > 0 ? '' : 'hidden' ?>"><?= e((string) min(99, $mobileUnreadCount)) ?></span>
                 <?php endif; ?>
             </a>
         </header>
@@ -485,18 +580,24 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 </article>
             </section>
 
-            <section class="pending-drafts" id="assistant-pending-drafts" aria-label="Pending Elite AI drafts">
-                <p class="pending-drafts-title" id="assistant-pending-drafts-title">Pending drafts</p>
-                <div class="pending-drafts-list" id="assistant-pending-drafts-list"></div>
-            </section>
-
             <section class="composer-wrap" aria-label="Assistant composer">
                 <div class="quick-actions-shell">
                     <button class="quick-actions-toggle" id="assistant-quick-actions-toggle" type="button" aria-expanded="false" aria-controls="assistant-quick-actions">Shortcuts</button>
                     <div class="quick-actions" id="assistant-quick-actions" aria-label="Quick actions"></div>
                 </div>
                 <form class="composer" id="assistant-composer">
-                    <input id="assistant-input" type="text" placeholder="Ask Elite AI what to do..." autocomplete="off" enterkeyhint="send">
+                    <input
+                        id="assistant-input"
+                        type="text"
+                        placeholder="Ask Elite AI what to do..."
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="sentences"
+                        spellcheck="false"
+                        inputmode="text"
+                        enterkeyhint="send"
+                        aria-label="Ask Elite AI"
+                    >
                     <button id="assistant-mic" type="button" aria-label="Microphone placeholder">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><path d="M12 19v3"></path></svg>
                     </button>
@@ -506,7 +607,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 </form>
             </section>
         <?php else: ?>
-            <section class="notifications" aria-label="Notifications">
+            <section class="notifications" id="mobile-notifications-list" aria-label="Notifications">
                 <?php if (!$notifications): ?>
                     <p class="empty">No notifications right now.</p>
                 <?php endif; ?>
@@ -532,6 +633,12 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             <?= e((string) ($item['title'] ?? 'CRM alert')) ?>
                             <span class="notification-state"><?= $isUnread ? 'Unread' : 'Read' ?></span>
                         </h2>
+                        <?php if (trim((string) ($item['assistant_summary'] ?? '')) !== ''): ?>
+                            <p><?= e((string) ($item['assistant_summary'] ?? '')) ?></p>
+                        <?php endif; ?>
+                        <?php if (trim((string) ($item['assistant_prompt'] ?? '')) !== ''): ?>
+                            <p class="meta"><?= e((string) ($item['assistant_prompt'] ?? '')) ?></p>
+                        <?php endif; ?>
                         <?php if (trim((string) ($item['message'] ?? '')) !== ''): ?>
                             <p><?= e((string) ($item['message'] ?? '')) ?></p>
                         <?php endif; ?>
@@ -553,7 +660,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('<?= e(base_url('mobile-ai/sw.js')) ?>').catch(function () {});
+                navigator.serviceWorker.register('<?= e(base_url('mobile-ai/sw.js')) ?>', { updateViaCache: 'none' })
+                    .then(function (registration) { return registration.update(); })
+                    .catch(function () {});
             });
         }
 
@@ -570,12 +679,17 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var notificationEnableCard = document.getElementById('notification-enable-card');
             var notificationEnableButton = document.getElementById('notification-enable-button');
             var notificationEnableText = document.getElementById('notification-enable-text');
-            if (!thread || !form || !input) {
-                return;
-            }
-
+            var notificationCountBadge = document.getElementById('mobile-notifications-count');
+            var visualViewport = window.visualViewport || null;
+            var largestViewportHeight = visualViewport ? visualViewport.height : window.innerHeight;
+            var viewportSyncFrame = 0;
             var endpoint = '<?= e((string) (parse_url(base_url('assistant-api-live.php'), PHP_URL_PATH) ?: '/crm/assistant-api-live.php')) ?>';
-            var notificationSeed = <?= json_encode($notifications, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            var mobileEndpoint = '<?= e(base_url('mobile-ai/')) ?>';
+            var notificationFeedEndpoint = '<?= e(base_url('mobile-ai/?notification_feed=1')) ?>';
+            var assistantCsrfToken = <?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            var webPushPublicKey = '<?= e((string) ELITE_WEB_PUSH_PUBLIC_KEY) ?>';
+            var notificationSeed = <?= json_encode($notificationFeedSeed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            var notificationVersion = <?= json_encode($notificationVersion, JSON_UNESCAPED_SLASHES) ?>;
             var urlParams = new URLSearchParams(window.location.search || '');
             var activeNotificationId = String(urlParams.get('notification_id') || '');
             var activeLeadId = Number(urlParams.get('lead_id') || 0);
@@ -598,9 +712,306 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             var assistantSpeech = null;
             var isListening = false;
             var assistantThreadState = [];
+            var assistantRestoringThread = false;
+            var assistantThreadStorageKey = 'elite-ai-mobile-thread-v1';
+            var assistantThreadMaxAgeMs = 12 * 60 * 60 * 1000;
+            var notificationAudioUnlocked = false;
+            var notificationAudioKey = 'elite_ai_seen_notifications_v1';
+            var notificationPollTimer = null;
+
+            function syncAssistantViewport() {
+                viewportSyncFrame = 0;
+                var viewportHeight = visualViewport ? visualViewport.height : window.innerHeight;
+                var viewportTop = visualViewport ? visualViewport.offsetTop : 0;
+                var inputFocused = document.activeElement === input;
+
+                if (!inputFocused || viewportHeight > largestViewportHeight) {
+                    largestViewportHeight = Math.max(largestViewportHeight, viewportHeight);
+                }
+
+                var keyboardOpen = inputFocused && (
+                    (largestViewportHeight - viewportHeight) > 120
+                    || viewportHeight < window.innerHeight * 0.82
+                );
+
+                document.documentElement.style.setProperty('--app-height', Math.max(320, viewportHeight) + 'px');
+                document.documentElement.style.setProperty('--app-top', Math.max(0, viewportTop) + 'px');
+                document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+                if (keyboardOpen && thread) {
+                    thread.scrollTop = thread.scrollHeight;
+                }
+            }
+
+            function scheduleAssistantViewportSync() {
+                if (viewportSyncFrame) {
+                    window.cancelAnimationFrame(viewportSyncFrame);
+                }
+                viewportSyncFrame = window.requestAnimationFrame(syncAssistantViewport);
+            }
+
+            function loadMobileAssistantThread() {
+                try {
+                    var raw = window.localStorage.getItem(assistantThreadStorageKey);
+                    var stored = raw ? JSON.parse(raw) : null;
+                    var savedAt = Number(stored && stored.saved_at ? stored.saved_at : 0);
+                    if (!stored || !Array.isArray(stored.messages) || Date.now() - savedAt > assistantThreadMaxAgeMs) {
+                        window.localStorage.removeItem(assistantThreadStorageKey);
+                        assistantThreadState = [];
+                        return;
+                    }
+                    assistantThreadState = stored.messages.slice(-30);
+                } catch (error) {
+                    assistantThreadState = [];
+                }
+            }
+
+            function saveMobileAssistantThread() {
+                try {
+                    window.localStorage.setItem(assistantThreadStorageKey, JSON.stringify({
+                        saved_at: Date.now(),
+                        messages: assistantThreadState.slice(-30)
+                    }));
+                } catch (error) {
+                    // Keep the live chat usable when browser storage is unavailable.
+                }
+            }
+
+            function restoreMobileAssistantThread() {
+                if (!thread || assistantThreadState.length === 0) {
+                    return;
+                }
+                var savedMessages = assistantThreadState.slice();
+                assistantRestoringThread = true;
+                thread.innerHTML = '';
+                if (notificationEnableCard) {
+                    thread.appendChild(notificationEnableCard);
+                }
+                savedMessages.forEach(function (item) {
+                    createMessage(
+                        item && item.role === 'user' ? 'user' : 'assistant',
+                        String(item && item.text ? item.text : ''),
+                        Array.isArray(item && item.cards) ? item.cards : [],
+                        Array.isArray(item && item.actions) ? item.actions : [],
+                        false
+                    );
+                });
+                assistantRestoringThread = false;
+                thread.scrollTop = thread.scrollHeight;
+            }
+
+            function notificationIdentity(item) {
+                return [
+                    String(item && item.id ? item.id : ''),
+                    String(item && item.lead_id ? item.lead_id : ''),
+                    String(item && item.created_at ? item.created_at : ''),
+                    String(item && item.message ? item.message : '').slice(0, 80)
+                ].join('|');
+            }
+
+            function seenNotificationIds() {
+                try {
+                    var raw = window.localStorage.getItem(notificationAudioKey);
+                    var parsed = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (error) {
+                    return [];
+                }
+            }
+
+            function saveSeenNotificationIds(ids) {
+                try {
+                    window.localStorage.setItem(notificationAudioKey, JSON.stringify(ids.slice(-80)));
+                } catch (error) {
+                    // Ignore storage limits. Sound is helpful, not critical.
+                }
+            }
+
+            function unreadNotificationCount() {
+                if (!Array.isArray(notificationSeed)) {
+                    return 0;
+                }
+                return notificationSeed.filter(function (item) {
+                    return Boolean(item && item.is_new);
+                }).length;
+            }
+
+            function markNotificationsReadLocally(leadId) {
+                var normalizedLeadId = Number(leadId || 0);
+                if (normalizedLeadId <= 0 || !Array.isArray(notificationSeed)) {
+                    return;
+                }
+                notificationSeed.forEach(function (item) {
+                    if (Number(item && item.lead_id ? item.lead_id : 0) === normalizedLeadId) {
+                        item.is_new = false;
+                    }
+                });
+                if (activeNotification && Number(activeNotification.lead_id || 0) === normalizedLeadId) {
+                    activeNotification.is_new = false;
+                }
+                syncAppBadge(unreadNotificationCount());
+            }
+
+            async function syncAppBadge(count) {
+                var badgeCount = Math.max(0, Number(count || 0));
+                if (notificationCountBadge) {
+                    notificationCountBadge.textContent = badgeCount > 99 ? '99+' : String(badgeCount);
+                    notificationCountBadge.classList.toggle('hidden', badgeCount === 0);
+                }
+                try {
+                    if (badgeCount > 0 && 'setAppBadge' in navigator) {
+                        await navigator.setAppBadge(badgeCount);
+                        return;
+                    }
+                    if (badgeCount === 0 && 'clearAppBadge' in navigator) {
+                        await navigator.clearAppBadge();
+                    }
+                } catch (error) {
+                    // Badging is platform-dependent; the assistant still works without it.
+                }
+            }
+
+            function unlockNotificationAudio() {
+                notificationAudioUnlocked = true;
+            }
+
+            ['pointerdown', 'touchstart', 'keydown'].forEach(function (eventName) {
+                window.addEventListener(eventName, unlockNotificationAudio, { once: true, passive: true });
+            });
+
+            function playNotificationSound() {
+                try {
+                    if (!notificationAudioUnlocked && document.visibilityState !== 'visible') {
+                        return;
+                    }
+                    var AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContext) {
+                        return;
+                    }
+                    var ctx = window.__eliteAINotificationAudio || new AudioContext();
+                    window.__eliteAINotificationAudio = ctx;
+                    if (ctx.state === 'suspended') {
+                        ctx.resume().catch(function () {});
+                    }
+                    var gain = ctx.createGain();
+                    var oscillator = ctx.createOscillator();
+                    var now = ctx.currentTime;
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(880, now);
+                    oscillator.frequency.setValueAtTime(660, now + 0.12);
+                    gain.gain.setValueAtTime(0.0001, now);
+                    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+                    oscillator.connect(gain);
+                    gain.connect(ctx.destination);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.35);
+                } catch (error) {
+                    // Audio can be blocked by the browser until the next user gesture.
+                }
+            }
+
+            function announceNewNotifications() {
+                if (!Array.isArray(notificationSeed) || notificationSeed.length === 0) {
+                    syncAppBadge(0);
+                    return [];
+                }
+                var unread = notificationSeed.filter(function (item) {
+                    return Boolean(item && item.is_new);
+                });
+                syncAppBadge(unread.length);
+                if (unread.length === 0) {
+                    return [];
+                }
+                var seen = seenNotificationIds();
+                var seenSet = new Set(seen);
+                var fresh = unread.filter(function (item) {
+                    return !seenSet.has(notificationIdentity(item));
+                });
+                if (fresh.length === 0) {
+                    return [];
+                }
+                fresh.forEach(function (item) {
+                    seenSet.add(notificationIdentity(item));
+                });
+                saveSeenNotificationIds(Array.from(seenSet));
+                playNotificationSound();
+                return fresh;
+            }
+
+            var initialFreshNotifications = announceNewNotifications();
+
+            if (!thread || !form || !input) {
+                return;
+            }
+            loadMobileAssistantThread();
+            restoreMobileAssistantThread();
 
             function isStandaloneApp() {
                 return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            }
+
+            function urlBase64ToUint8Array(value) {
+                var padding = '='.repeat((4 - value.length % 4) % 4);
+                var base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+                var raw = window.atob(base64);
+                return Uint8Array.from(Array.prototype.map.call(raw, function (character) {
+                    return character.charCodeAt(0);
+                }));
+            }
+
+            async function savePushSubscription(subscription) {
+                var response = await fetch(mobileEndpoint, {
+                    method: 'POST',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': assistantCsrfToken
+                    },
+                    body: JSON.stringify({
+                        action: 'save_push_subscription',
+                        subscription: subscription.toJSON()
+                    })
+                });
+                var data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.message || 'Could not save notification subscription.');
+                }
+            }
+
+            async function ensurePushSubscription(showTest) {
+                if (
+                    !('serviceWorker' in navigator)
+                    || !('PushManager' in window)
+                    || webPushPublicKey === ''
+                    || Notification.permission !== 'granted'
+                ) {
+                    return false;
+                }
+
+                var registration = await navigator.serviceWorker.ready;
+                var subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(webPushPublicKey)
+                    });
+                }
+                await savePushSubscription(subscription);
+
+                if (showTest) {
+                    await registration.showNotification('Elite AI connected', {
+                        body: 'Rod, real CRM notifications are connected.',
+                        icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
+                        badge: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
+                        tag: 'elite-ai-test',
+                        renotify: true,
+                        data: { url: '/crm/mobile-ai?tab=assistant' }
+                    });
+                }
+                return true;
             }
 
             function refreshNotificationPrompt() {
@@ -638,22 +1049,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                             ? 'granted'
                             : await Notification.requestPermission();
                         if (permission === 'granted') {
-                            if ('serviceWorker' in navigator) {
-                                var registration = await navigator.serviceWorker.ready;
-                                await registration.showNotification('Elite AI test', {
-                                    body: 'Test notification from Elite AI.',
-                                    icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
-                                    badge: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png',
-                                    tag: 'elite-ai-test',
-                                    renotify: true,
-                                    data: { url: '/crm/mobile-ai?tab=notifications' }
-                                });
-                            } else {
-                                new Notification('Elite AI test', {
-                                    body: 'Test notification from Elite AI.',
-                                    icon: '/crm/assets/img/ES-Logo-Stack-500-x-150-px.png'
-                                });
-                            }
+                            await ensurePushSubscription(true);
                         }
                     } catch (error) {
                         if (notificationEnableText) {
@@ -664,6 +1060,14 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 });
             }
             refreshNotificationPrompt();
+            if ('Notification' in window && Notification.permission === 'granted') {
+                ensurePushSubscription(false).catch(function () {
+                    notificationEnableCard.classList.add('open');
+                    notificationEnableButton.style.display = 'inline-flex';
+                    notificationEnableButton.textContent = 'Reconnect Notifications';
+                    notificationEnableText.textContent = 'Tap to reconnect real CRM notifications.';
+                });
+            }
 
             function assistantConversationContext() {
                 return assistantThreadState.slice(-8).map(function (item) {
@@ -692,7 +1096,11 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         lead_name: String(activeNotification.lead_name || ''),
                         status: String(activeNotification.status || ''),
                         suggested_action: String(activeNotification.suggested_action || ''),
-                        is_new: Boolean(activeNotification.is_new)
+                        is_new: Boolean(activeNotification.is_new),
+                        assistant_summary: String(activeNotification.assistant_summary || ''),
+                        assistant_prompt: String(activeNotification.assistant_prompt || ''),
+                        primary_action: String(activeNotification.primary_action || ''),
+                        badge_count: Number(activeNotification.badge_count || unreadNotificationCount())
                     };
                     context.lead_id = Number(activeNotification.lead_id || activeLeadId || 0);
                 }
@@ -701,6 +1109,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             }
 
             var quickActionItems = [
+                { label: 'Control Center', quick_action: 'control-center' },
                 { label: 'Morning Sweep', quick_action: 'morning-sweep' },
                 { label: 'New Leads', quick_action: 'new-leads' },
                 { label: 'Replies', quick_action: 'replies' },
@@ -743,9 +1152,10 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     });
                     article.appendChild(cardsWrap);
                 }
-                if (actions && actions.length) {
+                var assistantActions = normalizeAssistantActions(actions || [], baseContext.lead_id || activeLeadId || 0);
+                if (assistantActions.length) {
                     var actionWrap = document.createElement('div');
-                    actions.forEach(function (action) {
+                    assistantActions.forEach(function (action) {
                         var actionButton = document.createElement('button');
                         actionButton.type = 'button';
                         actionButton.className = 'action-btn mobile-ai-action-button';
@@ -756,6 +1166,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         actionButton.dataset.actionLabel = String(action.label || '');
                         actionButton.dataset.actionHelp = String(action.help || '');
                         actionButton.dataset.targetStatus = String(action.target_status || action.targetStatus || '');
+                        actionButton.dataset.consultationDate = String(action.consultation_date || action.appointment_at || '');
                         actionButton.dataset.note = String(action.note || '');
                         actionButton.addEventListener('click', function (event) {
                             event.preventDefault();
@@ -768,14 +1179,35 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 }
 
                 thread.appendChild(article);
-                article.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                if (!isLoading) {
+                if (!assistantRestoringThread) {
+                    article.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }
+                if (!isLoading && !assistantRestoringThread) {
                     assistantThreadState.push({
                         role: role === 'user' ? 'user' : 'assistant',
                         text: String(text || ''),
+                        cards: Array.isArray(cards) ? cards.slice(0, 5).map(function (card) {
+                            return {
+                                title: String(card && card.title ? card.title : 'Details'),
+                                items: Array.isArray(card && card.items) ? card.items.slice(0, 20).map(String) : []
+                            };
+                        }) : [],
+                        actions: assistantActions.slice(0, 6).map(function (action) {
+                            return {
+                                type: String(action && action.type ? action.type : ''),
+                                label: String(action && action.label ? action.label : ''),
+                                help: String(action && action.help ? action.help : ''),
+                                lead_id: Number(action && (action.lead_id || action.leadId) ? (action.lead_id || action.leadId) : 0),
+                                action_id: Number(action && (action.action_id || action.actionId) ? (action.action_id || action.actionId) : 0),
+                                target_status: String(action && (action.target_status || action.targetStatus) ? (action.target_status || action.targetStatus) : ''),
+                                consultation_date: String(action && (action.consultation_date || action.appointment_at) ? (action.consultation_date || action.appointment_at) : ''),
+                                note: String(action && action.note ? action.note : '')
+                            };
+                        }),
                         created_at: Date.now()
                     });
                     assistantThreadState = assistantThreadState.slice(-30);
+                    saveMobileAssistantThread();
                 }
                 return article;
             }
@@ -901,9 +1333,16 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     normalized.help = String(normalized.help || '');
                     normalized.lead_id = Number(normalized.lead_id || normalized.leadId || leadId || 0);
                     normalized.action_id = Number(normalized.action_id || normalized.actionId || 0);
+                    normalized.target_status = String(normalized.target_status || normalized.targetStatus || '');
+                    normalized.consultation_date = String(normalized.consultation_date || normalized.appointment_at || '');
+                    normalized.note = String(normalized.note || '');
                     return normalized;
                 }).filter(function (action) {
-                    return action.type && action.lead_id;
+                    return action.type && (
+                        action.lead_id > 0
+                        || action.action_id > 0
+                        || ['clear_stale_drafts'].indexOf(action.type) !== -1
+                    );
                 });
             }
 
@@ -916,6 +1355,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     lead_id: Number(button.dataset.leadId || fallback.lead_id || fallback.leadId || 0),
                     action_id: Number(button.dataset.actionId || fallback.action_id || fallback.actionId || 0),
                     target_status: String(button.dataset.targetStatus || fallback.target_status || fallback.targetStatus || ''),
+                    consultation_date: String(button.dataset.consultationDate || fallback.consultation_date || fallback.appointment_at || ''),
                     note: String(button.dataset.note || fallback.note || '')
                 };
             }
@@ -1135,7 +1575,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         cache: 'no-store',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Accept': 'application/json',
+                            'X-CSRF-Token': assistantCsrfToken
                         },
                         body: JSON.stringify({
                             surface: 'mobile',
@@ -1246,12 +1687,15 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             }
 
             async function runAssistantAction(action) {
-                if (!action || !action.type || !action.lead_id) {
+                if (!action || !action.type) {
                     return;
                 }
 
                 var actionType = String(action.type || '');
                 var leadId = Number(action.lead_id || 0);
+                if (!leadId && actionType !== 'clear_stale_drafts') {
+                    return;
+                }
                 var actionLabel = String(action.label || actionType);
                 var userVerb = actionLabel;
                 if (actionType === 'use_draft') {
@@ -1261,8 +1705,14 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 } else if (actionType === 'cancel_draft') {
                     userVerb = 'Cancel draft';
                 }
-                createMessage('user', userVerb + ' for lead #' + Number(action.lead_id));
-                var loading = createMessage('assistant', actionType === 'mark_reviewed' ? 'Clearing notification...' : 'Preparing draft for approval...', [], null, true);
+                createMessage('user', leadId > 0 ? userVerb + ' for lead #' + leadId : userVerb);
+                var loadingText = 'Preparing draft for approval...';
+                if (actionType === 'mark_reviewed') {
+                    loadingText = 'Clearing notification...';
+                } else if (actionType === 'clear_stale_drafts') {
+                    loadingText = 'Cleaning old approval drafts...';
+                }
+                var loading = createMessage('assistant', loadingText, [], null, true);
                 setBusy(true);
 
                 try {
@@ -1272,15 +1722,20 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         cache: 'no-store',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Accept': 'application/json',
+                            'X-CSRF-Token': assistantCsrfToken
                         },
                         body: JSON.stringify({
                             surface: 'mobile',
                             assistant_action: action.type,
-                            lead_id: Number(action.lead_id || 0),
+                            lead_id: leadId,
                             action_id: Number(action.action_id || 0),
                             target_status: String(action.target_status || ''),
+                            consultation_date: String(action.consultation_date || action.appointment_at || ''),
                             note: String(action.note || ''),
+                            send_approved: action.type === 'send_draft',
+                            stage_approved: action.type === 'move_stage',
+                            schedule_approved: action.type === 'schedule_consultation',
                             prompt: action.help || '',
                             instruction: action.help || '',
                             quick_action: '',
@@ -1288,7 +1743,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                                 page: baseContext.page,
                                 page_title: baseContext.page_title,
                                 current_url: baseContext.current_url,
-                                lead_id: Number(action.lead_id || 0),
+                                lead_id: leadId,
                                 notification: activeNotification ? {
                                     id: String(activeNotification.id || ''),
                                     type: String(activeNotification.type || ''),
@@ -1320,12 +1775,13 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     }
 
                     if (actionType === 'mark_reviewed') {
+                        markNotificationsReadLocally(leadId);
                         createMessage('assistant', data.answer || data.message || 'Notification reviewed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                         refreshPendingDrafts();
                         return;
                     }
 
-                    if (actionType === 'move_stage' || actionType === 'add_note') {
+                    if (actionType === 'move_stage' || actionType === 'add_note' || actionType === 'schedule_consultation') {
                         createMessage('assistant', data.answer || data.message || 'Action completed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                         refreshPendingDrafts();
                         return;
@@ -1335,6 +1791,21 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         setDraftStatus('');
                         refreshPendingDrafts();
                         createMessage('assistant', data.message || 'Draft cancelled.');
+                        return;
+                    }
+
+                    if (actionType === 'clear_stale_drafts') {
+                        setDraftStatus('');
+                        applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                        createMessage('assistant', data.answer || data.message || 'Stale drafts cleared.', data.cards || [], normalizeAssistantActions(data.actions || [], 0));
+                        return;
+                    }
+
+                    if (actionType === 'send_draft') {
+                        setDraftStatus('');
+                        applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
+                        createMessage('assistant', data.answer || data.message || 'Draft sent.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
+                        refreshPendingDrafts();
                         return;
                     }
 
@@ -1371,7 +1842,7 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         return;
                     }
                     setDraftStatus('');
-                    createMessage('assistant', 'The draft action completed, but no usable preview came back. Queue item: ' + String(actionId));
+                    createMessage('assistant', data.answer || data.message || 'Action completed.', data.cards || [], normalizeAssistantActions(data.actions || [], data.lead_id || leadId));
                 } catch (error) {
                     loading.remove();
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
@@ -1381,14 +1852,17 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                 }
             }
 
-            async function sendPrompt(prompt, quickAction) {
+            async function sendPrompt(prompt, quickAction, options) {
+                var settings = options || {};
                 var cleanPrompt = (prompt || '').trim();
                 if (!cleanPrompt && !quickAction) {
                     return;
                 }
 
-                createMessage('user', cleanPrompt || String(quickAction || ''));
-                var loading = createMessage('assistant', 'Thinking...', [], null, true);
+                if (!settings.silentUser) {
+                    createMessage('user', cleanPrompt || String(quickAction || ''));
+                }
+                var loading = createMessage('assistant', settings.loadingText || 'Thinking...', [], null, true);
                 setBusy(true);
 
                 try {
@@ -1398,7 +1872,8 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         cache: 'no-store',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Accept': 'application/json',
+                            'X-CSRF-Token': assistantCsrfToken
                         },
                         body: JSON.stringify({
                             surface: 'mobile',
@@ -1422,6 +1897,9 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                         baseContext.lead_id = Number(data.lead_id || 0);
                     }
                     var responseActionType = String(data.action || data.type || '');
+                    if (responseActionType === 'mark_reviewed') {
+                        markNotificationsReadLocally(Number(data.lead_id || activeLeadId || 0));
+                    }
                     if (responseActionType === 'cancel_draft') {
                         setDraftStatus('');
                         applyPendingDrafts(Array.isArray(data.pending_drafts) ? data.pending_drafts : []);
@@ -1466,7 +1944,133 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
                     createMessage('assistant', 'I could not reach Elite AI right now. Please try again.');
                 } finally {
                     setBusy(false);
-                    input.focus();
+                    if (settings.refocus !== false) {
+                        input.focus();
+                    }
+                }
+            }
+
+            function activateNotification(item) {
+                if (!item || !item.id) {
+                    return;
+                }
+                var nextNotificationId = String(item.id || '');
+                var nextLeadId = Number(item.lead_id || 0);
+                if (activeNotificationId
+                    && nextNotificationId !== activeNotificationId
+                    && activeLeadId > 0
+                    && nextLeadId > 0
+                    && nextLeadId !== activeLeadId) {
+                    assistantThreadState = [];
+                    saveMobileAssistantThread();
+                }
+                activeNotification = item;
+                activeNotificationId = nextNotificationId;
+                activeLeadId = nextLeadId;
+                baseContext.lead_id = activeLeadId;
+                input.placeholder = 'Tell me what to do with this notification...';
+            }
+
+            async function openNotificationConversation(item) {
+                activateNotification(item);
+                markNotificationsReadLocally(Number(item && item.lead_id ? item.lead_id : 0));
+                await sendPrompt('review this', '', {
+                    silentUser: true,
+                    loadingText: 'Opening notification...',
+                    refocus: false
+                });
+            }
+
+            function canAutoOpenNotificationArrival() {
+                if (!input || input.disabled) {
+                    return false;
+                }
+                if (document.activeElement === input) {
+                    return false;
+                }
+                if (String(input.value || '').trim() !== '') {
+                    return false;
+                }
+                return true;
+            }
+
+            function arrivalAssistantPrompt(item) {
+                var leadName = String(item && item.lead_name ? item.lead_name : '').trim();
+                var prompt = String(item && item.assistant_prompt ? item.assistant_prompt : '').trim();
+                if (prompt !== '') {
+                    return prompt;
+                }
+                if (leadName !== '') {
+                    return 'Rod, we have a new notification from ' + leadName + '. What do you want me to do?';
+                }
+                return 'Rod, we have a new CRM notification. What do you want me to do?';
+            }
+
+            var knownNotificationIds = new Set((Array.isArray(notificationSeed) ? notificationSeed : []).map(notificationIdentity));
+            var notificationPollRunning = false;
+
+            function scheduleNotificationPoll(delay) {
+                if (notificationPollTimer) {
+                    window.clearTimeout(notificationPollTimer);
+                }
+                var fallbackDelay = document.hidden ? 12000 : 2000;
+                notificationPollTimer = window.setTimeout(pollNotifications, Number(delay || fallbackDelay));
+            }
+
+            async function pollNotifications() {
+                if (notificationPollRunning) {
+                    scheduleNotificationPoll();
+                    return;
+                }
+                notificationPollRunning = true;
+                var nextPollMs = document.hidden ? 12000 : 2000;
+                try {
+                    var response = await fetch(notificationFeedEndpoint, {
+                        credentials: 'include',
+                        cache: 'no-store',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    var data = await response.json();
+                    if (!response.ok || !data.ok || !Array.isArray(data.notifications)) {
+                        return;
+                    }
+                    nextPollMs = document.hidden ? 12000 : (Number(data.poll_after_ms || 0) || 2000);
+                    notificationVersion = String(data.version || notificationVersion || '');
+
+                    var arrivals = data.notifications.filter(function (item) {
+                        return Boolean(item && item.is_new) && !knownNotificationIds.has(notificationIdentity(item));
+                    });
+                    notificationSeed = data.notifications;
+                    notificationSeed.forEach(function (item) {
+                        knownNotificationIds.add(notificationIdentity(item));
+                    });
+                    if (activeNotificationId) {
+                        activeNotification = notificationSeed.find(function (item) {
+                            return String(item && item.id ? item.id : '') === activeNotificationId;
+                        }) || activeNotification;
+                    }
+                    syncAppBadge(unreadNotificationCount());
+
+                    if (arrivals.length > 0) {
+                        var seen = seenNotificationIds();
+                        var seenSet = new Set(seen);
+                        arrivals.forEach(function (item) {
+                            seenSet.add(notificationIdentity(item));
+                        });
+                        saveSeenNotificationIds(Array.from(seenSet));
+                        playNotificationSound();
+
+                        if (canAutoOpenNotificationArrival()) {
+                            await openNotificationConversation(arrivals[0]);
+                        } else if (document.visibilityState === 'visible') {
+                            createMessage('assistant', arrivalAssistantPrompt(arrivals[0]));
+                        }
+                    }
+                } catch (error) {
+                    // The next poll retries without interrupting the conversation.
+                } finally {
+                    notificationPollRunning = false;
+                    scheduleNotificationPoll(nextPollMs);
                 }
             }
 
@@ -1488,11 +2092,29 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
             });
 
             input.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
                     event.preventDefault();
-                    form.requestSubmit();
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    }
                 }
             });
+            input.addEventListener('focus', function () {
+                scheduleAssistantViewportSync();
+                window.setTimeout(scheduleAssistantViewportSync, 120);
+                window.setTimeout(scheduleAssistantViewportSync, 320);
+            });
+            input.addEventListener('blur', function () {
+                window.setTimeout(scheduleAssistantViewportSync, 80);
+            });
+            window.addEventListener('resize', scheduleAssistantViewportSync);
+            window.addEventListener('orientationchange', scheduleAssistantViewportSync);
+            if (visualViewport) {
+                visualViewport.addEventListener('resize', scheduleAssistantViewportSync);
+                visualViewport.addEventListener('scroll', scheduleAssistantViewportSync);
+            }
 
             if (mic) {
                 mic.addEventListener('click', function () {
@@ -1507,36 +2129,179 @@ $displayName = $firstName !== '' ? $firstName : ($fullName !== '' ? $fullName : 
 
             buildQuickActions();
             ensureStatusNode();
+            syncAssistantViewport();
             if (activeNotification) {
-                var notificationLeadId = Number(activeNotification.lead_id || activeLeadId || 0);
-                var notificationText = String(activeNotification.message || '').trim();
-                var notificationTitle = String(activeNotification.title || 'this notification').trim();
-                var assistantIntro = 'I am looking at ' + notificationTitle + (notificationText ? ':\n\n"' + notificationText + '"' : '') + '\n\nWhat do you want to do? I can draft a reply for approval, mark it reviewed, or help update the lead.';
-                var notificationActions = [];
-                if (notificationLeadId > 0) {
-                    notificationActions.push({
-                        type: 'draft_sms',
-                        label: 'Draft SMS reply',
-                        lead_id: notificationLeadId,
-                        help: 'Review this notification in context and prepare a warm SMS reply draft for approval. Do not send.'
-                    });
-                    notificationActions.push({
-                        type: 'draft_email',
-                        label: 'Draft Email reply',
-                        lead_id: notificationLeadId,
-                        help: 'Review this notification in context and prepare an email reply draft for approval. Do not send.'
-                    });
-                    notificationActions.push({
-                        type: 'mark_reviewed',
-                        label: 'Mark reviewed',
-                        lead_id: notificationLeadId,
-                        help: 'Mark this notification reviewed. Do not send any patient-facing message.'
-                    });
-                }
-                createMessage('assistant', assistantIntro, [], notificationActions);
-                input.placeholder = 'Tell me what to do with this notification...';
+                openNotificationConversation(activeNotification);
+            } else if (initialFreshNotifications.length > 0) {
+                openNotificationConversation(initialFreshNotifications[0]);
             }
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) {
+                    pollNotifications();
+                } else {
+                    scheduleNotificationPoll(12000);
+                }
+            });
+            window.addEventListener('focus', pollNotifications);
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.addEventListener('message', function (event) {
+                    if (event.data && event.data.type === 'elite-ai-notification') {
+                        pollNotifications();
+                    } else if (event.data && event.data.type === 'elite-ai-notification-opened' && event.data.url) {
+                        window.location.assign(String(event.data.url));
+                    }
+                });
+            }
+            scheduleNotificationPoll(2000);
         }());
     </script>
+    <?php if ($tab === 'notifications'): ?>
+    <script>
+        (function () {
+            var currentVersion = <?= json_encode($notificationVersion, JSON_UNESCAPED_SLASHES) ?>;
+            var feedUrl = <?= json_encode(base_url('mobile-ai/?notification_feed=1'), JSON_UNESCAPED_SLASHES) ?>;
+            var assistantUrl = <?= json_encode(base_url('mobile-ai/?tab=assistant'), JSON_UNESCAPED_SLASHES) ?>;
+            var list = document.getElementById('mobile-notifications-list');
+            var timer = null;
+            var running = false;
+
+            function notificationTime(value) {
+                var date = new Date(String(value || '').replace(' ', 'T'));
+                if (!Number.isFinite(date.getTime())) return String(value || '');
+                return date.toLocaleString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                });
+            }
+
+            function appendNotificationText(parent, text, className) {
+                var clean = String(text || '').trim();
+                if (!clean) return;
+                var paragraph = document.createElement('p');
+                if (className) paragraph.className = className;
+                paragraph.textContent = clean;
+                parent.appendChild(paragraph);
+            }
+
+            function renderNotifications(notifications) {
+                if (!list) return;
+                var items = Array.isArray(notifications) ? notifications.slice(0, 5) : [];
+                list.innerHTML = '';
+                if (items.length === 0) {
+                    var empty = document.createElement('p');
+                    empty.className = 'empty';
+                    empty.textContent = 'No notifications right now.';
+                    list.appendChild(empty);
+                    return;
+                }
+
+                items.forEach(function (item) {
+                    var leadId = Number(item && item.lead_id ? item.lead_id : 0);
+                    var notificationId = String(item && item.id ? item.id : '');
+                    var isUnread = Boolean(item && item.is_new);
+                    var article = document.createElement(leadId > 0 ? 'a' : 'article');
+                    article.className = 'notification ' + (isUnread ? 'unread' : 'read');
+                    if (leadId > 0) {
+                        var target = new URL(assistantUrl, window.location.origin);
+                        target.searchParams.set('notification_id', notificationId);
+                        target.searchParams.set('lead_id', String(leadId));
+                        article.href = target.toString();
+                        article.setAttribute('aria-label', 'Open notification in Assistant');
+                    }
+
+                    var heading = document.createElement('h2');
+                    heading.appendChild(document.createTextNode(String(item && item.title ? item.title : 'CRM alert') + ' '));
+                    var state = document.createElement('span');
+                    state.className = 'notification-state';
+                    state.textContent = isUnread ? 'Unread' : 'Read';
+                    heading.appendChild(state);
+                    article.appendChild(heading);
+
+                    appendNotificationText(article, item && item.assistant_summary ? item.assistant_summary : '');
+                    appendNotificationText(article, item && item.assistant_prompt ? item.assistant_prompt : '', 'meta');
+                    appendNotificationText(article, item && item.message ? item.message : '');
+                    appendNotificationText(
+                        article,
+                        notificationTime(item && item.created_at ? item.created_at : '')
+                            + (item && item.lead_name ? ' - ' + String(item.lead_name) : ''),
+                        'meta'
+                    );
+
+                    if (leadId > 0) {
+                        var open = document.createElement('span');
+                        open.className = 'open-link';
+                        open.textContent = 'Open in Assistant';
+                        article.appendChild(open);
+                    }
+                    list.appendChild(article);
+                });
+            }
+
+            async function syncBadges(notifications) {
+                var unread = (Array.isArray(notifications) ? notifications : []).filter(function (item) {
+                    return Boolean(item && item.is_new);
+                }).length;
+                try {
+                    if (unread > 0 && 'setAppBadge' in navigator) {
+                        await navigator.setAppBadge(unread);
+                    } else if (unread === 0 && 'clearAppBadge' in navigator) {
+                        await navigator.clearAppBadge();
+                    }
+                } catch (error) {
+                    // The live notification list remains authoritative when badging is unavailable.
+                }
+            }
+
+            function schedule(delay) {
+                if (timer) window.clearTimeout(timer);
+                timer = window.setTimeout(checkForChanges, Number(delay || (document.hidden ? 12000 : 2000)));
+            }
+
+            async function checkForChanges() {
+                if (running) return;
+                running = true;
+                var nextDelay = document.hidden ? 12000 : 2000;
+                try {
+                    var response = await fetch(feedUrl, {
+                        credentials: 'include',
+                        cache: 'no-store',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    var data = await response.json();
+                    if (!response.ok || !data.ok || !data.version) return;
+                    nextDelay = document.hidden ? 12000 : (Number(data.poll_after_ms || 0) || 2000);
+                    if (String(data.version) !== currentVersion) {
+                        currentVersion = String(data.version);
+                        renderNotifications(data.notifications);
+                        syncBadges(data.notifications);
+                    }
+                } catch (error) {
+                    // Keep the current list visible and retry quietly.
+                } finally {
+                    running = false;
+                    schedule(nextDelay);
+                }
+            }
+
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) checkForChanges();
+            });
+            window.addEventListener('focus', checkForChanges);
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.addEventListener('message', function (event) {
+                    if (event.data && event.data.type === 'elite-ai-notification') {
+                        checkForChanges();
+                    } else if (event.data && event.data.type === 'elite-ai-notification-opened' && event.data.url) {
+                        window.location.assign(String(event.data.url));
+                    }
+                });
+            }
+            schedule(2000);
+        }());
+    </script>
+    <?php endif; ?>
 </body>
 </html>

@@ -597,6 +597,27 @@ if (!function_exists('lead_email_record_inbound')) {
 
         if (!$isUnsubscribe) {
             lead_email_send_action_alert($lead, 'inbound_reply', mb_substr($subject, 0, 60));
+            try {
+                $mobilePushPath = dirname(__DIR__) . '/core/mobile_ai_push.php';
+                if (is_file($mobilePushPath)) {
+                    require_once $mobilePushPath;
+                }
+                if (function_exists('mobile_ai_send_lead_event_push')) {
+                    $freshLeadForPush = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                    mobile_ai_send_lead_event_push($freshLeadForPush ?: $lead, [
+                        'lead_id' => $leadId,
+                        'type' => 'reply',
+                        'message' => trim($subject . ' - ' . lead_email_new_reply_text($subject, $body)),
+                        'notification_id' => 'email-' . $emailId,
+                    ]);
+                }
+            } catch (Throwable $e) {
+                esm_log('mobile_ai_push', 'Inbound email Elite AI push failed.', [
+                    'lead_id' => $leadId,
+                    'email_id' => $emailId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             if (function_exists('elite_send_operator_follow_up_pushover')) {
                 try {
                     $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);

@@ -333,15 +333,14 @@ if (!function_exists('auth_user_id')) {
 if (!function_exists('auth_assistant_token_key')) {
     function auth_assistant_token_key(): string
     {
-        if (defined('APP_KEY') && APP_KEY !== '') {
-            return APP_KEY;
-        }
+        return defined('APP_KEY') ? trim((string) APP_KEY) : '';
+    }
+}
 
-        if (defined('DB_PASS') && DB_PASS !== '') {
-            return DB_PASS;
-        }
-
-        return SESSION_NAME;
+if (!function_exists('auth_assistant_token_ready')) {
+    function auth_assistant_token_ready(): bool
+    {
+        return auth_assistant_token_key() !== '';
     }
 }
 
@@ -356,7 +355,7 @@ if (!function_exists('auth_issue_assistant_api_token')) {
     function auth_issue_assistant_api_token(?int $userId = null, int $ttlSeconds = 900): string
     {
         $userId = $userId !== null && $userId > 0 ? $userId : auth_user_id();
-        if (!$userId) {
+        if (!$userId || !auth_assistant_token_ready()) {
             return '';
         }
 
@@ -375,7 +374,7 @@ if (!function_exists('auth_verify_assistant_api_token')) {
     function auth_verify_assistant_api_token(string $token): ?array
     {
         $token = trim($token);
-        if ($token === '') {
+        if ($token === '' || !auth_assistant_token_ready()) {
             return null;
         }
 

@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
+require_once dirname(__DIR__) . '/core/mobile_ai_push.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
 require_once dirname(__DIR__) . '/leads/lead_agent.php';
@@ -125,6 +126,27 @@ if ($command === 'opt_out') {
 }
 
 lead_comm_update_rollup($leadId);
+
+try {
+    $freshLeadForPush = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+    $pushResult = mobile_ai_send_lead_event_push($freshLeadForPush ?: $lead, [
+        'lead_id' => $leadId,
+        'type' => $command === 'opt_out' ? 'stop' : 'reply',
+        'message' => $body,
+        'notification_id' => 'msg-' . $messageId,
+    ]);
+    lead_comm_insert_activity($leadId, !empty($pushResult['sent']) ? 'mobile_ai_push_sent' : 'mobile_ai_push_skipped', !empty($pushResult['sent']) ? 'Elite AI push notification sent for inbound SMS.' : 'Elite AI push notification was not delivered to a connected device.', [
+        'source' => 'twilio_sms_webhook',
+        'message_id' => $messageId,
+        'push_result' => $pushResult,
+    ], 'System');
+} catch (Throwable $e) {
+    esm_log('mobile_ai_push', 'Inbound SMS Elite AI push failed.', [
+        'lead_id' => $leadId,
+        'message_id' => $messageId,
+        'error' => $e->getMessage(),
+    ]);
+}
 
 if (function_exists('elite_send_operator_follow_up_pushover')) {
     try {

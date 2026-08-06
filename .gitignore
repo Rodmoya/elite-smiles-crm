@@ -30,6 +30,10 @@ site-root-winscp-pull.log
 tools/
 make-password.php
 docs/
+/vendor/
+/tests/artifacts/
+/storage/deploy-*.ps1
+/storage/start-coderabbit-auth.ps1
 
 # Screenshot/audit images at repo root (not project assets)
 /after-*.png

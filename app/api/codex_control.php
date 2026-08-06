@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/core/mobile_ai_auth.php';
+require_once dirname(__DIR__) . '/core/mobile_ai_push.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
@@ -150,6 +151,39 @@ if (!function_exists('codex_api_has_explicit_stage_approval')) {
     }
 }
 
+if (!function_exists('codex_api_has_explicit_delete_approval')) {
+    function codex_api_has_explicit_delete_approval(array $request): bool
+    {
+        if (filter_var($request['delete_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['delete_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['approve_delete'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        if (filter_var($request['confirm_delete'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+
+        $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
+        if (in_array($executionMode, ['delete', 'delete_approved', 'delete_approval', 'remove_lead'], true)) {
+            return true;
+        }
+
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        if ($instruction === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:delete|remove|purge)\b.*\b(?:lead|record|card|duplicate|fake|test)\b|\bdelete\s+this\s+lead\b/i',
+            $instruction
+        );
+    }
+}
+
 if (!function_exists('codex_api_text_excerpt')) {
     function codex_api_text_excerpt(string $text, int $limit = 180): string
     {
@@ -239,6 +273,77 @@ if (!function_exists('codex_api_notification_assistant_card')) {
             'draft_before_send_required' => true,
             'send_requires_explicit_approval' => true,
             'safe_actions' => $safeActions,
+        ];
+    }
+}
+
+if (!function_exists('codex_api_notification_assistant_summary')) {
+    function codex_api_notification_assistant_summary(array $row, string $type, string $sourceLabel = ''): array
+    {
+        $leadName = trim((string) ($row['full_name'] ?? $row['lead_name'] ?? 'this lead'));
+        $body = trim((string) ($row['body'] ?? $row['message'] ?? ''));
+        $quote = $body !== '' ? '"' . codex_api_text_excerpt($body, 130) . '"' : '';
+
+        if (function_exists('elite_ai_message_is_sms_opt_out_request') && elite_ai_message_is_sms_opt_out_request($body)) {
+            return [
+                'summary' => 'Rod, ' . $leadName . ' replied STOP and is blocked from SMS.',
+                'prompt' => 'What do you want me to do? I can mark this reviewed or draft a respectful email.',
+                'push_body' => 'Rod, ' . $leadName . ' replied STOP. SMS is blocked. Open Elite AI and tell me what to do.',
+                'primary_action' => 'Mark DND',
+            ];
+        }
+
+        if ($type === 'reply') {
+            return [
+                'summary' => 'Rod, we got a new message from ' . $leadName . ($quote !== '' ? ': ' . $quote : '.'),
+                'prompt' => 'What do you want me to do? I can review the conversation and draft a reply.',
+                'push_body' => 'Rod, new message from ' . $leadName . ($quote !== '' ? ': ' . $quote : '.'),
+                'primary_action' => 'Draft reply',
+            ];
+        }
+
+        if ($type === 'lead_created' || $type === 'new_lead') {
+            $source = $sourceLabel !== '' ? ' from ' . $sourceLabel : '';
+            return [
+                'summary' => 'Rod, we got a new lead' . $source . ': ' . $leadName . '.',
+                'prompt' => 'The first message was sent successfully. What do you want me to do next?',
+                'push_body' => 'Rod, new lead' . $source . ': ' . $leadName . '. First message sent.',
+                'primary_action' => 'Review lead',
+            ];
+        }
+
+        if ($type === 'manual_sms_followup_prepared') {
+            return [
+                'summary' => 'Rod, first message is ready/sent for ' . $leadName . '.',
+                'prompt' => 'What do you want me to do next? I can keep watching for a reply or review the lead.',
+                'push_body' => 'Rod, first message update for ' . $leadName . '.',
+                'primary_action' => 'Open lead',
+            ];
+        }
+
+        if ($type === 'follow_up_due') {
+            return [
+                'summary' => 'Rod, ' . $leadName . ' is due for follow-up.',
+                'prompt' => 'What do you want me to do? I can review the conversation and draft the follow-up.',
+                'push_body' => 'Rod, ' . $leadName . ' is due for follow-up.',
+                'primary_action' => 'Draft follow-up',
+            ];
+        }
+
+        if ($type === 'consultation_scheduled') {
+            return [
+                'summary' => 'Rod, consultation update for ' . $leadName . '.',
+                'prompt' => 'What do you want me to do? I can check appointment readiness and missing information.',
+                'push_body' => 'Rod, consultation update for ' . $leadName . '.',
+                'primary_action' => 'Check readiness',
+            ];
+        }
+
+        return [
+            'summary' => 'Rod, CRM activity for ' . $leadName . '.',
+            'prompt' => 'What do you want me to do next?',
+            'push_body' => 'Rod, CRM activity for ' . $leadName . '.',
+            'primary_action' => 'Review',
         ];
     }
 }
@@ -351,25 +456,112 @@ if (!function_exists('codex_api_capabilities')) {
             ],
             'read_actions' => [
                 'health', 'capabilities', 'stages', 'pipeline_snapshot',
-                'list_leads', 'inbox', 'get_lead', 'get_thread',
+                'crm_operator_brief', 'crm_operator_command_center', 'lead_queue_summary', 'list_leads', 'lead_queue', 'nurture_candidates',
+                'sms_delivery_issues', 'conversation_quality', 'meta_lead_ad_correlation',
+                'api_self_check', 'inbox', 'get_lead', 'get_thread',
                 'find_lead', 'search_leads', 'find_duplicates',
-                'mobile_notifications', 'elite_ai_audit_recent', 'assistant_prompt',
+                'mobile_notifications', 'mobile_push_status', 'elite_ai_audit_recent', 'assistant_prompt',
                 'elite_ai_pending_drafts',
             ],
             'write_actions' => [
                 'create_lead', 'import_meta_leads', 'add_note',
-                'mark_notification_reviewed', 'update_lead', 'move_stage',
-                'prepare_sms_followup', 'draft_email', 'send_sms',
+                'mark_notification_reviewed', 'update_lead', 'delete_lead', 'move_stage',
+                'prepare_sms_followup', 'draft_email', 'send_sms', 'nurture_reactivation_send',
                 'send_email', 'send_internal_sms', 'merge_leads',
-                'elite_ai_cancel_draft',
+                'elite_ai_cancel_draft', 'mobile_push_test',
             ],
             'approval_required' => [
                 'send_sms' => ['send_approved' => true],
                 'send_internal_sms' => ['send_approved' => true],
                 'send_email' => ['send_approved' => true],
+                'delete_lead' => ['delete_approved' => true],
                 'move_stage' => ['stage_approved' => true],
             ],
         ]);
+    }
+}
+
+if (!function_exists('codex_api_conversion_stage_key_from_label')) {
+    function codex_api_conversion_stage_key_from_label(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = str_replace(['-', ' '], '_', $value);
+        $normalized = (string) preg_replace('/[^a-z0-9_]+/', '', $normalized);
+        $aliases = [
+            'first_touch' => 'first_touch_sent',
+            'first_touch_sent' => 'first_touch_sent',
+            'contacted' => 'first_touch_sent',
+            'active_followup' => 'active_follow_up',
+            'active_follow_up' => 'active_follow_up',
+            'nurture' => 'nurture_lost',
+            'no_answer' => 'nurture_lost',
+            'no_answer_nurture' => 'nurture_lost',
+            'lost_nurture' => 'nurture_lost',
+            'nurture_lost' => 'nurture_lost',
+        ];
+        if (isset($aliases[$normalized])) {
+            return $aliases[$normalized];
+        }
+
+        if (function_exists('lead_conversion_stage_labels')) {
+            foreach (lead_conversion_stage_labels() as $key => $label) {
+                $labelKey = strtolower((string) preg_replace('/[^a-z0-9_]+/', '', str_replace(['-', ' '], '_', (string) $label)));
+                if ($normalized === $key || $normalized === $labelKey) {
+                    return (string) $key;
+                }
+            }
+        }
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('codex_api_enriched_lead')) {
+    function codex_api_enriched_lead(array $lead): array
+    {
+        $stage = trim((string) ($lead['status'] ?? ''));
+        $legacyLabels = function_exists('lead_stage_labels') ? lead_stage_labels() : [];
+        $legacyLabel = (string) ($legacyLabels[$stage] ?? ($stage !== '' ? $stage : 'Unstaged'));
+        $summary = function_exists('lead_conversion_summary')
+            ? lead_conversion_summary($lead)
+            : [
+                'stage_key' => $stage,
+                'stage_label' => $legacyLabel,
+                'next_action' => ['key' => '', 'label' => 'Review next step'],
+            ];
+        $stageKey = function_exists('lead_conversion_stage_key')
+            ? lead_conversion_stage_key($lead)
+            : trim((string) ($summary['stage_key'] ?? $stage));
+        $stageLabel = trim((string) ($summary['stage_label'] ?? ''));
+        if ($stageLabel === '') {
+            $stageLabel = function_exists('lead_conversion_stage_labels')
+                ? (string) ((lead_conversion_stage_labels())[$stageKey] ?? $legacyLabel)
+                : $legacyLabel;
+        }
+        $nextAction = (array) ($summary['next_action'] ?? []);
+        $sourceLabel = function_exists('lead_operator_source_label')
+            ? lead_operator_source_label($lead)
+            : trim((string) ($lead['source'] ?? 'Unknown'));
+
+        $lead['legacy_status'] = $stage;
+        $lead['legacy_status_label'] = $legacyLabel;
+        $lead['conversion_stage_key'] = $stageKey;
+        $lead['conversion_stage_label'] = $stageLabel;
+        $lead['conversion_stage'] = $stageLabel;
+        $lead['next_action_key'] = (string) ($nextAction['key'] ?? '');
+        $lead['next_action_label'] = (string) ($nextAction['label'] ?? 'Review next step');
+        $lead['next_action_tone'] = (string) ($nextAction['tone'] ?? 'slate');
+        $lead['next_action'] = $nextAction;
+        $lead['source_label'] = $sourceLabel !== '' ? $sourceLabel : 'Unknown';
+        if (function_exists('lead_operator_data_quality_flags')) {
+            $lead['data_quality_flags'] = lead_operator_data_quality_flags($lead);
+        }
+
+        return $lead;
     }
 }
 
@@ -414,20 +606,18 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
             $stageLabel = $legacyStages[$stage] ?? ($stage !== '' ? $stage : 'Unstaged');
             $stageCounts[$stageLabel] = ($stageCounts[$stageLabel] ?? 0) + 1;
 
-            $conversion = function_exists('lead_conversion_summary')
-                ? lead_conversion_summary($row)
-                : ['stage_label' => $stageLabel, 'next_action' => ['label' => 'Review next step']];
-            $conversionLabel = trim((string) ($conversion['stage_label'] ?? $conversion['label'] ?? $stageLabel));
+            $enrichedRow = codex_api_enriched_lead($row);
+            $conversionLabel = trim((string) ($enrichedRow['conversion_stage_label'] ?? $stageLabel));
             if ($conversionLabel === '') {
                 $conversionLabel = $stageLabel;
             }
             $conversionCounts[$conversionLabel] = ($conversionCounts[$conversionLabel] ?? 0) + 1;
 
-            $sourceLabel = function_exists('lead_operator_source_label') ? lead_operator_source_label($row) : trim((string)($row['source'] ?? 'Unknown'));
+            $sourceLabel = trim((string) ($enrichedRow['source_label'] ?? 'Unknown'));
             $sourceLabel = $sourceLabel !== '' ? $sourceLabel : 'Unknown';
             $sourceCounts[$sourceLabel] = ($sourceCounts[$sourceLabel] ?? 0) + 1;
 
-            $nextAction = (array)($conversion['next_action'] ?? []);
+            $nextAction = (array)($enrichedRow['next_action'] ?? []);
             $actionLabel = trim((string)($nextAction['label'] ?? 'Review next step'));
             $actionCounts[$actionLabel] = ($actionCounts[$actionLabel] ?? 0) + 1;
 
@@ -446,14 +636,18 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
                     'full_name' => (string) ($row['full_name'] ?? ''),
                     'legacy_status' => $stage,
                     'legacy_status_label' => $stageLabel,
+                    'conversion_stage_key' => (string) ($enrichedRow['conversion_stage_key'] ?? ''),
                     'conversion_stage' => $conversionLabel,
+                    'conversion_stage_label' => $conversionLabel,
                     'updated_at' => (string) ($row['updated_at'] ?? ''),
                     'created_at' => (string) ($row['created_at'] ?? ''),
                     'last_inbound_at' => (string) ($row['last_inbound_at'] ?? ''),
                     'last_outbound_at' => (string) ($row['last_outbound_at'] ?? ''),
                     'unread_message_count' => (int) ($row['unread_message_count'] ?? 0),
                     'source_label' => $sourceLabel,
+                    'next_action_key' => (string) ($enrichedRow['next_action_key'] ?? ''),
                     'next_action' => $actionLabel,
+                    'next_action_label' => $actionLabel,
                 ];
             }
         }
@@ -473,6 +667,875 @@ if (!function_exists('codex_api_pipeline_snapshot')) {
             'data_quality_flags' => $dataQualityFlags,
             'latest_by_conversion_stage' => $latestByConversionStage,
             'safety_note' => 'Read-only snapshot. No lead status was changed.',
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_lead_queue_summary')) {
+    function codex_api_lead_queue_summary(): void
+    {
+        $limitPerQueue = max(1, min(20, (int) codex_api_value('limit_per_queue', 5)));
+        $rows = function_exists('lead_pipeline_rows') ? lead_pipeline_rows(1000) : [];
+        $summary = [];
+
+        foreach ($rows as $stageRows) {
+            if (!is_array($stageRows)) {
+                continue;
+            }
+            foreach ($stageRows as $lead) {
+                if (!is_array($lead)) {
+                    continue;
+                }
+                $lead = codex_api_enriched_lead($lead);
+                $key = (string)($lead['conversion_stage_key'] ?? 'unknown');
+                $label = (string)($lead['conversion_stage_label'] ?? $key);
+                if (!isset($summary[$key])) {
+                    $summary[$key] = [
+                        'conversion_stage_key' => $key,
+                        'conversion_stage_label' => $label,
+                        'count' => 0,
+                        'due_count' => 0,
+                        'delivery_issue_count' => 0,
+                        'top_leads' => [],
+                    ];
+                }
+                $summary[$key]['count']++;
+                $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+                if ($nextFollowUp !== '' && strtotime($nextFollowUp) !== false && strtotime($nextFollowUp) <= time()) {
+                    $summary[$key]['due_count']++;
+                }
+                if (codex_api_lead_has_sms_delivery_issue((int)($lead['id'] ?? 0))) {
+                    $summary[$key]['delivery_issue_count']++;
+                }
+                if (count($summary[$key]['top_leads']) < $limitPerQueue) {
+                    $summary[$key]['top_leads'][] = [
+                        'id' => (int)($lead['id'] ?? 0),
+                        'full_name' => (string)($lead['full_name'] ?? ''),
+                        'next_action_key' => (string)($lead['next_action_key'] ?? ''),
+                        'next_action_label' => (string)($lead['next_action_label'] ?? ''),
+                        'last_outbound_at' => (string)($lead['last_outbound_at'] ?? ''),
+                        'last_inbound_at' => (string)($lead['last_inbound_at'] ?? ''),
+                        'next_follow_up_at' => (string)($lead['next_follow_up_at'] ?? ''),
+                        'sms_opt_status' => (string)($lead['sms_opt_status'] ?? 'unknown'),
+                    ];
+                }
+            }
+        }
+
+        codex_api_response(['ok' => true, 'generated_at' => now(), 'queues' => array_values($summary)]);
+    }
+}
+
+if (!function_exists('codex_api_lead_has_sms_delivery_issue')) {
+    function codex_api_lead_has_sms_delivery_issue(int $leadId): bool
+    {
+        if ($leadId <= 0) {
+            return false;
+        }
+        if (function_exists('codex_api_load_lead') && function_exists('lead_operator_has_sms_cleanup_issue')) {
+            try {
+                $lead = codex_api_load_lead($leadId);
+                if ($lead) {
+                    return lead_operator_has_sms_cleanup_issue($lead);
+                }
+            } catch (Throwable $e) {
+                // Fall back to the legacy activity check below.
+            }
+        }
+        try {
+            return (bool) db_value(
+                "SELECT COUNT(*) FROM lead_activities WHERE lead_id = :lead_id AND type = 'sms_delivery_issue'",
+                ['lead_id' => $leadId]
+            );
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
+if (!function_exists('codex_api_nurture_message')) {
+    function codex_api_nurture_message(array $lead): string
+    {
+        $first = trim((string)($lead['first_name'] ?? ''));
+        if ($first === '') {
+            $parts = preg_split('/\s+/', trim((string)($lead['full_name'] ?? '')));
+            $first = trim((string)($parts[0] ?? ''));
+        }
+        $first = $first !== '' ? $first : 'there';
+        return "Hi {$first}, Rod from Elite Smiles. Just checking in softly. If you're still curious what's possible for your smile, the consultation is complimentary and completely custom. Want me to send a couple times this week? Reply STOP to opt out.";
+    }
+}
+
+if (!function_exists('codex_api_nurture_candidates')) {
+    function codex_api_nurture_candidates(): void
+    {
+        $limit = max(1, min(100, (int) codex_api_value('limit', 25)));
+        $minDays = max(7, min(180, (int) codex_api_value('min_days', 14)));
+        $rows = db_all(
+            "SELECT " . codex_api_select_fields() . "
+             FROM leads
+             WHERE status = 'no_answer'
+               AND (created_at IS NULL OR created_at <= DATE_SUB(NOW(), INTERVAL {$minDays} DAY))
+               AND (sms_opt_status IS NULL OR sms_opt_status NOT IN ('opted_out', 'dnd'))
+               AND phone IS NOT NULL AND TRIM(phone) <> ''
+               AND (unread_message_count IS NULL OR unread_message_count = 0)
+               AND (last_inbound_at IS NULL OR last_outbound_at IS NULL OR last_inbound_at < last_outbound_at)
+               AND (last_outbound_at IS NULL OR last_outbound_at <= DATE_SUB(NOW(), INTERVAL {$minDays} DAY))
+             ORDER BY COALESCE(last_outbound_at, updated_at, created_at, '1970-01-01') ASC, id ASC
+             LIMIT {$limit}"
+        );
+        $candidates = [];
+        foreach ($rows as $row) {
+            $lead = codex_api_enriched_lead($row);
+            $lead['suggested_sms'] = codex_api_nurture_message($lead);
+            $lead['sms_delivery_issue'] = codex_api_lead_has_sms_delivery_issue((int)($lead['id'] ?? 0));
+            $candidates[] = $lead;
+        }
+        codex_api_response([
+            'ok' => true,
+            'criteria' => "no_answer, {$minDays}+ days since outbound, SMS allowed, no unread inbound",
+            'count' => count($candidates),
+            'candidates' => $candidates,
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_nurture_reactivation_send')) {
+    function codex_api_nurture_reactivation_send(): void
+    {
+        $leadId = (int) codex_api_value('lead_id', 0);
+        $lead = codex_api_load_lead($leadId);
+        if ((string)($lead['status'] ?? '') !== 'no_answer') {
+            codex_api_response(['ok' => false, 'message' => 'Lead is not in no-answer nurture.', 'lead_id' => $leadId], 409);
+        }
+        if (in_array((string)($lead['sms_opt_status'] ?? ''), ['dnd', 'opted_out'], true)) {
+            codex_api_response(['ok' => false, 'message' => 'Lead is not SMS eligible.', 'lead_id' => $leadId], 409);
+        }
+        if (!codex_api_has_explicit_send_approval(codex_api_body())) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Nurture SMS send blocked until explicit send approval is provided.',
+                'approval_required' => 'send_approved',
+                'lead_id' => $leadId,
+            ], 409);
+        }
+
+        $message = trim((string) codex_api_value('message', ''));
+        if ($message === '') {
+            $message = codex_api_nurture_message($lead);
+        }
+        $sendResult = elite_twilio_send_sms(trim((string)($lead['phone'] ?? '')), $message, [
+            'lead_id' => $leadId,
+            'lead' => $lead,
+            'append_opt_out_notice' => false,
+            'send_pushover_fallback' => true,
+            'fallback_summary' => 'Twilio could not send the nurture reactivation SMS.',
+            'original_body' => $message,
+        ]);
+        if (empty($sendResult['ok'])) {
+            codex_api_response([
+                'ok' => false,
+                'message' => (string)($sendResult['message'] ?? 'SMS failed.'),
+                'lead_id' => $leadId,
+                'operator_fallback_sent' => (bool)($sendResult['operator_fallback_sent'] ?? false),
+            ], 502);
+        }
+
+        $sentBody = (string)($sendResult['body'] ?? $message);
+        $messageRecordId = lead_comm_insert_message([
+            'lead_id' => $leadId,
+            'direction' => 'outbound',
+            'channel' => 'sms',
+            'from_number' => (string)($sendResult['from'] ?? ''),
+            'to_number' => (string)($sendResult['to'] ?? $lead['phone'] ?? ''),
+            'body' => $sentBody,
+            'twilio_message_sid' => (string)($sendResult['twilio_sid'] ?? ''),
+            'twilio_status' => (string)($sendResult['twilio_status'] ?? ''),
+            'is_read' => 1,
+        ]);
+        lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent nurture reactivation SMS through Codex API.', [
+            'message_id' => $messageRecordId,
+            'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+            'source' => 'codex_api_nurture_reactivation',
+        ], (string) codex_api_value('created_by', 'Codex'));
+        codex_api_record_outbound_note($leadId, 'sms', '', $sentBody, (string)codex_api_value('created_by', 'Codex'), [
+            'message_id' => $messageRecordId,
+            'twilio_sid' => $sendResult['twilio_sid'] ?? '',
+        ]);
+        lead_comm_update_rollup($leadId);
+        db_query(
+            "UPDATE leads
+             SET follow_up_status = 'not_checked',
+                 next_follow_up_at = DATE_ADD(NOW(), INTERVAL 7 DAY),
+                 last_follow_up_check_at = NOW()
+             WHERE id = :id
+             LIMIT 1",
+            ['id' => $leadId]
+        );
+        codex_api_response(['ok' => true, 'message' => 'Nurture reactivation SMS sent and logged.', 'lead_id' => $leadId, 'thread' => codex_api_timeline($leadId)]);
+    }
+}
+
+if (!function_exists('codex_api_sms_delivery_issues')) {
+    function codex_api_sms_delivery_issues(): void
+    {
+        $limit = max(1, min(100, (int) codex_api_value('limit', 25)));
+        $rows = db_all(
+            "SELECT a.id AS activity_id, a.lead_id, a.body, a.meta_json, a.created_at, l.full_name, l.phone, l.email, l.sms_opt_status, l.status
+             FROM lead_activities a
+             LEFT JOIN leads l ON l.id = a.lead_id
+             WHERE a.type = 'sms_delivery_issue'
+             ORDER BY a.created_at DESC, a.id DESC
+             LIMIT {$limit}"
+        );
+        foreach ($rows as &$row) {
+            $meta = json_decode((string)($row['meta_json'] ?? ''), true);
+            $row['meta'] = is_array($meta) ? $meta : [];
+            unset($row['meta_json']);
+            $row['recommended_action'] = in_array((string)($row['sms_opt_status'] ?? ''), ['dnd', 'opted_out'], true)
+                ? 'Use non-SMS channel.'
+                : 'Verify phone, mark SMS DND if repeated, and use email.';
+        }
+        unset($row);
+        codex_api_response(['ok' => true, 'count' => count($rows), 'issues' => $rows]);
+    }
+}
+
+if (!function_exists('codex_api_conversation_quality')) {
+    function codex_api_conversation_quality(): void
+    {
+        $limit = max(1, min(500, (int) codex_api_value('limit', 250)));
+        $rows = db_all(
+            "SELECT l.id, l.full_name, l.status, l.campaign, l.source_ad_set, l.source_ad_name, l.sms_opt_status,
+                    l.last_inbound_at, l.last_outbound_at, l.unread_message_count,
+                    SUM(CASE WHEN m.direction = 'outbound' AND m.channel = 'sms' THEN 1 ELSE 0 END) AS outbound_sms,
+                    SUM(CASE WHEN m.direction = 'inbound' AND m.channel = 'sms' THEN 1 ELSE 0 END) AS inbound_sms,
+                    SUM(CASE WHEN m.twilio_status IN ('failed','undelivered') OR m.twilio_error_code <> '' THEN 1 ELSE 0 END) AS sms_failures
+             FROM leads l
+             LEFT JOIN lead_messages m ON m.lead_id = l.id
+             GROUP BY l.id
+             ORDER BY l.updated_at DESC, l.id DESC
+             LIMIT {$limit}"
+        );
+        $summary = [
+            'reviewed_leads' => count($rows),
+            'has_reply' => 0,
+            'no_reply_after_sms' => 0,
+            'sms_delivery_issue' => 0,
+            'dnd_or_opted_out' => 0,
+        ];
+        foreach ($rows as &$row) {
+            $row['outbound_sms'] = (int)($row['outbound_sms'] ?? 0);
+            $row['inbound_sms'] = (int)($row['inbound_sms'] ?? 0);
+            $row['sms_failures'] = (int)($row['sms_failures'] ?? 0);
+            $row['quality_flags'] = [];
+            if ($row['inbound_sms'] > 0) {
+                $summary['has_reply']++;
+            }
+            if ($row['outbound_sms'] > 0 && $row['inbound_sms'] === 0) {
+                $summary['no_reply_after_sms']++;
+                $row['quality_flags'][] = 'no_reply_after_sms';
+            }
+            if ($row['sms_failures'] > 0 || codex_api_lead_has_sms_delivery_issue((int)$row['id'])) {
+                $summary['sms_delivery_issue']++;
+                $row['quality_flags'][] = 'sms_delivery_issue';
+            }
+            if (in_array((string)($row['sms_opt_status'] ?? ''), ['dnd', 'opted_out'], true)) {
+                $summary['dnd_or_opted_out']++;
+                $row['quality_flags'][] = 'dnd_or_opted_out';
+            }
+        }
+        unset($row);
+        codex_api_response(['ok' => true, 'summary' => $summary, 'leads' => $rows]);
+    }
+}
+
+if (!function_exists('codex_api_meta_lead_ad_correlation')) {
+    function codex_api_meta_lead_ad_correlation(): void
+    {
+        $limit = max(1, min(200, (int) codex_api_value('limit', 50)));
+        $groupBy = trim((string) codex_api_value('group_by', 'source_ad_set'));
+        $allowed = ['campaign', 'source_campaign', 'source_ad_set', 'source_ad_name', 'source', 'source_type'];
+        if (!in_array($groupBy, $allowed, true) || !leads_has_column($groupBy)) {
+            $groupBy = leads_has_column('source_ad_set') ? 'source_ad_set' : 'campaign';
+        }
+        $rows = db_all(
+            "SELECT COALESCE(NULLIF({$groupBy}, ''), 'Unknown') AS bucket,
+                    COUNT(*) AS leads,
+                    SUM(CASE WHEN last_inbound_at IS NOT NULL THEN 1 ELSE 0 END) AS replied,
+                    SUM(CASE WHEN consultation_status IN ('scheduled','booked','completed') OR status IN ('consultation_booked','consult_completed','treatment_accepted','treatment_completed') THEN 1 ELSE 0 END) AS advanced,
+                    SUM(CASE WHEN sms_opt_status IN ('dnd','opted_out') THEN 1 ELSE 0 END) AS sms_blocked,
+                    MIN(created_at) AS first_seen,
+                    MAX(created_at) AS last_seen
+             FROM leads
+             GROUP BY COALESCE(NULLIF({$groupBy}, ''), 'Unknown')
+             ORDER BY leads DESC, replied DESC
+             LIMIT {$limit}"
+        );
+        foreach ($rows as &$row) {
+            $leads = max(1, (int)$row['leads']);
+            $row['reply_rate'] = round(((int)$row['replied'] / $leads) * 100, 1);
+            $row['advanced_rate'] = round(((int)$row['advanced'] / $leads) * 100, 1);
+        }
+        unset($row);
+        codex_api_response(['ok' => true, 'group_by' => $groupBy, 'rows' => $rows]);
+    }
+}
+
+if (!function_exists('codex_api_self_check')) {
+    function codex_api_self_check(): void
+    {
+        $tables = [];
+        foreach (['leads', 'lead_messages', 'lead_activities', 'lead_emails', 'codex_api_clients'] as $table) {
+            $tables[$table] = lead_comm_table_exists($table);
+        }
+        codex_api_response([
+            'ok' => true,
+            'time' => now(),
+            'app_url' => APP_URL,
+            'tables' => $tables,
+            'twilio_configured' => function_exists('elite_twilio_is_configured') ? elite_twilio_is_configured() : false,
+            'smtp_configured' => function_exists('elite_smtp_is_configured') ? elite_smtp_is_configured() : false,
+            'meta_token_configured' => defined('META_ACCESS_TOKEN') && META_ACCESS_TOKEN !== '',
+            'meta_forms_configured' => defined('META_FORM_IDS') && META_FORM_IDS !== '',
+            'pushover_configured' => defined('ELITE_PUSHOVER_APP_TOKEN') && ELITE_PUSHOVER_APP_TOKEN !== '' && defined('ELITE_PUSHOVER_USER_KEY') && ELITE_PUSHOVER_USER_KEY !== '',
+            'recent_delivery_issues_24h' => (int) db_value("SELECT COUNT(*) FROM lead_activities WHERE type = 'sms_delivery_issue' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)"),
+            'unread_inbound' => leads_has_column('unread_message_count') ? (int) db_value('SELECT COALESCE(SUM(unread_message_count),0) FROM leads') : null,
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_operator_draft_message')) {
+    function codex_api_operator_draft_message(array $lead, string $actionKey): string
+    {
+        $first = trim((string)($lead['first_name'] ?? ''));
+        if ($first === '') {
+            $parts = preg_split('/\s+/', trim((string)($lead['full_name'] ?? '')));
+            $first = trim((string)($parts[0] ?? ''));
+        }
+        $first = $first !== '' ? $first : 'there';
+
+        return match ($actionKey) {
+            'reply_needed' => "Hi {$first}, this is Rod with Elite Smiles. I saw your message and wanted to help personally. The best next step is a complimentary consult so we can see what is actually right for you. Would morning or afternoon work better?",
+            'first_touch' => "Hi {$first}, this is Rod with Elite Smiles. Thanks for reaching out. Every smile plan is custom, so the easiest next step is a complimentary consult where we can see what is possible for you. Would you prefer Draper or Park City?",
+            'second_follow_up', 'overdue_follow_up' => "Hi {$first}, Rod from Elite Smiles checking back in. No pressure at all. If you are still interested, we can schedule a complimentary consult and answer your questions based on your smile, not a generic price sheet. Want me to send a couple available times?",
+            'ask_dob' => "Hi {$first}, we are almost set. To finish the appointment details, can you send your date of birth?",
+            'confirm_appointment' => "Hi {$first}, Rod from Elite Smiles. Just confirming your complimentary consult. Reply YES if that still works, or send me a better time if you need to move it.",
+            'offer_dates' => "Hi {$first}, happy to help. The consult is complimentary and custom to your goals. Would a morning or afternoon appointment be easier for you?",
+            'reschedule' => "Hi {$first}, Rod from Elite Smiles. Sorry we missed you. If you still want to explore options, I can help reschedule your complimentary consult. Would this week or next week be better?",
+            'nurture_reactivate' => codex_api_nurture_message($lead),
+            default => "Hi {$first}, Rod from Elite Smiles. I wanted to check in and help with the next step. Would you like me to send a couple complimentary consult times?",
+        };
+    }
+}
+
+if (!function_exists('codex_api_operator_action_card')) {
+    function codex_api_operator_action_card(array $lead, string $category, int $priority, string $reason, string $recommendedAction): array
+    {
+        $lead = codex_api_enriched_lead($lead);
+        $leadId = (int)($lead['id'] ?? 0);
+        $actionKey = (string)($lead['next_action_key'] ?? 'review_next_step');
+        $smsStatus = (string)($lead['sms_opt_status'] ?? 'unknown');
+        $smsIssue = codex_api_lead_has_sms_delivery_issue($leadId);
+        $preferredChannel = ($smsIssue || in_array($smsStatus, ['dnd', 'opted_out'], true)) ? 'email' : 'sms';
+
+        return [
+            'category' => $category,
+            'priority' => $priority,
+            'lead' => [
+                'id' => $leadId,
+                'full_name' => (string)($lead['full_name'] ?? ''),
+                'email' => (string)($lead['email'] ?? ''),
+                'phone_present' => trim((string)($lead['phone'] ?? '')) !== '',
+                'conversion_stage_key' => (string)($lead['conversion_stage_key'] ?? ''),
+                'conversion_stage_label' => (string)($lead['conversion_stage_label'] ?? ''),
+                'next_action_key' => $actionKey,
+                'next_action_label' => (string)($lead['next_action_label'] ?? ''),
+                'source' => (string)($lead['source'] ?? ''),
+                'campaign' => (string)($lead['campaign'] ?? ''),
+                'source_ad_set' => (string)($lead['source_ad_set'] ?? ''),
+                'source_ad_name' => (string)($lead['source_ad_name'] ?? ''),
+                'last_inbound_at' => (string)($lead['last_inbound_at'] ?? ''),
+                'last_outbound_at' => (string)($lead['last_outbound_at'] ?? ''),
+                'next_follow_up_at' => (string)($lead['next_follow_up_at'] ?? ''),
+                'unread_message_count' => (int)($lead['unread_message_count'] ?? 0),
+                'sms_opt_status' => $smsStatus,
+                'sms_delivery_issue' => $smsIssue,
+            ],
+            'reason' => $reason,
+            'recommended_action' => $recommendedAction,
+            'suggested_channel' => $preferredChannel,
+            'draft' => [
+                'channel' => $preferredChannel,
+                'body' => codex_api_operator_draft_message($lead, $actionKey),
+                'approval_required' => true,
+            ],
+            'safe_next_api_actions' => [
+                'get_lead',
+                'get_thread',
+                $preferredChannel === 'email' ? 'send_email' : 'send_sms',
+                'add_note',
+                'update_lead',
+            ],
+        ];
+    }
+}
+
+if (!function_exists('codex_api_operator_resolved_lost_lead')) {
+    function codex_api_operator_resolved_lost_lead(array $lead): bool
+    {
+        $status = trim((string)($lead['status'] ?? ''));
+        $stageKey = trim((string)($lead['conversion_stage_key'] ?? ''));
+        $lostReason = strtolower(trim((string)($lead['lost_reason'] ?? '')));
+        $notes = strtolower(trim((string)($lead['notes'] ?? '')));
+
+        if (in_array($status, ['lost_lead', 'opted_out'], true)) {
+            return true;
+        }
+        if ($lostReason !== '') {
+            return true;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:decided|chose|went|going)\s+(?:to\s+)?(?:do\s+)?(?:treatment\s+)?with\s+(?:another|other)\s+provider\b|\bother\s+provider\b|\banother\s+provider\b|\bnot\s+an\s+active\s+scheduling\s+lead\b/i',
+            $notes
+        );
+    }
+}
+
+if (!function_exists('codex_api_operator_text_contains')) {
+    function codex_api_operator_text_contains(string $text, array $patterns): bool
+    {
+        $text = strtolower($text);
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+if (!function_exists('codex_api_operator_recent_thread_signals')) {
+    function codex_api_operator_recent_thread_signals(int $leadId): array
+    {
+        $signals = [
+            'last_inbound_body' => '',
+            'last_outbound_body' => '',
+            'last_inbound_at' => '',
+            'last_outbound_at' => '',
+            'call_requested' => false,
+            'pricing_question' => false,
+            'location_question' => false,
+            'scheduling_intent' => false,
+            'stop_requested' => false,
+        ];
+        if ($leadId <= 0) {
+            return $signals;
+        }
+
+        try {
+            $messages = db_all(
+                "SELECT direction, body, created_at
+                 FROM lead_messages
+                 WHERE lead_id = :lead_id
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 12",
+                ['lead_id' => $leadId]
+            );
+        } catch (Throwable $e) {
+            return $signals;
+        }
+
+        foreach ($messages as $message) {
+            $direction = (string)($message['direction'] ?? '');
+            $body = trim((string)($message['body'] ?? ''));
+            $createdAt = (string)($message['created_at'] ?? '');
+            if ($direction === 'inbound' && $signals['last_inbound_body'] === '') {
+                $signals['last_inbound_body'] = codex_api_text_excerpt($body, 240);
+                $signals['last_inbound_at'] = $createdAt;
+            }
+            if ($direction === 'outbound' && $signals['last_outbound_body'] === '') {
+                $signals['last_outbound_body'] = codex_api_text_excerpt($body, 240);
+                $signals['last_outbound_at'] = $createdAt;
+            }
+            if ($direction !== 'inbound') {
+                continue;
+            }
+            $signals['call_requested'] = $signals['call_requested'] || codex_api_operator_text_contains($body, [
+                '/\bcall\b/i', '/\bphone\b/i', '/\bll[aá]mame\b/i', '/\bllamar\b/i', '/\btalk\s+on\s+the\s+phone\b/i',
+            ]);
+            $signals['pricing_question'] = $signals['pricing_question'] || codex_api_operator_text_contains($body, [
+                '/\bprice\b/i', '/\bcost\b/i', '/\bpricing\b/i', '/\bfinanc/i', '/\bprecio\b/i', '/\bcosto\b/i',
+            ]);
+            $signals['location_question'] = $signals['location_question'] || codex_api_operator_text_contains($body, [
+                '/\blocation\b/i', '/\baddress\b/i', '/\bdonde\b/i', '/\bd[oó]nde\b/i', '/\bubic/i',
+            ]);
+            $signals['scheduling_intent'] = $signals['scheduling_intent'] || codex_api_operator_text_contains($body, [
+                '/\bmorning\b/i', '/\bafternoon\b/i', '/\btomorrow\b/i', '/\bmonday\b/i', '/\btuesday\b/i', '/\bwednesday\b/i',
+                '/\bjueves\b/i', '/\blunes\b/i', '/\bmartes\b/i', '/\bmi[eé]rcoles\b/i', '/\bappointment\b/i', '/\bcita\b/i',
+                '/\bagend/i', '/\bschedul/i',
+            ]);
+            $signals['stop_requested'] = $signals['stop_requested'] || codex_api_operator_text_contains($body, [
+                '/^\s*stop\s*$/i', '/\bstop\b/i', '/\bno\s+me\s+(?:text|mandes|envies)\b/i',
+            ]);
+        }
+
+        return $signals;
+    }
+}
+
+if (!function_exists('codex_api_operator_action_bucket')) {
+    function codex_api_operator_action_bucket(array $action, string $bucket): array
+    {
+        $action['bucket'] = $bucket;
+        return $action;
+    }
+}
+
+if (!function_exists('codex_api_crm_operator_command_center')) {
+    function codex_api_crm_operator_command_center(): void
+    {
+        $mode = strtolower(trim((string) codex_api_value('mode', 'hourly')));
+        if (!in_array($mode, ['hourly', 'daily'], true)) {
+            $mode = 'hourly';
+        }
+        $limit = max(5, min(75, (int) codex_api_value('limit', $mode === 'hourly' ? 20 : 50)));
+        $rows = function_exists('lead_pipeline_rows') ? lead_pipeline_rows(1000) : [];
+        $now = time();
+
+        $buckets = [
+            'do_now' => [],
+            'cleanup' => [],
+            'manual_review' => [],
+            'nurture_candidates' => [],
+            'wait' => [],
+        ];
+        $counts = [
+            'reviewed' => 0,
+            'do_now' => 0,
+            'cleanup' => 0,
+            'manual_review' => 0,
+            'nurture_candidates' => 0,
+            'wait' => 0,
+            'resolved_lost_skipped' => 0,
+            'sms_blocked' => 0,
+        ];
+        $seenDelivery = [];
+
+        foreach ($rows as $stageRows) {
+            if (!is_array($stageRows)) {
+                continue;
+            }
+            foreach ($stageRows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $lead = codex_api_enriched_lead($row);
+                $leadId = (int)($lead['id'] ?? 0);
+                if ($leadId <= 0) {
+                    continue;
+                }
+                $counts['reviewed']++;
+                $actionKey = (string)($lead['next_action_key'] ?? '');
+                $stageKey = (string)($lead['conversion_stage_key'] ?? '');
+                $status = (string)($lead['status'] ?? '');
+                $smsStatus = (string)($lead['sms_opt_status'] ?? 'unknown');
+                $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+                $nextFollowUpTs = $nextFollowUp !== '' ? (strtotime($nextFollowUp) ?: null) : null;
+                $isDue = $nextFollowUpTs !== null && $nextFollowUpTs <= $now;
+                $recentlyContacted = false;
+                $firstTouchDue = false;
+                $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+                if ($lastOutbound !== '' && ($lastOutboundTs = strtotime($lastOutbound)) !== false) {
+                    $recentlyContacted = ($now - $lastOutboundTs) < 3.5 * 3600;
+                    $firstTouchDue = $stageKey === 'first_touch_sent' && !$recentlyContacted;
+                }
+                $smsIssue = codex_api_lead_has_sms_delivery_issue($leadId);
+                $signals = codex_api_operator_recent_thread_signals($leadId);
+
+                if (in_array($smsStatus, ['dnd', 'opted_out'], true)) {
+                    $counts['sms_blocked']++;
+                }
+                if (codex_api_operator_resolved_lost_lead($lead)) {
+                    $counts['resolved_lost_skipped']++;
+                    continue;
+                }
+                if (in_array($status, ['treatment_completed'], true) || $stageKey === 'treatment_completed') {
+                    $counts['wait']++;
+                    if ($mode === 'daily') {
+                        $buckets['wait'][] = codex_api_operator_action_bucket(
+                            codex_api_operator_action_card($lead, 'post_op_wait', 20, 'Treatment is completed; do not send sales follow-up.', 'Wait unless a post-op workflow is needed.'),
+                            'wait'
+                        );
+                    }
+                    continue;
+                }
+
+                if ($signals['call_requested'] && trim((string)($lead['last_inbound_at'] ?? '')) !== '' && trim((string)($lead['last_inbound_at'] ?? '')) >= trim((string)($lead['last_outbound_at'] ?? ''))) {
+                    $buckets['do_now'][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, 'call_requested', 100, 'Lead asked for a phone call after the last outbound message.', 'Human call first. Do not send normal nurture until the call is handled.'),
+                        'do_now'
+                    );
+                    continue;
+                }
+
+                $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
+                $inboundIsNewest = $lastInbound !== '' && ($lastOutbound === '' || strtotime($lastInbound) >= strtotime($lastOutbound));
+                if ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $inboundIsNewest)) {
+                    $buckets['do_now'][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, 'reply_needed', 95, 'Lead has a reply that needs review.', 'Read context and respond with a direct, human-feeling answer.'),
+                        'do_now'
+                    );
+                    continue;
+                }
+
+                if ($actionKey === 'first_touch') {
+                    $buckets['do_now'][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, 'send_first_touch', 85, 'Lead has not received first touch.', 'Send first touch after approval.'),
+                        'do_now'
+                    );
+                    continue;
+                }
+
+                if ($firstTouchDue) {
+                    $buckets['do_now'][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, 'send_follow_up', 75, 'First touch was sent at least 3.5 hours ago without a reply.', 'Let the Lead Agent send the approved next cadence step.'),
+                        'do_now'
+                    );
+                    continue;
+                }
+
+                if ($smsIssue && !isset($seenDelivery[$leadId])) {
+                    $seenDelivery[$leadId] = true;
+                    $buckets['cleanup'][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, 'verify_phone_or_email_only', 70, 'SMS delivery failed for this lead.', in_array($smsStatus, ['dnd', 'opted_out'], true) ? 'Use email only.' : 'Verify phone, mark DND if repeated, and use email fallback.'),
+                        'cleanup'
+                    );
+                    continue;
+                }
+
+                if ($stageKey === 'nurture_lost' || $actionKey === 'nurture_reactivate') {
+                    if ($mode === 'daily') {
+                        $buckets['nurture_candidates'][] = codex_api_operator_action_bucket(
+                            codex_api_operator_action_card($lead, 'nurture_reactivation', 40, 'Lead is in nurture/no-answer and may be worth a soft reactivation.', 'Review context before sending a low-pressure reactivation.'),
+                            'nurture_candidates'
+                        );
+                    } else {
+                        $counts['wait']++;
+                    }
+                    continue;
+                }
+
+                if ($isDue && in_array($actionKey, ['second_follow_up', 'overdue_follow_up', 'wait_for_reply', 'reschedule', 'ask_dob', 'offer_dates', 'nurture_reactivate'], true)) {
+                    $category = in_array($actionKey, ['ask_dob', 'reschedule'], true) ? 'manual_review' : 'send_follow_up';
+                    $bucket = $category === 'manual_review' ? 'manual_review' : 'do_now';
+                    $buckets[$bucket][] = codex_api_operator_action_bucket(
+                        codex_api_operator_action_card($lead, $category, $category === 'manual_review' ? 60 : 75, 'Follow-up date is due now.', $category === 'manual_review' ? 'Review context before sending because the next step affects appointment/procedure state.' : 'Send approved follow-up.'),
+                        $bucket
+                    );
+                    continue;
+                }
+
+                if ($stageKey === 'active_follow_up' || $nextFollowUpTs !== null || $recentlyContacted) {
+                    $counts['wait']++;
+                    if ($mode === 'daily') {
+                        $buckets['wait'][] = codex_api_operator_action_bucket(
+                            codex_api_operator_action_card($lead, 'wait_until_due', 25, 'Lead is active but not due right now.', 'Wait until next follow-up time or an inbound reply.'),
+                            'wait'
+                        );
+                    }
+                    continue;
+                }
+
+            }
+        }
+
+        foreach ($buckets as $bucket => &$items) {
+            usort($items, static function (array $a, array $b): int {
+                if ((int)$a['priority'] === (int)$b['priority']) {
+                    return (int)($b['lead']['id'] ?? 0) <=> (int)($a['lead']['id'] ?? 0);
+                }
+                return (int)$b['priority'] <=> (int)$a['priority'];
+            });
+            $items = array_slice($items, 0, $limit);
+            $counts[$bucket] = count($items);
+        }
+        unset($items);
+
+        $summaryParts = [];
+        if ($counts['do_now'] > 0) {
+            $summaryParts[] = $counts['do_now'] . ' action(s) to do now';
+        }
+        if ($counts['cleanup'] > 0) {
+            $summaryParts[] = $counts['cleanup'] . ' cleanup item(s)';
+        }
+        if ($counts['manual_review'] > 0) {
+            $summaryParts[] = $counts['manual_review'] . ' manual review item(s)';
+        }
+        if ($mode === 'daily' && $counts['nurture_candidates'] > 0) {
+            $summaryParts[] = $counts['nurture_candidates'] . ' nurture candidate(s)';
+        }
+        if (!$summaryParts) {
+            $summaryParts[] = 'No action needed right now';
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'mode' => $mode,
+            'generated_at' => now(),
+            'summary' => implode(', ', $summaryParts) . '.',
+            'counts' => $counts,
+            'command_center' => $buckets,
+            'operator_rules' => [
+                'read_only' => true,
+                'patient_facing_send_requires_explicit_approval' => true,
+                'hourly_only_true_due' => true,
+                'daily_includes_wait_and_nurture' => true,
+                'call_request_beats_sms_follow_up' => true,
+                'resolved_lost_leads_are_skipped' => true,
+            ],
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_crm_operator_brief')) {
+    function codex_api_crm_operator_brief(): void
+    {
+        $mode = strtolower(trim((string) codex_api_value('mode', 'daily')));
+        if (!in_array($mode, ['hourly', 'daily'], true)) {
+            $mode = 'daily';
+        }
+        $limit = max(5, min(50, (int) codex_api_value('limit', $mode === 'hourly' ? 12 : 25)));
+        $rows = function_exists('lead_pipeline_rows') ? lead_pipeline_rows(1000) : [];
+
+        $actions = [];
+        $counts = [
+            'reviewed' => 0,
+            'unread_replies' => 0,
+            'first_touch_needed' => 0,
+            'follow_up_due' => 0,
+            'nurture_candidates' => 0,
+            'delivery_issues' => 0,
+            'sms_blocked' => 0,
+            'resolved_lost' => 0,
+        ];
+        $seen = [];
+
+        foreach ($rows as $stageRows) {
+            if (!is_array($stageRows)) {
+                continue;
+            }
+            foreach ($stageRows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $lead = codex_api_enriched_lead($row);
+                $leadId = (int)($lead['id'] ?? 0);
+                if ($leadId <= 0) {
+                    continue;
+                }
+                $counts['reviewed']++;
+                $actionKey = (string)($lead['next_action_key'] ?? '');
+                $stageKey = (string)($lead['conversion_stage_key'] ?? '');
+                $smsStatus = (string)($lead['sms_opt_status'] ?? 'unknown');
+                $nextFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
+                $isDue = $nextFollowUp !== '' && strtotime($nextFollowUp) !== false && strtotime($nextFollowUp) <= time();
+                $smsIssue = codex_api_lead_has_sms_delivery_issue($leadId);
+                $resolvedLost = codex_api_operator_resolved_lost_lead($lead);
+
+                if ($resolvedLost) {
+                    $counts['resolved_lost']++;
+                    if (in_array($smsStatus, ['dnd', 'opted_out'], true)) {
+                        $counts['sms_blocked']++;
+                    }
+                    continue;
+                }
+
+                if ((int)($lead['unread_message_count'] ?? 0) > 0 || $actionKey === 'reply_needed') {
+                    $counts['unread_replies']++;
+                    $actions[] = codex_api_operator_action_card($lead, 'urgent_reply', 100, 'Lead appears to have a reply or unread message.', 'Review the thread and respond with a personal scheduling-focused draft.');
+                    $seen[$leadId] = true;
+                    continue;
+                }
+                if ($actionKey === 'first_touch') {
+                    $counts['first_touch_needed']++;
+                    if (!isset($seen[$leadId])) {
+                        $actions[] = codex_api_operator_action_card($lead, 'first_touch_needed', 85, 'Lead is ready for first touch.', 'Send the approved first-touch SMS/email and invite the complimentary custom consult.');
+                        $seen[$leadId] = true;
+                    }
+                    continue;
+                }
+                if ($isDue || in_array($actionKey, ['second_follow_up', 'overdue_follow_up'], true) || $stageKey === 'active_follow_up') {
+                    $counts['follow_up_due']++;
+                    if (!isset($seen[$leadId])) {
+                        $priority = $actionKey === 'overdue_follow_up' ? 80 : 70;
+                        $actions[] = codex_api_operator_action_card($lead, 'follow_up_due', $priority, 'Follow-up is due or the lead is in active follow-up.', 'Send a soft follow-up that keeps the goal on scheduling the complimentary consult.');
+                        $seen[$leadId] = true;
+                    }
+                    continue;
+                }
+                if ($stageKey === 'nurture_lost' || $actionKey === 'nurture_reactivate') {
+                    $counts['nurture_candidates']++;
+                    if ($mode === 'daily' && !isset($seen[$leadId])) {
+                        $actions[] = codex_api_operator_action_card($lead, 'nurture_candidate', 45, 'Lead is in nurture/no-answer and may be worth a soft reactivation.', 'Review context before sending a low-pressure reactivation message.');
+                        $seen[$leadId] = true;
+                    }
+                }
+                if ($smsIssue) {
+                    $counts['delivery_issues']++;
+                    if (!isset($seen[$leadId])) {
+                        $actions[] = codex_api_operator_action_card($lead, 'delivery_issue', 65, 'Recent SMS delivery issue found.', 'Verify phone, consider marking SMS DND, and use email if available.');
+                        $seen[$leadId] = true;
+                    }
+                }
+                if (in_array($smsStatus, ['dnd', 'opted_out'], true)) {
+                    $counts['sms_blocked']++;
+                }
+            }
+        }
+
+        usort($actions, static function (array $a, array $b): int {
+            if ((int)$a['priority'] === (int)$b['priority']) {
+                return (int)($b['lead']['id'] ?? 0) <=> (int)($a['lead']['id'] ?? 0);
+            }
+            return (int)$b['priority'] <=> (int)$a['priority'];
+        });
+        $actions = array_slice($actions, 0, $limit);
+
+        $brief = [];
+        if ($counts['unread_replies'] > 0) {
+            $brief[] = $counts['unread_replies'] . ' lead(s) may need a reply now.';
+        }
+        if ($counts['first_touch_needed'] > 0) {
+            $brief[] = $counts['first_touch_needed'] . ' lead(s) need first touch.';
+        }
+        if ($counts['follow_up_due'] > 0) {
+            $brief[] = $counts['follow_up_due'] . ' lead(s) need follow-up.';
+        }
+        if ($mode === 'daily' && $counts['nurture_candidates'] > 0) {
+            $brief[] = $counts['nurture_candidates'] . ' nurture/no-answer lead(s) are candidates for review.';
+        }
+        if ($counts['delivery_issues'] > 0) {
+            $brief[] = $counts['delivery_issues'] . ' SMS delivery issue(s) need cleanup.';
+        }
+        if (!$brief) {
+            $brief[] = 'No urgent CRM action found in this pass.';
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'mode' => $mode,
+            'generated_at' => now(),
+            'summary' => implode(' ', $brief),
+            'counts' => $counts,
+            'recommended_actions' => $actions,
+            'operator_rules' => [
+                'read_only' => true,
+                'patient_facing_send_requires_explicit_approval' => true,
+                'stage_change_requires_explicit_stage_approval' => true,
+                'recommended_frequency' => $mode === 'hourly' ? 'Run hourly during business hours.' : 'Run once each morning and once late afternoon.',
+            ],
         ]);
     }
 }
@@ -631,6 +1694,7 @@ if (!function_exists('codex_api_list_leads')) {
     {
         $limit = max(1, min(200, (int) codex_api_value('limit', 50)));
         $status = trim((string) codex_api_value('status', ''));
+        $conversionStage = codex_api_conversion_stage_key_from_label((string) codex_api_value('conversion_stage', codex_api_value('queue', codex_api_value('stage_key', ''))));
         $query = trim((string) codex_api_value('q', ''));
         $inboxOnly = filter_var(codex_api_value('inbox', false), FILTER_VALIDATE_BOOLEAN);
 
@@ -667,16 +1731,33 @@ if (!function_exists('codex_api_list_leads')) {
             }
         }
 
+        $sqlLimit = $conversionStage !== '' ? max($limit, 500) : $limit;
         $sql = 'SELECT ' . codex_api_select_fields() . ' FROM leads';
         if ($where) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
-        $sql .= ' ORDER BY updated_at DESC, id DESC LIMIT ' . $limit;
+        $sql .= ' ORDER BY updated_at DESC, id DESC LIMIT ' . $sqlLimit;
+
+        $rows = array_map('codex_api_enriched_lead', db_all($sql, $params));
+        if ($conversionStage !== '') {
+            $rows = array_values(array_filter($rows, static function (array $lead) use ($conversionStage): bool {
+                return (string) ($lead['conversion_stage_key'] ?? '') === $conversionStage;
+            }));
+        }
+        $rows = array_slice($rows, 0, $limit);
 
         codex_api_response([
             'ok' => true,
-            'leads' => db_all($sql, $params),
+            'leads' => $rows,
+            'filters' => [
+                'status' => $status,
+                'conversion_stage' => $conversionStage,
+                'query' => $query,
+                'inbox' => $inboxOnly,
+                'limit' => $limit,
+            ],
             'stages' => lead_stage_labels(),
+            'conversion_stages' => function_exists('lead_conversion_stage_labels') ? lead_conversion_stage_labels() : [],
         ]);
     }
 }
@@ -1377,6 +2458,13 @@ if (!function_exists('codex_api_move_stage')) {
                 ['from' => $oldStage, 'to' => $newStage, 'source' => 'codex_api'],
                 'Codex'
             );
+
+            if ($newStage === 'consultation_booked' && function_exists('lead_send_consultation_booked_internal_sms')) {
+                lead_send_consultation_booked_internal_sms($leadId, $oldStage, [
+                    'source' => 'codex_api',
+                    'created_by' => 'Codex',
+                ]);
+            }
         }
 
         codex_api_response([
@@ -1386,6 +2474,44 @@ if (!function_exists('codex_api_move_stage')) {
             'status' => $newStage,
             'status_label' => $allowedStages[$newStage],
             'lead' => codex_api_load_lead($leadId),
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_delete_lead')) {
+    function codex_api_delete_lead(int $leadId): void
+    {
+        if ($leadId <= 0) {
+            codex_api_response(['ok' => false, 'message' => 'Invalid lead selected.'], 422);
+        }
+
+        $request = (array) codex_api_body();
+        if (!codex_api_has_explicit_delete_approval($request)) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Lead deletion requires explicit delete approval.',
+                'approval_required' => 'delete_approved',
+                'lead_id' => $leadId,
+            ], 409);
+        }
+
+        $lead = codex_api_load_lead($leadId);
+
+        try {
+            $deleted = lead_delete_permanently($leadId, $lead);
+        } catch (Throwable $e) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'Failed to delete lead.',
+                'lead_id' => $leadId,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        codex_api_response([
+            'ok' => true,
+            'message' => 'Lead deleted permanently.',
+            'deleted' => $deleted,
         ]);
     }
 }
@@ -1475,7 +2601,7 @@ if (!function_exists('codex_api_update_lead')) {
             'assigned_to', 'financing_needed', 'financing_option', 'consultation_status',
             'consultation_date', 'lead_value', 'lost_reason', 'next_follow_up_at',
             'date_of_birth', 'scheduling_preferred_day', 'scheduling_preferred_time',
-            'follow_up_status',
+            'follow_up_status', 'sms_opt_status',
         ];
 
         $update = [];
@@ -1528,6 +2654,9 @@ if (!function_exists('codex_api_update_lead')) {
         if (isset($update['financing_option']) && !array_key_exists((string)$update['financing_option'], lead_financing_option_labels())) {
             $update['financing_option'] = 'none';
         }
+        if (isset($update['sms_opt_status']) && !in_array((string)$update['sms_opt_status'], ['unknown', 'subscribed', 'opted_in', 'opted_out', 'dnd'], true)) {
+            codex_api_response(['ok' => false, 'message' => 'SMS opt status is not allowed.'], 422);
+        }
         unset($stageLabels);
 
         $setParts = [];
@@ -1575,106 +2704,17 @@ if (!function_exists('codex_api_mobile_notifications')) {
     {
         lead_comm_ensure_schema();
         $limit = max(1, min(20, (int) codex_api_value('limit', 5)));
-        $notifications = [];
-        $dedupeKeys = [];
-        $messageLimit = 50;
-        $activityLimit = 30;
+        $notifications = function_exists('elite_ai_notification_rows')
+            ? elite_ai_notification_rows($limit)
+            : [];
 
-        $messages = db_all(
-            "SELECT
-                lm.id,
-                lm.lead_id,
-                lm.body,
-                lm.is_read,
-                lm.created_at,
-                l.full_name,
-                l.status
-             FROM lead_messages lm
-             INNER JOIN leads l ON l.id = lm.lead_id
-             WHERE lm.direction = 'inbound'
-               AND lm.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
-             ORDER BY lm.created_at DESC, lm.id DESC
-             LIMIT {$messageLimit}"
-        );
-
-        foreach ($messages as $row) {
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            $dedupeKey = 'reply:' . $leadId;
-            if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
-                continue;
-            }
-            $dedupeKeys[$dedupeKey] = true;
-            $assistantCard = codex_api_notification_assistant_card($row, 'reply');
-            $notifications[] = [
-                'id' => 'msg-' . (int) ($row['id'] ?? 0),
-                'type' => 'reply',
-                'title' => 'Reply from ' . (trim((string) ($row['full_name'] ?? 'Lead')) ?: 'Lead'),
-                'message' => trim((string) ($row['body'] ?? '')),
-                'created_at' => (string) ($row['created_at'] ?? ''),
-                'priority' => ((int) ($row['is_read'] ?? 0) === 0) ? 'high' : 'normal',
-                'is_new' => (int) ($row['is_read'] ?? 0) === 0,
-                'lead_id' => $leadId,
-                'lead_name' => trim((string) ($row['full_name'] ?? '')),
-                'status' => trim((string) ($row['status'] ?? '')),
-                'suggested_action' => (string) ($assistantCard['recommended_action'] ?? 'Review context and prepare a draft before sending.'),
-                'assistant_card' => $assistantCard,
-            ];
-        }
-
-        $activities = db_all(
-            "SELECT
-                la.id,
-                la.lead_id,
-                la.type,
-                la.body,
-                la.created_at,
-                l.full_name,
-                l.status
-             FROM lead_activities la
-             INNER JOIN leads l ON l.id = la.lead_id
-             WHERE la.type IN ('lead_created', 'consultation_scheduled', 'follow_up_due', 'manual_sms_followup_prepared')
-               AND la.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
-             ORDER BY la.created_at DESC, la.id DESC
-             LIMIT {$activityLimit}"
-        );
-
-        foreach ($activities as $row) {
-            $type = trim((string) ($row['type'] ?? 'activity'));
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            $dedupeKey = 'activity:' . $type . ':' . $leadId;
-            if ($leadId <= 0 || isset($dedupeKeys[$dedupeKey])) {
-                continue;
-            }
-            $dedupeKeys[$dedupeKey] = true;
-            $assistantCard = codex_api_notification_assistant_card($row, $type);
-            $notifications[] = [
-                'id' => 'act-' . (int) ($row['id'] ?? 0),
-                'type' => $type,
-                'title' => $type === 'lead_created' ? 'New lead' : 'CRM alert',
-                'message' => trim((string) ($row['body'] ?? '')),
-                'created_at' => (string) ($row['created_at'] ?? ''),
-                'priority' => in_array($type, ['lead_created', 'follow_up_due', 'consultation_scheduled'], true) ? 'high' : 'normal',
-                'is_new' => false,
-                'lead_id' => $leadId,
-                'lead_name' => trim((string) ($row['full_name'] ?? '')),
-                'status' => trim((string) ($row['status'] ?? '')),
-                'suggested_action' => (string) ($assistantCard['recommended_action'] ?? ($type === 'lead_created'
-                    ? 'Open the lead and confirm first-touch drafts.'
-                    : 'Open the lead and review next steps.')),
-                'assistant_card' => $assistantCard,
-            ];
-        }
-
-        usort($notifications, static function (array $a, array $b): int {
-            $aTime = strtotime((string) ($a['created_at'] ?? '')) ?: 0;
-            $bTime = strtotime((string) ($b['created_at'] ?? '')) ?: 0;
-            return $bTime <=> $aTime;
-        });
+        $unreadCount = count(array_filter($notifications, static fn (array $row): bool => !empty($row['is_new'])));
 
         codex_api_response([
             'ok' => true,
-            'notifications' => codex_api_select_notification_window($notifications, $limit),
-            'adapter' => 'lead_messages + lead_activities',
+            'notifications' => $notifications,
+            'unread_count' => $unreadCount,
+            'adapter' => 'elite_ai_notification_rows',
             'draft_before_send_rule' => true,
         ]);
     }
@@ -1684,6 +2724,17 @@ if (!function_exists('codex_api_mark_notification_reviewed')) {
     function codex_api_mark_notification_reviewed(): void
     {
         $leadId = (int) codex_api_value('lead_id', 0);
+        $notificationId = trim((string) codex_api_value('notification_id', ''));
+        if ($notificationId !== '' && str_starts_with($notificationId, 'test-')) {
+            elite_ai_test_notification_mark_reviewed($notificationId, $leadId);
+            codex_api_response([
+                'ok' => true,
+                'message' => 'Test notification reviewed.',
+                'lead_id' => $leadId,
+                'thread' => $leadId > 0 ? codex_api_timeline($leadId) : [],
+            ]);
+        }
+
         if ($leadId <= 0) {
             codex_api_response(['ok' => false, 'message' => 'lead_id is required.'], 422);
         }
@@ -1691,7 +2742,7 @@ if (!function_exists('codex_api_mark_notification_reviewed')) {
         codex_api_load_lead($leadId);
         lead_comm_mark_read($leadId);
         lead_comm_insert_activity($leadId, 'operator_notification_reviewed', 'Notification reviewed and cleared through Codex API.', [
-            'notification_id' => trim((string) codex_api_value('notification_id', '')),
+            'notification_id' => $notificationId,
             'source' => 'codex_api',
             'draft_before_send_rule' => true,
         ], (string) codex_api_value('created_by', 'Codex'));
@@ -1720,6 +2771,15 @@ if (!function_exists('codex_api_mobile_setup_token')) {
         }
 
         $token = mobile_ai_issue_setup_token($userId, null);
+        if ($token === '') {
+            codex_api_response([
+                'ok' => false,
+                'message' => mobile_ai_has_key()
+                    ? 'Could not generate a mobile setup token right now.'
+                    : 'APP_KEY is required before mobile setup tokens can be issued.',
+            ], 503);
+        }
+
         codex_api_response([
             'ok' => true,
             'user_id' => $userId,
@@ -1727,6 +2787,104 @@ if (!function_exists('codex_api_mobile_setup_token')) {
             'qr_url' => mobile_ai_qr_image_url($token),
             'expires_in_seconds' => MOBILE_AI_SETUP_TTL_SECONDS,
         ]);
+    }
+}
+
+if (!function_exists('codex_api_mobile_push_status')) {
+    function codex_api_mobile_push_status(): void
+    {
+        mobile_ai_ensure_schema();
+        $counts = db_one(
+            "SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN enabled = 1 AND push_enabled = 1 AND revoked_at IS NULL THEN 1 ELSE 0 END) AS enabled,
+                MAX(last_seen_at) AS last_seen_at
+             FROM user_push_subscriptions"
+        ) ?: [];
+
+        codex_api_response([
+            'ok' => true,
+            'configured' => mobile_ai_web_push_ready(),
+            'php_version' => PHP_VERSION,
+            'vendor_autoload' => is_file(ROOT_PATH . '/vendor/autoload.php'),
+            'public_key_configured' => trim((string) ELITE_WEB_PUSH_PUBLIC_KEY) !== '',
+            'subscriptions_total' => (int) ($counts['total'] ?? 0),
+            'subscriptions_enabled' => (int) ($counts['enabled'] ?? 0),
+            'last_subscription_seen_at' => (string) ($counts['last_seen_at'] ?? ''),
+        ]);
+    }
+}
+
+if (!function_exists('codex_api_mobile_push_test')) {
+    function codex_api_mobile_push_test(): void
+    {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            codex_api_response(['ok' => false, 'message' => 'Use POST for a test push.'], 405);
+        }
+
+        $leadId = (int) codex_api_value('lead_id', 0);
+        $notificationType = trim((string) codex_api_value('notification_type', codex_api_value('type', '')));
+        $createdNotification = null;
+        $pushPayload = [
+            'title' => 'Elite AI',
+            'push_body' => 'Rod, Elite AI notifications are connected. Open the assistant and tell me what you want to test.',
+            'tag' => 'elite-ai-codex-test',
+            'url' => '/crm/mobile-ai?tab=assistant',
+            'data' => ['url' => '/crm/mobile-ai?tab=assistant'],
+        ];
+
+        if ($leadId > 0 && function_exists('elite_ai_test_notification_create')) {
+            $created = elite_ai_test_notification_create($leadId, $notificationType !== '' ? $notificationType : 'reply', [
+                'message' => (string) codex_api_value('message', ''),
+                'title' => (string) codex_api_value('title', ''),
+                'source_label' => (string) codex_api_value('source_label', ''),
+                'created_by' => (string) codex_api_value('created_by', 'Codex API'),
+            ]);
+            if (empty($created['ok'])) {
+                codex_api_response([
+                    'ok' => false,
+                    'message' => (string) ($created['message'] ?? 'Could not create the Elite AI test notification.'),
+                ], 422);
+            }
+
+            $createdNotification = (array) ($created['notification'] ?? []);
+            $notificationUrl = '/crm/mobile-ai?tab=assistant';
+            if (trim((string) ($createdNotification['id'] ?? '')) !== '') {
+                $notificationUrl .= '&notification_id=' . rawurlencode((string) $createdNotification['id']);
+            }
+            $notificationUrl .= '&lead_id=' . $leadId;
+
+            $pushPayload = [
+                'title' => 'Elite AI',
+                'push_body' => trim((string) ($createdNotification['push_body'] ?? '')) ?: 'Rod, Elite AI test notification is ready.',
+                'tag' => 'elite-ai-codex-test-' . $leadId . '-' . preg_replace('/[^a-z0-9_-]+/i', '-', (string) ($createdNotification['type'] ?? 'reply')),
+                'url' => $notificationUrl,
+                'lead_id' => $leadId,
+                'notification_id' => trim((string) ($createdNotification['id'] ?? '')),
+                'badge_count' => max(1, (int) ($createdNotification['badge_count'] ?? 1)),
+                'data' => [
+                    'url' => $notificationUrl,
+                    'notification_id' => trim((string) ($createdNotification['id'] ?? '')),
+                ],
+            ];
+        }
+
+        $result = mobile_ai_send_push_payload($pushPayload);
+        $ok = !empty($result['sent']) || $createdNotification !== null;
+        $message = !empty($result['sent'])
+            ? ($createdNotification !== null
+                ? 'Elite AI end-to-end test notification created and push sent.'
+                : 'Elite AI test push sent.')
+            : ($createdNotification !== null
+                ? 'Elite AI test notification created. No connected device accepted the push, but the assistant feed is ready.'
+                : 'No connected Elite AI device accepted the test push.');
+
+        codex_api_response([
+            'ok' => $ok,
+            'message' => $message,
+            'push' => $result,
+            'notification' => $createdNotification,
+        ], $ok ? 200 : 409);
     }
 }
 
@@ -1853,6 +3011,38 @@ try {
         codex_api_pipeline_snapshot();
     }
 
+    if ($action === 'crm_operator_brief') {
+        codex_api_crm_operator_brief();
+    }
+
+    if ($action === 'crm_operator_command_center') {
+        codex_api_crm_operator_command_center();
+    }
+
+    if ($action === 'lead_queue_summary') {
+        codex_api_lead_queue_summary();
+    }
+
+    if ($action === 'nurture_candidates') {
+        codex_api_nurture_candidates();
+    }
+
+    if ($action === 'sms_delivery_issues') {
+        codex_api_sms_delivery_issues();
+    }
+
+    if ($action === 'conversation_quality') {
+        codex_api_conversation_quality();
+    }
+
+    if ($action === 'meta_lead_ad_correlation') {
+        codex_api_meta_lead_ad_correlation();
+    }
+
+    if ($action === 'api_self_check') {
+        codex_api_self_check();
+    }
+
     if ($action === 'assistant_prompt') {
         codex_api_assistant_prompt();
     }
@@ -1873,7 +3063,7 @@ try {
         ]);
     }
 
-    if ($action === 'list_leads' || $action === 'inbox') {
+    if ($action === 'list_leads' || $action === 'lead_queue' || $action === 'inbox') {
         if ($action === 'inbox' && !array_key_exists('inbox', codex_api_body()) && !array_key_exists('inbox', $_GET)) {
             $_GET['inbox'] = '1';
         }
@@ -1901,6 +3091,14 @@ try {
 
     if ($action === 'mobile_notifications') {
         codex_api_mobile_notifications();
+    }
+
+    if ($action === 'mobile_push_status') {
+        codex_api_mobile_push_status();
+    }
+
+    if ($action === 'mobile_push_test') {
+        codex_api_mobile_push_test();
     }
 
     if ($action === 'mark_notification_reviewed') {
@@ -2009,12 +3207,20 @@ try {
         );
     }
 
+    if ($action === 'nurture_reactivation_send') {
+        codex_api_nurture_reactivation_send();
+    }
+
     if ($action === 'move_stage') {
         codex_api_move_stage((int) codex_api_value('lead_id', 0), trim((string) codex_api_value('status', '')));
     }
 
     if ($action === 'update_lead') {
         codex_api_update_lead((int) codex_api_value('lead_id', 0), (array) codex_api_value('fields', []));
+    }
+
+    if ($action === 'delete_lead') {
+        codex_api_delete_lead((int) codex_api_value('lead_id', 0));
     }
 
     if ($action === 'mobile_setup_token') {

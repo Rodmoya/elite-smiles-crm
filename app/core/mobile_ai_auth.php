@@ -34,7 +34,42 @@ if (!defined('MOBILE_AI_SESSION_COOKIE_PATH')) {
 if (!function_exists('mobile_ai_key')) {
     function mobile_ai_key(): string
     {
-        return defined('APP_KEY') && APP_KEY !== '' ? APP_KEY : 'elite-smiles-mobile-ai';
+        return defined('APP_KEY') ? trim((string) APP_KEY) : '';
+    }
+}
+
+if (!function_exists('mobile_ai_has_key')) {
+    function mobile_ai_has_key(): bool
+    {
+        return mobile_ai_key() !== '';
+    }
+}
+
+if (!function_exists('mobile_ai_vendor_autoload')) {
+    function mobile_ai_vendor_autoload(): bool
+    {
+        static $ready = null;
+        if ($ready !== null) {
+            return $ready;
+        }
+
+        $autoload = ROOT_PATH . '/vendor/autoload.php';
+
+        if (!is_file($autoload)) {
+            $ready = false;
+            return $ready;
+        }
+
+        $previousErrorReporting = error_reporting();
+        error_reporting($previousErrorReporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+        try {
+            require_once $autoload;
+            $ready = class_exists(\chillerlan\QRCode\QRCode::class);
+            return $ready;
+        } finally {
+            error_reporting($previousErrorReporting);
+        }
     }
 }
 
@@ -48,6 +83,10 @@ if (!function_exists('mobile_ai_generate_token')) {
 if (!function_exists('mobile_ai_hash_token')) {
     function mobile_ai_hash_token(string $token): string
     {
+        if (!mobile_ai_has_key() || trim($token) === '') {
+            return '';
+        }
+
         return hash_hmac('sha256', $token, mobile_ai_key());
     }
 }
@@ -98,7 +137,25 @@ if (!function_exists('mobile_ai_qr_image_url')) {
     function mobile_ai_qr_image_url(string $token): string
     {
         $setupUrl = mobile_ai_qr_setup_url($token);
-        return 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($setupUrl);
+        if ($setupUrl === '' || !mobile_ai_vendor_autoload()) {
+            esm_log('mobile_ai', 'Could not render local QR image.', [
+                'has_setup_url' => $setupUrl !== '',
+                'vendor_autoload' => is_file(ROOT_PATH . '/vendor/autoload.php'),
+            ]);
+            return '';
+        }
+
+        $previousErrorReporting = error_reporting();
+        error_reporting($previousErrorReporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+        try {
+            return (new \chillerlan\QRCode\QRCode())->render($setupUrl);
+        } catch (Throwable $e) {
+            esm_log('mobile_ai', 'Local QR generation failed.', ['error' => $e->getMessage()]);
+            return '';
+        } finally {
+            error_reporting($previousErrorReporting);
+        }
     }
 }
 
@@ -197,7 +254,7 @@ if (!function_exists('mobile_ai_ensure_schema')) {
 if (!function_exists('mobile_ai_issue_setup_token')) {
     function mobile_ai_issue_setup_token(int $userId, ?int $createdBy = null): string
     {
-        if ($userId <= 0) {
+        if ($userId <= 0 || !mobile_ai_has_key()) {
             return '';
         }
 
@@ -237,7 +294,12 @@ if (!function_exists('mobile_ai_find_valid_setup_token')) {
     function mobile_ai_find_valid_setup_token(string $token): ?array
     {
         $token = trim($token);
-        if ($token === '') {
+        if ($token === '' || !mobile_ai_has_key()) {
+            return null;
+        }
+
+        $tokenHash = mobile_ai_hash_token($token);
+        if ($tokenHash === '') {
             return null;
         }
 
@@ -248,7 +310,7 @@ if (!function_exists('mobile_ai_find_valid_setup_token')) {
              FROM user_mobile_access_tokens
              WHERE token_hash = :token_hash
              LIMIT 1",
-            ['token_hash' => mobile_ai_hash_token($token)]
+            ['token_hash' => $tokenHash]
         );
 
         if (!$row) {
@@ -305,7 +367,7 @@ if (!function_exists('mobile_ai_mark_setup_token_used')) {
 if (!function_exists('mobile_ai_create_session')) {
     function mobile_ai_create_session(int $userId, string $deviceLabel = ''): string
     {
-        if ($userId <= 0) {
+        if ($userId <= 0 || !mobile_ai_has_key()) {
             return '';
         }
 
@@ -347,7 +409,12 @@ if (!function_exists('mobile_ai_find_session')) {
     function mobile_ai_find_session(string $sessionToken): ?array
     {
         $sessionToken = trim($sessionToken);
-        if ($sessionToken === '') {
+        if ($sessionToken === '' || !mobile_ai_has_key()) {
+            return null;
+        }
+
+        $sessionHash = mobile_ai_hash_token($sessionToken);
+        if ($sessionHash === '') {
             return null;
         }
 
@@ -358,7 +425,7 @@ if (!function_exists('mobile_ai_find_session')) {
              FROM user_mobile_sessions
              WHERE session_token_hash = :session_token_hash
              LIMIT 1",
-            ['session_token_hash' => mobile_ai_hash_token($sessionToken)]
+            ['session_token_hash' => $sessionHash]
         );
 
         if (!$row) {
@@ -468,13 +535,14 @@ if (!function_exists('mobile_ai_logout_current_session')) {
     function mobile_ai_logout_current_session(): void
     {
         $token = mobile_ai_current_session_token();
-        if ($token !== '') {
+        $tokenHash = mobile_ai_hash_token($token);
+        if ($tokenHash !== '') {
             db_query(
                 "UPDATE user_mobile_sessions
                  SET revoked_at = NOW(), updated_at = NOW()
                  WHERE session_token_hash = :session_token_hash
                    AND revoked_at IS NULL",
-                ['session_token_hash' => mobile_ai_hash_token($token)]
+                ['session_token_hash' => $tokenHash]
             );
         }
 
@@ -557,7 +625,7 @@ if (!function_exists('mobile_ai_latest_session_for_user')) {
 if (!function_exists('mobile_ai_save_push_subscription')) {
     function mobile_ai_save_push_subscription(int $userId, array $subscription, string $browser = '', string $deviceLabel = ''): bool
     {
-        if ($userId <= 0) {
+        if ($userId <= 0 || !mobile_ai_has_key()) {
             return false;
         }
 
@@ -565,6 +633,11 @@ if (!function_exists('mobile_ai_save_push_subscription')) {
 
         $endpoint = trim((string) ($subscription['endpoint'] ?? ''));
         if ($endpoint === '') {
+            return false;
+        }
+
+        $endpointHash = mobile_ai_hash_token($endpoint);
+        if ($endpointHash === '') {
             return false;
         }
 
@@ -584,7 +657,7 @@ if (!function_exists('mobile_ai_save_push_subscription')) {
                 updated_at = NOW()",
             [
                 'user_id' => $userId,
-                'endpoint_hash' => mobile_ai_hash_token($endpoint),
+                'endpoint_hash' => $endpointHash,
                 'endpoint' => $endpoint,
                 'subscription_json' => json_encode($subscription, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'browser' => substr(trim($browser), 0, 150),
@@ -599,11 +672,16 @@ if (!function_exists('mobile_ai_save_push_subscription')) {
 if (!function_exists('mobile_ai_remove_push_subscription')) {
     function mobile_ai_remove_push_subscription(int $userId, string $endpoint): bool
     {
-        if ($userId <= 0 || trim($endpoint) === '') {
+        if ($userId <= 0 || trim($endpoint) === '' || !mobile_ai_has_key()) {
             return false;
         }
 
         mobile_ai_ensure_schema();
+
+        $endpointHash = mobile_ai_hash_token($endpoint);
+        if ($endpointHash === '') {
+            return false;
+        }
 
         db_query(
             "UPDATE user_push_subscriptions
@@ -612,7 +690,7 @@ if (!function_exists('mobile_ai_remove_push_subscription')) {
                AND endpoint_hash = :endpoint_hash",
             [
                 'user_id' => $userId,
-                'endpoint_hash' => mobile_ai_hash_token($endpoint),
+                'endpoint_hash' => $endpointHash,
             ]
         );
 

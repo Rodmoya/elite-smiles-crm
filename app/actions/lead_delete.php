@@ -95,6 +95,13 @@ if (!auth_check()) {
     ]);
 }
 
+if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+    lead_delete_json_response(403, [
+        'ok' => false,
+        'message' => 'Forbidden. Your role is read-only.',
+    ]);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     lead_delete_json_response(405, [
         'ok' => false,
@@ -132,7 +139,7 @@ if ($leadId <= 0) {
 
 try {
     $leadRow = db_one(
-        "SELECT id, full_name FROM leads WHERE id = :id LIMIT 1",
+        "SELECT id, full_name, email, phone, status FROM leads WHERE id = :id LIMIT 1",
         ['id' => $leadId]
     );
 } catch (Throwable $e) {
@@ -153,16 +160,14 @@ if (!$leadRow) {
 }
 
 try {
-    db_execute(
-        "DELETE FROM leads WHERE id = :id LIMIT 1",
-        ['id' => $leadId]
-    );
+    $deleted = lead_delete_permanently($leadId, $leadRow);
 
     lead_delete_json_response(200, [
         'ok' => true,
         'message' => 'Lead deleted successfully.',
         'lead_id' => $leadId,
-        'full_name' => (string) ($leadRow['full_name'] ?? ''),
+        'full_name' => (string) ($deleted['full_name'] ?? ''),
+        'deleted_counts' => (array) ($deleted['deleted_counts'] ?? []),
     ]);
 } catch (Throwable $e) {
     lead_delete_json_response(500, [

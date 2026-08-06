@@ -1230,7 +1230,7 @@ if (!function_exists('lead_operator_resolved_lost_lead')) {
         $lostReason = strtolower(trim((string)($lead['lost_reason'] ?? '')));
         $notes = strtolower(trim((string)($lead['notes'] ?? '')));
 
-        if ($status === 'lost_lead' || $stageKey === 'nurture_lost') {
+        if (in_array($status, ['lost_lead', 'opted_out'], true)) {
             return true;
         }
         if ($lostReason !== '') {
@@ -1475,8 +1475,10 @@ if (!function_exists('lead_action_queue_rows')) {
                     && $lastOutboundTs >= $nextFollowUpTs;
                 $isDue = $nextFollowUpTs !== null && $nextFollowUpTs <= $now && !$hasOutboundAfterDue;
                 $recentlyContacted = false;
+                $firstTouchDue = false;
                 if ($lastOutboundAt !== '' && ($lastOutboundTs = strtotime($lastOutboundAt)) !== false) {
-                    $recentlyContacted = ($now - $lastOutboundTs) < 20 * 3600;
+                    $recentlyContacted = ($now - $lastOutboundTs) < 3.5 * 3600;
+                    $firstTouchDue = $stageKey === 'first_touch_sent' && !$recentlyContacted;
                 }
 
                 if ($status === 'treatment_completed' || $stageKey === 'treatment_completed') {
@@ -1490,11 +1492,17 @@ if (!function_exists('lead_action_queue_rows')) {
                     $actionLabel = 'Call requested';
                     $actionTone = 'blue';
                     $reason = 'Lead asked for a phone call after the last outbound touch. Call first before sending another standard follow-up.';
-                } elseif ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && !$recentlyContacted)) {
+                } elseif ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt))) {
                     $priority = 95;
                 } elseif ($actionKey === 'first_touch') {
                     $priority = 85;
                     $reason = 'New lead has not received first contact yet.';
+                } elseif ($firstTouchDue) {
+                    $priority = 75;
+                    $actionKey = 'second_follow_up';
+                    $actionLabel = 'Lead Agent follow-up';
+                    $actionTone = 'amber';
+                    $reason = 'First touch was sent at least 3.5 hours ago without a reply. The Lead Agent cadence is due.';
                 } elseif (lead_operator_has_sms_cleanup_issue($lead)) {
                     $priority = 70;
                     $actionKey = 'delivery_issue';

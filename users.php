@@ -428,11 +428,17 @@ if (is_post() && post('action') === 'generate_mobile_qr') {
         $errorMessage = 'User must be active before mobile access can be issued.';
     } else {
         $token = mobile_ai_issue_setup_token($targetUserId, auth_user_id());
-        $generatedMobileLink = mobile_ai_qr_setup_url($token);
-        $generatedMobileQrUrl = mobile_ai_qr_image_url($token);
-        $generatedMobileUserLabel = trim(((string) ($targetUser['first_name'] ?? '')) . ' ' . ((string) ($targetUser['last_name'] ?? '')));
-        $generatedMobileUserLabel = $generatedMobileUserLabel !== '' ? $generatedMobileUserLabel : (string) ($targetUser['email'] ?? 'User');
-        $successMessage = 'Mobile AI QR link generated.';
+        if ($token === '') {
+            $errorMessage = mobile_ai_has_key()
+                ? 'Could not generate the Mobile AI setup link right now.'
+                : 'APP_KEY is required before Mobile AI setup links can be issued.';
+        } else {
+            $generatedMobileLink = mobile_ai_qr_setup_url($token);
+            $generatedMobileQrUrl = mobile_ai_qr_image_url($token);
+            $generatedMobileUserLabel = trim(((string) ($targetUser['first_name'] ?? '')) . ' ' . ((string) ($targetUser['last_name'] ?? '')));
+            $generatedMobileUserLabel = $generatedMobileUserLabel !== '' ? $generatedMobileUserLabel : (string) ($targetUser['email'] ?? 'User');
+            $successMessage = 'Mobile AI QR link generated.';
+        }
     }
 }
 

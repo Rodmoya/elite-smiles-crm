@@ -43,4 +43,7 @@ reconciliation_expect(str_contains($workflow, "github.ref == 'refs/heads/main'")
 reconciliation_expect(str_contains($workflow, "github.event_name == 'workflow_dispatch' && inputs.deploy"), 'Manual production deployment must require explicit confirmation.');
 reconciliation_expect(!str_contains($workflow, "github.event_name == 'pull_request'"), 'Pull-request validation must not deploy production.');
 
+$cli = $read('bin/codex-api-request.php');
+reconciliation_expect(str_contains($cli, "['health', 'capabilities', 'stages']"), 'Operational API reads must default to signed POST requests.');
+
 echo "Source reconciliation safety tests passed.\n";

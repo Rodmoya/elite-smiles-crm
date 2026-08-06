@@ -20,8 +20,9 @@ if (!is_array($credential) || empty($credential['token']) || empty($credential['
     exit(2);
 }
 
-$method = strtoupper((string)($options['method'] ?? 'GET'));
 $action = trim((string)($options['action'] ?? 'health'));
+$defaultMethod = in_array($action, ['health', 'capabilities', 'stages'], true) ? 'GET' : 'POST';
+$method = strtoupper((string)($options['method'] ?? $defaultMethod));
 $jsonFile = trim((string)($options['json-file'] ?? ''));
 $json = $jsonFile !== '' ? trim((string)@file_get_contents($jsonFile)) : trim((string)($options['json'] ?? ''));
 $body = $json !== '' ? json_decode($json, true) : [];

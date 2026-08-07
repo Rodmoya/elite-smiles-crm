@@ -56,6 +56,10 @@ foreach ($directives as $phrase => [$expectedStage, $expectedLeadQuery]) {
 
 $historical = 'I already changed Jordan to consultation booked';
 elite_ai_stage_expect(!elite_ai_prompt_requests_stage_move($historical), 'Historical status statement must not execute as a new stage command.');
+$historicalPlan = elite_ai_plan_request('I already changed the lead with email test@meta.com to consultation booked.', '', ['lead_id' => 48]);
+elite_ai_stage_expect((string) ($historicalPlan['intent'] ?? '') === 'lead_summary', 'Historical stage wording must remain read-only.');
+elite_ai_stage_expect((string) ($historicalPlan['target_stage'] ?? '') === '', 'Historical stage wording must not carry an executable target.');
+elite_ai_stage_expect((string) ($historicalPlan['lead_query'] ?? '') === 'test@meta.com', 'Historical stage summaries must still resolve the explicitly named lead.');
 elite_ai_stage_expect(
     elite_ai_requested_stage_key('move Jordan from consultation booked to lost') === 'lost_lead',
     'Destination stage must win when the prompt also names the current stage.'

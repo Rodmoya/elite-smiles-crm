@@ -32,6 +32,10 @@ social_studio_exact_assert(
     social_studio_overlay_template_cta($template, 'fallback') === "COMPLIMENTARY\nCONSULTATION",
     'Template CTA must remain verbatim, including its manual line break.'
 );
+social_studio_exact_assert(
+    !social_studio_should_send_reference_image($template),
+    'Nano Banana must receive the analyzed photo brief—not the original ad pixels—when CRM will apply an approved overlay.'
+);
 $versionedUrl = social_studio_image_url([
     'id' => 30,
     'image_storage_key' => 'social-studio/draft-30/raw-a.png',

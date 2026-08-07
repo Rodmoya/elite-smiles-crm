@@ -1017,6 +1017,13 @@ if (!function_exists('social_studio_store_imported_image')) {
     }
 }
 
+if (!function_exists('social_studio_should_send_reference_image')) {
+    function social_studio_should_send_reference_image(array $overlayTemplate): bool
+    {
+        return ($overlayTemplate['elements'] ?? []) === [];
+    }
+}
+
 if (!function_exists('social_studio_generate_image_for_draft')) {
     function social_studio_generate_image_for_draft(int $draftId): array
     {
@@ -1037,11 +1044,10 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             $referencePath = $base ? social_studio_base_source_path($base) : '';
             $sourceTemplateDecoded = $base ? json_decode((string)($base['overlay_template_json'] ?? ''), true) : null;
             $sourceOverlayTemplate = is_array($sourceTemplateDecoded) ? social_studio_normalize_overlay_template($sourceTemplateDecoded) : [];
-            if ($referencePath !== '' && is_file($referencePath)) {
+            if (social_studio_should_send_reference_image($overlayTemplate) && $referencePath !== '' && is_file($referencePath)) {
                 $referenceBytes = @file_get_contents($referencePath);
                 if (is_string($referenceBytes) && $referenceBytes !== '') {
                     $referenceMime = (string)(@mime_content_type($referencePath) ?: 'image/jpeg');
-                    $referenceBytes = social_studio_remove_reference_overlay($referenceBytes, $overlayTemplate) ?: $referenceBytes;
                     $referenceImage = ['bytes' => $referenceBytes, 'mime_type' => $referenceMime];
                 }
             }

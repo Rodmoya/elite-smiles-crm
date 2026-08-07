@@ -50,7 +50,14 @@ $svg = (string)file_get_contents($targetPath);
 social_studio_exact_assert(substr_count($svg, '<image ') === 2, 'Pixel-locked output must include the generated photo and original template pixels.');
 social_studio_exact_assert(substr_count($svg, '<use href="#approved-template-source"') === 1, 'Each approved overlay element must reuse the saved template pixels.');
 social_studio_exact_assert(!str_contains($svg, '<text '), 'Preserve mode must not reconstruct approved text with substitute fonts.');
-social_studio_exact_assert(str_contains($svg, 'viewBox="0.08 0.7 1 1"'), 'Source crop geometry must remain tied to the approved template coordinates.');
+social_studio_exact_assert(str_contains($svg, 'viewBox="0.065 0.69 1 1"'), 'Source artwork region must remain tied to the approved template coordinates.');
+
+$multiRegionTemplate = $template;
+$multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
+    'text' => 'THE POWER OF VENEERS', 'x' => 7, 'y' => 8, 'width' => 45, 'height' => 12,
+]);
+$regions = social_studio_overlay_pixel_regions($multiRegionTemplate, $multiRegionTemplate);
+social_studio_exact_assert(count($regions) === 2, 'Main artwork and bottom CTA must be preserved as coherent regions instead of text strips.');
 
 @unlink($targetPath);
 @unlink($sourcePath);

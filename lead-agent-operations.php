@@ -67,7 +67,9 @@ $runHealth = lead_agent_run_health($latestRun);
 $readyRows = db_all("SELECT l.id, l.full_name, l.source, s.pause_reason, s.updated_at
     FROM lead_agent_states s INNER JOIN leads l ON l.id = s.lead_id
     WHERE s.status = 'ready_to_schedule' ORDER BY s.updated_at DESC LIMIT 8");
-$readyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'");
+$agentReadyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'");
+$pipelineCounts = lead_pipeline_counts();
+$pipelineSchedulingTotal = (int)($pipelineCounts['scheduling'] ?? 0);
 $attentionRows = lead_agent_exception_rows(8);
 
 $user = auth_user();
@@ -202,7 +204,8 @@ $eventLabels = [
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current workload</p>
                 <h2 class="mt-2 text-xl font-semibold text-slate-950">Queue health</h2>
                 <dl class="mt-5 space-y-3">
-                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Scheduling waiting for Rod</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)$readyTotal) ?></dd></div>
+                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Scheduling pipeline total</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)$pipelineSchedulingTotal) ?></dd></div>
+                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Agent handoffs waiting for Rod</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)$agentReadyTotal) ?></dd></div>
                     <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">New handoffs today</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)((int)($metrics['ready_to_schedule_today'] ?? 0))) ?></dd></div>
                     <div class="flex items-center justify-between rounded-2xl <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'bg-amber-50' : 'bg-emerald-50' ?> px-4 py-3"><dt class="text-sm <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'text-amber-800' : 'text-emerald-800' ?>">Overdue automated follow-ups</dt><dd class="text-lg font-bold tabular-nums <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'text-amber-900' : 'text-emerald-900' ?>"><?= e((string)((int)($metrics['overdue_now'] ?? 0))) ?></dd></div>
                     <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Oldest overdue</dt><dd class="text-sm font-bold tabular-nums text-slate-950"><?= e((string)((int)($metrics['oldest_overdue_minutes'] ?? 0))) ?> min</dd></div>
@@ -214,7 +217,7 @@ $eventLabels = [
             <article class="rounded-[2rem] border border-emerald-200 bg-white p-6 shadow-sm lg:p-7">
                 <div class="flex items-start justify-between gap-4">
                     <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Ready for you</p><h2 class="mt-2 text-xl font-semibold">Scheduling handoffs</h2></div>
-                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold tabular-nums text-emerald-800"><?= e((string)$readyTotal) ?></span>
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold tabular-nums text-emerald-800"><?= e((string)$agentReadyTotal) ?></span>
                 </div>
                 <div class="mt-5 space-y-3">
                     <?php if ($readyRows === []): ?><p class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-600">No lead is waiting for appointment times right now.</p><?php endif; ?>

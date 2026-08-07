@@ -78,4 +78,10 @@ $alignedNight = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 
 expect_true($alignedMorning->format('Y-m-d H:i') === '2026-08-06 08:00', 'Morning sends should move to 8 AM.');
 expect_true($alignedNight->format('Y-m-d H:i') === '2026-08-07 08:00', 'Night sends should move to next-day 8 AM.');
 
+$healthNow = new DateTimeImmutable('2026-08-07 11:00:00', new DateTimeZone(APP_TIMEZONE));
+$healthyRun = lead_agent_run_health(['status' => 'completed', 'finished_at' => '2026-08-07 10:45:00', 'started_at' => '2026-08-07 10:44:59'], $healthNow);
+$staleRun = lead_agent_run_health(['status' => 'completed', 'finished_at' => '2026-08-07 09:00:00', 'started_at' => '2026-08-07 08:59:59'], $healthNow);
+expect_true($healthyRun['key'] === 'healthy', 'A recent completed worker run should be healthy.');
+expect_true($staleRun['key'] === 'stale', 'A worker with no recent run should be stale.');
+
 echo "Lead Agent policy tests passed.\n";

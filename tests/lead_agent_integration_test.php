@@ -29,10 +29,20 @@ try {
     integration_expect((int) ($run['processed'] ?? 0) === 1, 'Dry-run worker did not process the due lead.');
     integration_expect((string) ($run['results'][0]['action'] ?? '') === 'would_send', 'Dry-run worker should produce a would-send decision.');
     integration_expect((string) ($run['results'][0]['channel'] ?? '') === 'sms', 'First due cadence action should use SMS.');
+    integration_expect((int)($run['run_id'] ?? 0) > 0, 'Worker run must return its durable run id.');
+    $latestRun = lead_agent_latest_run(true);
+    integration_expect((string)($latestRun['status'] ?? '') === 'completed', 'Worker heartbeat must finish successfully.');
+    integration_expect((int)($latestRun['due_count'] ?? 0) === 1 && (int)($latestRun['processed_count'] ?? 0) === 1, 'Worker heartbeat must record due and processed counts.');
+    integration_expect((string)(lead_agent_run_health($latestRun)['key'] ?? '') === 'healthy', 'A newly completed run must report healthy.');
 
     $outboundSms = (int) db_value("SELECT COUNT(*) FROM lead_messages WHERE lead_id = :lead_id AND direction = 'outbound'", ['lead_id' => $leadId]);
     $outboundEmail = (int) db_value("SELECT COUNT(*) FROM lead_emails WHERE lead_id = :lead_id AND direction = 'outbound'", ['lead_id' => $leadId]);
     integration_expect($outboundSms === 0 && $outboundEmail === 0, 'Dry-run must not create outbound messages.');
+
+    lead_agent_event($leadId, 'historical-sent-' . $leadId . '-' . time(), 'cadence_reserved', 'email', 'sent', 'delivered_to_provider');
+    $activity = lead_agent_recent_activity(date('Y-m-d'), 100);
+    $historicalVisible = array_filter($activity, static fn(array $event): bool => (int)($event['lead_id'] ?? 0) === $leadId && (string)($event['event_type'] ?? '') === 'cadence_reserved');
+    integration_expect($historicalVisible !== [], 'Historical successful cadence events must be visible in the audit trail.');
 
     lead_agent_record_learning('general', 'sms', 'automatic_reply_sent');
     $learning = db_one("SELECT * FROM lead_agent_learning_items WHERE learning_key = 'general|sms' LIMIT 1");
@@ -47,6 +57,7 @@ try {
     $reportDate = date('Y-m-d');
     $report = lead_agent_refresh_daily_report($reportDate, false);
     integration_expect(isset($report['metrics']['actions_completed']), 'Daily report metrics were not generated.');
+    integration_expect(isset($report['metrics']['overdue_now'], $report['metrics']['deferred_today']), 'Daily report must include queue-health metrics.');
     integration_expect(trim((string) ($report['executive_summary'] ?? '')) !== '', 'Daily executive summary was not generated.');
 
     db_rollBack();

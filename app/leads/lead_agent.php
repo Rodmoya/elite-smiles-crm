@@ -78,6 +78,33 @@ if (!function_exists('lead_agent_ensure_schema')) {
             KEY idx_lead_agent_event_type (event_type, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_runs (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            run_key VARCHAR(100) NOT NULL,
+            mode VARCHAR(20) NOT NULL DEFAULT 'active',
+            dry_run TINYINT(1) NOT NULL DEFAULT 0,
+            status VARCHAR(24) NOT NULL DEFAULT 'running',
+            started_at DATETIME NOT NULL,
+            finished_at DATETIME NULL,
+            due_count INT UNSIGNED NOT NULL DEFAULT 0,
+            processed_count INT UNSIGNED NOT NULL DEFAULT 0,
+            sent_count INT UNSIGNED NOT NULL DEFAULT 0,
+            skipped_count INT UNSIGNED NOT NULL DEFAULT 0,
+            handoff_count INT UNSIGNED NOT NULL DEFAULT 0,
+            error_count INT UNSIGNED NOT NULL DEFAULT 0,
+            backfill_enrolled_count INT UNSIGNED NOT NULL DEFAULT 0,
+            repaired_catchup_count INT UNSIGNED NOT NULL DEFAULT 0,
+            duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+            summary_json LONGTEXT NULL,
+            error_message VARCHAR(500) NOT NULL DEFAULT '',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_run_key (run_key),
+            KEY idx_lead_agent_run_started (started_at),
+            KEY idx_lead_agent_run_status (status, started_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
         db_query("CREATE TABLE IF NOT EXISTS lead_agent_daily_reports (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
             report_date DATE NOT NULL,
@@ -347,6 +374,80 @@ if (!function_exists('lead_agent_event')) {
         } catch (Throwable $e) {
             return false;
         }
+    }
+}
+
+if (!function_exists('lead_agent_run_start')) {
+    function lead_agent_run_start(bool $dryRun): array
+    {
+        lead_agent_ensure_schema();
+        $startedMicrotime = microtime(true);
+        $runKey = 'run-' . date('Ymd-His') . '-' . bin2hex(random_bytes(4));
+        $runId = db_insert(
+            "INSERT INTO lead_agent_runs (run_key, mode, dry_run, status, started_at, created_at, updated_at)
+             VALUES (:run_key, :mode, :dry_run, 'running', NOW(), NOW(), NOW())",
+            ['run_key' => $runKey, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun ? 1 : 0]
+        );
+        return ['id' => $runId, 'key' => $runKey, 'started_microtime' => $startedMicrotime];
+    }
+}
+
+if (!function_exists('lead_agent_run_finish')) {
+    function lead_agent_run_finish(array $run, string $status, int $dueCount, array $results, array $backfill = [], int $repairedCatchup = 0, string $errorMessage = ''): void
+    {
+        $counts = ['sent' => 0, 'skipped' => 0, 'handoff' => 0, 'error' => 0, 'would_send' => 0, 'paused' => 0];
+        $safeResults = [];
+        foreach ($results as $result) {
+            $action = (string)($result['action'] ?? 'error');
+            if (array_key_exists($action, $counts)) $counts[$action]++;
+            $safeResults[] = array_intersect_key((array)$result, array_flip(['lead_id', 'action', 'reason', 'channel', 'step', 'next_action_at']));
+        }
+        $durationMs = max(0, (int)round((microtime(true) - (float)($run['started_microtime'] ?? microtime(true))) * 1000));
+        db_execute(
+            "UPDATE lead_agent_runs SET status = :status, finished_at = NOW(), due_count = :due_count,
+                processed_count = :processed_count, sent_count = :sent_count, skipped_count = :skipped_count,
+                handoff_count = :handoff_count, error_count = :error_count,
+                backfill_enrolled_count = :backfill_enrolled_count, repaired_catchup_count = :repaired_catchup_count,
+                duration_ms = :duration_ms, summary_json = :summary_json, error_message = :error_message, updated_at = NOW()
+             WHERE id = :id",
+            [
+                'status' => substr($status, 0, 24), 'due_count' => max(0, $dueCount), 'processed_count' => count($results),
+                'sent_count' => $counts['sent'], 'skipped_count' => $counts['skipped'] + $counts['paused'],
+                'handoff_count' => $counts['handoff'], 'error_count' => $counts['error'],
+                'backfill_enrolled_count' => (int)($backfill['enrolled'] ?? 0), 'repaired_catchup_count' => max(0, $repairedCatchup),
+                'duration_ms' => $durationMs,
+                'summary_json' => json_encode(['would_send' => $counts['would_send'], 'results' => $safeResults], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'error_message' => substr($errorMessage, 0, 500), 'id' => (int)($run['id'] ?? 0),
+            ]
+        );
+    }
+}
+
+if (!function_exists('lead_agent_latest_run')) {
+    function lead_agent_latest_run(bool $includeDryRun = false): ?array
+    {
+        lead_agent_ensure_schema();
+        $row = db_one('SELECT * FROM lead_agent_runs ' . ($includeDryRun ? '' : 'WHERE dry_run = 0 ') . 'ORDER BY started_at DESC, id DESC LIMIT 1');
+        if (!$row) return null;
+        $row['summary'] = json_decode((string)($row['summary_json'] ?? '{}'), true) ?: [];
+        return $row;
+    }
+}
+
+if (!function_exists('lead_agent_run_health')) {
+    function lead_agent_run_health(?array $run, ?DateTimeImmutable $now = null): array
+    {
+        if (!$run) return ['key' => 'unknown', 'label' => 'No run recorded', 'tone' => 'slate', 'age_minutes' => null];
+        $now = $now ?: new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $status = (string)($run['status'] ?? 'unknown');
+        $anchor = trim((string)($run['finished_at'] ?? '')) ?: (string)($run['started_at'] ?? '');
+        $timestamp = $anchor !== '' ? strtotime($anchor) : false;
+        $ageMinutes = $timestamp !== false ? max(0, (int)floor(($now->getTimestamp() - $timestamp) / 60)) : null;
+        if ($status === 'failed') return ['key' => 'failed', 'label' => 'Last run failed', 'tone' => 'rose', 'age_minutes' => $ageMinutes];
+        if ($status === 'running' && ($ageMinutes ?? 0) >= 10) return ['key' => 'stuck', 'label' => 'Run appears stuck', 'tone' => 'rose', 'age_minutes' => $ageMinutes];
+        if (($ageMinutes ?? 9999) <= 30) return ['key' => 'healthy', 'label' => 'Healthy', 'tone' => 'emerald', 'age_minutes' => $ageMinutes];
+        if (($ageMinutes ?? 9999) <= 60) return ['key' => 'delayed', 'label' => 'Run delayed', 'tone' => 'amber', 'age_minutes' => $ageMinutes];
+        return ['key' => 'stale', 'label' => 'No recent run', 'tone' => 'rose', 'age_minutes' => $ageMinutes];
     }
 }
 
@@ -867,14 +968,19 @@ if (!function_exists('lead_agent_process_state')) {
         $schedule = lead_agent_step_schedule((string) ($state['started_at'] ?? now()), $nextStep);
         $reason = lead_agent_guardrail_reason($lead, $state, $schedule);
         if ($reason !== '') {
+            $decisionType = 'deferred';
+            $nextActionAt = null;
             if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'all_channels_opted_out', 'human_takeover'], true)) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
+                $decisionType = 'paused';
             } else {
                 $deferred = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify($reason === 'daily_cap' ? '+1 day' : '+1 hour'));
+                $nextActionAt = $deferred->format('Y-m-d H:i:s');
                 db_execute('UPDATE lead_agent_states SET next_action_at = :next_action_at, last_decision = :decision, lock_token = \'\', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
-                    'next_action_at' => $deferred->format('Y-m-d H:i:s'), 'decision' => 'deferred_' . $reason, 'lead_id' => $leadId,
+                    'next_action_at' => $nextActionAt, 'decision' => 'deferred_' . $reason, 'lead_id' => $leadId,
                 ]);
             }
+            lead_agent_event($leadId, 'decision-' . $leadId . '-' . $reason . '-' . date('YmdHi'), $decisionType, '', 'recorded', $reason, ['next_action_at' => $nextActionAt]);
             return ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => $reason];
         }
 
@@ -912,7 +1018,7 @@ if (!function_exists('lead_agent_process_state')) {
             ? lead_agent_email_send($lead, (string) $draft['subject'], (string) $draft['body'], $eventKey)
             : lead_agent_sms_send($lead, (string) $draft['body'], $eventKey);
         if (empty($send['ok'])) {
-            db_execute("UPDATE lead_agent_events SET status = 'failed', reason = :reason WHERE event_key = :event_key", [
+            db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
                 'reason' => substr((string) ($send['message'] ?? 'delivery_failed'), 0, 190), 'event_key' => $eventKey,
             ]);
             lead_agent_internal_handoff($lead, 'needs_attention', 'Automated follow-up delivery failed.');
@@ -929,7 +1035,7 @@ if (!function_exists('lead_agent_process_state')) {
             'decision' => 'sent_step_' . $nextStep,
             'lead_id' => $leadId,
         ]);
-        db_execute("UPDATE lead_agent_events SET status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+        db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
         return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at']];
     }
 }
@@ -939,39 +1045,47 @@ if (!function_exists('lead_agent_run_due')) {
     {
         lead_agent_ensure_schema();
         $limit = max(1, min(50, $limit));
-        $backfill = lead_agent_backfill_eligible(200, $dryRun);
-        $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
-        $rows = db_all("SELECT * FROM lead_agent_states
-            WHERE status IN ('active', 'engaged')
-              AND human_takeover = 0
-              AND next_action_at IS NOT NULL
-              AND next_action_at <= NOW()
-              AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
-            ORDER BY next_action_at ASC, id ASC
-            LIMIT {$limit}");
-
+        $run = lead_agent_run_start($dryRun);
+        $backfill = [];
+        $repairedCatchup = 0;
+        $dueCount = 0;
         $results = [];
-        foreach ($rows as $row) {
-            $leadId = (int) ($row['lead_id'] ?? 0);
-            $token = bin2hex(random_bytes(16));
-            $locked = db_execute("UPDATE lead_agent_states SET lock_token = :token, locked_at = NOW(), updated_at = NOW()
-                WHERE lead_id = :lead_id AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))", [
-                'token' => $token, 'lead_id' => $leadId,
-            ]);
-            if ($locked < 1) {
-                continue;
+        try {
+            $backfill = lead_agent_backfill_eligible(200, $dryRun);
+            $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
+            $rows = db_all("SELECT * FROM lead_agent_states
+                WHERE status IN ('active', 'engaged')
+                  AND human_takeover = 0
+                  AND next_action_at IS NOT NULL
+                  AND next_action_at <= NOW()
+                  AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
+                ORDER BY next_action_at ASC, id ASC
+                LIMIT {$limit}");
+            $dueCount = count($rows);
+
+            foreach ($rows as $row) {
+                $leadId = (int) ($row['lead_id'] ?? 0);
+                $token = bin2hex(random_bytes(16));
+                $locked = db_execute("UPDATE lead_agent_states SET lock_token = :token, locked_at = NOW(), updated_at = NOW()
+                    WHERE lead_id = :lead_id AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))", [
+                    'token' => $token, 'lead_id' => $leadId,
+                ]);
+                if ($locked < 1) continue;
+                $fresh = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id AND lock_token = :token LIMIT 1', ['lead_id' => $leadId, 'token' => $token]);
+                if (!$fresh) continue;
+                try {
+                    $results[] = lead_agent_process_state($fresh, $dryRun);
+                } catch (Throwable $e) {
+                    db_execute("UPDATE lead_agent_states SET lock_token = '', locked_at = NULL, last_decision = 'worker_error', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+                    lead_agent_event($leadId, 'worker-error-' . $leadId . '-' . date('YmdHis'), 'worker_error', '', 'failed', 'worker_exception');
+                    esm_log('lead_agent', 'Lead agent worker failed.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+                    $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
+                }
             }
-            $fresh = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id AND lock_token = :token LIMIT 1', ['lead_id' => $leadId, 'token' => $token]);
-            if (!$fresh) {
-                continue;
-            }
-            try {
-                $results[] = lead_agent_process_state($fresh, $dryRun);
-            } catch (Throwable $e) {
-                db_execute("UPDATE lead_agent_states SET lock_token = '', locked_at = NULL, last_decision = 'worker_error', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
-                esm_log('lead_agent', 'Lead agent worker failed.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
-                $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
-            }
+            lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup);
+        } catch (Throwable $e) {
+            lead_agent_run_finish($run, 'failed', $dueCount, $results, $backfill, $repairedCatchup, $e->getMessage());
+            throw $e;
         }
         try {
             $today = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d');
@@ -983,7 +1097,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 
@@ -999,19 +1113,24 @@ if (!function_exists('lead_agent_daily_metrics')) {
         };
         $metrics = [
             'enrolled' => $eventCount("event_type = 'enrolled'"),
-            'cadence_sent' => $eventCount("event_type = 'cadence_reserved' AND status = 'sent'"),
+            'cadence_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent') AND status = 'sent'"),
             'automatic_replies' => $eventCount("event_type = 'automatic_reply' AND status = 'sent'"),
-            'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
-            'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
+            'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
+            'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
             'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
             'ready_to_schedule_today' => $eventCount("event_type = 'handoff' AND reason LIKE 'Inbound message indicates scheduling intent.%'"),
             'needs_attention_today' => $eventCount("event_type = 'handoff' AND reason NOT LIKE 'Inbound message indicates scheduling intent.%'"),
             'policy_blocks' => $eventCount("event_type = 'handoff' AND reason LIKE '%policy%'"),
             'delivery_failures' => $eventCount("event_type = 'handoff' AND reason LIKE '%deliver%'"),
+            'deferred_today' => $eventCount("event_type = 'deferred'"),
+            'paused_today' => $eventCount("event_type = 'paused'"),
+            'worker_errors_today' => $eventCount("event_type = 'worker_error'"),
             'learning_observations' => $eventCount("event_type = 'inbound_classified'"),
             'active_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0"),
             'ready_to_schedule_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'"),
             'needs_attention_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'needs_attention'"),
+            'overdue_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),
+            'oldest_overdue_minutes' => (int) db_value("SELECT COALESCE(MAX(TIMESTAMPDIFF(MINUTE, next_action_at, NOW())), 0) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),
         ];
         $metrics['outbound_total'] = $metrics['sms_sent'] + $metrics['emails_sent'];
         $metrics['actions_completed'] = $metrics['outbound_total'] + $metrics['inbound_handled'];
@@ -1036,6 +1155,14 @@ if (!function_exists('lead_agent_report_copy')) {
             $summary .= " {$metrics['needs_attention_today']} exception" . ($metrics['needs_attention_today'] === 1 ? ' requires' : 's require') . ' human judgment.';
         } else {
             $summary .= ' No new exception required human judgment.';
+        }
+        $overdueNow = (int)($metrics['overdue_now'] ?? 0);
+        $workerErrors = (int)($metrics['worker_errors_today'] ?? 0);
+        if ($overdueNow > 0) {
+            $summary .= " {$overdueNow} automated follow-up" . ($overdueNow === 1 ? ' is' : 's are') . ' currently overdue and queued for the next run.';
+        }
+        if ($workerErrors > 0) {
+            $summary .= " {$workerErrors} worker error" . ($workerErrors === 1 ? ' was' : 's were') . ' recorded today.';
         }
         $review = "Yesterday the agent handled {$metrics['inbound_handled']} inbound conversation" . ($metrics['inbound_handled'] === 1 ? '' : 's')
             . " and sent {$metrics['outbound_total']} approved follow-up" . ($metrics['outbound_total'] === 1 ? '' : 's') . '.';
@@ -1100,7 +1227,7 @@ if (!function_exists('lead_agent_recent_activity')) {
             FROM lead_agent_events e
             LEFT JOIN leads l ON l.id = e.lead_id
             WHERE DATE(e.created_at) = :report_date
-              AND e.event_type NOT IN ('cadence_reserved')
+              AND NOT (e.event_type = 'cadence_reserved' AND e.status = 'pending')
             ORDER BY e.created_at DESC, e.id DESC LIMIT {$limit}", ['report_date' => $date]);
     }
 }

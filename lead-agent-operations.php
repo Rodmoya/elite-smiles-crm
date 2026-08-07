@@ -62,9 +62,12 @@ if (!$selectedReport) {
 $metrics = (array) ($selectedReport['metrics'] ?? []);
 $activity = lead_agent_recent_activity($selectedDate, 30);
 $learning = lead_agent_learned_guidance('', 6);
+$latestRun = lead_agent_latest_run();
+$runHealth = lead_agent_run_health($latestRun);
 $readyRows = db_all("SELECT l.id, l.full_name, l.source, s.pause_reason, s.updated_at
     FROM lead_agent_states s INNER JOIN leads l ON l.id = s.lead_id
     WHERE s.status = 'ready_to_schedule' ORDER BY s.updated_at DESC LIMIT 8");
+$readyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'");
 $attentionRows = lead_agent_exception_rows(8);
 
 $user = auth_user();
@@ -74,11 +77,23 @@ $pageTitle = 'Lead Agent';
 $logoutAction = base_url('lead-agent-operations.php');
 $mode = lead_agent_mode();
 $modeClasses = $mode === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ($mode === 'shadow' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-100 text-slate-600');
+$runToneClasses = match ((string)($runHealth['tone'] ?? 'slate')) {
+    'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    'amber' => 'border-amber-200 bg-amber-50 text-amber-800',
+    'rose' => 'border-rose-200 bg-rose-50 text-rose-800',
+    default => 'border-slate-200 bg-slate-100 text-slate-700',
+};
 $selectedLabel = (new DateTimeImmutable($selectedDate, $tz))->format('l, F j, Y');
 $eventLabels = [
     'enrolled' => 'Agent enrolled a lead',
     'inbound_classified' => 'Inbound conversation handled',
     'automatic_reply' => 'Automatic reply sent',
+    'cadence_reserved' => 'Approved follow-up sent',
+    'cadence_sent' => 'Approved follow-up sent',
+    'cadence_failed' => 'Follow-up delivery failed',
+    'deferred' => 'Follow-up deferred safely',
+    'paused' => 'Automation paused',
+    'worker_error' => 'Worker error recorded',
     'handoff' => 'Agent paused and handed off',
     'shadow_reply' => 'Reply prepared in shadow mode',
     'shadow_cadence' => 'Follow-up evaluated in shadow mode',
@@ -157,11 +172,49 @@ $eventLabels = [
             <?php endforeach; ?>
         </section>
 
+        <section aria-label="Agent health and queue status" class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,.8fr)]">
+            <article class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Agent heartbeat</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Latest automated run</h2>
+                    </div>
+                    <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold <?= e($runToneClasses) ?>">
+                        <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true"></span><?= e((string)($runHealth['label'] ?? 'Unknown')) ?>
+                    </span>
+                </div>
+                <?php if (!$latestRun): ?>
+                    <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-600">The first durable run record will appear after the next scheduled Lead Agent execution.</p>
+                <?php else: ?>
+                    <p class="mt-4 text-sm leading-6 text-slate-600">Finished <?= e((string)($latestRun['finished_at'] ?: $latestRun['started_at'])) ?> · <?= e((string)((int)($latestRun['duration_ms'] ?? 0))) ?> ms · <?= e(ucfirst((string)($latestRun['mode'] ?? 'active'))) ?> mode</p>
+                    <dl class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                        <?php foreach ([
+                            ['Due', 'due_count'], ['Processed', 'processed_count'], ['Sent', 'sent_count'], ['Deferred', 'skipped_count'], ['Errors', 'error_count'],
+                        ] as [$label, $key]): ?>
+                            <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e($label) ?></dt><dd class="mt-2 text-2xl font-semibold tabular-nums text-slate-950"><?= e((string)((int)($latestRun[$key] ?? 0))) ?></dd></div>
+                        <?php endforeach; ?>
+                    </dl>
+                    <?php if (trim((string)($latestRun['error_message'] ?? '')) !== ''): ?><p class="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-800"><?= e((string)$latestRun['error_message']) ?></p><?php endif; ?>
+                <?php endif; ?>
+            </article>
+
+            <article class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current workload</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Queue health</h2>
+                <dl class="mt-5 space-y-3">
+                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Scheduling waiting for Rod</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)$readyTotal) ?></dd></div>
+                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">New handoffs today</dt><dd class="text-lg font-bold tabular-nums text-slate-950"><?= e((string)((int)($metrics['ready_to_schedule_today'] ?? 0))) ?></dd></div>
+                    <div class="flex items-center justify-between rounded-2xl <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'bg-amber-50' : 'bg-emerald-50' ?> px-4 py-3"><dt class="text-sm <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'text-amber-800' : 'text-emerald-800' ?>">Overdue automated follow-ups</dt><dd class="text-lg font-bold tabular-nums <?= (int)($metrics['overdue_now'] ?? 0) > 0 ? 'text-amber-900' : 'text-emerald-900' ?>"><?= e((string)((int)($metrics['overdue_now'] ?? 0))) ?></dd></div>
+                    <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><dt class="text-sm text-slate-600">Oldest overdue</dt><dd class="text-sm font-bold tabular-nums text-slate-950"><?= e((string)((int)($metrics['oldest_overdue_minutes'] ?? 0))) ?> min</dd></div>
+                </dl>
+            </article>
+        </section>
+
         <section class="grid gap-6 xl:grid-cols-2">
             <article class="rounded-[2rem] border border-emerald-200 bg-white p-6 shadow-sm lg:p-7">
                 <div class="flex items-start justify-between gap-4">
                     <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Ready for you</p><h2 class="mt-2 text-xl font-semibold">Scheduling handoffs</h2></div>
-                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold tabular-nums text-emerald-800"><?= e((string) count($readyRows)) ?></span>
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold tabular-nums text-emerald-800"><?= e((string)$readyTotal) ?></span>
                 </div>
                 <div class="mt-5 space-y-3">
                     <?php if ($readyRows === []): ?><p class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-600">No lead is waiting for appointment times right now.</p><?php endif; ?>
@@ -200,7 +253,7 @@ $eventLabels = [
                         <div class="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
                             <time class="text-xs font-medium tabular-nums text-slate-500"><?= e(date('g:i A', strtotime((string) $event['created_at']))) ?></time>
                             <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string) ($event['full_name'] ?? 'Lead')) ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
-                            <span class="text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e((string) ($event['channel'] ?? '')) ?></span>
+                            <span class="text-right text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e(trim((string)($event['channel'] ?? '') . ' ' . (string)($event['status'] ?? ''))) ?></span>
                         </div>
                     <?php endforeach; ?>
                 </div>

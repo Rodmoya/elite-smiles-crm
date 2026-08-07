@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/leads/lead_agent_observability.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
@@ -33,7 +34,7 @@ if (!elite_twilio_validate_request($_POST)) {
 }
 
 $sid = trim((string)($_POST['MessageSid'] ?? $_POST['SmsSid'] ?? ''));
-$status = trim((string)($_POST['MessageStatus'] ?? $_POST['SmsStatus'] ?? ''));
+$status = strtolower(trim((string)($_POST['MessageStatus'] ?? $_POST['SmsStatus'] ?? '')));
 $errorCode = trim((string)($_POST['ErrorCode'] ?? ''));
 $errorMessage = trim((string)($_POST['ErrorMessage'] ?? ''));
 
@@ -47,7 +48,8 @@ lead_comm_ensure_schema();
 try {
     $message = db_one('SELECT * FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1', ['sid' => $sid]);
     if ($message) {
-        $deliveredAt = in_array($status, ['delivered', 'sent'], true) ? now() : ($message['delivered_at'] ?? null);
+        $previousStatus = strtolower(trim((string) ($message['twilio_status'] ?? '')));
+        $deliveredAt = $status === 'delivered' ? now() : ($message['delivered_at'] ?? null);
         db_query(
             'UPDATE lead_messages
              SET twilio_status = :status,
@@ -64,14 +66,22 @@ try {
                 'delivered_at' => $deliveredAt,
             ]
         );
+        lead_agent_update_touchpoint_delivery('sms', (int) $message['id'], $status, $sid);
 
         $leadId = (int)($message['lead_id'] ?? 0);
-        if ($leadId > 0 && in_array($status, ['failed', 'undelivered'], true)) {
+        if ($leadId > 0 && in_array($status, ['failed', 'undelivered'], true) && $previousStatus !== $status) {
+            db_execute(
+                "UPDATE lead_agent_states
+                 SET next_action_at = NOW(), last_decision = 'sms_delivery_failed_switch_channel', lock_token = '', locked_at = NULL, updated_at = NOW()
+                 WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0",
+                ['lead_id' => $leadId]
+            );
             lead_comm_insert_activity($leadId, 'sms_delivery_issue', 'Twilio SMS delivery issue: ' . $status . ($errorCode !== '' ? ' (' . $errorCode . ')' : ''), [
                 'twilio_sid' => $sid,
                 'status' => $status,
                 'error_code' => $errorCode,
                 'error_message' => $errorMessage,
+                'automatic_retry' => 'alternate_channel_due',
             ], 'Twilio');
 
             if (function_exists('elite_send_operator_follow_up_pushover')) {

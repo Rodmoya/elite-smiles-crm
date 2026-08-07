@@ -16,7 +16,11 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('APP_NAME',  'Elite Smiles Marketing CRM');
     define('APP_ENV',   $_ENV['APP_ENV']   ?? 'production');
     define('APP_DEBUG', ($_ENV['APP_DEBUG'] ?? 'false') === 'true');
-    define('APP_URL',   $_ENV['APP_URL']   ?? 'https://hi.elitesmilesutah.com/crm');
+    $configuredAppUrl = $_ENV['APP_URL'] ?? 'https://hi.elitesmilesutah.com/crm';
+    if (PHP_SAPI === 'cli-server' && trim((string) ($_SERVER['HTTP_HOST'] ?? '')) !== '') {
+        $configuredAppUrl = 'http://' . trim((string) $_SERVER['HTTP_HOST']);
+    }
+    define('APP_URL', $configuredAppUrl);
 
     define('ROOT_PATH',    dirname(__DIR__, 2));
     define('APP_PATH',     ROOT_PATH . '/app');
@@ -54,6 +58,15 @@ if (!defined('ESM_CONFIG_LOADED')) {
     define('ELITE_LEAD_AGENT_ENABLED', ($_ENV['ELITE_LEAD_AGENT_ENABLED'] ?? 'true') === 'true');
     define('ELITE_LEAD_AGENT_MODE', strtolower(trim((string) ($_ENV['ELITE_LEAD_AGENT_MODE'] ?? 'active'))));
     define('ELITE_LEAD_AGENT_CRON_SECRET', $_ENV['ELITE_LEAD_AGENT_CRON_SECRET'] ?? ($_ENV['ELITE_EMAIL_FOLLOWUP_CRON_SECRET'] ?? ''));
+    define('ELITE_LEAD_AGENT_STALE_MINUTES', is_numeric($_ENV['ELITE_LEAD_AGENT_STALE_MINUTES'] ?? null)
+        ? max(20, min(240, (int) $_ENV['ELITE_LEAD_AGENT_STALE_MINUTES']))
+        : 45);
+    define('ELITE_LEAD_AGENT_EVENT_RETENTION_DAYS', is_numeric($_ENV['ELITE_LEAD_AGENT_EVENT_RETENTION_DAYS'] ?? null)
+        ? max(90, min(730, (int) $_ENV['ELITE_LEAD_AGENT_EVENT_RETENTION_DAYS']))
+        : 180);
+    define('ELITE_LEAD_AGENT_REPORT_RETENTION_DAYS', is_numeric($_ENV['ELITE_LEAD_AGENT_REPORT_RETENTION_DAYS'] ?? null)
+        ? max(180, min(1095, (int) $_ENV['ELITE_LEAD_AGENT_REPORT_RETENTION_DAYS']))
+        : 365);
 
     define('ELITE_PUSHOVER_APP_TOKEN', $_ENV['ELITE_PUSHOVER_APP_TOKEN'] ?? '');
     define('ELITE_PUSHOVER_USER_KEY',  $_ENV['ELITE_PUSHOVER_USER_KEY']  ?? '');

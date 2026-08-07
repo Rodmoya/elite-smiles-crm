@@ -66,6 +66,8 @@ $multiRegionTemplate = $template;
 $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
     'text' => 'THE POWER OF VENEERS', 'x' => 7, 'y' => 8, 'width' => 45, 'height' => 12,
 ]);
+$subjectInstruction = social_studio_overlay_subject_instruction($multiRegionTemplate);
+social_studio_exact_assert(str_contains($subjectInstruction, 'right-side photo area'), 'A left-side approved overlay must reserve the right side for a complete, unobstructed face.');
 $regions = social_studio_overlay_pixel_regions($multiRegionTemplate, $multiRegionTemplate);
 social_studio_exact_assert(count($regions) === 2, 'Main artwork and bottom CTA must be preserved as coherent regions instead of text strips.');
 

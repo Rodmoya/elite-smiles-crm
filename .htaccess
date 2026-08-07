@@ -21,6 +21,9 @@ RewriteBase /crm/
 RewriteRule ^storage(?:/|$) - [F,L,NC]
 RewriteRule ^storage/.*\.(?:log|json)$ - [F,L,NC]
 
+# Build dependencies, tests, and maintenance sources are never web content.
+RewriteRule ^(?:node_modules|tests|tools|docs)(?:/|$) - [F,L,NC]
+
 # Clean landing page URLs: /l/veneers-draper-premium-trust-v1
 RewriteRule ^l/([a-z0-9\-]+)/?$ landing.php?slug=$1 [L,QSA]
 

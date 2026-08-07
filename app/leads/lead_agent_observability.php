@@ -312,6 +312,7 @@ if (!function_exists('lead_agent_prune_retention')) {
         $deleted = [
             'events' => db_execute("DELETE FROM lead_agent_events WHERE created_at < DATE_SUB(NOW(), INTERVAL {$eventDays} DAY)"),
             'runs' => db_execute("DELETE FROM lead_agent_runs WHERE started_at < DATE_SUB(NOW(), INTERVAL {$eventDays} DAY)"),
+            // Touchpoints back long-window performance reporting, so they follow report retention rather than raw event/run retention.
             'touchpoints' => db_execute("DELETE FROM lead_agent_touchpoints WHERE sent_at < DATE_SUB(NOW(), INTERVAL {$reportDays} DAY)"),
             'reports' => db_execute("DELETE FROM lead_agent_daily_reports WHERE report_date < DATE_SUB(CURDATE(), INTERVAL {$reportDays} DAY)"),
         ];

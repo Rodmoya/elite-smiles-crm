@@ -73,7 +73,8 @@ try {
             db_execute(
                 "UPDATE lead_agent_states
                  SET next_action_at = NOW(), last_decision = 'sms_delivery_failed_switch_channel', lock_token = '', locked_at = NULL, updated_at = NOW()
-                 WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0",
+                 WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0
+                   AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))",
                 ['lead_id' => $leadId]
             );
             lead_comm_insert_activity($leadId, 'sms_delivery_issue', 'Twilio SMS delivery issue: ' . $status . ($errorCode !== '' ? ' (' . $errorCode . ')' : ''), [

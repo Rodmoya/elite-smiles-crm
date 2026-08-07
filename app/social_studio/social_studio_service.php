@@ -1141,6 +1141,27 @@ if (!function_exists('social_studio_remove_reference_overlay')) {
     }
 }
 
+if (!function_exists('social_studio_overlay_subject_instruction')) {
+    function social_studio_overlay_subject_instruction(array $template): string
+    {
+        $elements = (array)($template['elements'] ?? []);
+        $left = 100.0;
+        $right = 0.0;
+        foreach ($elements as $element) {
+            $text = trim((string)($element['text'] ?? ''));
+            $y = (float)($element['y'] ?? 0);
+            if ($y >= 58 && $text !== '' && preg_match('/consult|schedule|book|call|discover|financ|start/i', $text)) continue;
+            $left = min($left, (float)($element['x'] ?? 0));
+            $right = max($right, (float)($element['x'] ?? 0) + (float)($element['width'] ?? 0));
+        }
+        if ($right <= $left) return '';
+        if (($left + $right) / 2 <= 50) {
+            return 'The approved artwork occupies the left side. Place the complete head, both eyes, full face, and full smile entirely inside the right-side photo area; use a moderately sized head-and-shoulders portrait, never an extreme close-up.';
+        }
+        return 'The approved artwork occupies the right side. Place the complete head, both eyes, full face, and full smile entirely inside the left-side photo area; use a moderately sized head-and-shoulders portrait, never an extreme close-up.';
+    }
+}
+
 if (!function_exists('social_studio_refine_image_prompt')) {
     function social_studio_refine_image_prompt(array $draft): string
     {
@@ -1152,7 +1173,8 @@ if (!function_exists('social_studio_refine_image_prompt')) {
         if (str_starts_with((string)($draft['base_reference_key'] ?? ''), 'base_') && trim((string)($draft['base_post_prompt'] ?? '')) !== '') {
             $template = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
             $ratio = is_array($template) && (string)($template['aspect_ratio'] ?? '') === '1:1' ? 'square 1:1' : 'vertical 4:5';
-            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. If a person is present, use a close head-and-shoulders crop with the face and smile dominant, both eyes completely visible and tack-sharp, and brilliant bright-white cosmetically perfect teeth with credible anatomy. Preserve the locked base composition, subject scale, palette, lighting, negative space, and camera angle. Reconstruct the cleared text zone as a seamless softly detailed continuation of the surrounding background with natural light and depth; never create a hard-edged rectangle, flat color panel, card, or visible boundary. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus on the subject, haze, or cut-off face.";
+            $subjectInstruction = is_array($template) ? social_studio_overlay_subject_instruction($template) : '';
+            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. {$subjectInstruction} Both eyes must be completely visible and tack-sharp, with brilliant bright-white cosmetically perfect teeth and credible anatomy. Preserve the locked palette, lighting, negative space, and camera angle. Reconstruct the cleared text zone as a seamless softly detailed continuation of the surrounding background with natural light and depth; never create a hard-edged rectangle, flat color panel, card, or visible boundary. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus on the subject, haze, extreme close-up, or cut-off face.";
         }
 
         if (elite_openai_is_configured()) {

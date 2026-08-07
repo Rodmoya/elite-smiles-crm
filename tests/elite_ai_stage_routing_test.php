@@ -42,6 +42,7 @@ $directives = [
     'set them to lost' => ['lost_lead', ''],
     'Jordan should be moved to consultation booked' => ['consultation_booked', 'Jordan'],
     'Jordan needs to be moved into scheduling' => ['in_contact', 'Jordan'],
+    'The test lead with email test@meta.com should be moved to consultation booked' => ['consultation_booked', 'test@meta.com'],
 ];
 foreach ($directives as $phrase => [$expectedStage, $expectedLeadQuery]) {
     elite_ai_stage_expect(elite_ai_prompt_requests_stage_move($phrase), "Stage command was not detected: {$phrase}");
@@ -82,13 +83,48 @@ elite_ai_stage_expect(
     'Stage counts must use the same canonical stage vocabulary.'
 );
 
+$cleanupLeadIds = [];
 db_begin();
 try {
     $leadId = db_insert(
         "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
          VALUES ('Elite AI Stage Routing Test', '+18015550198', 'elite-ai-stage-test@example.invalid', 'contacted', 'opted_in', 'subscribed', NOW(), NOW())"
     );
+    $cleanupLeadIds[] = $leadId;
     elite_ai_stage_expect($leadId > 0, 'Synthetic stage-routing lead was not created.');
+
+    $contextLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Elite AI Previous Context', '+18015550197', 'elite-ai-previous-context@example.invalid', 'no_answer', 'opted_in', 'subscribed', NOW(), NOW())"
+    );
+    $cleanupLeadIds[] = $contextLeadId;
+    $emailTarget = 'elite-ai-stage-' . bin2hex(random_bytes(6)) . '@example.invalid';
+    $emailTargetId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Elite AI Email Target', '+18015550196', :email, 'no_answer', 'opted_in', 'subscribed', NOW(), NOW())",
+        ['email' => $emailTarget]
+    );
+    $cleanupLeadIds[] = $emailTargetId;
+    $emailPrompt = 'The test lead with email ' . $emailTarget . ' should be moved to consultation booked.';
+    $emailPlan = elite_ai_plan_request($emailPrompt, '', ['lead_id' => $contextLeadId]);
+    $emailResolved = elite_ai_resolve_lead_from_plan($emailPlan, $emailPrompt, ['lead_id' => $contextLeadId]);
+    elite_ai_stage_expect(
+        (int) ($emailResolved['lead']['id'] ?? 0) === $emailTargetId,
+        'An explicit email identifier must override the previously discussed lead. Query: '
+            . (string) ($emailPlan['lead_query'] ?? '')
+            . '; resolved: ' . (string) ($emailResolved['lead']['id'] ?? 0)
+            . '; expected: ' . $emailTargetId
+            . '; clarify: ' . (string) ($emailResolved['clarify'] ?? '')
+    );
+
+    $numberResolved = elite_ai_resolve_lead_from_request(
+        'move lead #' . $emailTargetId . ' to consultation booked',
+        ['lead_id' => $contextLeadId]
+    );
+    elite_ai_stage_expect(
+        (int) ($numberResolved['lead']['id'] ?? 0) === $emailTargetId,
+        'An explicit lead number must override the current-lead context.'
+    );
 
     $ambiguous = elite_ai_handle_move_stage_action(
         ['id' => 0, 'first_name' => 'Test', 'role' => 'admin'],
@@ -115,6 +151,18 @@ try {
     elite_ai_stage_expect((string) db_value('SELECT status FROM leads WHERE id = :id', ['id' => $leadId]) === 'opted_out', 'Explicit stage command did not update the lead.');
 } finally {
     db_rollback();
+    if ($cleanupLeadIds !== []) {
+        $placeholders = [];
+        $params = [];
+        foreach (array_values(array_unique(array_filter($cleanupLeadIds))) as $index => $cleanupLeadId) {
+            $key = 'lead_' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = (int) $cleanupLeadId;
+        }
+        if ($placeholders !== []) {
+            db_query('DELETE FROM leads WHERE id IN (' . implode(', ', $placeholders) . ')', $params);
+        }
+    }
 }
 
 echo "Elite AI stage routing tests passed.\n";

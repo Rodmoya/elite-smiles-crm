@@ -3750,6 +3750,13 @@ if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
         if ($text === '') {
             return '';
         }
+
+        // Explicit contact identifiers are stronger than conversational context.
+        // Preserve them verbatim so lead lookup cannot drift to the previously
+        // discussed lead when an operator names a different record by email.
+        if (preg_match('/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/i', $text, $matches)) {
+            return strtolower(trim((string) ($matches[0] ?? '')));
+        }
         if ((bool) preg_match('/\b(?:lead|patient|card)?\s*#\s*\d+\b|\blead\s+\d+\b/i', $text)) {
             return '';
         }
@@ -3763,7 +3770,7 @@ if (!function_exists('elite_ai_extract_stage_move_lead_query')) {
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $text, $matches)) {
                 $query = trim((string) ($matches[1] ?? ''));
-                $query = preg_replace('/\b(?:lead|patient|card)\b/i', '', $query) ?? $query;
+                $query = preg_replace('/^(?:the\s+)?(?:lead|patient|card)\s+/i', '', $query) ?? $query;
                 $query = trim((string) preg_replace('/\s+/', ' ', $query), " \t\n\r\0\x0B?.");
                 if ((bool) preg_match('/^(?:him|her|them|it|this|that|same|same lead|same patient|the same)$/i', $query)) {
                     return '';
@@ -5117,17 +5124,17 @@ if (!function_exists('elite_ai_prompt_mentions_current_lead')) {
 if (!function_exists('elite_ai_resolve_lead_from_request')) {
     function elite_ai_resolve_lead_from_request(string $prompt, array $context): array
     {
+        $reference = elite_ai_extract_reference($prompt);
+        if (($reference['lead_id'] ?? 0) > 0) {
+            $lead = elite_ai_load_lead((int) $reference['lead_id']);
+            return ['lead' => $lead, 'matches' => [], 'clarify' => $lead ? '' : 'I could not find that lead number.'];
+        }
+
         if (($context['lead_id'] ?? 0) > 0 && elite_ai_prompt_mentions_current_lead($prompt)) {
             $lead = elite_ai_load_lead((int) $context['lead_id']);
             if ($lead) {
                 return ['lead' => $lead, 'matches' => [], 'clarify' => ''];
             }
-        }
-
-        $reference = elite_ai_extract_reference($prompt);
-        if (($reference['lead_id'] ?? 0) > 0) {
-            $lead = elite_ai_load_lead((int) $reference['lead_id']);
-            return ['lead' => $lead, 'matches' => [], 'clarify' => $lead ? '' : 'I could not find that lead number.'];
         }
 
         $query = trim((string) ($reference['query'] ?? ''));
@@ -5349,6 +5356,9 @@ if (!function_exists('elite_ai_resolve_lead_from_plan')) {
     function elite_ai_clean_lead_query(string $query): string
     {
         $query = trim($query);
+        if (preg_match('/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/i', $query, $matches)) {
+            return strtolower(trim((string) ($matches[0] ?? '')));
+        }
         $query = preg_replace('/\b(?:any|latest|last|most recent|recent)\s+(?:reply|replay|response|message|text|sms|email)\s+(?:from|for)\s+/i', '', $query);
         $query = preg_replace('/\b(?:reply|replay|response|message|text|sms|email)\s+(?:from|for)\s+/i', '', (string) $query);
         $query = preg_replace('/\b(?:check|show|read|review|what is|what\'s|did|has|have|got|get|received)\b/i', '', (string) $query);

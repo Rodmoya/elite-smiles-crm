@@ -1342,6 +1342,54 @@ if (!function_exists('social_studio_create_branded_image')) {
 }
 
 if (!function_exists('social_studio_create_branded_svg')) {
+    function social_studio_overlay_pixel_regions(array $targetTemplate, array $sourceTemplate): array
+    {
+        $groups = ['main' => [], 'cta' => []];
+        foreach (($targetTemplate['elements'] ?? []) as $index => $targetElement) {
+            $sourceElement = $sourceTemplate['elements'][$index] ?? null;
+            if (!is_array($sourceElement)) continue;
+            $text = trim((string)($sourceElement['text'] ?? ''));
+            $sourceY = (float)($sourceElement['y'] ?? 0);
+            $isCta = $sourceY >= 58
+                && $text !== ''
+                && preg_match('/consult|schedule|book|call|discover|learn more|financ|start/i', $text);
+            $groups[$isCta ? 'cta' : 'main'][] = [$targetElement, $sourceElement];
+        }
+
+        $regions = [];
+        foreach ($groups as $pairs) {
+            if ($pairs === []) continue;
+            $targetLeft = $sourceLeft = 100.0;
+            $targetTop = $sourceTop = 100.0;
+            $targetRight = $targetBottom = $sourceRight = $sourceBottom = 0.0;
+            foreach ($pairs as [$targetElement, $sourceElement]) {
+                $targetLeft = min($targetLeft, (float)$targetElement['x']);
+                $targetTop = min($targetTop, (float)$targetElement['y']);
+                $targetRight = max($targetRight, (float)$targetElement['x'] + (float)$targetElement['width']);
+                $targetBottom = max($targetBottom, (float)$targetElement['y'] + (float)$targetElement['height']);
+                $sourceLeft = min($sourceLeft, (float)$sourceElement['x']);
+                $sourceTop = min($sourceTop, (float)$sourceElement['y']);
+                $sourceRight = max($sourceRight, (float)$sourceElement['x'] + (float)$sourceElement['width']);
+                $sourceBottom = max($sourceBottom, (float)$sourceElement['y'] + (float)$sourceElement['height']);
+            }
+            $paddingX = 1.5;
+            $paddingY = 1.0;
+            $regions[] = [
+                'target' => [
+                    'x' => max(0, $targetLeft - $paddingX), 'y' => max(0, $targetTop - $paddingY),
+                    'width' => min(100, $targetRight + $paddingX) - max(0, $targetLeft - $paddingX),
+                    'height' => min(100, $targetBottom + $paddingY) - max(0, $targetTop - $paddingY),
+                ],
+                'source' => [
+                    'x' => max(0, $sourceLeft - $paddingX), 'y' => max(0, $sourceTop - $paddingY),
+                    'width' => min(100, $sourceRight + $paddingX) - max(0, $sourceLeft - $paddingX),
+                    'height' => min(100, $sourceBottom + $paddingY) - max(0, $sourceTop - $paddingY),
+                ],
+            ];
+        }
+        return $regions;
+    }
+
     function social_studio_create_branded_svg(string $sourcePath, string $targetPath, array $overlayTemplate = [], string $templateSourcePath = '', array $sourceOverlayTemplate = []): bool
     {
         $sourceBytes = @file_get_contents($sourcePath);
@@ -1378,20 +1426,28 @@ if (!function_exists('social_studio_create_branded_svg')) {
                 : '')
             . '<rect width="100%" height="100%" fill="' . htmlspecialchars((string)($template['canvas_background'] ?? 'transparent'), ENT_QUOTES, 'UTF-8') . '"/>'
             . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/>';
-        foreach (($template['elements'] ?? []) as $elementIndex => $element) {
-            $x = (float)$element['x'] * $width / 100; $y = (float)$element['y'] * $height / 100;
-            $w = (float)$element['width'] * $width / 100; $h = (float)$element['height'] * $height / 100;
-            $sourceElement = $sourceTemplate['elements'][$elementIndex] ?? null;
-            if ($pixelLocked && is_array($sourceElement)) {
-                $sourceX = (float)$sourceElement['x'] * $templateSourceWidth / 100;
-                $sourceY = (float)$sourceElement['y'] * $templateSourceHeight / 100;
-                $sourceW = max(1, (float)$sourceElement['width'] * $templateSourceWidth / 100);
-                $sourceH = max(1, (float)$sourceElement['height'] * $templateSourceHeight / 100);
+        if ($pixelLocked) {
+            foreach (social_studio_overlay_pixel_regions($template, $sourceTemplate) as $region) {
+                $targetRegion = $region['target'];
+                $sourceRegion = $region['source'];
+                $x = (float)$targetRegion['x'] * $width / 100;
+                $y = (float)$targetRegion['y'] * $height / 100;
+                $w = (float)$targetRegion['width'] * $width / 100;
+                $h = (float)$targetRegion['height'] * $height / 100;
+                $sourceX = (float)$sourceRegion['x'] * $templateSourceWidth / 100;
+                $sourceY = (float)$sourceRegion['y'] * $templateSourceHeight / 100;
+                $sourceW = max(1, (float)$sourceRegion['width'] * $templateSourceWidth / 100);
+                $sourceH = max(1, (float)$sourceRegion['height'] * $templateSourceHeight / 100);
                 $svg .= '<svg x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" viewBox="' . $sourceX . ' ' . $sourceY . ' ' . $sourceW . ' ' . $sourceH . '" preserveAspectRatio="none" overflow="hidden">'
                     . '<use href="#approved-template-source"/>'
                     . '</svg>';
-                continue;
             }
+            $svg .= '</svg>';
+            return @file_put_contents($targetPath, $svg) !== false;
+        }
+        foreach (($template['elements'] ?? []) as $elementIndex => $element) {
+            $x = (float)$element['x'] * $width / 100; $y = (float)$element['y'] * $height / 100;
+            $w = (float)$element['width'] * $width / 100; $h = (float)$element['height'] * $height / 100;
             $fill = htmlspecialchars((string)$element['background_color'], ENT_QUOTES, 'UTF-8');
             $stroke = htmlspecialchars((string)$element['border_color'], ENT_QUOTES, 'UTF-8');
             $strokeWidth = (float)$element['border_width'] * $width / 100;

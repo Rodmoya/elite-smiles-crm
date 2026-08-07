@@ -426,7 +426,8 @@ function social_studio_overlay_element_style(array $element): string
                         <h2 class="mt-2 text-xl font-semibold text-slate-900">Selected draft</h2>
                     </div>
                     <?php if ($selected): ?>
-                        <?php $selectedImageUrl = social_studio_image_url($selected, false); ?>
+                        <?php $selectedPixelLocked = (string)($selected['copy_mode'] ?? 'preserve') === 'preserve' && trim((string)($selected['branded_image_storage_key'] ?? '')) !== ''; ?>
+                        <?php $selectedImageUrl = social_studio_image_url($selected, $selectedPixelLocked); ?>
                         <?php $selectedOverlay = social_studio_preview_overlay($selected); ?>
                         <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
                                 <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
@@ -438,7 +439,7 @@ function social_studio_overlay_element_style(array $element): string
                                 <div class="creative-frame">
                                     <?php $structured = (array)($selectedOverlay['structured'] ?? []); ?>
                                     <img class="review-image <?= (string)($structured['aspect_ratio'] ?? '') === '1:1' || $selectedOverlay['template'] === 'confidence_starts' ? 'review-image-square' : '' ?> w-full bg-slate-100" style="object-fit:<?= e((string)($structured['image_fit'] ?? 'cover')) ?>" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
-                                    <?php if (($structured['elements'] ?? []) !== []): ?>
+                                    <?php if (!$selectedPixelLocked && ($structured['elements'] ?? []) !== []): ?>
                                         <div class="structured-overlay" style="background:<?= e((string)($structured['canvas_background'] ?? 'transparent')) ?>">
                                             <?php foreach ($structured['elements'] as $element): ?>
                                                 <div class="structured-overlay-element type-<?= e((string)$element['type']) ?>" style="<?= e(social_studio_overlay_element_style($element)) ?>"><?= e((string)$element['text']) ?></div>

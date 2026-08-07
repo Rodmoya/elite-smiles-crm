@@ -509,6 +509,34 @@ if (!function_exists('social_studio_seed_drafts')) {
         return $template === [] ? null : (json_encode($template, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null);
     }
 
+    function social_studio_overlay_template_headline(array $template, string $fallback = ''): string
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        $candidates = [];
+        foreach (($template['elements'] ?? []) as $element) {
+            if ((string)($element['type'] ?? '') !== 'text') continue;
+            $text = trim((string)($element['text'] ?? ''));
+            if ($text === '' || mb_strlen($text) < 3 || preg_match('/consult|schedule|book|call|financ|draper/i', $text)) continue;
+            $candidates[] = ['text' => $text, 'size' => (float)($element['font_size'] ?? 0), 'y' => (float)($element['y'] ?? 100)];
+        }
+        usort($candidates, static fn(array $a, array $b): int => ($b['size'] <=> $a['size']) ?: ($a['y'] <=> $b['y']));
+        return trim((string)($candidates[0]['text'] ?? $fallback));
+    }
+
+    function social_studio_overlay_template_cta(array $template, string $fallback = ''): string
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        $matches = [];
+        foreach (($template['elements'] ?? []) as $element) {
+            if ((string)($element['type'] ?? '') !== 'text') continue;
+            $text = trim((string)($element['text'] ?? ''));
+            if ($text === '' || !preg_match('/consult|schedule|book|call|discover|learn more|financ|start/i', $text)) continue;
+            $matches[] = ['text' => $text, 'y' => (float)($element['y'] ?? 0), 'length' => mb_strlen($text)];
+        }
+        usort($matches, static fn(array $a, array $b): int => ($b['y'] <=> $a['y']) ?: ($a['length'] <=> $b['length']));
+        return trim((string)($matches[0]['text'] ?? $fallback));
+    }
+
     function social_studio_curated_overlay_template(string $sourcePostId): array
     {
         if ($sourcePostId !== 'DZME24slvGK') return [];
@@ -666,6 +694,8 @@ if (!function_exists('social_studio_seed_drafts')) {
                 $topic['base_post_prompt'] = (string)($remixTemplate['base_prompt'] ?? '');
                 $topic['overlay_spec'] = social_studio_locked_overlay_spec($remixTemplate);
                 $topic['overlay_template'] = social_studio_position_overlay_template((array)($remixTemplate['overlay_template'] ?? []), (string)($remixTemplate['text_position'] ?? 'source'));
+                $topic['title'] = social_studio_overlay_template_headline((array)$topic['overlay_template'], (string)($topic['title'] ?? ''));
+                $topic['cta'] = social_studio_overlay_template_cta((array)$topic['overlay_template'], (string)($topic['cta'] ?? ''));
                 $topic['image_prompt'] = social_studio_locked_remix_image_prompt($remixTemplate, $topic, $focus);
                 $topic['post_type'] = (string)($remixTemplate['purpose'] ?? 'educational') === 'social_ad' ? 'social_ad' : 'education';
                 if (!empty($remixTemplate['replica_mode']) && (string)($remixTemplate['source_post_id'] ?? '') === 'DZME24slvGK') {
@@ -997,9 +1027,13 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
         $overlayTemplate = is_array($overlayTemplate) ? social_studio_normalize_overlay_template($overlayTemplate) : [];
         $referenceImage = [];
+        $referencePath = '';
+        $sourceOverlayTemplate = [];
         if (preg_match('/^base_(\d+)$/', (string)($draft['base_reference_key'] ?? ''), $baseMatch)) {
-            $base = db_one('SELECT source_url, source_post_id, local_image_key FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
+            $base = db_one('SELECT source_url, source_post_id, local_image_key, overlay_template_json FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
             $referencePath = $base ? social_studio_base_source_path($base) : '';
+            $sourceTemplateDecoded = $base ? json_decode((string)($base['overlay_template_json'] ?? ''), true) : null;
+            $sourceOverlayTemplate = is_array($sourceTemplateDecoded) ? social_studio_normalize_overlay_template($sourceTemplateDecoded) : [];
             if ($referencePath !== '' && is_file($referencePath)) {
                 $referenceBytes = @file_get_contents($referencePath);
                 if (is_string($referenceBytes) && $referenceBytes !== '') {
@@ -1031,7 +1065,18 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         $brandedExt = $hasOverlayTemplate ? 'svg' : (social_studio_can_raster_brand_images() ? 'png' : 'svg');
         $brandedKey = $storagePrefix . '/branded-' . date('Ymd-His') . '.' . $brandedExt;
         $brandedPath = social_studio_safe_storage_path($brandedKey);
-        if (!$brandedPath || !social_studio_create_branded_image($rawPath, $brandedPath, $hasOverlayTemplate ? $overlayTemplate : [])) {
+        $pixelLockOverlay = $hasOverlayTemplate
+            && (string)($draft['copy_mode'] ?? 'preserve') === 'preserve'
+            && $referencePath !== ''
+            && is_file($referencePath)
+            && ($sourceOverlayTemplate['elements'] ?? []) !== [];
+        if (!$brandedPath || !social_studio_create_branded_image(
+            $rawPath,
+            $brandedPath,
+            $hasOverlayTemplate ? $overlayTemplate : [],
+            $pixelLockOverlay ? $referencePath : '',
+            $pixelLockOverlay ? $sourceOverlayTemplate : []
+        )) {
             $brandedKey = $rawKey;
         }
 
@@ -1264,10 +1309,10 @@ if (!function_exists('social_studio_can_raster_brand_images')) {
 }
 
 if (!function_exists('social_studio_create_branded_image')) {
-    function social_studio_create_branded_image(string $sourcePath, string $targetPath, array $overlayTemplate = []): bool
+    function social_studio_create_branded_image(string $sourcePath, string $targetPath, array $overlayTemplate = [], string $templateSourcePath = '', array $sourceOverlayTemplate = []): bool
     {
         if ($overlayTemplate !== []) {
-            return social_studio_create_branded_svg($sourcePath, $targetPath, $overlayTemplate);
+            return social_studio_create_branded_svg($sourcePath, $targetPath, $overlayTemplate, $templateSourcePath, $sourceOverlayTemplate);
         }
         if (@copy($sourcePath, $targetPath)) {
             return true;
@@ -1297,7 +1342,7 @@ if (!function_exists('social_studio_create_branded_image')) {
 }
 
 if (!function_exists('social_studio_create_branded_svg')) {
-    function social_studio_create_branded_svg(string $sourcePath, string $targetPath, array $overlayTemplate = []): bool
+    function social_studio_create_branded_svg(string $sourcePath, string $targetPath, array $overlayTemplate = [], string $templateSourcePath = '', array $sourceOverlayTemplate = []): bool
     {
         $sourceBytes = @file_get_contents($sourcePath);
         if (!is_string($sourceBytes) || $sourceBytes === '') {
@@ -1312,12 +1357,41 @@ if (!function_exists('social_studio_create_branded_svg')) {
         $height = is_array($size) && !empty($size[1]) ? (int)$size[1] : 1080;
         $sourceData = 'data:' . $sourceMime . ';base64,' . base64_encode($sourceBytes);
         $template = social_studio_normalize_overlay_template($overlayTemplate);
+        $sourceTemplate = social_studio_normalize_overlay_template($sourceOverlayTemplate);
+        $templateSourceBytes = $templateSourcePath !== '' && is_file($templateSourcePath) ? @file_get_contents($templateSourcePath) : false;
+        $templateSourceSize = $templateSourcePath !== '' ? @getimagesize($templateSourcePath) : false;
+        $pixelLocked = is_string($templateSourceBytes) && $templateSourceBytes !== ''
+            && is_array($templateSourceSize) && !empty($templateSourceSize[0]) && !empty($templateSourceSize[1])
+            && ($sourceTemplate['elements'] ?? []) !== [];
+        $templateSourceData = '';
+        $templateSourceWidth = 0;
+        $templateSourceHeight = 0;
+        if ($pixelLocked) {
+            $templateSourceMime = (string)($templateSourceSize['mime'] ?? (@mime_content_type($templateSourcePath) ?: 'image/jpeg'));
+            $templateSourceData = 'data:' . $templateSourceMime . ';base64,' . base64_encode((string)$templateSourceBytes);
+            $templateSourceWidth = (int)$templateSourceSize[0];
+            $templateSourceHeight = (int)$templateSourceSize[1];
+        }
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
+            . ($pixelLocked
+                ? '<defs><image id="approved-template-source" href="' . $templateSourceData . '" x="0" y="0" width="' . $templateSourceWidth . '" height="' . $templateSourceHeight . '" preserveAspectRatio="none"/></defs>'
+                : '')
             . '<rect width="100%" height="100%" fill="' . htmlspecialchars((string)($template['canvas_background'] ?? 'transparent'), ENT_QUOTES, 'UTF-8') . '"/>'
             . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/>';
-        foreach (($template['elements'] ?? []) as $element) {
+        foreach (($template['elements'] ?? []) as $elementIndex => $element) {
             $x = (float)$element['x'] * $width / 100; $y = (float)$element['y'] * $height / 100;
             $w = (float)$element['width'] * $width / 100; $h = (float)$element['height'] * $height / 100;
+            $sourceElement = $sourceTemplate['elements'][$elementIndex] ?? null;
+            if ($pixelLocked && is_array($sourceElement)) {
+                $sourceX = (float)$sourceElement['x'] * $templateSourceWidth / 100;
+                $sourceY = (float)$sourceElement['y'] * $templateSourceHeight / 100;
+                $sourceW = max(1, (float)$sourceElement['width'] * $templateSourceWidth / 100);
+                $sourceH = max(1, (float)$sourceElement['height'] * $templateSourceHeight / 100);
+                $svg .= '<svg x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" viewBox="' . $sourceX . ' ' . $sourceY . ' ' . $sourceW . ' ' . $sourceH . '" preserveAspectRatio="none" overflow="hidden">'
+                    . '<use href="#approved-template-source"/>'
+                    . '</svg>';
+                continue;
+            }
             $fill = htmlspecialchars((string)$element['background_color'], ENT_QUOTES, 'UTF-8');
             $stroke = htmlspecialchars((string)$element['border_color'], ENT_QUOTES, 'UTF-8');
             $strokeWidth = (float)$element['border_width'] * $width / 100;

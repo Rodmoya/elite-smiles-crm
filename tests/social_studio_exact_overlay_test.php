@@ -32,6 +32,12 @@ social_studio_exact_assert(
     social_studio_overlay_template_cta($template, 'fallback') === "COMPLIMENTARY\nCONSULTATION",
     'Template CTA must remain verbatim, including its manual line break.'
 );
+$versionedUrl = social_studio_image_url([
+    'id' => 30,
+    'image_storage_key' => 'social-studio/draft-30/raw-a.png',
+    'branded_image_storage_key' => 'social-studio/draft-30/branded-a.svg',
+]);
+social_studio_exact_assert(str_contains($versionedUrl, '&v='), 'Regenerated branded previews must use a cache-busting asset URL.');
 
 $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=', true);
 $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'social-studio-exact-' . bin2hex(random_bytes(4));

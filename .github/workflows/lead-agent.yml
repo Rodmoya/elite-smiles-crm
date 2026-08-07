@@ -1,8 +1,6 @@
-name: Lead Agent
+name: Lead Agent Manual Fallback
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -14,7 +12,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Run guarded lead agent
+      - name: Run guarded Lead Agent fallback
         env:
           CRON_SECRET: ${{ secrets.ELITE_LEAD_AGENT_CRON_SECRET }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}

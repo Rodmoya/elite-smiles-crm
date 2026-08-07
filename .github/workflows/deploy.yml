@@ -70,6 +70,8 @@ jobs:
           exclude: |
             **/.git*
             **/.git*/**
+            node_modules/**
+            tests/artifacts/**
             .env
             error_log
             **/error_log

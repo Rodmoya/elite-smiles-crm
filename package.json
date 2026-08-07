@@ -1,0 +1,10 @@
+{
+  "name": "elite-smiles-crm-assets",
+  "private": true,
+  "scripts": {
+    "build:lead-agent-css": "tailwindcss -c tailwind.config.js -i assets/css/lead-agent-input.css -o assets/css/lead-agent.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

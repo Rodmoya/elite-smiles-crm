@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/smtp.php';
+require_once __DIR__ . '/lead_agent_observability.php';
 
 if (!function_exists('lead_email_ensure_schema')) {
     function lead_email_ensure_schema(): void
@@ -397,6 +398,14 @@ if (!function_exists('lead_email_record_bounce')) {
                  LIMIT 1",
                 ['provider_response' => $providerNote, 'id' => $emailId]
             );
+            lead_agent_update_touchpoint_delivery('email', $emailId, 'bounced', $sourceId);
+
+            db_execute(
+                "UPDATE lead_agent_states
+                 SET next_action_at = NOW(), last_decision = 'email_bounced_switch_channel', lock_token = '', locked_at = NULL, updated_at = NOW()
+                 WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0",
+                ['lead_id' => $leadId]
+            );
 
             if (function_exists('lead_comm_insert_activity')) {
                 lead_comm_insert_activity($leadId, 'email_bounced', 'Email bounced for ' . $recipientEmail . ': ' . (trim($subject) !== '' ? trim($subject) : 'delivery failure'), [
@@ -771,6 +780,10 @@ if (!function_exists('lead_email_mark_opened')) {
                  LIMIT 1",
                 ['opened_at' => now(), 'tracking_token' => $trackingToken]
             );
+            $emailId = (int) db_value('SELECT id FROM lead_emails WHERE tracking_token = :tracking_token LIMIT 1', ['tracking_token' => $trackingToken]);
+            if ($emailId > 0) {
+                lead_agent_update_touchpoint_delivery('email', $emailId, 'opened');
+            }
             return true;
         } catch (Throwable $e) {
             esm_log('lead_email', 'Could not mark email opened.', ['error' => $e->getMessage()]);

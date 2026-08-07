@@ -25,7 +25,11 @@ with sync_playwright() as playwright:
         assert response is not None and response.ok, f"Dashboard returned {response.status if response else 'no response'} at {page.url}"
         assert page.get_by_role("heading", name="Lead Agent executive summary").is_visible()
         assert page.get_by_role("heading", name="Executive summary", exact=True).is_visible()
+        assert page.get_by_role("heading", name="Last 30 days", exact=True).is_visible()
         assert page.get_by_role("heading", name="Agent exceptions only").is_visible()
+        assert page.get_by_role("button", name="Pause all automated lead follow-up").is_visible() or page.get_by_role("button", name="Resume all automated lead follow-up").is_visible()
+        assert page.locator('script[src="https://cdn.tailwindcss.com"]').count() == 0
+        assert page.locator('link[href*="assets/css/lead-agent.css"]').count() == 1
         assert page.locator("body").evaluate("el => el.scrollWidth <= el.clientWidth"), f"Horizontal overflow at {width}px"
         actionable_console_errors = [error for error in console_errors if "ERR_CONNECTION_REFUSED" not in error]
         assert not actionable_console_errors, f"Console errors at {width}px: {actionable_console_errors}"

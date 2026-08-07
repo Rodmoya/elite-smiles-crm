@@ -31,6 +31,7 @@ tools/
 make-password.php
 docs/
 /vendor/
+/node_modules/
 /tests/artifacts/
 /storage/deploy-*.ps1
 /storage/start-coderabbit-auth.ps1

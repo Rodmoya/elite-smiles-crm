@@ -15,6 +15,7 @@ require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/notifications/internal_sms.php';
 require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
+require_once __DIR__ . '/lead_agent_observability.php';
 
 if (!function_exists('lead_agent_enabled')) {
     function lead_agent_enabled(): bool
@@ -136,6 +137,7 @@ if (!function_exists('lead_agent_ensure_schema')) {
             UNIQUE KEY uq_lead_agent_learning_key (learning_key),
             KEY idx_lead_agent_learning_evidence (evidence_count, last_seen_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        lead_agent_observability_ensure_schema();
     }
 }
 
@@ -162,7 +164,7 @@ if (!function_exists('lead_agent_record_learning')) {
         $channel = in_array(strtolower($channel), ['sms', 'email'], true) ? strtolower($channel) : '';
         $outcome = preg_replace('/[^a-z0-9_\-]/i', '', strtolower($outcome)) ?: 'observed';
         $key = substr($intent . '|' . ($channel !== '' ? $channel : 'any'), 0, 120);
-        $successful = in_array($outcome, ['automatic_reply_sent', 'reply_sent'], true) ? 1 : 0;
+        $successful = $outcome === 'lead_replied' ? 1 : 0;
         $scheduled = $outcome === 'ready_to_schedule' ? 1 : 0;
         db_query(
             "INSERT INTO lead_agent_learning_items
@@ -184,6 +186,31 @@ if (!function_exists('lead_agent_record_learning')) {
                 'successful' => $successful,
                 'scheduled' => $scheduled,
                 'outcome' => substr($outcome, 0, 60),
+            ]
+        );
+    }
+}
+
+if (!function_exists('lead_agent_record_learning_outcome')) {
+    function lead_agent_record_learning_outcome(string $intent, string $channel, string $outcome): void
+    {
+        lead_agent_ensure_schema();
+        $intent = preg_replace('/[^a-z0-9_\-]/i', '', strtolower($intent)) ?: 'general';
+        $channel = in_array(strtolower($channel), ['sms', 'email'], true) ? strtolower($channel) : '';
+        $outcome = preg_replace('/[^a-z0-9_\-]/i', '', strtolower($outcome)) ?: 'observed';
+        $key = substr($intent . '|' . ($channel !== '' ? $channel : 'any'), 0, 120);
+        db_execute(
+            "UPDATE lead_agent_learning_items SET
+                successful_reply_count = successful_reply_count + :successful,
+                scheduling_handoff_count = scheduling_handoff_count + :scheduled,
+                last_outcome = :outcome,
+                last_seen_at = NOW(), updated_at = NOW()
+             WHERE learning_key = :learning_key",
+            [
+                'successful' => $outcome === 'lead_replied' ? 1 : 0,
+                'scheduled' => $outcome === 'ready_to_schedule' ? 1 : 0,
+                'outcome' => $outcome,
+                'learning_key' => $key,
             ]
         );
     }
@@ -733,7 +760,13 @@ if (!function_exists('lead_agent_sms_send')) {
             'twilio_sid' => (string) ($result['twilio_sid'] ?? ''),
         ], 'Lead Agent');
         lead_comm_update_rollup($leadId);
-        return ['ok' => true, 'message_id' => $messageId, 'body' => $sentBody];
+        return [
+            'ok' => true,
+            'message_id' => $messageId,
+            'provider_id' => (string) ($result['twilio_sid'] ?? ''),
+            'delivery_status' => (string) ($result['twilio_status'] ?? 'accepted'),
+            'body' => $sentBody,
+        ];
     }
 }
 
@@ -750,6 +783,9 @@ if (!function_exists('lead_agent_email_send')) {
                 'email_id' => (int) ($result['email_id'] ?? 0),
                 'event_key' => $eventKey,
             ], 'Lead Agent');
+        }
+        if (!empty($result['ok'])) {
+            $result['delivery_status'] = 'accepted';
         }
         return $result;
     }
@@ -808,7 +844,7 @@ if (!function_exists('lead_agent_cost_redirect')) {
 if (!function_exists('lead_agent_handle_inbound')) {
     function lead_agent_handle_inbound(int $leadId, string $body, string $channel = 'sms', string $eventKey = ''): array
     {
-        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off' || lead_agent_is_globally_paused()) {
             return ['ok' => true, 'handled' => false, 'message' => 'Lead agent is disabled.'];
         }
         lead_agent_ensure_schema();
@@ -834,8 +870,11 @@ if (!function_exists('lead_agent_handle_inbound')) {
         $intent = lead_agent_classify_inbound($body);
         lead_agent_event($leadId, $eventKey, 'inbound_classified', $channel, 'recorded', $intent);
         lead_agent_record_learning($intent, $channel, 'observed');
+        lead_agent_attribute_outcome($leadId, 'reply');
+        lead_agent_record_learning_outcome($intent, $channel, 'lead_replied');
 
         if ($intent === 'opt_out') {
+            lead_agent_attribute_outcome($leadId, 'opt_out');
             lead_agent_pause($leadId, 'inbound_opt_out', 'opted_out');
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
@@ -844,7 +883,8 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
         if ($intent === 'ready_to_schedule') {
-            lead_agent_record_learning($intent, $channel, 'ready_to_schedule');
+            lead_agent_attribute_outcome($leadId, 'scheduling_intent');
+            lead_agent_record_learning_outcome($intent, $channel, 'ready_to_schedule');
             return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Inbound message indicates scheduling intent.') + ['intent' => $intent, 'handled' => true];
         }
         if ($intent === 'needs_attention') {
@@ -905,6 +945,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             'lead_id' => $leadId,
         ]);
         lead_agent_event($leadId, $sendKey, 'automatic_reply', $channel, 'sent', $intent);
+        lead_agent_record_touchpoint($lead, $sendKey, $channel, 0, 'automatic_reply', $send);
         lead_agent_record_learning($intent, $channel, 'automatic_reply_sent');
         return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => true];
     }
@@ -1036,6 +1077,7 @@ if (!function_exists('lead_agent_process_state')) {
             'lead_id' => $leadId,
         ]);
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+        lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send);
         return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at']];
     }
 }
@@ -1044,6 +1086,15 @@ if (!function_exists('lead_agent_run_due')) {
     function lead_agent_run_due(int $limit = 20, bool $dryRun = false): array
     {
         lead_agent_ensure_schema();
+        $latestBeforeRun = lead_agent_latest_run();
+        $staleAlert = $dryRun ? ['sent' => false, 'reason' => 'dry_run'] : lead_agent_maybe_alert_stale_run($latestBeforeRun);
+        if (lead_agent_is_globally_paused()) {
+            return ['ok' => true, 'paused' => true, 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'processed' => 0, 'results' => []];
+        }
+        if (!$dryRun) {
+            lead_agent_prune_retention();
+            lead_agent_backfill_touchpoints(5000);
+        }
         $limit = max(1, min(50, $limit));
         $run = lead_agent_run_start($dryRun);
         $backfill = [];
@@ -1097,7 +1148,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

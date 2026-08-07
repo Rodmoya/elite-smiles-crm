@@ -12,17 +12,35 @@ require_once __DIR__ . '/app/leads/lead_agent.php';
 require_auth();
 lead_comm_ensure_schema();
 lead_agent_ensure_schema();
+try {
+    lead_agent_backfill_touchpoints(5000);
+} catch (Throwable $e) {
+    esm_log('lead_agent', 'Historical touchpoint backfill failed.', ['error' => $e->getMessage()]);
+}
+$user = auth_user();
 
 if (is_post() && post('action') === 'logout') {
     require_csrf();
     auth_logout();
     redirect(base_url('login.php'));
 }
+if (is_post() && in_array((string) post('action'), ['pause_agent', 'resume_agent'], true)) {
+    require_csrf();
+    if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+        http_response_code(403);
+        exit('Forbidden');
+    }
+    $pause = post('action') === 'pause_agent';
+    lead_agent_set_global_pause($pause, (int) ($user['user_id'] ?? 0));
+    lead_agent_event(0, 'global-' . ($pause ? 'pause-' : 'resume-') . time(), $pause ? 'paused' : 'resumed', '', 'recorded', $pause ? 'operator_global_pause' : 'operator_global_resume');
+    redirect(base_url('lead-agent-operations.php?notice=' . ($pause ? 'paused' : 'resumed')));
+}
 
 $tz = new DateTimeZone(APP_TIMEZONE);
 $today = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
 $yesterday = (new DateTimeImmutable('yesterday', $tz))->format('Y-m-d');
 $selectedDate = trim((string) get('date', $today));
+$notice = trim((string) get('notice', ''));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate) || $selectedDate > $today) {
     $selectedDate = $today;
 }
@@ -64,6 +82,9 @@ $activity = lead_agent_recent_activity($selectedDate, 30);
 $learning = lead_agent_learned_guidance('', 6);
 $latestRun = lead_agent_latest_run();
 $runHealth = lead_agent_run_health($latestRun);
+$performance = lead_agent_performance_metrics(30);
+$channelPerformance = lead_agent_performance_by_channel(30);
+$globallyPaused = lead_agent_is_globally_paused();
 $readyRows = db_all("SELECT l.id, l.full_name, l.source, s.pause_reason, s.updated_at
     FROM lead_agent_states s INNER JOIN leads l ON l.id = s.lead_id
     WHERE s.status = 'ready_to_schedule' ORDER BY s.updated_at DESC LIMIT 8");
@@ -72,13 +93,13 @@ $pipelineCounts = lead_pipeline_counts();
 $pipelineSchedulingTotal = (int)($pipelineCounts['scheduling'] ?? 0);
 $attentionRows = lead_agent_exception_rows(8);
 
-$user = auth_user();
 $logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $currentPage = 'lead_agent_operations';
 $pageTitle = 'Lead Agent';
 $logoutAction = base_url('lead-agent-operations.php');
 $mode = lead_agent_mode();
-$modeClasses = $mode === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ($mode === 'shadow' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-100 text-slate-600');
+$effectiveMode = $globallyPaused ? 'paused' : $mode;
+$modeClasses = $effectiveMode === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ($effectiveMode === 'shadow' ? 'border-amber-200 bg-amber-50 text-amber-700' : ($effectiveMode === 'paused' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-100 text-slate-600'));
 $runToneClasses = match ((string)($runHealth['tone'] ?? 'slate')) {
     'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
     'amber' => 'border-amber-200 bg-amber-50 text-amber-800',
@@ -107,12 +128,8 @@ $eventLabels = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e(APP_NAME) ?> | Lead Agent Operations</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="<?= e(base_url('assets/css/lead-agent.css')) ?>">
     <meta name="robots" content="noindex,nofollow">
-    <style>
-        :focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
-        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
-    </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
@@ -125,7 +142,7 @@ $eventLabels = [
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Daily operations</span>
                         <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold <?= e($modeClasses) ?>">
-                            <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true"></span><?= e(ucfirst($mode)) ?> mode
+                            <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true"></span><?= e(ucfirst($effectiveMode)) ?><?= $effectiveMode === 'paused' ? '' : ' mode' ?>
                         </span>
                     </div>
                     <h1 class="mt-4 text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Lead Agent executive summary</h1>
@@ -134,9 +151,24 @@ $eventLabels = [
                 <div class="flex flex-wrap items-center gap-3">
                     <a href="<?= e(base_url('lead-agent-operations.php')) ?>" class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Today</a>
                     <a href="<?= e(base_url('lead-agent-operations.php?date=' . rawurlencode($yesterday))) ?>" class="inline-flex min-h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">Morning review</a>
+                    <?php if (function_exists('auth_can_manage_leads') && auth_can_manage_leads()): ?>
+                        <form method="POST" action="<?= e(base_url('lead-agent-operations.php')) ?>">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="action" value="<?= $globallyPaused ? 'resume_agent' : 'pause_agent' ?>">
+                            <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-2xl border px-4 py-2.5 text-sm font-semibold transition focus-visible:ring-4 <?= $globallyPaused ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-200' : 'border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 focus-visible:ring-rose-200' ?>" aria-label="<?= $globallyPaused ? 'Resume all automated lead follow-up' : 'Pause all automated lead follow-up' ?>">
+                                <?= $globallyPaused ? 'Resume agent' : 'Pause agent' ?>
+                            </button>
+                        </form>
+                    <?php endif; ?>
                 </div>
             </div>
         </header>
+
+        <?php if (in_array($notice, ['paused', 'resumed'], true)): ?>
+            <div class="rounded-2xl border px-4 py-3 text-sm font-semibold <?= $notice === 'paused' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800' ?>" role="status" aria-live="polite">
+                <?= $notice === 'paused' ? 'Automated lead follow-up is paused. New inbound messages remain saved in the CRM.' : 'Automated lead follow-up resumed successfully.' ?>
+            </div>
+        <?php endif; ?>
 
         <section aria-labelledby="summary-heading" class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,.85fr)]">
             <article class="rounded-[2rem] border border-slate-200 bg-slate-950 p-6 text-white shadow-sm lg:p-8">
@@ -172,6 +204,42 @@ $eventLabels = [
                     <p class="mt-2 text-xs leading-5 text-slate-500"><?= e($hint) ?></p>
                 </article>
             <?php endforeach; ?>
+        </section>
+
+        <section aria-labelledby="performance-heading" class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Conversion learning</p>
+                    <h2 id="performance-heading" class="mt-2 text-xl font-semibold text-slate-950">Last 30 days</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">Attributed to the most recent automated touch. Tracking improves continuously as new messages are sent.</p>
+                </div>
+                <p class="text-sm font-semibold tabular-nums text-slate-700"><?= e((string) $performance['touches']) ?> tracked touches</p>
+            </div>
+            <dl class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-label="Lead Agent conversion performance">
+                <?php foreach ([
+                    ['Reply rate', 'reply_rate', '%', 'Leads who replied'],
+                    ['Scheduling intent', 'scheduling_rate', '%', 'Leads ready to schedule'],
+                    ['Consultations', 'booking_rate', '%', 'Attributed bookings'],
+                    ['Delivery failures', 'failure_rate', '%', 'Failed or bounced'],
+                    ['Opt-outs', 'opt_out_rate', '%', 'Attributed opt-outs'],
+                    ['Email opens', 'opened', '', 'Tracked email opens'],
+                ] as [$label, $key, $suffix, $hint]): ?>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"><?= e($label) ?></dt>
+                        <dd class="mt-3 text-2xl font-semibold tabular-nums text-slate-950"><?= e((string) ($performance[$key] ?? 0)) ?><?= e($suffix) ?></dd>
+                        <p class="mt-2 text-xs leading-5 text-slate-500"><?= e($hint) ?></p>
+                    </div>
+                <?php endforeach; ?>
+            </dl>
+            <div class="mt-6 grid gap-3 md:grid-cols-2" aria-label="Performance by communication channel">
+                <?php if ($channelPerformance === []): ?><p class="rounded-2xl bg-blue-50 px-4 py-4 text-sm text-blue-800">Channel comparison will appear after the next tracked SMS or email.</p><?php endif; ?>
+                <?php foreach ($channelPerformance as $channelRow): $touches = max(1, (int) ($channelRow['touches'] ?? 0)); ?>
+                    <article class="rounded-2xl border border-slate-200 px-4 py-4">
+                        <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold uppercase tracking-wide text-slate-800"><?= e((string) ($channelRow['channel'] ?? 'channel')) ?></h3><span class="text-xs tabular-nums text-slate-500"><?= e((string) ((int) ($channelRow['touches'] ?? 0))) ?> touches</span></div>
+                        <p class="mt-3 text-sm text-slate-600"><strong class="tabular-nums text-slate-950"><?= e((string) round(((int) ($channelRow['replies'] ?? 0) / $touches) * 100, 1)) ?>%</strong> replied &middot; <strong class="tabular-nums text-slate-950"><?= e((string) ((int) ($channelRow['bookings'] ?? 0))) ?></strong> booked &middot; <strong class="tabular-nums text-slate-950"><?= e((string) ((int) ($channelRow['failures'] ?? 0))) ?></strong> failed</p>
+                    </article>
+                <?php endforeach; ?>
+            </div>
         </section>
 
         <section aria-label="Agent health and queue status" class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,.8fr)]">
@@ -255,7 +323,7 @@ $eventLabels = [
                     <?php foreach ($activity as $event): ?>
                         <div class="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
                             <time class="text-xs font-medium tabular-nums text-slate-500"><?= e(date('g:i A', strtotime((string) $event['created_at']))) ?></time>
-                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string) ($event['full_name'] ?? 'Lead')) ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
+                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string) ($event['full_name'] ?? ((int) ($event['lead_id'] ?? 0) === 0 ? 'System' : 'Lead'))) ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
                             <span class="text-right text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e(trim((string)($event['channel'] ?? '') . ' ' . (string)($event['status'] ?? ''))) ?></span>
                         </div>
                     <?php endforeach; ?>

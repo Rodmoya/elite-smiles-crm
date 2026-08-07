@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/leads/lead_agent_observability.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -227,11 +228,14 @@ try {
                 );
             }
 
-            if ($newStage === 'consultation_booked' && function_exists('lead_send_consultation_booked_internal_sms')) {
-                lead_send_consultation_booked_internal_sms($leadId, $oldStage, [
-                    'source' => 'lead_update_stage',
-                    'created_by' => auth_name(),
-                ]);
+            if ($newStage === 'consultation_booked') {
+                lead_agent_attribute_outcome($leadId, 'consultation_booked');
+                if (function_exists('lead_send_consultation_booked_internal_sms')) {
+                    lead_send_consultation_booked_internal_sms($leadId, $oldStage, [
+                        'source' => 'lead_update_stage',
+                        'created_by' => auth_name(),
+                    ]);
+                }
             }
         }
 

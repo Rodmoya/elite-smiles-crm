@@ -36,6 +36,12 @@ jobs:
       - name: Install production dependencies
         run: composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
 
+      - name: Build production Lead Agent CSS
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:lead-agent-css
+          git diff --exit-code -- assets/css/lead-agent.css
+
       - name: Validate PHP syntax
         run: |
           git ls-files '*.php' | while IFS= read -r file; do

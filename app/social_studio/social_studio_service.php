@@ -949,7 +949,10 @@ if (!function_exists('social_studio_image_url')) {
         if ($key === '') {
             return '';
         }
-        return base_url('app/actions/social_studio_image.php?draft_id=' . rawurlencode((string)$draft['id']) . ($branded ? '&variant=branded' : '&variant=raw'));
+        $version = substr(sha1($key), 0, 12);
+        return base_url('app/actions/social_studio_image.php?draft_id=' . rawurlencode((string)$draft['id'])
+            . ($branded ? '&variant=branded' : '&variant=raw')
+            . '&v=' . rawurlencode($version));
     }
 }
 

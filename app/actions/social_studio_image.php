@@ -40,6 +40,6 @@ if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'svg') {
 }
 
 header('Content-Type: ' . $mime);
-header('Cache-Control: private, max-age=300');
+header('Cache-Control: private, no-cache, must-revalidate');
 header('Content-Length: ' . (string)filesize($path));
 readfile($path);

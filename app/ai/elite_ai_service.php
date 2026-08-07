@@ -3729,6 +3729,16 @@ if (!function_exists('elite_ai_pending_drafts_for_context')) {
     }
 }
 
+if (!function_exists('elite_ai_prompt_is_historical_stage_statement')) {
+    function elite_ai_prompt_is_historical_stage_statement(string $prompt): bool
+    {
+        $normalized = strtolower(trim($prompt));
+        return $normalized !== ''
+            && (bool) preg_match('/\b(?:already|previously|earlier)\s+(?:moved|sent|put|set|changed|marked|advanced|shifted)\b/i', $normalized)
+            && elite_ai_requested_stage_key($normalized) !== '';
+    }
+}
+
 if (!function_exists('elite_ai_prompt_requests_stage_move')) {
     function elite_ai_prompt_requests_stage_move(string $prompt): bool
     {
@@ -5258,6 +5268,20 @@ if (!function_exists('elite_ai_plan_request')) {
                 'lead_query' => '',
                 'target_stage' => '',
                 'use_current_lead' => false,
+                'needs_clarification' => false,
+                'clarification_question' => '',
+                'provider' => 'deterministic',
+            ];
+        }
+
+        if (elite_ai_prompt_is_historical_stage_statement($prompt)) {
+            $leadQuery = elite_ai_extract_stage_move_lead_query($prompt);
+            return [
+                'intent' => 'lead_summary',
+                'reason' => 'Historical stage statement; review context without changing CRM state.',
+                'lead_query' => $leadQuery,
+                'target_stage' => '',
+                'use_current_lead' => (int) ($context['lead_id'] ?? 0) > 0 && $leadQuery === '',
                 'needs_clarification' => false,
                 'clarification_question' => '',
                 'provider' => 'deterministic',

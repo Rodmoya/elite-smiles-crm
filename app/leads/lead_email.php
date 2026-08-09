@@ -31,6 +31,7 @@ if (!function_exists('lead_email_ensure_schema')) {
                     to_email VARCHAR(255) NOT NULL DEFAULT '',
                     subject VARCHAR(255) NOT NULL DEFAULT '',
                     body MEDIUMTEXT NOT NULL,
+                    body_html MEDIUMTEXT NULL,
                     status VARCHAR(50) NOT NULL DEFAULT 'sent',
                     tracking_token VARCHAR(100) NOT NULL DEFAULT '',
                     provider_response TEXT NULL,
@@ -47,6 +48,7 @@ if (!function_exists('lead_email_ensure_schema')) {
 
             lead_email_add_column('lead_emails', 'tracking_token', "VARCHAR(100) NOT NULL DEFAULT ''");
             lead_email_add_column('lead_emails', 'opened_at', 'DATETIME NULL');
+            lead_email_add_column('lead_emails', 'body_html', 'MEDIUMTEXT NULL AFTER body');
             lead_email_add_column('leads', 'email_opt_status', "VARCHAR(30) NOT NULL DEFAULT 'subscribed'");
             lead_email_add_column('leads', 'email_opted_out_at', 'DATETIME NULL');
         } catch (Throwable $e) {
@@ -54,6 +56,232 @@ if (!function_exists('lead_email_ensure_schema')) {
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+}
+
+if (!function_exists('lead_email_decode_transfer_body')) {
+    function lead_email_decode_transfer_body(string $body, string $encoding): string
+    {
+        $encoding = strtolower(trim($encoding));
+        if ($encoding === 'base64') {
+            $decoded = base64_decode(preg_replace('/\s+/', '', $body) ?? '', true);
+            return is_string($decoded) ? $decoded : $body;
+        }
+        return $encoding === 'quoted-printable' ? quoted_printable_decode($body) : $body;
+    }
+}
+
+if (!function_exists('lead_email_parse_header_block')) {
+    function lead_email_parse_header_block(string $headerText): array
+    {
+        $headerText = preg_replace("/\n[ \t]+/", ' ', str_replace("\r\n", "\n", $headerText)) ?? $headerText;
+        $headers = [];
+        foreach (explode("\n", $headerText) as $line) {
+            $position = strpos($line, ':');
+            if ($position === false) {
+                continue;
+            }
+            $headers[strtolower(trim(substr($line, 0, $position)))] = trim(substr($line, $position + 1));
+        }
+        return $headers;
+    }
+}
+
+if (!function_exists('lead_email_html_to_text')) {
+    function lead_email_html_to_text(string $html): string
+    {
+        $html = preg_replace('/<(?:br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/blockquote)\b[^>]*>/i', "\n", $html) ?? $html;
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace("/[ \t]+\n/", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+        return trim($text);
+    }
+}
+
+if (!function_exists('lead_email_plain_to_html')) {
+    function lead_email_plain_to_html(string $text): string
+    {
+        return '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#334155;white-space:pre-wrap;">'
+            . nl2br(htmlspecialchars(trim($text), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false)
+            . '</div>';
+    }
+}
+
+if (!function_exists('lead_email_parse_mime_entity')) {
+    function lead_email_parse_mime_entity(string $raw, int $depth = 0): array
+    {
+        if ($depth > 8) {
+            return ['text' => trim($raw), 'html' => ''];
+        }
+        $raw = str_replace("\r\n", "\n", $raw);
+        [$headerText, $body] = array_pad(explode("\n\n", $raw, 2), 2, '');
+        $headers = lead_email_parse_header_block($headerText);
+        if ($headers === [] && $body === '') {
+            return ['text' => trim($raw), 'html' => ''];
+        }
+
+        $contentType = strtolower((string)($headers['content-type'] ?? 'text/plain'));
+        $encoding = (string)($headers['content-transfer-encoding'] ?? '');
+        if (str_contains($contentType, 'multipart/') && preg_match('/boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i', $contentType, $matches)) {
+            $boundary = (string)($matches[1] !== '' ? $matches[1] : ($matches[2] ?? ''));
+            $segments = preg_split('/^--' . preg_quote($boundary, '/') . '(?:--)?[ \t]*$/m', $body) ?: [];
+            $texts = [];
+            $htmls = [];
+            foreach ($segments as $segment) {
+                $segment = trim($segment, "\n\r-");
+                if ($segment === '' || !str_contains($segment, "\n\n")) {
+                    continue;
+                }
+                $parsed = lead_email_parse_mime_entity($segment, $depth + 1);
+                if (trim((string)($parsed['text'] ?? '')) !== '') {
+                    $texts[] = trim((string)$parsed['text']);
+                }
+                if (trim((string)($parsed['html'] ?? '')) !== '') {
+                    $htmls[] = trim((string)$parsed['html']);
+                }
+            }
+            return [
+                'text' => trim(implode("\n\n", $texts)),
+                'html' => trim(implode("\n", $htmls)),
+            ];
+        }
+
+        $decoded = lead_email_decode_transfer_body($body, $encoding);
+        if (preg_match('/charset\s*=\s*(?:"([^"]+)"|([^;\s]+))/i', $contentType, $charsetMatch)) {
+            $charset = strtoupper(trim((string)($charsetMatch[1] !== '' ? $charsetMatch[1] : ($charsetMatch[2] ?? ''))));
+            if ($charset !== '' && $charset !== 'UTF-8' && function_exists('iconv')) {
+                $converted = @iconv($charset, 'UTF-8//IGNORE', $decoded);
+                $decoded = is_string($converted) ? $converted : $decoded;
+            }
+        }
+        if (str_contains($contentType, 'text/html')) {
+            return ['text' => lead_email_html_to_text($decoded), 'html' => trim($decoded)];
+        }
+        if (str_contains($contentType, 'message/rfc822')) {
+            return lead_email_parse_mime_entity($decoded, $depth + 1);
+        }
+        return ['text' => trim($decoded), 'html' => ''];
+    }
+}
+
+if (!function_exists('lead_email_parse_mime_body')) {
+    function lead_email_parse_mime_body(string $body): array
+    {
+        $normalized = str_replace("\r\n", "\n", trim($body));
+        if (preg_match('/^--([^\n]+)\nContent-Type:/i', $normalized, $matches)) {
+            $boundary = trim((string)$matches[1]);
+            $normalized = 'Content-Type: multipart/mixed; boundary="' . $boundary . '"' . "\n\n" . $normalized;
+        }
+        if (preg_match('/^(?:Content-Type|MIME-Version|From|To|Subject):/i', $normalized)) {
+            return lead_email_parse_mime_entity($normalized);
+        }
+        if (preg_match('/<\/?(?:html|body|table|div|p|blockquote)\b/i', $normalized)) {
+            return ['text' => lead_email_html_to_text($normalized), 'html' => $normalized];
+        }
+        return ['text' => $normalized, 'html' => ''];
+    }
+}
+
+if (!function_exists('lead_email_sanitize_display_html')) {
+    function lead_email_sanitize_display_html(string $html): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+        if (preg_match('/<body\b[^>]*>(.*)<\/body>/is', $html, $bodyMatch)) {
+            $html = (string)$bodyMatch[1];
+        }
+        if (!class_exists('DOMDocument')) {
+            return lead_email_plain_to_html(lead_email_html_to_text($html));
+        }
+
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML('<?xml encoding="UTF-8"><div id="lead-email-root">' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $root = $document->getElementById('lead-email-root');
+        if (!$root) {
+            return lead_email_plain_to_html(lead_email_html_to_text($html));
+        }
+
+        $allowedTags = array_fill_keys(['div', 'span', 'p', 'br', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'a', 'img'], true);
+        $allowedAttributes = array_fill_keys(['style', 'href', 'src', 'alt', 'title', 'width', 'height', 'align', 'role', 'cellspacing', 'cellpadding', 'colspan', 'rowspan', 'target'], true);
+        $forbiddenTags = array_fill_keys(['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'textarea', 'select', 'option', 'link', 'meta', 'base', 'svg', 'video', 'audio', 'canvas'], true);
+        $elements = [];
+        foreach ($root->getElementsByTagName('*') as $element) {
+            $elements[] = $element;
+        }
+        foreach (array_reverse($elements) as $element) {
+            $tag = strtolower($element->nodeName);
+            if (isset($forbiddenTags[$tag])) {
+                $element->parentNode?->removeChild($element);
+                continue;
+            }
+            if (!isset($allowedTags[$tag])) {
+                $parent = $element->parentNode;
+                if ($parent) {
+                    while ($element->firstChild) {
+                        $parent->insertBefore($element->firstChild, $element);
+                    }
+                    $parent->removeChild($element);
+                }
+                continue;
+            }
+            foreach (iterator_to_array($element->attributes ?? []) as $attribute) {
+                $name = strtolower($attribute->nodeName);
+                if (!isset($allowedAttributes[$name]) || str_starts_with($name, 'on')) {
+                    $element->removeAttribute($attribute->nodeName);
+                }
+            }
+            if ($element->hasAttribute('style')) {
+                $style = (string)$element->getAttribute('style');
+                $style = preg_replace('/(?:url\s*\(|expression\s*\(|@import|behavior\s*:|position\s*:\s*(?:fixed|sticky)|z-index\s*:)[^;]*/i', '', $style) ?? '';
+                $element->setAttribute('style', trim($style));
+            }
+            if ($tag === 'a' && $element->hasAttribute('href')) {
+                $href = trim((string)$element->getAttribute('href'));
+                if (!preg_match('#^(?:https?://|mailto:)#i', $href) || preg_match('/(?:email_open|unsubscribe)/i', $href)) {
+                    $element->removeAttribute('href');
+                } else {
+                    $element->setAttribute('target', '_blank');
+                    $element->setAttribute('rel', 'noopener noreferrer');
+                }
+            }
+            if ($tag === 'img') {
+                $src = trim((string)$element->getAttribute('src'));
+                $width = (int)$element->getAttribute('width');
+                $height = (int)$element->getAttribute('height');
+                if (($width > 0 && $width <= 2) || ($height > 0 && $height <= 2) || !preg_match('#^(?:https://hi\.elitesmilesutah\.com/|data:image/(?:png|jpe?g|gif|webp);base64,)#i', $src)) {
+                    $element->parentNode?->removeChild($element);
+                }
+            }
+        }
+
+        $safe = '';
+        foreach ($root->childNodes as $child) {
+            $safe .= $document->saveHTML($child);
+        }
+        return trim($safe);
+    }
+}
+
+if (!function_exists('lead_email_prepare_content')) {
+    function lead_email_prepare_content(string $body, string $bodyHtml = ''): array
+    {
+        $parsed = $bodyHtml !== ''
+            ? ['text' => trim($body) !== '' ? trim($body) : lead_email_html_to_text($bodyHtml), 'html' => $bodyHtml]
+            : lead_email_parse_mime_body($body);
+        $text = trim((string)($parsed['text'] ?? ''));
+        $html = trim((string)($parsed['html'] ?? ''));
+        if ($text === '' && $html !== '') {
+            $text = lead_email_html_to_text($html);
+        }
+        return [
+            'text' => $text !== '' ? $text : '(empty email)',
+            'html' => lead_email_sanitize_display_html($html !== '' ? $html : lead_email_plain_to_html($text)),
+        ];
     }
 }
 
@@ -292,10 +520,10 @@ if (!function_exists('lead_email_insert')) {
         try {
             return db_insert(
                 'INSERT INTO lead_emails (
-                    lead_id, direction, from_email, to_email, subject, body,
+                    lead_id, direction, from_email, to_email, subject, body, body_html,
                     status, tracking_token, provider_response, created_by, created_at
                 ) VALUES (
-                    :lead_id, :direction, :from_email, :to_email, :subject, :body,
+                    :lead_id, :direction, :from_email, :to_email, :subject, :body, :body_html,
                     :status, :tracking_token, :provider_response, :created_by, :created_at
                 )',
                 [
@@ -305,6 +533,7 @@ if (!function_exists('lead_email_insert')) {
                     'to_email' => $to,
                     'subject' => $subject,
                     'body' => $body,
+                    'body_html' => trim((string)($email['body_html'] ?? '')) !== '' ? (string)$email['body_html'] : null,
                     'status' => (string)($email['status'] ?? 'sent'),
                     'tracking_token' => (string)($email['tracking_token'] ?? ''),
                     'provider_response' => ($email['provider_response'] ?? null) !== null ? (string)$email['provider_response'] : null,
@@ -530,7 +759,9 @@ if (!function_exists('lead_email_record_inbound')) {
         $fromEmail = strtolower(trim($fromEmail));
         $toEmail = strtolower(trim($toEmail));
         $subject = trim($subject) !== '' ? trim($subject) : '(no subject)';
-        $body = trim($body) !== '' ? trim($body) : '(empty email)';
+        $preparedContent = lead_email_prepare_content($body);
+        $body = (string)$preparedContent['text'];
+        $bodyHtml = (string)$preparedContent['html'];
 
         $lead = lead_email_find_lead_by_email($fromEmail);
         if (!$lead) {
@@ -559,6 +790,7 @@ if (!function_exists('lead_email_record_inbound')) {
             'to_email' => $toEmail,
             'subject' => mb_substr($subject, 0, 255),
             'body' => $body,
+            'body_html' => $bodyHtml,
             'status' => 'received',
             'provider_response' => $sourceId,
             'created_by' => 'Mailbox',
@@ -681,14 +913,31 @@ if (!function_exists('lead_email_recent')) {
         }
 
         try {
-            return db_all(
-                'SELECT id, lead_id, direction, from_email, to_email, subject, body, status, created_by, created_at, opened_at
+            $leadForTemplate = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+            $rows = db_all(
+                'SELECT id, lead_id, direction, from_email, to_email, subject, body, body_html, status, tracking_token, created_by, created_at, opened_at
                  FROM lead_emails
                  WHERE lead_id = :lead_id
                  ORDER BY created_at DESC, id DESC
                  LIMIT ' . max(1, min(50, $limit)),
                 ['lead_id' => $leadId]
             );
+            return array_map(static function (array $email) use ($leadForTemplate): array {
+                $storedHtml = (string)($email['body_html'] ?? '');
+                if ($storedHtml === '' && (string)($email['direction'] ?? '') === 'outbound' && is_array($leadForTemplate)) {
+                    $storedHtml = lead_email_html_template(
+                        $leadForTemplate,
+                        (string)($email['subject'] ?? ''),
+                        (string)($email['body'] ?? ''),
+                        (string)($email['tracking_token'] ?? '')
+                    );
+                }
+                $prepared = lead_email_prepare_content((string)($email['body'] ?? ''), $storedHtml);
+                $email['body'] = (string)$prepared['text'];
+                $email['body_html_safe'] = (string)$prepared['html'];
+                unset($email['tracking_token']);
+                return $email;
+            }, $rows);
         } catch (Throwable $e) {
             esm_log('lead_email', 'Could not load recent lead emails.', [
                 'lead_id' => $leadId,
@@ -742,6 +991,7 @@ if (!function_exists('lead_email_send')) {
             'to_email' => $to,
             'subject' => $subject,
             'body' => $body,
+            'body_html' => $htmlBody,
             'status' => !empty($send['ok']) ? 'sent' : 'failed',
             'tracking_token' => $trackingToken,
             'provider_response' => (string)($send['smtp_response'] ?? $send['message'] ?? ''),

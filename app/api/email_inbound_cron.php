@@ -159,13 +159,13 @@ function elite_email_parse_raw_message(string $raw): array
             $decodedPart = elite_email_decode_body_value(trim($partBody), $partEncoding);
             if (str_contains($partHeadersLower, 'content-type: text/plain')) {
                 $plainBody = $decodedPart;
-                break;
+                continue;
             }
             if ($htmlCandidate === '' && str_contains($partHeadersLower, 'content-type: text/html')) {
-                $htmlCandidate = trim(html_entity_decode(strip_tags($decodedPart), ENT_QUOTES, 'UTF-8'));
+                $htmlCandidate = trim($decodedPart);
             }
         }
-        if (trim($plainBody) === '' && $htmlCandidate !== '') {
+        if ($htmlCandidate !== '') {
             $plainBody = $htmlCandidate;
         }
     } else {
@@ -256,8 +256,8 @@ function elite_email_poll_with_php_imap(): array
             $structure = imap_fetchstructure($imap, (int)$msgNo);
             $parts = $structure ? elite_email_collect_parts($imap, (int)$msgNo, $structure) : ['text' => imap_body($imap, (int)$msgNo, FT_PEEK) ?: '', 'html' => ''];
             $body = trim((string)$parts['text']);
-            if ($body === '' && trim((string)$parts['html']) !== '') {
-                $body = trim(html_entity_decode(strip_tags((string)$parts['html']), ENT_QUOTES, 'UTF-8'));
+            if (trim((string)$parts['html']) !== '') {
+                $body = trim((string)$parts['html']);
             }
 
             $sourceId = 'imap:' . $uid . ':' . $messageId;

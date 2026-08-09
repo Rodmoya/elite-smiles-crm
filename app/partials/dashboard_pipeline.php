@@ -5351,6 +5351,7 @@ $consultationOptions = [
                 time: email.created_at || '',
                 title: email.subject || '(no subject)',
                 body: email.body || '',
+                body_html: email.body_html_safe || '',
                 meta: [email.status || '', opened].filter(Boolean).join(' | '),
             });
         });
@@ -5432,7 +5433,9 @@ $consultationOptions = [
                             <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
                         </div>
                         <p class="mt-2 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
-                        ${item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : ''}
+                        ${item.body_html
+                            ? `<div class="lead-email-html mt-3 max-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800">${item.body_html}</div>`
+                            : (item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : '')}
                         ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
                     </div>
                 </div>
@@ -5471,7 +5474,9 @@ $consultationOptions = [
 
                 <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(email.subject || '(no subject)')}</p>
 
-                <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">${escapeHtml(email.body || '')}</p>
+                ${email.body_html_safe
+                    ? `<div class="lead-email-html mt-3 max-h-[520px] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800">${email.body_html_safe}</div>`
+                    : `<p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">${escapeHtml(email.body || '')}</p>`}
 
                 <p class="mt-2 text-[11px] font-medium text-slate-400">${escapeHtml(email.from_email || '')} to ${escapeHtml(email.to_email || '')}</p>
 

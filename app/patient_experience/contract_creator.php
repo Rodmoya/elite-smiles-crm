@@ -12,6 +12,7 @@ $status = (string)($contract['status'] ?? 'draft');
 $isEditable = !$contract || $status === 'draft';
 $shareUrl = (string)($contractShareUrl ?? '');
 $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.', '');
+$originalTerms = patient_experience_contract_original_terms();
 ?>
 
 <style>
@@ -128,7 +129,7 @@ $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.
                 <div class="rounded-2xl border border-slate-200 p-4">
                     <fieldset>
                         <legend class="text-sm font-semibold text-slate-900">4. Included services</legend>
-                        <div id="contract-options" class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                        <div id="contract-options" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <?php foreach ($definitions as $definitionKey => $definition): ?>
                                 <?php foreach ((array)$definition['options'] as $optionKey => $optionLabel): ?>
                                     <label class="contract-option cursor-pointer" data-treatment-option="<?= e($definitionKey) ?>">
@@ -192,26 +193,22 @@ $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.
                         <div class="text-right"><p id="preview-date" class="font-medium text-slate-900"><?= e(date('F j, Y')) ?></p><p class="mt-1 text-xs text-slate-500"><?= e((string)($contract['contract_number'] ?? 'Draft agreement')) ?></p></div>
                     </div>
                     <h1 id="preview-treatment-title" class="mt-5 text-lg font-semibold text-slate-950">Dental Treatment for Veneers</h1>
-                    <p id="preview-opening" class="mt-3">Your final approved treatment price after professional discount is <strong>$0.00</strong>.</p>
+                    <p id="preview-opening" class="mt-3"></p>
+                    <div class="mt-3 space-y-1 font-semibold text-slate-950">
+                        <p><?= e((string)$originalTerms['cashier_check']) ?></p>
+                        <p><?= e((string)$originalTerms['credit_card']) ?></p>
+                    </div>
                     <div class="mt-5">
                         <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h2>
                         <ul id="preview-line-items" class="mt-2 space-y-1.5 pl-5"></ul>
                     </div>
-                    <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Financial summary</h2>
-                        <dl class="mt-2 space-y-1.5">
-                            <div class="flex justify-between gap-4"><dt>Final approved price</dt><dd id="preview-final-price" class="font-semibold tabular-nums">$0.00</dd></div>
-                            <div class="flex justify-between gap-4"><dt>Estimated insurance</dt><dd id="preview-insurance" class="tabular-nums">$0.00</dd></div>
-                            <div class="flex justify-between gap-4"><dt>Estimated patient responsibility</dt><dd id="preview-responsibility" class="tabular-nums">$0.00</dd></div>
-                            <div class="flex justify-between gap-4"><dt>Deposit</dt><dd id="preview-deposit" class="tabular-nums">$0.00</dd></div>
-                            <div class="flex justify-between gap-4 border-t border-slate-300 pt-1.5 font-semibold"><dt>Remaining balance</dt><dd id="preview-balance" class="tabular-nums">$0.00</dd></div>
-                        </dl>
-                    </div>
                     <div class="mt-5 space-y-3 text-[12px] leading-[1.55]">
-                        <p>Insurance benefits are estimates and are not guaranteed. The patient is responsible for any amount not paid by insurance.</p>
-                        <p>I understand that dental treatment may require clinically necessary changes during care and that approved additional treatment may result in additional fees.</p>
-                        <p>All cosmetic, prosthetic, fixed or removable, and restorative treatment must be paid in full before seating or delivery. A 3% processing fee applies to credit-card payments.</p>
-                        <p>Optional IV sedation may be available for a separate hourly fee determined by and payable directly to the anesthesiology provider.</p>
+                        <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
+                        <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
+                        <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
+                        <p><?= e((string)$originalTerms['sedation']) ?></p>
+                        <p><?= e((string)$originalTerms['discount_acceptance']) ?></p>
+                        <p class="font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
                         <div class="rounded-lg border border-amber-300 bg-amber-50 p-3"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></div>
                     </div>
                     <div class="mt-7 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-6">
@@ -297,12 +294,11 @@ $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.
         const balance = Math.max(0, responsibility - deposit);
         q('preview-patient-name').textContent = patient;
         q('preview-treatment-title').textContent = 'Dental Treatment for ' + definition.label;
-        q('preview-opening').innerHTML = 'Your final approved treatment price after professional discount is <strong>' + formatMoney(finalPrice) + '</strong>.';
-        q('preview-final-price').textContent = formatMoney(finalPrice);
-        q('preview-insurance').textContent = '−' + formatMoney(insurance);
-        q('preview-responsibility').textContent = formatMoney(responsibility);
-        q('preview-deposit').textContent = '−' + formatMoney(deposit);
-        q('preview-balance').textContent = formatMoney(balance);
+        let financialLanguage = patient + ', Your estimated out of pocket portion of your Dental Treatment cost will be ' + formatMoney(finalPrice) + ' after a professional discount is applied. A deposit of ' + formatMoney(deposit) + ' will be made prior to your appointment. ';
+        if (insurance > 0) financialLanguage += 'Your insurance estimated payment is ' + formatMoney(insurance) + '. ';
+        financialLanguage += 'Your remaining balance of ' + formatMoney(balance) + ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';
+        q('preview-opening').textContent = financialLanguage;
+        q('preview-insurance-language').classList.toggle('hidden', insurance <= 0);
         q('financial-responsibility').textContent = formatMoney(responsibility);
         q('financial-balance').textContent = formatMoney(balance);
 

@@ -25,7 +25,9 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'internal_restorations' => 'Internal restorations',
                     'digital_analog_smile_design' => 'Digital and analog smile design',
                     'gingivectomy' => 'Gingivectomies for cosmetic reasons (laser procedure)',
+                    'full_mouth_debridement' => 'Full-mouth debridement with deep scaling',
                     'custom_shade' => 'Custom shade',
+                    'orthotic' => 'Orthotic device',
                     'occlusal_guard' => 'Occlusal guard',
                     'ct_scan' => 'CT scan',
                     'ppe' => 'Surgical PPE',
@@ -37,6 +39,7 @@ if (!function_exists('patient_experience_contract_definitions')) {
                 'tooth_mode' => 'arch',
                 'options' => [
                     'digital_3d_design' => 'Digital 3D design',
+                    'diagnostic_wax_up' => 'Diagnostic wax-up',
                     'extractions' => 'Surgical extractions',
                     'alveoloplasty' => 'Alveoloplasty',
                     'bone_membrane_grafts' => 'Bone and membrane grafts',
@@ -69,6 +72,7 @@ if (!function_exists('patient_experience_contract_definitions')) {
                 'options' => [
                     'digital_scan' => 'Digital scan and design',
                     'root_canal' => 'Root canal therapy',
+                    'therapeutic_parenteral_medication' => 'Therapeutic parenteral drug administration',
                     'post_core' => 'Post and core',
                     'core_buildup' => 'Core build-up',
                     'crowns' => 'Crowns',
@@ -78,13 +82,19 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'extractions' => 'Surgical extractions',
                     'bone_membrane_grafts' => 'Bone and membrane grafts',
                     'implants_abutments' => 'Implants and custom abutments',
+                    'implant_abutment_crown' => 'Implant, custom abutment, and crown',
                     'crown_lengthening' => 'Crown lengthening',
                     'gingivectomy' => 'Gingivectomy for cosmetic reasons',
+                    'custom_shade' => 'Custom shade',
+                    'full_mouth_debridement' => 'Full-mouth debridement with deep scaling',
                     'prp_prf' => 'PRP/PRF',
+                    'pedicle_graft' => 'Pedicle graft',
                     'orthotic' => 'Orthotic device',
+                    'high_end_temporaries' => 'High-end temporaries to increase vertical dimension',
                     'occlusal_guard' => 'Occlusal guard',
                     'ct_scan' => 'CT scan',
                     'panoramic_xray' => 'Panoramic X-ray',
+                    'dexamethasone' => 'Anti-inflammatory dexamethasone',
                     'ppe' => 'Surgical PPE',
                     'rinses' => 'Rinses',
                 ],
@@ -102,6 +112,22 @@ if (!function_exists('patient_experience_contract_cancellation_text')) {
     function patient_experience_contract_cancellation_text(): string
     {
         return 'By signing this Treatment Agreement, I understand that Elite Smiles may reserve clinical time and begin treatment planning, laboratory coordination, ordering, and other preparation for my care. If I cancel or discontinue the accepted treatment plan after signing, I may incur a treatment-plan cancellation fee of up to $1,500, based on the clinical time reserved and costs incurred at the time of cancellation. Any applicable cancellation fee may be deducted from amounts already paid.';
+    }
+}
+
+if (!function_exists('patient_experience_contract_original_terms')) {
+    function patient_experience_contract_original_terms(): array
+    {
+        return [
+            'cashier_check' => 'Cashier’s check must be payable to Walter Meden D.D.S.',
+            'credit_card' => 'If paying by credit card, a 3% credit card processing fee will apply.',
+            'treatment_changes' => 'I am aware that cosmetic/dental treatment can/may change in the process of performing it, and that those changes are what the doctor considers best for my dental health. I am aware that if such changes occur that I am financially responsible for said treatment. All cosmetic, prosthetic fixed or removable and any restoration treatment must be paid before the seating or delivery date.',
+            'insurance_responsibility' => 'I am aware that I am responsible for any balances my insurance does not cover.',
+            'insurance_estimate' => 'Insurance benefits are estimated based on information provided by your insurer and are not guaranteed. Any portion not paid by insurance remains the patient’s responsibility.',
+            'sedation' => 'Optional- I.V. Sedation is available for an hourly fee determined by the anesthesiologist. This charge is payable separately to him/her on the day of your procedure.',
+            'discount_acceptance' => 'The above price is a discounted price if the treatment plan is accepted today.',
+            'original_cancellation' => 'Note: There will be a cancellation fee of $1,500. on cases $4000. or above. Cases below $4,000. the total deposit will not be refunded.',
+        ];
     }
 }
 
@@ -411,8 +437,8 @@ if (!function_exists('patient_experience_contract_snapshot')) {
     function patient_experience_contract_snapshot(array $contract): array
     {
         return [
-            'schema_version' => 1,
-            'terms_version' => 1,
+            'schema_version' => 2,
+            'terms_version' => 2,
             'practice' => [
                 'name' => 'Elite Smiles',
                 'provider' => 'Walter Meden, D.D.S.',
@@ -441,14 +467,10 @@ if (!function_exists('patient_experience_contract_snapshot')) {
                 'remaining_balance' => (float)$contract['remaining_balance'],
                 'card_fee_percent' => (float)$contract['card_fee_percent'],
             ],
-            'terms' => [
+            'terms' => array_merge(patient_experience_contract_original_terms(), [
                 'cancellation_fee_max' => (float)$contract['cancellation_fee_max'],
                 'cancellation_text' => (string)$contract['cancellation_text'],
-                'insurance' => 'Insurance benefits are estimates and are not guaranteed. The patient is responsible for any amount not paid by insurance.',
-                'treatment_changes' => 'I understand that dental treatment may require clinically necessary changes during care and that approved additional treatment may result in additional fees.',
-                'payment' => 'All cosmetic, prosthetic, fixed or removable, and restorative treatment must be paid in full before seating or delivery. A 3% processing fee applies to credit-card payments.',
-                'sedation' => 'Optional IV sedation may be available for a separate hourly fee determined by and payable directly to the anesthesiology provider.',
-            ],
+            ]),
             'created_at' => date('c'),
         ];
     }

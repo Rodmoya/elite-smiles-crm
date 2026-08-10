@@ -37,6 +37,10 @@ $archLabel = match ((string)($agreement['arch_scope'] ?? '')) {
 };
 $teeth = array_map('intval', (array)($agreement['selected_teeth'] ?? []));
 $areaLabel = $archLabel !== '' ? $archLabel : ($teeth ? 'Teeth ' . implode(', ', $teeth) : '');
+$hasOriginalTerms = isset($terms['cashier_check']);
+$financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($financials['final_price'] ?? 0) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
+if ((float)($financials['insurance_estimate'] ?? 0) > 0) $financialLanguage .= 'Your insurance estimated payment is ' . $money($financials['insurance_estimate']) . '. ';
+$financialLanguage .= 'Your remaining balance of ' . $money($financials['remaining_balance'] ?? 0) . ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -95,19 +99,22 @@ $areaLabel = $archLabel !== '' ? $archLabel : ($teeth ? 'Teeth ' . implode(', ',
                     <div class="text-right"><p class="font-medium"><?= e((string)($agreement['date'] ?? '')) ?></p><p class="mt-1 text-xs text-slate-500"><?= e((string)($agreement['number'] ?? '')) ?> · Version <?= e((string)($contract['version_number'] ?? 1)) ?></p></div>
                 </div>
                 <h2 class="mt-5 text-lg font-semibold text-slate-950">Dental Treatment for <?= e((string)($agreement['treatment_label'] ?? '')) ?></h2>
-                <p class="mt-3">Your final approved treatment price after professional discount is <strong><?= e($money($financials['final_price'] ?? 0)) ?></strong>.</p>
+                <p class="mt-3"><?= e($financialLanguage) ?></p>
+                <?php if ($hasOriginalTerms): ?><div class="mt-3 space-y-1 font-semibold text-slate-950"><p><?= e((string)$terms['cashier_check']) ?></p><p><?= e((string)$terms['credit_card']) ?></p></div><?php endif; ?>
                 <section class="mt-5"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="mt-2 space-y-1.5 pl-5">
                     <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $index === 0 && $areaLabel !== '' ? ' — ' . e($areaLabel) : '' ?></li><?php endforeach; ?>
                 </ul></section>
-                <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Financial summary</h3><dl class="mt-2 space-y-1.5">
-                    <div class="flex justify-between"><dt>Final approved price</dt><dd class="font-semibold"><?= e($money($financials['final_price'] ?? 0)) ?></dd></div>
-                    <div class="flex justify-between"><dt>Estimated insurance</dt><dd>−<?= e($money($financials['insurance_estimate'] ?? 0)) ?></dd></div>
-                    <div class="flex justify-between"><dt>Estimated patient responsibility</dt><dd><?= e($money($financials['patient_responsibility'] ?? 0)) ?></dd></div>
-                    <div class="flex justify-between"><dt>Deposit</dt><dd>−<?= e($money($financials['deposit_amount'] ?? 0)) ?></dd></div>
-                    <div class="flex justify-between border-t border-slate-300 pt-1.5 font-semibold"><dt>Remaining balance</dt><dd><?= e($money($financials['remaining_balance'] ?? 0)) ?></dd></div>
-                </dl></section>
                 <section class="mt-5 space-y-3 text-[12px] leading-[1.55]">
-                    <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
+                    <?php if ($hasOriginalTerms): ?>
+                        <p><?= e((string)$terms['treatment_changes']) ?></p>
+                        <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
+                        <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
+                        <p><?= e((string)$terms['sedation']) ?></p>
+                        <p><?= e((string)$terms['discount_acceptance']) ?></p>
+                        <p class="font-semibold"><?= e((string)$terms['original_cancellation']) ?></p>
+                    <?php else: ?>
+                        <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
+                    <?php endif; ?>
                     <div class="rounded-lg border border-amber-300 bg-amber-50 p-3"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></div>
                 </section>
                 <section class="mt-7 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-6">

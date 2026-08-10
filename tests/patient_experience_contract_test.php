@@ -19,6 +19,24 @@ try {
     contract_expect(str_contains($creatorMarkup, 'padding-top: 1.65in'), 'Preprinted letterhead spacing is missing.');
     contract_expect(str_contains($sidebarMarkup, "'label' => 'Contract Creator'"), 'Contract Creator is missing from the CRM navigation.');
     contract_expect(str_contains($sidebarMarkup, "patient-experience.php?tab=contracts"), 'Contract Creator navigation does not deep-link to the contracts tab.');
+    contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
+    contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
+    $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
+    contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');
+    foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
+        contract_expect(trim((string)(patient_experience_contract_original_terms()[$termKey] ?? '')) !== '', 'Original contract language is missing: ' . $termKey);
+    }
+    $historicalOptions = [
+        'diagnostic_wax_up', 'full_mouth_debridement', 'therapeutic_parenteral_medication',
+        'implant_abutment_crown', 'pedicle_graft', 'high_end_temporaries', 'dexamethasone',
+    ];
+    $definedOptions = [];
+    foreach (patient_experience_contract_definitions() as $definition) {
+        $definedOptions = array_merge($definedOptions, array_keys((array)($definition['options'] ?? [])));
+    }
+    foreach ($historicalOptions as $optionKey) {
+        contract_expect(in_array($optionKey, $definedOptions, true), 'Historical treatment option is missing: ' . $optionKey);
+    }
     $email = 'contract-test-' . bin2hex(random_bytes(5)) . '@example.invalid';
     $leadId = db_insert("INSERT INTO leads (full_name,email,phone,status,created_at,updated_at) VALUES ('Contract Test Patient',:email,'8015550100','contacted',NOW(),NOW())", ['email' => $email]);
 

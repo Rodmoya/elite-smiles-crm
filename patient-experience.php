@@ -203,6 +203,37 @@ if (is_post() && post('action') === 'revoke_setup_token') {
     redirect(base_url('patient-experience.php'));
 }
 
+if (is_post() && post('action') === 'save_contract') {
+    require_csrf();
+    $result = patient_experience_contract_save($_POST, auth_user_id());
+    if (!empty($result['ok'])) {
+        $contractId = (int)($result['contract_id'] ?? 0);
+        flash_set('success', 'Contract draft saved. Review the document before sending it for signature.');
+        redirect(base_url('patient-experience.php?tab=contracts&contract_id=' . $contractId));
+    }
+    $errors = (array)($result['errors'] ?? []);
+    flash_set('error', $errors ? implode(' ', array_values($errors)) : 'Could not save the contract draft.');
+    redirect(base_url('patient-experience.php?tab=contracts'));
+}
+
+if (is_post() && post('action') === 'send_contract') {
+    require_csrf();
+    $contractId = (int)post('contract_id', '0');
+    $channels = array_values(array_intersect((array)($_POST['channels'] ?? []), ['sms', 'email']));
+    $result = patient_experience_contract_prepare_delivery($contractId, $channels, auth_user_id());
+    if (!empty($result['ok'])) {
+        flash_set('contract_share_url', (string)($result['url'] ?? ''));
+        $sent = (array)($result['sent'] ?? []);
+        $issues = (array)($result['issues'] ?? []);
+        $message = $sent ? ('Secure contract link sent by ' . implode(' and ', $sent) . '.') : 'Secure contract link created.';
+        if ($issues) $message .= ' ' . implode(' ', $issues);
+        flash_set('success', $message);
+    } else {
+        flash_set('error', (string)($result['message'] ?? 'Could not create the signing link.'));
+    }
+    redirect(base_url('patient-experience.php?tab=contracts&contract_id=' . $contractId));
+}
+
 $recentSessions = patient_experience_recent_sessions(100);
 $selectedSessionId = (int)get('session_id', '0');
 $selectedReview = $selectedSessionId > 0 ? patient_experience_staff_review_context($selectedSessionId) : null;
@@ -217,8 +248,14 @@ $secureConsentUrl = $secureConsentToken !== ''
 $secureConsentQrUrl = $secureConsentUrl !== ''
     ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($secureConsentUrl)
     : '';
+$contractDefinitions = patient_experience_contract_definitions();
+$contractPatients = patient_experience_contract_patient_options();
+$contracts = patient_experience_contract_list(100);
+$selectedContractId = (int)get('contract_id', '0');
+$selectedContract = $selectedContractId > 0 ? patient_experience_contract_by_id($selectedContractId) : null;
+$contractShareUrl = (string)(flash_get('contract_share_url') ?? '');
 $activeTab = strtolower(trim((string)get('tab', 'patients')));
-if (!in_array($activeTab, ['setup', 'patients'], true)) {
+if (!in_array($activeTab, ['setup', 'patients', 'contracts'], true)) {
     $activeTab = 'patients';
 }
 if ($selectedReview) {
@@ -227,6 +264,11 @@ if ($selectedReview) {
 $formatPatientNumber = static fn(int $id): string => 'Patient #' . str_pad((string)max(1, $id), 4, '0', STR_PAD_LEFT);
 $tabUrl = static function (string $tab, array $query = []): string {
     return base_url('patient-experience.php?' . http_build_query(array_merge(['tab' => $tab], $query)));
+};
+$pageHeading = match ($activeTab) {
+    'contracts' => ['Contract creator', 'Create, send, print, and track treatment agreements.'],
+    'setup' => ['Kiosk setup', 'Connect and manage secure patient check-in devices.'],
+    default => ['Intake and consent forms', 'Review patient records, signed forms, and consent history.'],
 };
 ?>
 <!DOCTYPE html>
@@ -263,8 +305,8 @@ $tabUrl = static function (string $tab, array $query = []): string {
             <div class="flex flex-col gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between lg:p-8">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient Experience</p>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Intake and consent forms</h1>
-                    <p class="mt-3 text-sm leading-6 text-slate-600">Review patient records, signed forms, and consent history.</p>
+                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900"><?= e($pageHeading[0]) ?></h1>
+                    <p class="mt-3 text-sm leading-6 text-slate-600"><?= e($pageHeading[1]) ?></p>
                 </div>
                 <?php if ($activeTab === 'patients'): ?>
                     <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Send intake link</button>
@@ -272,9 +314,10 @@ $tabUrl = static function (string $tab, array $query = []): string {
             </div>
         </section>
 
-        <div class="mb-6 max-w-xl rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-print">
-            <div class="grid grid-cols-2 gap-1.5">
+        <div class="mb-6 max-w-3xl rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-print">
+            <div class="grid grid-cols-3 gap-1.5">
                 <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Intake & Patients</a>
+                <a href="<?= e($tabUrl('contracts')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'contracts' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Contracts</a>
                 <a href="<?= e($tabUrl('setup')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'setup' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Kiosk Setup</a>
             </div>
         </div>
@@ -369,6 +412,8 @@ $tabUrl = static function (string $tab, array $query = []): string {
                     </div>
                 </div>
             </section>
+        <?php elseif ($activeTab === 'contracts'): ?>
+            <?php require __DIR__ . '/app/patient_experience/contract_creator.php'; ?>
         <?php elseif ($activeTab === 'setup'): ?>
             <section class="mb-8 max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm no-print">
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

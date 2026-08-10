@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/helpers.php';
 require_once __DIR__ . '/patient_experience_forms.php';
+require_once __DIR__ . '/patient_experience_contracts.php';
 
 if (!function_exists('patient_experience_ensure_schema')) {
     function patient_experience_ensure_schema(): void
@@ -221,6 +222,8 @@ if (!function_exists('patient_experience_ensure_schema')) {
             KEY idx_patient_exp_audit_created (created_at),
             KEY idx_patient_exp_audit_lead (lead_id)
         ) {$charset}");
+
+        patient_experience_contract_ensure_schema();
 
         patient_experience_upgrade_schema();
         patient_experience_seed_templates();
@@ -604,7 +607,10 @@ if (!function_exists('patient_experience_seed_packet_sections')) {
             return;
         }
 
+        $sectionPosition = 0;
         foreach (patient_experience_form_steps() as $stepKey => $step) {
+            $sectionPosition += 10;
+            $sortOrder = (int)($step['sort_order'] ?? $sectionPosition);
             $version = db_one(
                 "SELECT v.id
                  FROM patient_experience_form_template_versions v
@@ -634,7 +640,7 @@ if (!function_exists('patient_experience_seed_packet_sections')) {
                         'id' => (int)$exists,
                         'template_version_id' => $versionId,
                         'title' => (string)$step['title'],
-                        'sort_order' => (int)$step['sort_order'],
+                        'sort_order' => $sortOrder,
                         'is_required' => !empty($step['is_required']) ? 1 : 0,
                     ]
                 );
@@ -648,7 +654,7 @@ if (!function_exists('patient_experience_seed_packet_sections')) {
                     'template_version_id' => $versionId,
                     'section_key' => $stepKey,
                     'title' => (string)$step['title'],
-                    'sort_order' => (int)$step['sort_order'],
+                    'sort_order' => $sortOrder,
                     'is_required' => !empty($step['is_required']) ? 1 : 0,
                 ]
             );

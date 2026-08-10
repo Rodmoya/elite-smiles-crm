@@ -24,6 +24,7 @@ try {
     contract_expect(str_contains($creatorMarkup, 'padding-top: 1.65in'), 'Preprinted letterhead spacing is missing.');
     contract_expect(str_contains($sidebarMarkup, "'label' => 'Contract Creator'"), 'Contract Creator is missing from the CRM navigation.');
     contract_expect(str_contains($sidebarMarkup, "patient-experience.php?tab=contracts"), 'Contract Creator navigation does not deep-link to the contracts tab.');
+    contract_expect(str_contains($sidebarMarkup, "'key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php?tab=contracts')"), 'Patient Experience navigation does not open Contracts first.');
     contract_expect($contractsTabPosition !== false && $patientsTabPosition !== false && $contractsTabPosition < $patientsTabPosition, 'Contracts is not the first Patient Experience tab.');
     contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');

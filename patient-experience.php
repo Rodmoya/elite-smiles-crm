@@ -316,8 +316,8 @@ $pageHeading = match ($activeTab) {
 
         <div class="mb-6 max-w-3xl rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-print">
             <div class="grid grid-cols-3 gap-1.5">
-                <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Intake & Patients</a>
                 <a href="<?= e($tabUrl('contracts')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'contracts' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Contracts</a>
+                <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Intake & Patients</a>
                 <a href="<?= e($tabUrl('setup')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'setup' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Kiosk Setup</a>
             </div>
         </div>

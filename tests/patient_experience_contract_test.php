@@ -14,11 +14,17 @@ try {
     patient_experience_ensure_schema();
     $creatorMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/patient_experience/contract_creator.php');
     $sidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar_live.php');
+    $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
+    $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-3 gap-1.5');
+    $tabsMarkup = $tabsStart === false ? '' : substr($patientExperienceMarkup, $tabsStart, 2200);
+    $contractsTabPosition = strpos($tabsMarkup, '>Contracts</a>');
+    $patientsTabPosition = strpos($tabsMarkup, '>Intake & Patients</a>');
     contract_expect(str_contains($creatorMarkup, '@page { size: letter; margin: 0; }'), 'Contract print layout is not locked to borderless letter size.');
     contract_expect(!str_contains($creatorMarkup, '<section class="space-y-6 no-print">'), 'The printable contract is hidden by its parent wrapper.');
     contract_expect(str_contains($creatorMarkup, 'padding-top: 1.65in'), 'Preprinted letterhead spacing is missing.');
     contract_expect(str_contains($sidebarMarkup, "'label' => 'Contract Creator'"), 'Contract Creator is missing from the CRM navigation.');
     contract_expect(str_contains($sidebarMarkup, "patient-experience.php?tab=contracts"), 'Contract Creator navigation does not deep-link to the contracts tab.');
+    contract_expect($contractsTabPosition !== false && $patientsTabPosition !== false && $contractsTabPosition < $patientsTabPosition, 'Contracts is not the first Patient Experience tab.');
     contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');

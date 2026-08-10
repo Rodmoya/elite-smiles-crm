@@ -19,7 +19,7 @@ if (is_post() && post('action') === 'logout') {
 
 patient_experience_ensure_schema();
 
-$currentPage = 'patient_experience';
+$currentPage = strtolower(trim((string)get('tab', ''))) === 'contracts' ? 'patient_contracts' : 'patient_experience';
 $pageTitle = 'Patient Experience';
 $logoutAction = base_url('patient-experience.php');
 $successMessage = flash_get('success') ?? '';

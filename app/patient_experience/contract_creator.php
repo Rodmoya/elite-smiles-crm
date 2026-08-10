@@ -17,6 +17,8 @@ $originalTerms = patient_experience_contract_original_terms();
 
 <style>
     .contract-page { aspect-ratio: 8.5 / 11; min-height: 900px; }
+    .contract-copy-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0.28in; }
+    .contract-copy-column { min-width:0; }
     .contract-page.preprinted .contract-digital-letterhead,
     .contract-page.preprinted .contract-digital-footer { display: none; }
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }
@@ -26,7 +28,14 @@ $originalTerms = patient_experience_contract_original_terms();
         @page { size: letter; margin: 0; }
         body * { visibility:hidden !important; }
         #contract-preview, #contract-preview * { visibility:visible !important; }
-        #contract-preview { position:absolute !important; inset:0 !important; width:8.5in !important; min-height:11in !important; margin:0 !important; box-shadow:none !important; border:0 !important; transform:none !important; }
+        #contract-preview { position:absolute !important; inset:0 !important; box-sizing:border-box !important; width:8.5in !important; height:11in !important; min-height:11in !important; margin:0 !important; overflow:hidden !important; box-shadow:none !important; border:0 !important; transform:none !important; }
+        #contract-preview .contract-digital-letterhead { padding-top:0.18in !important; padding-bottom:0.14in !important; }
+        #contract-preview .contract-digital-letterhead img { width:1.72in !important; }
+        #contract-preview .contract-paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.25px !important; line-height:1.45 !important; }
+        #contract-preview:not(.preprinted) .contract-paper-body { padding-top:0.28in !important; }
+        #contract-preview.preprinted .contract-paper-body { padding-top:1.65in !important; }
+        #contract-preview .contract-copy-grid { gap:0.24in !important; }
+        #contract-preview .contract-copy-column, #contract-preview .contract-signature { break-inside:avoid; page-break-inside:avoid; }
         .contract-preview-tools { display:none !important; }
     }
     @media (prefers-reduced-motion: reduce) { .contract-transition { transition:none !important; } }
@@ -192,26 +201,30 @@ $originalTerms = patient_experience_contract_original_terms();
                         <div><p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Patient</p><h3 id="preview-patient-name" class="mt-1 text-xl font-semibold text-slate-950">Patient name</h3></div>
                         <div class="text-right"><p id="preview-date" class="font-medium text-slate-900"><?= e(date('F j, Y')) ?></p><p class="mt-1 text-xs text-slate-500"><?= e((string)($contract['contract_number'] ?? 'Draft agreement')) ?></p></div>
                     </div>
-                    <h1 id="preview-treatment-title" class="mt-5 text-lg font-semibold text-slate-950">Dental Treatment for Veneers</h1>
-                    <p id="preview-opening" class="mt-3"></p>
-                    <div class="mt-3 space-y-1 font-semibold text-slate-950">
-                        <p><?= e((string)$originalTerms['cashier_check']) ?></p>
-                        <p><?= e((string)$originalTerms['credit_card']) ?></p>
+                    <h1 id="preview-treatment-title" class="mt-4 text-lg font-semibold text-slate-950">Dental Treatment for Veneers</h1>
+                    <div class="contract-copy-grid mt-4">
+                        <div class="contract-copy-column space-y-3">
+                            <p id="preview-opening"></p>
+                            <div class="space-y-1 font-semibold text-slate-950">
+                                <p><?= e((string)$originalTerms['cashier_check']) ?></p>
+                                <p><?= e((string)$originalTerms['credit_card']) ?></p>
+                            </div>
+                            <div>
+                                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h2>
+                                <ul id="preview-line-items" class="mt-2 space-y-1 pl-5"></ul>
+                            </div>
+                        </div>
+                        <div class="contract-copy-column space-y-2.5 text-[11.25px] leading-[1.45]">
+                            <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
+                            <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
+                            <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
+                            <p><?= e((string)$originalTerms['sedation']) ?></p>
+                            <p><?= e((string)$originalTerms['discount_acceptance']) ?></p>
+                            <p class="font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
+                            <div class="rounded-lg border border-amber-300 bg-amber-50 p-2.5"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></div>
+                        </div>
                     </div>
-                    <div class="mt-5">
-                        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h2>
-                        <ul id="preview-line-items" class="mt-2 space-y-1.5 pl-5"></ul>
-                    </div>
-                    <div class="mt-5 space-y-3 text-[12px] leading-[1.55]">
-                        <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
-                        <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
-                        <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
-                        <p><?= e((string)$originalTerms['sedation']) ?></p>
-                        <p><?= e((string)$originalTerms['discount_acceptance']) ?></p>
-                        <p class="font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
-                        <div class="rounded-lg border border-amber-300 bg-amber-50 p-3"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></div>
-                    </div>
-                    <div class="mt-7 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-6">
+                    <div class="contract-signature mt-5 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-4">
                         <div><div class="h-8 border-b border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Patient or responsible-party signature</p></div>
                         <div><div class="h-8 border-b border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Date</p></div>
                     </div>

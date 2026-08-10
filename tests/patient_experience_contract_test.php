@@ -27,8 +27,12 @@ try {
     contract_expect(str_contains($sidebarMarkup, "'key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php?tab=contracts')"), 'Patient Experience navigation does not open Contracts first.');
     contract_expect($contractsTabPosition !== false && $patientsTabPosition !== false && $contractsTabPosition < $patientsTabPosition, 'Contracts is not the first Patient Experience tab.');
     contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-copy-grid mt-4"'), 'Contract preview copy is not arranged in two print columns.');
+    contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-copy-grid mt-4"'), 'Signing contract copy is not arranged in two print columns.');
+    contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
         contract_expect(trim((string)(patient_experience_contract_original_terms()[$termKey] ?? '')) !== '', 'Original contract language is missing: ' . $termKey);

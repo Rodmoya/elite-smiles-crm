@@ -52,8 +52,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .agreement-page { width:min(100%, 8.5in); min-height:11in; }
-        .agreement-copy-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0.28in; }
-        .agreement-copy-column { min-width:0; }
+        .agreement-treatment-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:0.28in; row-gap:0.08in; }
         .agreement-page.preprinted .digital-letterhead,
         .agreement-page.preprinted .digital-footer { display:none; }
         .agreement-page.preprinted .paper-body { padding-top:1.65in; }
@@ -66,11 +65,12 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
             #agreement-document { position:absolute; inset:0; box-sizing:border-box; width:8.5in; height:11in; min-height:11in; overflow:hidden; border:0; box-shadow:none; }
             #agreement-document .digital-letterhead { padding-top:0.18in !important; padding-bottom:0.14in !important; }
             #agreement-document .digital-letterhead img { width:1.72in !important; }
-            #agreement-document .paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.25px !important; line-height:1.45 !important; }
+            #agreement-document .paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.5px !important; line-height:1.4 !important; }
             #agreement-document:not(.preprinted) .paper-body { padding-top:0.28in !important; }
             #agreement-document.preprinted .paper-body { padding-top:1.65in !important; }
-            #agreement-document .agreement-copy-grid { gap:0.24in !important; }
-            #agreement-document .agreement-copy-column, #agreement-document .agreement-signature { break-inside:avoid; page-break-inside:avoid; }
+            #agreement-document .agreement-treatment-list { column-gap:0.22in !important; row-gap:0.03in !important; }
+            #agreement-document .agreement-treatment-list li, #agreement-document .agreement-signature { break-inside:avoid; page-break-inside:avoid; }
+            #agreement-document .agreement-legal-copy { font-size:11.25px !important; line-height:1.42 !important; }
             .no-print { display:none !important; }
         }
         @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
@@ -108,29 +108,25 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                     <div class="text-right"><p class="font-medium"><?= e((string)($agreement['date'] ?? '')) ?></p><p class="mt-1 text-xs text-slate-500"><?= e((string)($agreement['number'] ?? '')) ?> · Version <?= e((string)($contract['version_number'] ?? 1)) ?></p></div>
                 </div>
                 <h2 class="mt-4 text-lg font-semibold text-slate-950">Dental Treatment for <?= e((string)($agreement['treatment_label'] ?? '')) ?></h2>
-                <div class="agreement-copy-grid mt-4">
-                    <section class="agreement-copy-column space-y-3">
-                        <p><?= e($financialLanguage) ?></p>
-                        <?php if ($hasOriginalTerms): ?><div class="space-y-1 font-semibold text-slate-950"><p><?= e((string)$terms['cashier_check']) ?></p><p><?= e((string)$terms['credit_card']) ?></p></div><?php endif; ?>
-                        <div><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="mt-2 space-y-1 pl-5">
-                            <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $index === 0 && $areaLabel !== '' ? ' — ' . e($areaLabel) : '' ?></li><?php endforeach; ?>
-                        </ul></div>
-                    </section>
-                    <section class="agreement-copy-column space-y-2.5 text-[11.25px] leading-[1.45]">
-                        <?php if ($hasOriginalTerms): ?>
-                            <p><?= e((string)$terms['treatment_changes']) ?></p>
-                            <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
-                            <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
-                            <p><?= e((string)$terms['sedation']) ?></p>
-                            <p><?= e((string)$terms['discount_acceptance']) ?></p>
-                            <p class="font-semibold"><?= e((string)$terms['original_cancellation']) ?></p>
-                        <?php else: ?>
-                            <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
-                        <?php endif; ?>
-                        <div class="rounded-lg border border-amber-300 bg-amber-50 p-2.5"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></div>
-                    </section>
-                </div>
-                <section class="agreement-signature mt-5 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-4">
+                <p class="mt-2.5"><?= e($financialLanguage) ?></p>
+                <?php if ($hasOriginalTerms): ?><div class="mt-2 space-y-1 font-semibold text-slate-950"><p><?= e((string)$terms['cashier_check']) ?></p><p><?= e((string)$terms['credit_card']) ?></p></div><?php endif; ?>
+                <section class="mt-3"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="agreement-treatment-list mt-1.5 pl-5">
+                    <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $index === 0 && $areaLabel !== '' ? ' — ' . e($areaLabel) : '' ?></li><?php endforeach; ?>
+                </ul></section>
+                <section class="agreement-legal-copy mt-3 space-y-2 text-[11px] leading-[1.4]">
+                    <?php if ($hasOriginalTerms): ?>
+                        <p><?= e((string)$terms['treatment_changes']) ?></p>
+                        <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
+                        <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
+                        <p><?= e((string)$terms['sedation']) ?></p>
+                        <p><?= e((string)$terms['discount_acceptance']) ?></p>
+                        <p class="font-semibold"><?= e((string)$terms['original_cancellation']) ?></p>
+                    <?php else: ?>
+                        <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
+                    <?php endif; ?>
+                    <div class="rounded-lg border border-amber-300 bg-amber-50 p-2"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></div>
+                </section>
+                <section class="agreement-signature mt-4 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-3">
                     <div><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature" class="h-12 max-w-full object-contain object-left-bottom"><?php else: ?><div class="h-12"></div><?php endif; ?><div class="border-t border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500"><?= $signature ? e((string)$signature['signer_name']) : 'Patient or responsible-party signature' ?></p></div>
                     <div><div class="flex h-12 items-end pb-1"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></div><div class="border-t border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Date</p></div>
                 </section>

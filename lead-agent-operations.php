@@ -321,9 +321,9 @@ $eventLabels = [
                         <div class="rounded-2xl border border-slate-200 p-4">
                             <div class="flex items-start justify-between gap-4">
                                 <span><a href="<?= e(base_url('leads.php?id=' . (int) $row['id'])) ?>" class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-emerald-800"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></a><span class="mt-1 block text-xs text-slate-500"><?= e((string) ($row['source'] ?? '')) ?></span></span>
-                                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><?= e($preference !== '' ? $preference : 'Preference captured') ?></span>
+                                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><?= e($preference !== '' ? $preference : 'Preference not captured') ?></span>
                             </div>
-                            <?php if ((string) ($row['scheduling_phase'] ?? '') === 'awaiting_availability'): ?>
+                            <?php if (in_array((string) ($row['scheduling_phase'] ?? ''), ['', 'awaiting_availability'], true)): ?>
                                 <form method="POST" action="<?= e(base_url('lead-agent-operations.php')) ?>" class="mt-4 grid gap-3 sm:grid-cols-2">
                                     <?= csrf_input() ?>
                                     <input type="hidden" name="action" value="send_availability_options">

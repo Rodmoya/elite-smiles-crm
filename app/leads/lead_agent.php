@@ -137,6 +137,18 @@ if (!function_exists('lead_agent_ensure_schema')) {
             UNIQUE KEY uq_lead_agent_learning_key (learning_key),
             KEY idx_lead_agent_learning_evidence (evidence_count, last_seen_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $stateColumns = [
+            'scheduling_phase' => "ALTER TABLE lead_agent_states ADD COLUMN scheduling_phase VARCHAR(40) NOT NULL DEFAULT '' AFTER pause_reason",
+            'availability_option_1' => 'ALTER TABLE lead_agent_states ADD COLUMN availability_option_1 DATETIME NULL AFTER scheduling_phase',
+            'availability_option_2' => 'ALTER TABLE lead_agent_states ADD COLUMN availability_option_2 DATETIME NULL AFTER availability_option_1',
+            'selected_availability' => 'ALTER TABLE lead_agent_states ADD COLUMN selected_availability DATETIME NULL AFTER availability_option_2',
+            'scheduling_context' => "ALTER TABLE lead_agent_states ADD COLUMN scheduling_context VARCHAR(500) NOT NULL DEFAULT '' AFTER selected_availability",
+        ];
+        foreach ($stateColumns as $column => $sql) {
+            if (!db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'")) {
+                db_query($sql);
+            }
+        }
         lead_agent_observability_ensure_schema();
     }
 }
@@ -237,7 +249,7 @@ if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
         return [
-            1 => ['hours' => 3.5, 'channel' => 'sms', 'phase' => 'same_day'],
+            1 => ['hours' => 8, 'channel' => 'sms', 'phase' => 'same_day'],
             2 => ['hours' => 18, 'channel' => 'email', 'phase' => 'active_sprint'],
             3 => ['hours' => 24, 'channel' => 'sms', 'phase' => 'active_sprint'],
             4 => ['hours' => 42, 'channel' => 'email', 'phase' => 'active_sprint'],
@@ -293,7 +305,7 @@ if (!function_exists('lead_agent_incremental_schedule')) {
     {
         $current = lead_agent_step_schedule($baseAt, $completedStep);
         $following = lead_agent_step_schedule($baseAt, $completedStep + 1);
-        $delayHours = max(3.5, (float) ($following['hours'] ?? 0) - (float) ($current['hours'] ?? 0));
+        $delayHours = max(6, (float) ($following['hours'] ?? 0) - (float) ($current['hours'] ?? 0));
         $base = new DateTimeImmutable($baseAt !== '' ? $baseAt : 'now', new DateTimeZone(APP_TIMEZONE));
         $at = lead_agent_align_contact_time($base->modify('+' . (int) round($delayHours * 3600) . ' seconds'));
         $following['at'] = $at->format('Y-m-d H:i:s');
@@ -369,13 +381,167 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
             return 'cost_redirect';
         }
-        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|afternoon|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
-            return 'ready_to_schedule';
-        }
         if (preg_match('/\b(call me|please call|can you call|complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
             return 'needs_attention';
         }
+        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|afternoon|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
+            return 'ready_to_schedule';
+        }
         return 'general';
+    }
+}
+
+if (!function_exists('lead_agent_scheduling_preferences')) {
+    function lead_agent_scheduling_preferences(string $body): array
+    {
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        $period = '';
+        if (preg_match('/\b(morning|mornings|mañana|mañanas)\b/ui', $text)) {
+            $period = 'morning';
+        } elseif (preg_match('/\b(afternoon|afternoons|tarde|tardes)\b/ui', $text)) {
+            $period = 'afternoon';
+        } elseif (preg_match('/\b(evening|evenings|noche|noches)\b/ui', $text)) {
+            $period = 'evening';
+        }
+
+        $day = '';
+        $dayAliases = [
+            'monday' => 'monday', 'lunes' => 'monday',
+            'tuesday' => 'tuesday', 'martes' => 'tuesday',
+            'wednesday' => 'wednesday', 'miércoles' => 'wednesday', 'miercoles' => 'wednesday',
+            'thursday' => 'thursday', 'jueves' => 'thursday',
+            'friday' => 'friday', 'viernes' => 'friday',
+            'saturday' => 'saturday', 'sábado' => 'saturday', 'sabado' => 'saturday',
+            'sunday' => 'sunday', 'domingo' => 'sunday',
+            'today' => 'today', 'hoy' => 'today',
+            'tomorrow' => 'tomorrow',
+        ];
+        if (preg_match('/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
+            $day = $dayAliases[strtolower((string) $matches[1])] ?? '';
+        }
+
+        $specificTime = '';
+        if (preg_match('/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/i', $text, $matches)) {
+            $minutes = (string) ($matches[2] ?? '');
+            $specificTime = (int) $matches[1] . ':' . ($minutes !== '' ? $minutes : '00') . ' ' . strtoupper(str_replace('.', '', (string) ($matches[3] ?? '')));
+        }
+
+        return [
+            'day' => $day,
+            'period' => $period,
+            'specific_time' => $specificTime,
+            'has_preference' => $day !== '' || $period !== '' || $specificTime !== '',
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_scheduling_preference_label')) {
+    function lead_agent_scheduling_preference_label(array $preferences): string
+    {
+        $parts = [];
+        $day = trim((string) ($preferences['day'] ?? ''));
+        $period = trim((string) ($preferences['period'] ?? ''));
+        $specificTime = trim((string) ($preferences['specific_time'] ?? ''));
+        if ($day !== '') {
+            $parts[] = ucfirst($day);
+        }
+        if ($period !== '') {
+            $parts[] = $period;
+        }
+        if ($specificTime !== '') {
+            $parts[] = $specificTime;
+        }
+        return trim(implode(' ', $parts));
+    }
+}
+
+if (!function_exists('lead_agent_scheduling_acknowledgment')) {
+    function lead_agent_scheduling_acknowledgment(array $lead, array $preferences): string
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Perfect, ' . $first . '—' : 'Perfect—';
+        if (empty($preferences['has_preference'])) {
+            return ($first !== '' ? 'Absolutely, ' . $first . '—' : 'Absolutely—')
+                . 'I can help with that. Are mornings or afternoons usually better for you?';
+        }
+        $label = lead_agent_scheduling_preference_label($preferences);
+        return $hello . ($label !== '' ? $label . ' should work. ' : '')
+            . 'Let me check our availability and I’ll send you two options shortly.';
+    }
+}
+
+if (!function_exists('lead_agent_format_availability')) {
+    function lead_agent_format_availability(string $value): string
+    {
+        $timestamp = strtotime($value);
+        return $timestamp === false ? '' : date('l, F j \a\t g:i A', $timestamp);
+    }
+}
+
+if (!function_exists('lead_agent_availability_offer_message')) {
+    function lead_agent_availability_offer_message(array $lead, string $option1, string $option2): string
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Hi ' . $first . ', I checked our availability. ' : 'Hi, I checked our availability. ';
+        return $hello . 'We can offer ' . lead_agent_format_availability($option1) . ' or '
+            . lead_agent_format_availability($option2) . '. Which works better for you?';
+    }
+}
+
+if (!function_exists('lead_agent_match_availability_selection')) {
+    function lead_agent_match_availability_selection(string $body, string $option1, string $option2): int
+    {
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        if (preg_match('/\b(first|option\s*1|number\s*1|#1)\b/i', $text)) {
+            return 1;
+        }
+        if (preg_match('/\b(second|option\s*2|number\s*2|#2)\b/i', $text)) {
+            return 2;
+        }
+        $matches = [];
+        foreach ([1 => $option1, 2 => $option2] as $number => $option) {
+            $timestamp = strtotime($option);
+            if ($timestamp === false) {
+                continue;
+            }
+            $tokens = [
+                strtolower(date('l', $timestamp)),
+                strtolower(date('F j', $timestamp)),
+                strtolower(date('g:i A', $timestamp)),
+                strtolower(date('g A', $timestamp)),
+            ];
+            foreach ($tokens as $token) {
+                if ($token !== '' && str_contains($text, $token)) {
+                    $matches[$number] = true;
+                }
+            }
+        }
+        return count($matches) === 1 ? (int) array_key_first($matches) : 0;
+    }
+}
+
+if (!function_exists('lead_agent_parse_dob')) {
+    function lead_agent_parse_dob(string $body): string
+    {
+        $text = trim($body);
+        $candidates = [$text];
+        if (preg_match('/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/', $text, $matches)) {
+            array_unshift($candidates, (string) $matches[1]);
+        } elseif (preg_match('/\b((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4})\b/i', $text, $matches)) {
+            array_unshift($candidates, preg_replace('/(\d)(st|nd|rd|th)\b/i', '$1', (string) $matches[1]) ?? (string) $matches[1]);
+        }
+        foreach ($candidates as $candidate) {
+            $timestamp = strtotime($candidate);
+            if ($timestamp === false) {
+                continue;
+            }
+            $normalized = date('Y-m-d', $timestamp);
+            $year = (int) date('Y', $timestamp);
+            if ($year >= 1900 && $normalized <= date('Y-m-d')) {
+                return $normalized;
+            }
+        }
+        return '';
     }
 }
 
@@ -658,7 +824,7 @@ if (!function_exists('lead_agent_pause')) {
 }
 
 if (!function_exists('lead_agent_internal_handoff')) {
-    function lead_agent_internal_handoff(array $lead, string $kind, string $reason): array
+    function lead_agent_internal_handoff(array $lead, string $kind, string $reason, array $context = []): array
     {
         $leadId = (int) ($lead['id'] ?? 0);
         $status = $kind === 'ready_to_schedule' ? 'ready_to_schedule' : 'needs_attention';
@@ -671,6 +837,20 @@ if (!function_exists('lead_agent_internal_handoff')) {
             ]);
         }
 
+        $leadName = trim((string) ($lead['full_name'] ?? '')) ?: 'This lead';
+        $preference = trim((string) ($context['preference'] ?? ''));
+        $selectedOption = trim((string) ($context['selected_option'] ?? ''));
+        $handoffStage = trim((string) ($context['stage'] ?? 'availability'));
+        if ($status === 'ready_to_schedule' && $handoffStage === 'confirmation') {
+            $operatorMessage = $leadName . ' selected ' . ($selectedOption !== '' ? $selectedOption : 'an appointment option')
+                . '. DOB is on file. Please confirm the appointment in the CRM.';
+        } elseif ($status === 'ready_to_schedule') {
+            $operatorMessage = $leadName . ($preference !== '' ? ' prefers ' . $preference : ' is ready to schedule')
+                . '. What two appointment times should I offer?';
+        } else {
+            $operatorMessage = 'Lead Agent needs help deciding the next response for ' . $leadName . ' and has paused.';
+        }
+
         $push = ['sent' => false, 'configured' => false];
         try {
             $pushPath = dirname(__DIR__) . '/core/mobile_ai_push.php';
@@ -681,9 +861,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
                 $push = mobile_ai_send_lead_event_push($lead, [
                     'lead_id' => $leadId,
                     'type' => 'reply',
-                    'message' => $status === 'ready_to_schedule'
-                        ? 'Ready to schedule. Lead Agent paused; Rod must provide appointment times.'
-                        : 'Lead Agent needs help deciding the next response and has paused.',
+                    'message' => $operatorMessage,
                     'notification_id' => 'lead-agent-' . $status . '-' . $leadId . '-' . time(),
                 ]);
             }
@@ -696,9 +874,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         if ($recipient && !empty($recipient['enabled'])) {
             $internal = internal_sms_send(
                 $recipient,
-                $status === 'ready_to_schedule'
-                    ? 'Elite AI: A lead is ready to schedule. Lead Agent is paused. Open CRM lead #' . $leadId . ' to provide and confirm appointment times.'
-                    : 'Elite AI: Lead Agent needs your review for CRM lead #' . $leadId . '. Automation is paused.',
+                'Elite AI: ' . $operatorMessage . ' Open CRM lead #' . $leadId . '.',
                 0
             );
         }
@@ -710,6 +886,9 @@ if (!function_exists('lead_agent_internal_handoff')) {
         lead_agent_event($leadId, 'handoff-' . $status . '-' . $leadId . '-' . time(), 'handoff', '', 'recorded', $reason, [
             'elite_ai_push_sent' => !empty($push['sent']),
             'internal_sms_sent' => !empty($internal['ok']),
+            'stage' => $handoffStage,
+            'preference' => $preference,
+            'selected_option' => $selectedOption,
         ]);
         lead_comm_insert_activity($leadId, 'lead_agent_handoff', $status === 'ready_to_schedule'
             ? 'Lead Agent paused and handed this lead to Rod for scheduling.'
@@ -718,6 +897,9 @@ if (!function_exists('lead_agent_internal_handoff')) {
                 'reason' => $reason,
                 'elite_ai_push_sent' => !empty($push['sent']),
                 'internal_sms_sent' => !empty($internal['ok']),
+                'stage' => $handoffStage,
+                'preference' => $preference,
+                'selected_option' => $selectedOption,
             ], 'Lead Agent');
 
         return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal];
@@ -841,6 +1023,231 @@ if (!function_exists('lead_agent_cost_redirect')) {
     }
 }
 
+if (!function_exists('lead_agent_send_natural_reply')) {
+    function lead_agent_send_natural_reply(array $lead, string $channel, array $draft, string $eventKey, string $intent): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $flags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
+        if ($flags !== []) {
+            return ['ok' => false, 'sent' => false, 'policy_flags' => $flags];
+        }
+        if (lead_agent_mode() === 'shadow') {
+            lead_agent_event($leadId, $eventKey, 'shadow_reply', $channel, 'would_send', $intent, $draft);
+            return ['ok' => true, 'sent' => false, 'shadow' => true];
+        }
+        $send = $channel === 'email'
+            ? lead_agent_email_send($lead, (string) ($draft['subject'] ?? 'Your Elite Smiles consultation'), (string) ($draft['body'] ?? ''), $eventKey)
+            : lead_agent_sms_send($lead, (string) ($draft['body'] ?? ''), $eventKey);
+        if (empty($send['ok'])) {
+            return $send + ['sent' => false];
+        }
+        lead_agent_event($leadId, $eventKey, 'automatic_reply', $channel, 'sent', $intent);
+        lead_agent_record_touchpoint($lead, $eventKey, $channel, 0, 'automatic_reply', $send);
+        return $send + ['sent' => true];
+    }
+}
+
+if (!function_exists('lead_agent_save_scheduling_preferences')) {
+    function lead_agent_save_scheduling_preferences(int $leadId, array $preferences): void
+    {
+        $sets = [];
+        $params = ['id' => $leadId];
+        if (function_exists('leads_has_column') && leads_has_column('scheduling_preferred_day') && trim((string) ($preferences['day'] ?? '')) !== '') {
+            $sets[] = 'scheduling_preferred_day = :preferred_day';
+            $params['preferred_day'] = ucfirst((string) $preferences['day']);
+        }
+        if (function_exists('leads_has_column') && leads_has_column('scheduling_preferred_time')) {
+            $preferredTime = trim((string) ($preferences['specific_time'] ?? '')) ?: trim((string) ($preferences['period'] ?? ''));
+            if ($preferredTime !== '') {
+                $sets[] = 'scheduling_preferred_time = :preferred_time';
+                $params['preferred_time'] = $preferredTime;
+            }
+        }
+        if ($sets !== []) {
+            db_execute('UPDATE leads SET ' . implode(', ', $sets) . ', updated_at = NOW() WHERE id = :id LIMIT 1', $params);
+        }
+    }
+}
+
+if (!function_exists('lead_agent_handle_scheduling_intent')) {
+    function lead_agent_handle_scheduling_intent(array $lead, string $body, string $channel, string $eventKey): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $preferences = lead_agent_scheduling_preferences($body);
+        lead_agent_save_scheduling_preferences($leadId, $preferences);
+        $message = lead_agent_scheduling_acknowledgment($lead, $preferences);
+        $draft = $channel === 'email'
+            ? ['subject' => 'Your Elite Smiles consultation', 'body' => $message . "\n\nElite Smiles"]
+            : ['subject' => '', 'body' => $message];
+        $sendKey = 'scheduling-reply-' . $eventKey;
+        $send = lead_agent_send_natural_reply($lead, $channel, $draft, $sendKey, 'ready_to_schedule');
+        if (empty($send['ok'])) {
+            return lead_agent_internal_handoff($lead, 'needs_attention', 'Natural scheduling acknowledgment could not be delivered.')
+                + ['intent' => 'ready_to_schedule', 'handled' => true];
+        }
+
+        $preferenceLabel = lead_agent_scheduling_preference_label($preferences);
+        if (empty($preferences['has_preference'])) {
+            db_execute("UPDATE lead_agent_states SET status = 'engaged', scheduling_phase = 'awaiting_preference', scheduling_context = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'asked_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+            if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+                db_execute("UPDATE leads SET follow_up_status = 'reply_received', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+            }
+            return ['ok' => true, 'handled' => true, 'intent' => 'ready_to_schedule', 'sent' => !empty($send['sent']), 'status' => 'awaiting_preference'];
+        }
+
+        db_execute("UPDATE lead_agent_states SET scheduling_phase = 'awaiting_availability', scheduling_context = :context, next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_requested', updated_at = NOW() WHERE lead_id = :lead_id", [
+            'context' => substr($preferenceLabel, 0, 500),
+            'lead_id' => $leadId,
+        ]);
+        $handoff = lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Inbound message includes a scheduling preference.', [
+            'stage' => 'availability',
+            'preference' => $preferenceLabel,
+        ]);
+        return $handoff + ['intent' => 'ready_to_schedule', 'handled' => true, 'sent' => !empty($send['sent'])];
+    }
+}
+
+if (!function_exists('lead_agent_offer_availability')) {
+    function lead_agent_offer_availability(int $leadId, string $option1, string $option2, int $actorUserId = 0): array
+    {
+        lead_agent_ensure_schema();
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        if (!$lead || !$state) {
+            return ['ok' => false, 'message' => 'Lead scheduling state was not found.'];
+        }
+        if ((string) ($state['status'] ?? '') !== 'ready_to_schedule' || (string) ($state['scheduling_phase'] ?? '') !== 'awaiting_availability') {
+            return ['ok' => false, 'message' => 'This lead is not waiting for availability options.'];
+        }
+        $time1 = strtotime($option1);
+        $time2 = strtotime($option2);
+        if ($time1 === false || $time2 === false || $time1 <= time() || $time2 <= time() || $time1 === $time2) {
+            return ['ok' => false, 'message' => 'Choose two different future appointment times.'];
+        }
+        if ($time2 < $time1) {
+            [$time1, $time2] = [$time2, $time1];
+        }
+        $normalized1 = date('Y-m-d H:i:s', $time1);
+        $normalized2 = date('Y-m-d H:i:s', $time2);
+        $body = lead_agent_availability_offer_message($lead, $normalized1, $normalized2);
+        $channel = lead_agent_sms_blocked($lead) ? 'email' : 'sms';
+        if ($channel === 'email' && lead_agent_email_blocked($lead)) {
+            return ['ok' => false, 'message' => 'No consented delivery channel is available.'];
+        }
+        $draft = $channel === 'email'
+            ? ['subject' => 'Two consultation times for you', 'body' => $body . "\n\nElite Smiles"]
+            : ['subject' => '', 'body' => $body];
+        $eventKey = 'availability-offer-' . $leadId . '-' . hash('sha256', $normalized1 . '|' . $normalized2);
+        $send = lead_agent_send_natural_reply($lead, $channel, $draft, $eventKey, 'availability_offered');
+        if (empty($send['ok'])) {
+            return ['ok' => false, 'message' => 'The availability options could not be delivered.'];
+        }
+        if (!empty($send['shadow'])) {
+            return ['ok' => true, 'message' => 'Shadow mode: the two options were prepared but not sent.', 'shadow' => true, 'channel' => $channel];
+        }
+        db_execute("UPDATE lead_agent_states SET status = 'awaiting_slot_selection', scheduling_phase = 'awaiting_slot_selection', availability_option_1 = :option1, availability_option_2 = :option2, selected_availability = NULL, human_takeover = 0, pause_reason = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_offered', updated_at = NOW() WHERE lead_id = :lead_id", [
+            'option1' => $normalized1,
+            'option2' => $normalized2,
+            'lead_id' => $leadId,
+        ]);
+        if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+            db_execute("UPDATE leads SET follow_up_status = 'reply_received', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+        }
+        lead_agent_event($leadId, $eventKey . '-recorded', 'availability_offered', $channel, !empty($send['shadow']) ? 'would_send' : 'sent', 'operator_supplied_two_options', [
+            'option_1' => $normalized1,
+            'option_2' => $normalized2,
+            'actor_user_id' => $actorUserId,
+        ]);
+        lead_comm_insert_activity($leadId, 'lead_agent_availability_offered', 'Rod supplied two appointment options and the Lead Agent presented them naturally.', [
+            'option_1' => $normalized1,
+            'option_2' => $normalized2,
+            'actor_user_id' => $actorUserId,
+        ], 'Lead Agent');
+        return ['ok' => true, 'message' => 'Two appointment options were sent.', 'channel' => $channel, 'option_1' => $normalized1, 'option_2' => $normalized2];
+    }
+}
+
+if (!function_exists('lead_agent_handle_slot_selection')) {
+    function lead_agent_handle_slot_selection(array $lead, array $state, string $body, string $channel, string $eventKey): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $option1 = (string) ($state['availability_option_1'] ?? '');
+        $option2 = (string) ($state['availability_option_2'] ?? '');
+        $selectedNumber = lead_agent_match_availability_selection($body, $option1, $option2);
+        if ($selectedNumber === 0) {
+            $message = 'Of course—which works better for you: ' . lead_agent_format_availability($option1) . ' or ' . lead_agent_format_availability($option2) . '?';
+            $draft = $channel === 'email' ? ['subject' => 'Your consultation time', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-clarify-' . $eventKey, 'slot_clarification');
+            return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'slot_clarification', 'sent' => !empty($send['sent']), 'status' => 'awaiting_slot_selection'];
+        }
+
+        $selected = $selectedNumber === 1 ? $option1 : $option2;
+        $formatted = lead_agent_format_availability($selected);
+        $hasDob = trim((string) ($lead['date_of_birth'] ?? '')) !== '';
+        $message = $hasDob
+            ? 'Perfect—I have ' . $formatted . ' as your choice. Rod will confirm it shortly.'
+            : 'Perfect—I have ' . $formatted . ' as your choice. What is your date of birth so I can finish the appointment request?';
+        $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+        $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-selected-' . $eventKey, 'slot_selected');
+        if (empty($send['ok'])) {
+            return lead_agent_internal_handoff($lead, 'needs_attention', 'The selected appointment option could not be acknowledged.') + ['handled' => true, 'intent' => 'slot_selected'];
+        }
+        db_execute("UPDATE lead_agent_states SET status = :status, scheduling_phase = :phase, selected_availability = :selected, scheduling_context = :context, next_action_at = NULL, last_action_at = NOW(), last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id", [
+            'status' => $hasDob ? 'ready_to_schedule' : 'awaiting_dob',
+            'phase' => $hasDob ? 'ready_to_confirm' : 'awaiting_dob',
+            'selected' => $selected,
+            'context' => substr($formatted, 0, 500),
+            'decision' => $hasDob ? 'ready_to_confirm' : 'dob_requested_after_slot',
+            'lead_id' => $leadId,
+        ]);
+        lead_agent_event($leadId, 'slot-choice-' . $eventKey, 'slot_selected', $channel, 'recorded', 'lead_selected_operator_option', ['selected_option' => $selected]);
+        if ($hasDob) {
+            return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Lead selected an appointment option and DOB is already on file.', [
+                'stage' => 'confirmation',
+                'selected_option' => $formatted,
+            ]) + ['handled' => true, 'intent' => 'slot_selected', 'sent' => !empty($send['sent'])];
+        }
+        return ['ok' => true, 'handled' => true, 'intent' => 'slot_selected', 'sent' => !empty($send['sent']), 'status' => 'awaiting_dob'];
+    }
+}
+
+if (!function_exists('lead_agent_handle_dob_reply')) {
+    function lead_agent_handle_dob_reply(array $lead, array $state, string $body, string $channel, string $eventKey): array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        if (preg_match('/\b(why|what for|why do you need|why is.*needed)\b/i', $body)) {
+            $message = 'We use it to create the appointment record. If you prefer, you can provide it by phone instead.';
+            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-explain-' . $eventKey, 'dob_explanation');
+            return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'dob_explanation', 'sent' => !empty($send['sent']), 'status' => 'awaiting_dob'];
+        }
+        $dob = lead_agent_parse_dob($body);
+        if ($dob === '') {
+            $looksLikeDate = (bool) preg_match('/\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i', $body);
+            if (!$looksLikeDate) {
+                return lead_agent_internal_handoff($lead, 'needs_attention', 'Lead replied while DOB was pending, but the message was not a recognizable date.') + ['handled' => true, 'intent' => 'needs_attention'];
+            }
+            $message = 'Thanks. Please send your date of birth as MM/DD/YYYY so I can add it correctly.';
+            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-format-' . $eventKey, 'dob_format');
+            return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'dob_format', 'sent' => !empty($send['sent']), 'status' => 'awaiting_dob'];
+        }
+
+        db_execute('UPDATE leads SET date_of_birth = :dob, updated_at = NOW() WHERE id = :id LIMIT 1', ['dob' => $dob, 'id' => $leadId]);
+        $selected = (string) ($state['selected_availability'] ?? '');
+        $formatted = lead_agent_format_availability($selected);
+        $message = 'Thank you—I have that. Rod will confirm ' . ($formatted !== '' ? $formatted : 'your appointment time') . ' shortly.';
+        $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+        $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-received-' . $eventKey, 'dob_received');
+        db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'ready_to_confirm', next_action_at = NULL, last_action_at = NOW(), last_decision = 'dob_received_ready_to_confirm', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+        lead_comm_insert_activity($leadId, 'lead_agent_dob_received', 'Lead Agent securely saved DOB after the lead selected an appointment option.', ['selected_option' => $selected], 'Lead Agent');
+        return lead_agent_internal_handoff(array_merge($lead, ['date_of_birth' => $dob]), 'ready_to_schedule', 'Lead selected an appointment option and supplied DOB.', [
+            'stage' => 'confirmation',
+            'selected_option' => $formatted,
+        ]) + ['handled' => true, 'intent' => 'dob_received', 'sent' => !empty($send['sent'])];
+    }
+}
+
 if (!function_exists('lead_agent_handle_inbound')) {
     function lead_agent_handle_inbound(int $leadId, string $body, string $channel = 'sms', string $eventKey = ''): array
     {
@@ -882,16 +1289,44 @@ if (!function_exists('lead_agent_handle_inbound')) {
             lead_agent_pause($leadId, 'lead_not_ready', 'paused');
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
-        if ($intent === 'ready_to_schedule') {
-            lead_agent_attribute_outcome($leadId, 'scheduling_intent');
-            lead_agent_record_learning_outcome($intent, $channel, 'ready_to_schedule');
-            return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Inbound message indicates scheduling intent.') + ['intent' => $intent, 'handled' => true];
-        }
         if ($intent === 'needs_attention') {
             lead_agent_record_learning($intent, $channel, 'human_review');
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Inbound message requires human judgment.') + ['intent' => $intent, 'handled' => true];
         }
-
+        $schedulingPhase = (string) ($state['scheduling_phase'] ?? '');
+        if ($schedulingPhase !== '' && $intent === 'cost_redirect') {
+            $first = lead_agent_first_name($lead);
+            $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+            $nextStep = match ($schedulingPhase) {
+                'awaiting_slot_selection' => 'Which of the two consultation times works better for you?',
+                'awaiting_dob' => 'To finish the appointment request, what is your date of birth?',
+                'ready_to_confirm' => 'Rod will confirm the consultation time you selected shortly.',
+                default => 'Would mornings or afternoons usually work better for you?',
+            };
+            $message = $hello . ' every smile is different, so Dr. Meden reviews your goals and clinical needs during the complimentary consultation. ' . $nextStep;
+            $draft = $channel === 'email'
+                ? ['subject' => 'Your Elite Smiles consultation', 'body' => $message . "\n\nElite Smiles"]
+                : ['subject' => '', 'body' => $message];
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'cost-redirect-' . $eventKey, 'cost_redirect');
+            if (empty($send['ok'])) {
+                return lead_agent_internal_handoff($lead, 'needs_attention', 'The cost-question redirect could not be delivered.') + ['intent' => $intent, 'handled' => true];
+            }
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => !empty($send['sent']), 'status' => $schedulingPhase];
+        }
+        if ($schedulingPhase === 'awaiting_preference') {
+            return lead_agent_handle_scheduling_intent($lead, $body, $channel, $eventKey);
+        }
+        if ($schedulingPhase === 'awaiting_slot_selection') {
+            return lead_agent_handle_slot_selection($lead, $state, $body, $channel, $eventKey);
+        }
+        if ($schedulingPhase === 'awaiting_dob') {
+            return lead_agent_handle_dob_reply($lead, $state, $body, $channel, $eventKey);
+        }
+        if ($intent === 'ready_to_schedule') {
+            lead_agent_attribute_outcome($leadId, 'scheduling_intent');
+            lead_agent_record_learning_outcome($intent, $channel, 'ready_to_schedule');
+            return lead_agent_handle_scheduling_intent($lead, $body, $channel, $eventKey);
+        }
         $draft = null;
         if ($intent === 'cost_redirect') {
             $draft = lead_agent_cost_redirect($lead, $channel);
@@ -1169,8 +1604,8 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
             'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
             'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
-            'ready_to_schedule_today' => $eventCount("event_type = 'handoff' AND reason LIKE 'Inbound message indicates scheduling intent.%'"),
-            'needs_attention_today' => $eventCount("event_type = 'handoff' AND reason NOT LIKE 'Inbound message indicates scheduling intent.%'"),
+            'ready_to_schedule_today' => $eventCount("event_type = 'handoff' AND (reason LIKE '%scheduling%' OR reason LIKE 'Lead selected an appointment option%' OR reason LIKE 'Lead selected an appointment option and supplied DOB.%')"),
+            'needs_attention_today' => $eventCount("event_type = 'handoff' AND reason NOT LIKE '%scheduling%' AND reason NOT LIKE 'Lead selected an appointment option%' AND reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'"),
             'policy_blocks' => $eventCount("event_type = 'handoff' AND reason LIKE '%policy%'"),
             'delivery_failures' => $eventCount("event_type = 'handoff' AND reason LIKE '%deliver%'"),
             'deferred_today' => $eventCount("event_type = 'deferred'"),

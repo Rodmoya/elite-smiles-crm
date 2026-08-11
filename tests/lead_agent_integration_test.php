@@ -13,6 +13,10 @@ lead_agent_ensure_schema();
 lead_comm_ensure_schema();
 lead_email_ensure_schema();
 
+foreach (['scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context'] as $column) {
+    integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'"), 'Scheduling state column is missing: ' . $column);
+}
+
 db_begin();
 try {
     $leadId = db_insert(

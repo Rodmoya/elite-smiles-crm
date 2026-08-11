@@ -35,6 +35,21 @@ if (is_post() && in_array((string) post('action'), ['pause_agent', 'resume_agent
     lead_agent_event(0, 'global-' . ($pause ? 'pause-' : 'resume-') . time(), $pause ? 'paused' : 'resumed', '', 'recorded', $pause ? 'operator_global_pause' : 'operator_global_resume');
     redirect(base_url('lead-agent-operations.php?notice=' . ($pause ? 'paused' : 'resumed')));
 }
+if (is_post() && post('action') === 'send_availability_options') {
+    require_csrf();
+    if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+        http_response_code(403);
+        exit('Forbidden');
+    }
+    $result = lead_agent_offer_availability(
+        (int) post('lead_id'),
+        trim((string) post('availability_option_1')),
+        trim((string) post('availability_option_2')),
+        (int) ($user['user_id'] ?? 0)
+    );
+    $noticeKey = !empty($result['ok']) ? 'availability_sent' : 'availability_error';
+    redirect(base_url('lead-agent-operations.php?notice=' . $noticeKey . '&message=' . rawurlencode((string) ($result['message'] ?? 'Availability could not be sent.'))));
+}
 
 $tz = new DateTimeZone(APP_TIMEZONE);
 $today = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
@@ -85,7 +100,8 @@ $runHealth = lead_agent_run_health($latestRun);
 $performance = lead_agent_performance_metrics(30);
 $channelPerformance = lead_agent_performance_by_channel(30);
 $globallyPaused = lead_agent_is_globally_paused();
-$readyRows = db_all("SELECT l.id, l.full_name, l.source, s.pause_reason, s.updated_at
+$readyRows = db_all("SELECT l.id, l.full_name, l.source, l.scheduling_preferred_day, l.scheduling_preferred_time,
+        s.pause_reason, s.scheduling_phase, s.scheduling_context, s.updated_at
     FROM lead_agent_states s INNER JOIN leads l ON l.id = s.lead_id
     WHERE s.status = 'ready_to_schedule' ORDER BY s.updated_at DESC LIMIT 8");
 $agentReadyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'");
@@ -111,6 +127,8 @@ $eventLabels = [
     'enrolled' => 'Agent enrolled a lead',
     'inbound_classified' => 'Inbound conversation handled',
     'automatic_reply' => 'Automatic reply sent',
+    'availability_offered' => 'Two appointment options sent',
+    'slot_selected' => 'Lead selected an appointment time',
     'cadence_reserved' => 'Approved follow-up sent',
     'cadence_sent' => 'Approved follow-up sent',
     'cadence_failed' => 'Follow-up delivery failed',
@@ -118,7 +136,7 @@ $eventLabels = [
     'paused' => 'Automation paused',
     'worker_error' => 'Worker error recorded',
     'handoff' => 'Agent paused and handed off',
-    'shadow_reply' => 'Reply prepared in shadow mode',
+    'shadow_reply' => 'Automatic reply prepared in shadow mode',
     'shadow_cadence' => 'Follow-up evaluated in shadow mode',
 ];
 ?>
@@ -167,6 +185,11 @@ $eventLabels = [
         <?php if (in_array($notice, ['paused', 'resumed'], true)): ?>
             <div class="rounded-2xl border px-4 py-3 text-sm font-semibold <?= $notice === 'paused' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800' ?>" role="status" aria-live="polite">
                 <?= $notice === 'paused' ? 'Automated lead follow-up is paused. New inbound messages remain saved in the CRM.' : 'Automated lead follow-up resumed successfully.' ?>
+            </div>
+        <?php endif; ?>
+        <?php if (in_array($notice, ['availability_sent', 'availability_error'], true)): ?>
+            <div class="rounded-2xl border px-4 py-3 text-sm font-semibold <?= $notice === 'availability_sent' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800' ?>" role="status" aria-live="polite">
+                <?= e(trim((string) get('message', '')) ?: ($notice === 'availability_sent' ? 'Two appointment options were sent.' : 'Availability could not be sent.')) ?>
             </div>
         <?php endif; ?>
 
@@ -289,11 +312,30 @@ $eventLabels = [
                 </div>
                 <div class="mt-5 space-y-3">
                     <?php if ($readyRows === []): ?><p class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-600">No lead is waiting for appointment times right now.</p><?php endif; ?>
-                    <?php foreach ($readyRows as $row): ?>
-                        <a href="<?= e(base_url('leads.php?id=' . (int) $row['id'])) ?>" class="flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50/50">
-                            <span><span class="block font-semibold text-slate-900"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></span><span class="mt-1 block text-xs text-slate-500"><?= e((string) ($row['source'] ?? '')) ?></span></span>
-                            <span class="text-xs font-semibold text-emerald-800">Schedule</span>
-                        </a>
+                    <?php foreach ($readyRows as $row):
+                        $preference = trim((string) ($row['scheduling_context'] ?? ''));
+                        if ($preference === '') {
+                            $preference = trim((string) ($row['scheduling_preferred_day'] ?? '') . ' ' . (string) ($row['scheduling_preferred_time'] ?? ''));
+                        }
+                    ?>
+                        <div class="rounded-2xl border border-slate-200 p-4">
+                            <div class="flex items-start justify-between gap-4">
+                                <span><a href="<?= e(base_url('leads.php?id=' . (int) $row['id'])) ?>" class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-emerald-800"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></a><span class="mt-1 block text-xs text-slate-500"><?= e((string) ($row['source'] ?? '')) ?></span></span>
+                                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><?= e($preference !== '' ? $preference : 'Preference captured') ?></span>
+                            </div>
+                            <?php if ((string) ($row['scheduling_phase'] ?? '') === 'awaiting_availability'): ?>
+                                <form method="POST" action="<?= e(base_url('lead-agent-operations.php')) ?>" class="mt-4 grid gap-3 sm:grid-cols-2">
+                                    <?= csrf_input() ?>
+                                    <input type="hidden" name="action" value="send_availability_options">
+                                    <input type="hidden" name="lead_id" value="<?= e((string) ((int) $row['id'])) ?>">
+                                    <label class="text-xs font-semibold text-slate-600">First option<input required type="datetime-local" name="availability_option_1" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-100"></label>
+                                    <label class="text-xs font-semibold text-slate-600">Second option<input required type="datetime-local" name="availability_option_2" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-100"></label>
+                                    <button type="submit" class="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 sm:col-span-2">Send these two options</button>
+                                </form>
+                            <?php else: ?>
+                                <p class="mt-3 text-sm text-slate-600">The lead selected a time and is waiting for final confirmation.</p>
+                            <?php endif; ?>
+                        </div>
                     <?php endforeach; ?>
                 </div>
             </article>

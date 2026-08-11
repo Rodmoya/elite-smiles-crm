@@ -15,8 +15,27 @@ expect_true(lead_agent_classify_inbound('Can I come in Tuesday afternoon?') === 
 expect_true(lead_agent_classify_inbound('How much does it cost?') === 'cost_redirect', 'Cost question should use approved redirect.');
 expect_true(lead_agent_classify_inbound('STOP') === 'opt_out', 'STOP should halt automation.');
 expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_attention', 'Clinical concern should require human review.');
+expect_true(lead_agent_classify_inbound('I need an appointment because I have pain and swelling') === 'needs_attention', 'Clinical urgency must override scheduling language.');
 expect_true(lead_agent_policy_flags('Your treatment price is $500') === ['treatment_cost_language'], 'Treatment price language should be blocked.');
 expect_true(lead_agent_policy_flags('Would mornings or afternoons work better?') === [], 'Approved scheduling language should pass.');
+
+$preference = lead_agent_scheduling_preferences('Tuesday afternoon works best for me.');
+expect_true($preference['day'] === 'tuesday' && $preference['period'] === 'afternoon' && !empty($preference['has_preference']), 'Scheduling preference should capture day and time of day.');
+$specificTime = lead_agent_scheduling_preferences('Can I come Thursday at 4:30 PM?');
+expect_true($specificTime['day'] === 'thursday' && $specificTime['specific_time'] === '4:30 PM', 'A specific requested time should be captured.');
+$spanishPreference = lead_agent_scheduling_preferences('El martes por la tarde me funciona mejor.');
+expect_true($spanishPreference['day'] === 'tuesday' && $spanishPreference['period'] === 'afternoon', 'Spanish day and time-of-day preferences should remain in the scheduling flow.');
+$acknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], $preference);
+expect_true(str_contains($acknowledgment, 'Let me check our availability') && substr_count($acknowledgment, '?') === 0, 'A captured preference should receive a natural acknowledgment without another question.');
+$preferenceQuestion = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], lead_agent_scheduling_preferences('I want to schedule.'));
+expect_true(substr_count($preferenceQuestion, '?') === 1 && str_contains($preferenceQuestion, 'mornings or afternoons'), 'A scheduling request without a preference should ask one simple question.');
+$option1 = '2026-08-19 15:30:00';
+$option2 = '2026-08-20 17:00:00';
+$offer = lead_agent_availability_offer_message(['full_name' => 'Carlos Example'], $option1, $option2);
+expect_true(substr_count($offer, '?') === 1 && str_contains($offer, 'Wednesday, August 19 at 3:30 PM') && str_contains($offer, 'Thursday, August 20 at 5:00 PM'), 'Availability offer should contain exactly two clear options and one question.');
+expect_true(lead_agent_match_availability_selection('Wednesday at 3:30 works', $option1, $option2) === 1, 'Lead should be able to select the first option naturally.');
+expect_true(lead_agent_match_availability_selection('The second option is better', $option1, $option2) === 2, 'Lead should be able to select the second option by position.');
+expect_true(lead_agent_parse_dob('My birthday is 03/19/1999') === '1999-03-19', 'DOB should normalize only after a slot is selected.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',
@@ -43,7 +62,7 @@ expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_co
 
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 13, 'Cadence should contain the active sprint, daily taper, and nurture steps.');
-expect_true($plan[1]['hours'] === 3.5 && $plan[1]['channel'] === 'sms', 'First follow-up should be an SMS after 3.5 hours.');
+expect_true($plan[1]['hours'] === 8 && $plan[1]['channel'] === 'sms', 'A second SMS must wait at least eight hours.');
 expect_true($plan[7]['hours'] === 72 && $plan[7]['phase'] === 'active_sprint', 'Active sprint should cover the first 72 hours.');
 expect_true($plan[11]['hours'] === 168 && $plan[11]['phase'] === 'daily_taper', 'Daily taper should run through day seven.');
 expect_true($plan[12]['phase'] === 'twice_weekly', 'Long-term nurture should be twice weekly.');

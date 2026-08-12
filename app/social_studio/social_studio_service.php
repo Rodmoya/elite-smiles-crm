@@ -257,12 +257,13 @@ if (!function_exists('social_studio_base_analysis_progress')) {
 }
 
 if (!function_exists('social_studio_reanalyze_base_creatives')) {
-    function social_studio_reanalyze_base_creatives(int $limit = 1): array
+    function social_studio_reanalyze_base_creatives(int $limit = 1, int $baseId = 0): array
     {
         social_studio_ensure_schema();
         social_studio_sync_bundled_creatives();
         $limit = 1;
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 4 AND (published_at IS NULL OR published_at >= "2026-03-16") ORDER BY published_at DESC, id DESC LIMIT 100');
+        $baseFilter = $baseId > 0 ? ' AND id = :base_id' : '';
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 4 AND (published_at IS NULL OR published_at >= "2026-03-16")' . $baseFilter . ' ORDER BY published_at DESC, id DESC LIMIT 100', $baseId > 0 ? ['base_id' => $baseId] : []);
         $bases = array_values(array_filter($bases, static fn(array $base): bool => social_studio_base_source_path($base) !== ''));
         $updated = 0;
         $failed = 0;

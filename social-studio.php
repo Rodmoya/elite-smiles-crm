@@ -32,6 +32,7 @@ $selected = $data['selected'];
 $schedule = $data['schedule'];
 $baseAnalysisProgress = social_studio_base_analysis_progress();
 $readyReferences = array_filter($visualReferences, static fn(array $reference): bool => !empty($reference['ready']));
+$pendingBaseIds = array_values(array_map(static fn(string $key): int => (int)substr($key, 5), array_filter(array_keys($visualReferences), static fn(string $key): bool => str_starts_with($key, 'base_') && empty($visualReferences[$key]['ready']))));
 $defaultReferenceKey = (string)(array_key_first($readyReferences) ?? '');
 $groups = array_values(array_unique(array_filter(array_map(static fn(array $reference): string => trim((string)($reference['group'] ?? '')), $visualReferences))));
 sort($groups);
@@ -230,6 +231,7 @@ $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
 <script>
 (() => {
     const autoGenerateIds = <?= json_encode($autoGenerateIds, JSON_UNESCAPED_SLASHES) ?>;
+    const pendingBaseIds = <?= json_encode($pendingBaseIds, JSON_UNESCAPED_SLASHES) ?>;
     const referenceInput = document.getElementById('social-visual-reference');
     const selectedLabel = document.getElementById('social-selected-template');
     const generateButton = document.getElementById('social-generate-button');
@@ -292,23 +294,23 @@ $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
         const csrfValue = csrfField?.value || '';
         let ready = <?= (int)$baseAnalysisProgress['ready'] ?>;
         const total = <?= (int)$baseAnalysisProgress['total'] ?>;
-        let consecutiveFailures = 0;
-        while (ready < total && consecutiveFailures < 3) {
+        let failed = 0;
+        for (const baseId of pendingBaseIds) {
             analysisProgress.textContent = `Analyzing template ${ready + 1} of ${total}… Keep this page open.`;
             analysisButton.textContent = `Analyzing ${ready + 1} of ${total}…`;
-            const body = new FormData(); body.append(csrfName, csrfValue);
+            const body = new FormData(); body.append(csrfName, csrfValue); body.append('base_id', String(baseId));
             try {
                 const response = await fetch('<?= e(base_url('app/actions/social_studio_analyze_template_api.php')) ?>', {method:'POST', body, credentials:'same-origin'});
                 const result = await response.json();
                 ready = Number(result.ready ?? ready);
-                consecutiveFailures = response.ok && result.ok ? 0 : consecutiveFailures + 1;
+                if (!response.ok || !result.ok) failed++;
                 if (!response.ok && Array.isArray(result.errors) && result.errors.length) analysisProgress.textContent = result.errors[0];
-            } catch (error) { consecutiveFailures++; }
+            } catch (error) { failed++; }
         }
-        if (ready >= total) {
+        if (failed === 0 && ready >= total) {
             analysisProgress.textContent = `All ${total} templates are ready. Reloading the library…`;
         } else {
-            analysisProgress.textContent = `Analysis paused after repeated failures. ${ready} of ${total} are ready; click Retry to continue.`;
+            analysisProgress.textContent = `Analysis completed with ${failed} source failure${failed === 1 ? '' : 's'}. ${ready} of ${total} are ready; retry to reprocess only those items.`;
             analysisButton.textContent = 'Retry pending templates';
             analysisButton.disabled = false;
             return;

@@ -10,563 +10,305 @@ require_once __DIR__ . '/app/social_studio/social_studio_service.php';
 require_auth();
 social_studio_ensure_schema();
 
-if (is_get() && get('clear_queue') === '1') {
-    $deleted = social_studio_delete_all_drafts();
-    flash_set('success', $deleted > 0 ? "Cleared {$deleted} social drafts." : 'The social review queue was already empty.');
-    redirect(base_url('social-studio.php'));
-}
-
 if (is_post() && post('action') === 'logout') {
     require_csrf();
     auth_logout();
-    flash_set('success', 'You have been logged out.');
     redirect(base_url('login.php'));
 }
 
 $user = auth_user() ?: [];
-$logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $currentPage = 'social_studio';
 $pageTitle = 'Social Studio';
 $logoutAction = base_url('social-studio.php');
 $successMessage = flash_get('success') ?? '';
 $errorMessage = flash_get('error') ?? '';
+$autoGenerateIds = array_values(array_filter(array_map('intval', explode(',', (string)(flash_get('social_auto_generate_ids') ?? ''))), static fn(int $id): bool => $id > 0));
 $data = social_studio_dashboard_data();
 $visualReferences = social_studio_visual_references();
+uasort($visualReferences, static fn(array $left, array $right): int => (int)!empty($right['ready']) <=> (int)!empty($left['ready']));
 $counts = $data['counts'];
 $drafts = $data['drafts'];
 $selected = $data['selected'];
 $schedule = $data['schedule'];
 $baseAnalysisProgress = social_studio_base_analysis_progress();
+$readyReferences = array_filter($visualReferences, static fn(array $reference): bool => !empty($reference['ready']));
+$defaultReferenceKey = (string)(array_key_first($readyReferences) ?? '');
+$groups = array_values(array_unique(array_filter(array_map(static fn(array $reference): string => trim((string)($reference['group'] ?? '')), $visualReferences))));
+sort($groups);
 
 function social_studio_badge_class(string $status): string
 {
     return match ($status) {
         'approved', 'scheduled' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        'review' => 'border-amber-200 bg-amber-50 text-amber-700',
+        'review' => 'border-amber-200 bg-amber-50 text-amber-800',
         'published' => 'border-blue-200 bg-blue-50 text-blue-700',
         'rejected' => 'border-rose-200 bg-rose-50 text-rose-700',
         default => 'border-slate-200 bg-slate-100 text-slate-600',
     };
 }
 
-function social_studio_preview_overlay(array $draft): array
-{
-    $title = trim((string)($draft['title'] ?? 'Your best smile starts here'));
-    $caption = trim((string)($draft['caption'] ?? ''));
-    $cta = trim((string)($draft['cta'] ?? ''));
-    $overlaySpec = strtolower(trim((string)($draft['overlay_spec'] ?? '')));
-    $structuredTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
-    $structuredTemplate = is_array($structuredTemplate) ? social_studio_normalize_overlay_template($structuredTemplate) : [];
-
-    $hasStoredBlocks = array_key_exists('overlay_blocks_json', $draft) && $draft['overlay_blocks_json'] !== null;
-    $storedBlocks = json_decode((string)($draft['overlay_blocks_json'] ?? '[]'), true);
-    $benefits = is_array($storedBlocks) ? array_values(array_filter($storedBlocks, static fn($item): bool => is_string($item) && trim($item) !== '')) : [];
-    if (!$hasStoredBlocks && $caption !== '' && preg_match_all('/(?:^|\s)[\-•✦✨]\s*([^\-•✦✨\r\n]{3,80})/u', $caption, $matches)) {
-        foreach ($matches[1] as $benefit) {
-            $benefit = trim((string)$benefit, " \t\n\r\0\x0B.,;:");
-            if ($benefit !== '' && !in_array($benefit, $benefits, true)) {
-                $benefits[] = $benefit;
-            }
-            if (count($benefits) === 3) {
-                break;
-            }
-        }
-    }
-
-    if (!$hasStoredBlocks && $benefits === []) {
-        $focus = (string)($draft['content_focus'] ?? 'smile_makeover');
-        $benefits = match ($focus) {
-            'implants' => ['Natural look and feel', 'Restore everyday confidence', 'Designed for lasting function'],
-            'lip_repositioning' => ['A more balanced smile', 'Personalized treatment plan', 'Confidence that feels natural'],
-            'veneers' => ['Natural-looking results', 'Customized shape and shade', 'Designed around your smile'],
-            default => ['Personalized for you', 'Natural-looking results', 'Confidence in every smile'],
-        };
-    }
-
-    $position = 'left';
-    if ($overlaySpec !== '') {
-        if (preg_match('/\b(?:text|copy|overlay|headline|title)\b.{0,36}\b(left|right|top|bottom)\b/', $overlaySpec, $positionMatch)
-            || preg_match('/\b(left|right|top|bottom)\b.{0,24}\b(?:text|copy|overlay|headline|title)\b/', $overlaySpec, $positionMatch)) {
-            $position = (string)$positionMatch[1];
-        }
-    }
-
-    return [
-        'title' => $title !== '' ? $title : 'Your best smile starts here',
-        'benefits' => array_slice($benefits, 0, 3),
-        'cta' => social_studio_compact_overlay_cta($cta, (string)($draft['content_focus'] ?? 'veneers')),
-        'position' => $position,
-        'eyebrow' => trim((string)($draft['overlay_eyebrow'] ?? '')),
-        'theme' => preg_match('/\b(?:dark|black|charcoal|navy)\b.{0,30}\b(?:background|panel|canvas|field)\b|\b(?:background|panel|canvas|field)\b.{0,30}\b(?:dark|black|charcoal|navy)\b/', $overlaySpec) ? 'dark' : 'light',
-        'font' => preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:sans-serif|sans serif|grotesk)\b/', $overlaySpec) && !preg_match('/\b(?:headline|title|display)\b.{0,30}\b(?:serif|didot|bodoni)\b/', $overlaySpec) ? 'sans' : 'serif',
-        'scale' => preg_match('/\b(?:compact|small|restrained)\b.{0,20}\b(?:headline|title|display)\b|\b(?:headline|title|display)\b.{0,20}\b(?:compact|small|restrained)\b/', $overlaySpec) ? 'compact' : 'large',
-        'template' => str_contains($overlaySpec, 'replica_template: confidence_starts') ? 'confidence_starts' : '',
-        'structured' => $structuredTemplate,
-    ];
-}
-
-function social_studio_overlay_element_style(array $element): string
-{
-    $font = social_studio_overlay_font_stack($element);
-    return implode(';', [
-        'left:' . (float)$element['x'] . '%', 'top:' . (float)$element['y'] . '%',
-        'width:' . (float)$element['width'] . '%', 'height:' . (float)$element['height'] . '%',
-        'font-family:' . $font, 'font-size:' . (float)$element['font_size'] . 'cqw',
-        'font-style:' . ((string)($element['font_style'] ?? 'normal') === 'italic' ? 'italic' : 'normal'),
-        'font-weight:' . (int)$element['font_weight'], 'line-height:' . (float)$element['line_height'],
-        'letter-spacing:' . (float)$element['letter_spacing'] . 'em', 'color:' . $element['color'],
-        'background:' . $element['background_color'], 'border-color:' . $element['border_color'],
-        'border-width:' . (float)$element['border_width'] . 'cqw', 'border-radius:' . (float)$element['border_radius'] . 'cqw',
-        'text-align:' . $element['align'], 'text-transform:' . (!empty($element['uppercase']) ? 'uppercase' : 'none'),
-    ]);
-}
+$selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e(APP_NAME) ?> | Social Studio</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <meta name="robots" content="noindex,nofollow">
+    <title><?= e(APP_NAME) ?> | Social Studio</title>
+    <link rel="stylesheet" href="<?= e(base_url('assets/css/lead-agent.css')) ?>">
     <style>
-        @media (min-width: 1280px) {
-            .social-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-            .social-workspace > .social-main, .social-workspace > .social-rail { display: contents; }
-            .social-main > section:nth-child(1) { grid-column: 2; grid-row: 1; }
-            .social-main > section:nth-child(2) { grid-column: 1; grid-row: 2; }
-            .social-rail > section:nth-child(1) { grid-column: 1; grid-row: 1; }
-            .social-rail > section:nth-child(2) { grid-column: 2; grid-row: 2; }
-            .social-rail > section:nth-child(3) { grid-column: 2; grid-row: 3; }
-        }
-        .instagram-review { max-width: 430px; margin: 0 auto; }
-        .instagram-review .review-image { aspect-ratio: 4 / 5; object-fit: cover; }
-        .instagram-review .review-image.review-image-square { aspect-ratio: 1 / 1; }
-        .creative-frame { position: relative; overflow: hidden; }
-        .structured-overlay { position: absolute; inset: 0; container-type: inline-size; pointer-events: none; }
-        .structured-overlay-element { position: absolute; box-sizing: border-box; white-space: pre-line; overflow: visible; border-style: solid; }
-        .structured-overlay-element.type-line, .structured-overlay-element.type-box { color: transparent !important; }
-        .creative-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.15rem; pointer-events: none; }
-        .creative-overlay.overlay-left { align-items: flex-start; background: linear-gradient(90deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
-        .creative-overlay.overlay-right { align-items: flex-end; text-align: right; background: linear-gradient(270deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.88) 36%, rgba(250,247,241,.08) 66%, rgba(2,6,23,.04) 100%); }
-        .creative-overlay.overlay-top { justify-content: flex-start; background: linear-gradient(180deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.76) 30%, rgba(250,247,241,.05) 62%); }
-        .creative-overlay.overlay-bottom { justify-content: flex-end; background: linear-gradient(0deg, rgba(250,247,241,.96) 0%, rgba(250,247,241,.76) 34%, rgba(250,247,241,.05) 68%); }
-        .creative-overlay h3 { max-width: 11rem; font-family: Georgia, serif; font-size: clamp(1.45rem, 3vw, 2.15rem); line-height: .94; letter-spacing: -.04em; color: #20242b; }
-        .creative-overlay .overlay-eyebrow { margin-bottom: .45rem; font-size: .62rem; font-weight: 800; letter-spacing: .18em; color: #8f6b4d; text-transform: uppercase; }
-        .creative-overlay .benefits { margin-top: auto; margin-bottom: .7rem; display: grid; gap: .3rem; color: #20242b; font-size: .62rem; font-weight: 700; }
-        .creative-overlay .benefits span { display: block; max-width: 11rem; padding: .3rem .5rem; border-left: 2px solid #b08b62; background: rgba(250,247,241,.88); }
-        .creative-overlay.overlay-right .benefits span { border-right: 2px solid #b08b62; border-left: 0; }
-        .creative-overlay.overlay-top .benefits, .creative-overlay.overlay-bottom .benefits { margin-top: .65rem; }
-        .creative-overlay .creative-cta { align-self: flex-start; border: 1px solid #b08b62; background: #20242b; color: white; padding: .5rem .65rem; font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-        .creative-overlay.overlay-right .creative-cta { align-self: flex-end; }
-        .creative-overlay.overlay-font-sans h3 { font-family: Arial, Helvetica, sans-serif; font-weight: 800; letter-spacing: -.035em; }
-        .creative-overlay.overlay-title-compact h3 { max-width: 13rem; font-size: clamp(1.1rem, 2.25vw, 1.55rem); line-height: 1.02; }
-        .creative-overlay.overlay-theme-dark { color: white; background: linear-gradient(90deg, rgba(12,16,22,.94) 0%, rgba(12,16,22,.78) 38%, rgba(12,16,22,.08) 68%); }
-        .creative-overlay.overlay-theme-dark h3, .creative-overlay.overlay-theme-dark .overlay-eyebrow { color: white; }
-        .creative-overlay.overlay-theme-dark .benefits span { color: white; border-color: #d7b98e; background: rgba(15,23,42,.82); }
-        .replica-confidence { position: absolute; inset: 0; padding: 7.5% 0 6.5% 7.8%; color: #171b24; pointer-events: none; }
-        .replica-confidence .replica-copy { width: 40%; }
-        .replica-confidence .replica-kicker { font: 400 .92rem/1 Arial, sans-serif; letter-spacing: .17em; }
-        .replica-confidence .replica-title { margin-top: 4%; font-family: Georgia, 'Times New Roman', serif; font-size: 1.72rem; font-weight: 400; line-height: .93; letter-spacing: -.04em; }
-        .replica-confidence .replica-script { margin-top: 1%; color: #9c7a4d; font-family: 'Segoe Script', 'Brush Script MT', cursive; font-size: 1.42rem; font-style: italic; line-height: 1; white-space: nowrap; }
-        .replica-confidence .replica-rule { width: 30%; margin: 6% 0 7%; border-top: 1px solid #9c7a4d; }
-        .replica-confidence .replica-deck { width: 95%; font: 500 .69rem/1.42 Arial, sans-serif; letter-spacing: .01em; }
-        .replica-confidence .replica-features { display: grid; gap: .36rem; margin-top: 6%; }
-        .replica-confidence .replica-feature { display: grid; grid-template-columns: 1.75rem 1fr; align-items: center; gap: .5rem; font: 500 .46rem/1.25 Arial, sans-serif; letter-spacing: .11em; text-transform: uppercase; }
-        .replica-confidence .replica-icon { display: grid; width: 1.55rem; height: 1.55rem; place-items: center; border: 1px solid #a8895c; border-radius: 999px; color: #8c6d43; font-size: .7rem; }
-        .replica-confidence .replica-footer { position: absolute; bottom: 5.5%; left: 7.8%; font: 600 .47rem/1.45 Arial, sans-serif; letter-spacing: .15em; text-transform: uppercase; }
-        .replica-confidence .replica-footer span { display: block; margin-top: .45rem; color: #9c7a4d; }
+        .social-template-card[aria-pressed="true"] { border-color:#0f172a; box-shadow:0 0 0 2px #0f172a; }
+        .social-template-card:disabled { cursor:not-allowed; opacity:.68; }
+        .social-template-card[hidden] { display:none; }
+        .social-preview-image { aspect-ratio:4/5; width:100%; object-fit:contain; background:#f1f5f9; }
+        .social-scrollbar { scrollbar-width:thin; scrollbar-color:#94a3b8 transparent; }
+        @media (min-width:1280px) { .social-production-grid { grid-template-columns:300px minmax(420px,1fr) 360px; } }
     </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
-    <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
+<?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
 
-    <main class="px-4 py-6 sm:px-6 lg:pl-80 lg:pr-8 lg:py-8">
-        <?php if ($successMessage !== ''): ?>
-            <div class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"><?= e((string)$successMessage) ?></div>
-        <?php endif; ?>
-        <?php if ($errorMessage !== ''): ?>
-            <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><?= e((string)$errorMessage) ?></div>
-        <?php endif; ?>
-            <details class="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
-                <summary class="cursor-pointer text-sm font-semibold text-slate-800">Instagram library importer</summary>
-                <p class="mt-2 text-xs leading-5 text-slate-500">Paste the authenticated Instagram inventory JSON to import every post from March 16, 2026 through today. Each image is analyzed in batches and stored as a reusable base creative.</p>
-                <form method="post" action="<?= e(base_url('app/actions/social_studio_import_instagram.php')) ?>" class="mt-3">
-                    <?= csrf_input() ?>
-                    <label class="mt-2 block text-xs text-slate-500">Post<select name="batch_index" class="ml-2 rounded-lg border border-slate-300 px-2 py-1 text-xs"><?php for ($batchOption = 0; $batchOption < 100; $batchOption++): ?><option value="<?= $batchOption ?>"><?= $batchOption + 1 ?></option><?php endfor; ?></select></label>
-                    <textarea name="posts_json" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","source_url":"...","image_url":"..."}]'></textarea>
-                    <button type="submit" class="mt-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Import and analyze library</button>
-                </form>
-                <form method="post" action="<?= e(base_url('app/actions/social_studio_refresh_images.php')) ?>" class="mt-2" id="social-refresh-images-form">
-                    <?= csrf_input() ?><textarea name="posts_json" id="social-refresh-images-json" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-[10px]" rows="2" placeholder="Paste inventory JSON to refresh stored images"></textarea>
-                    <button type="submit" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700">Refresh image cache</button>
-                </form>
-                <form method="post" action="<?= e(base_url('app/actions/social_studio_reanalyze_bases.php')) ?>" class="mt-3 flex flex-wrap items-center gap-3">
-                    <?= csrf_input() ?><input type="hidden" name="limit" value="5">
-                    <button type="submit" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">Rebuild next 5 exact templates</button>
-                    <span class="text-xs text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> templates fully analyzed<?= $baseAnalysisProgress['remaining'] > 0 ? ' · ' . e((string)$baseAnalysisProgress['remaining']) . ' remaining' : ' · complete' ?></span>
-                </form>
-            </details>
+<main class="px-4 py-5 sm:px-6 lg:pl-80 lg:pr-8 lg:py-6">
+    <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Marketing / Social Studio</p>
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Create from what already works</h1>
+            <p class="mt-1 text-sm text-slate-600">Choose an approved post, change the photo direction, then review the exact overlay before approval.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs font-semibold">
+            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800"><?= e((string)$baseAnalysisProgress['ready']) ?> ready</span>
+            <span class="rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-700"><?= e((string)$baseAnalysisProgress['remaining']) ?> analyzing</span>
+            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800"><?= e((string)($counts['review'] ?? 0)) ?> in review</span>
+        </div>
+    </header>
 
-        <section class="mb-8">
-            <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
-                <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-                    <div class="max-w-3xl">
-                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Marketing</p>
-                        <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 lg:text-4xl">Social Studio</h1>
-                        <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-                            Create AI-assisted Facebook and Instagram drafts inside the CRM. Drafts stay internal until Rod approves and schedules them.
-                        </p>
-                    </div>
-                    <div class="flex flex-wrap gap-3">
-                        <button type="button" class="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100" disabled>Import Meta Posts</button>
-                        <button type="submit" form="social-generate-form" class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Generate This Week</button>
-                    </div>
-                </div>
+    <?php if ($successMessage !== ''): ?><div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><?= e((string)$successMessage) ?></div><?php endif; ?>
+    <?php if ($errorMessage !== ''): ?><div role="alert" class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><?= e((string)$errorMessage) ?></div><?php endif; ?>
+    <?php if ($autoGenerateIds !== []): ?><div id="social-generation-progress" role="status" aria-live="polite" class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Preparing image generation…</div><?php endif; ?>
+
+    <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="template-library-title">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 1</p>
+                <h2 id="template-library-title" class="mt-1 text-lg font-semibold text-slate-950">Choose the approved Instagram template</h2>
+                <p class="mt-1 text-sm text-slate-600">Ready templates preserve approved wording and artwork. Pending templates stay visible but cannot generate yet.</p>
             </div>
-        </section>
-
-        <section class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Waiting Review</p>
-                <p class="mt-2 text-3xl font-semibold"><?= e((string)($counts['review'] ?? 0)) ?></p>
-                <p class="mt-1 text-sm text-slate-500">AI drafts ready</p>
-            </div>
-            <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Approved</p>
-                <p class="mt-2 text-3xl font-semibold"><?= e((string)($counts['approved'] ?? 0)) ?></p>
-                <p class="mt-1 text-sm text-slate-500">Ready to schedule</p>
-            </div>
-            <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Scheduled</p>
-                <p class="mt-2 text-3xl font-semibold"><?= e((string)($counts['scheduled'] ?? 0)) ?></p>
-                <p class="mt-1 text-sm text-slate-500">Queued, not published</p>
-            </div>
-            <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Frequency</p>
-                <p class="mt-2 text-3xl font-semibold">1/day</p>
-                <p class="mt-1 text-sm text-slate-500">Default rule</p>
-            </div>
-        </section>
-
-        <section class="social-workspace grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-            <div class="social-main space-y-5">
-                <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Create</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-900">Generate social drafts</h2>
-                            <p class="mt-1 text-sm text-slate-500">One focused form. No publishing from this screen.</p>
-                        </div>
-                        <form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');">
-                            <?= csrf_input() ?>
-                            <button type="submit" class="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Clear queue</button>
-                        </form>
-                    </div>
-                    <form id="social-generate-form" class="grid gap-4 lg:grid-cols-[220px_1fr]" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
-                        <?= csrf_input() ?>
-                        <div class="space-y-2">
-                            <?php foreach ([['1', 'Define story'], ['2', 'Create copy'], ['3', 'Create visual'], ['4', 'Assemble post'], ['5', 'Review & approve']] as [$number, $label]): ?>
-                                <div class="<?= $number === '1' ? 'bg-slate-950 text-white' : 'bg-white text-slate-700' ?> flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-semibold">
-                                    <span class="<?= $number === '1' ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700' ?> grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs font-bold"><?= e($number) ?></span>
-                                    <?= e($label) ?>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Creation mode
-                                <select name="creation_mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="remix">New photo using approved Instagram template</option>
-                                    <option value="manual">Manual brief</option>
-                                </select>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">The template is immutable by default. Nano Banana changes the clean photo; CRM applies the approved overlay afterward.</span>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Overlay wording
-                                <select name="copy_mode" id="social-copy-mode" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="preserve">Keep every approved word exactly</option>
-                                    <option value="rewrite">Create an explicit new version of the wording</option>
-                                </select>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">Rewrite changes words only. Font family, size, weight, line structure, spacing, colors, and geometry stay locked.</span>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">Focus
-                                <select name="focus" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="veneers">Veneers consults</option>
-                                    <option value="smile_makeover">Smile makeover</option>
-                                    <option value="implants">Implants</option>
-                                    <option value="lip_repositioning">Lip repositioning</option>
-                                </select>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">How many?
-                                <select name="count" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <?php for ($postCount = 1; $postCount <= 7; $postCount++): ?>
-                                        <option value="<?= $postCount ?>" <?= $postCount === 1 ? 'selected' : '' ?>><?= $postCount ?> <?= $postCount === 1 ? 'post' : 'posts' ?></option>
-                                    <?php endfor; ?>
-                                </select>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">Purpose
-                                <select name="purpose" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="educational">Educational</option>
-                                    <option value="social_ad">Social media ad</option>
-                                </select>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">Audience
-                                <select name="audience" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="any">Any adult</option>
-                                    <option value="woman">Woman</option>
-                                    <option value="man">Man</option>
-                                </select>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">Age range
-                                <select name="age_range" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="any">Any adult</option>
-                                    <option value="25-34">25–34</option>
-                                    <option value="35-44">35–44</option>
-                                    <option value="45-54">45–54</option>
-                                    <option value="55+">55+</option>
-                                </select>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800">Text position
-                                <select name="text_position" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3">
-                                    <option value="source">Original approved position</option>
-                                    <option value="left">Left</option>
-                                    <option value="right">Right</option>
-                                </select>
-                            </label>
-                            <label class="order-first block text-sm font-semibold text-slate-800 sm:col-span-2" id="social-remix-reference">Choose the approved Instagram template
-                                <input type="hidden" name="visual_reference" id="social-visual-reference" value="none">
-                                <div class="mt-2 flex gap-3 overflow-x-auto pb-2" id="social-reference-carousel">
-                                    <?php foreach ($visualReferences as $referenceKey => $reference): ?>
-                                        <button type="button" data-social-reference="<?= e($referenceKey) ?>" class="social-reference-card group w-36 shrink-0 overflow-hidden rounded-2xl border-2 border-transparent bg-slate-50 text-left transition hover:border-slate-400 <?= $referenceKey === 'none' ? 'border-slate-950' : '' ?>">
-                                            <?php if (!empty($reference['image_url'])): ?><img src="<?= e($reference['image_url']) ?>" data-source-fallback="<?= e((string)($reference['source_image_url'] ?? '')) ?>" class="h-28 w-full object-cover" alt=""><div class="hidden h-28 items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-500">Image unavailable</div><?php elseif (!empty($reference['image'])): ?><img src="<?= e(base_url($reference['image'])) ?>" class="h-28 w-full object-cover" alt=""><?php else: ?><div class="grid h-28 place-items-center bg-slate-950 px-3 text-center text-xs font-semibold text-white">Master CMO</div><?php endif; ?>
-                                            <span class="block px-3 py-2 text-xs font-semibold leading-4 text-slate-800"><?= e($reference['label']) ?></span>
-                                        </button>
-                                    <?php endforeach; ?>
-                                </div>
-                                <span class="mt-1 block text-xs font-normal text-slate-500">All downloaded posts from March 16 onward appear here. The selected post supplies the exact approved overlay and visual composition.</span>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Or upload inspiration image <span class="font-normal text-slate-500">(optional)</span>
-                                <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm">
-                                <span class="mt-1 block text-xs font-normal text-slate-500">OpenAI will analyze layout, typography, color, framing, and CTA treatment, then create a new Nano Banana prompt.</span>
-                            </label>
-                            <label class="block text-sm font-semibold text-slate-800 sm:col-span-2">Photo and caption direction <span class="font-normal text-slate-500">(optional)</span>
-                                <textarea name="instruction" rows="3" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" placeholder="Example: confident man in his 40s, bright natural smile, warm Draper lifestyle background."></textarea>
-                            </label>
-                            <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800 sm:col-span-2">
-                                The caption is newly written and hashtags stay close to the approved topic. The image contains no baked-in words or logos. CRM then applies the selected overlay deterministically for review.
-                            </div>
-                            <div class="flex flex-wrap justify-end gap-3 sm:col-span-2">
-                                <button type="submit" class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Generate Drafts</button>
-                            </div>
-                        </div>
-                    </form>
-                </section>
-
-                <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Drafts</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-900">Review queue</h2>
-                            <p class="mt-1 text-sm text-slate-500">Approve, schedule, or reject. Meta publishing is not enabled in this first slice.</p>
-                        </div>
-                    </div>
-                    <div class="space-y-3">
-                        <?php if ($drafts === []): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No social drafts yet. Generate this week to start.</div>
-                        <?php endif; ?>
-                        <?php foreach ($drafts as $draft): ?>
-                            <?php $status = (string)($draft['status'] ?? 'draft'); ?>
-                            <?php $draftImageUrl = social_studio_image_url($draft); ?>
-                            <article class="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[76px_1fr_auto] sm:items-center">
-                                <?php if ($draftImageUrl !== ''): ?>
-                                    <img class="h-[76px] w-[76px] rounded-2xl bg-slate-100 object-cover" src="<?= e($draftImageUrl) ?>" alt="">
-                                <?php else: ?>
-                                    <div class="h-[76px] w-[76px] rounded-2xl bg-gradient-to-br from-slate-950 via-slate-600 to-amber-300"></div>
-                                <?php endif; ?>
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <h3 class="text-sm font-semibold text-slate-950"><?= e((string)$draft['title']) ?></h3>
-                                        <span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2.5 py-1 text-[11px] font-semibold"><?= e(social_studio_status_labels()[$status] ?? $status) ?></span>
-                                    </div>
-                                    <p class="mt-1 text-xs text-slate-500"><?= e(social_studio_focus_label((string)$draft['content_focus'])) ?> &middot; <?= e((string)$draft['platform']) ?><?= !empty($draft['scheduled_at']) ? ' &middot; ' . e(format_datetime((string)$draft['scheduled_at'])) : '' ?></p>
-                                    <p class="mt-2 text-sm leading-6 text-slate-600"><?= e(str_limit((string)$draft['caption'], 170)) ?></p>
-                                </div>
-                                <div class="flex flex-wrap gap-2 sm:justify-end">
-                                    <button type="button" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" data-social-open data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-image="<?= e($draftImageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status] ?? $status) ?>">Open post</button>
-                                    <form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" onsubmit="return confirm('Delete this draft? This cannot be undone.');">
-                                        <?= csrf_input() ?>
-                                        <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">
-                                        <button class="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600" type="submit" aria-label="Delete draft" title="Delete draft">
-                                            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                        </button>
-                                    </form>
-                                    <form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>">
-                                        <?= csrf_input() ?>
-                                        <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">
-                                        <button class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700" type="submit"><?= $draftImageUrl !== '' ? 'Regenerate Image' : 'Generate Image' ?></button>
-                                    </form>
-                                    <?php foreach ([['approved', 'Approve'], ['scheduled', 'Schedule'], ['rejected', 'Reject']] as [$nextStatus, $buttonLabel]): ?>
-                                        <form method="POST" action="<?= e(base_url('app/actions/social_studio_status.php')) ?>">
-                                            <?= csrf_input() ?>
-                                            <input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>">
-                                            <input type="hidden" name="status" value="<?= e($nextStatus) ?>">
-                                            <button class="<?= $nextStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ($nextStatus === 'rejected' ? 'border-rose-200 bg-white text-rose-700' : 'border-slate-300 bg-white text-slate-700') ?> rounded-xl border px-3 py-2 text-xs font-semibold" type="submit"><?= e($buttonLabel) ?></button>
-                                        </form>
-                                    <?php endforeach; ?>
-                                </div>
-                            </article>
-                        <?php endforeach; ?>
-                    </div>
-                </section>
-            </div>
-
-            <aside class="social-rail space-y-5">
-                <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-4">
-                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Preview</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-900">Selected draft</h2>
-                    </div>
-                    <?php if ($selected): ?>
-                        <?php $selectedPixelLocked = (string)($selected['copy_mode'] ?? 'preserve') === 'preserve' && trim((string)($selected['branded_image_storage_key'] ?? '')) !== ''; ?>
-                        <?php $selectedImageUrl = social_studio_image_url($selected, $selectedPixelLocked); ?>
-                        <?php $selectedOverlay = social_studio_preview_overlay($selected); ?>
-                        <div class="instagram-review overflow-hidden rounded-2xl border border-slate-200">
-                                <div class="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
-                                <img class="h-7 w-7 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles Instagram avatar">
-                                <div class="text-xs font-semibold text-slate-900">elite.smiles.utah<span class="block text-[10px] font-normal text-slate-500">Elite Smiles</span></div>
-                                <div class="ml-auto text-sm font-bold tracking-[0.2em] text-slate-500">···</div>
-                            </div>
-                            <?php if ($selectedImageUrl !== ''): ?>
-                                <div class="creative-frame">
-                                    <?php $structured = (array)($selectedOverlay['structured'] ?? []); ?>
-                                    <img class="review-image <?= (string)($structured['aspect_ratio'] ?? '') === '1:1' || $selectedOverlay['template'] === 'confidence_starts' ? 'review-image-square' : '' ?> w-full bg-slate-100" style="object-fit:<?= e((string)($structured['image_fit'] ?? 'cover')) ?>" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>">
-                                    <?php if (!$selectedPixelLocked && ($structured['elements'] ?? []) !== []): ?>
-                                        <div class="structured-overlay" style="background:<?= e((string)($structured['canvas_background'] ?? 'transparent')) ?>">
-                                            <?php foreach ($structured['elements'] as $element): ?>
-                                                <div class="structured-overlay-element type-<?= e((string)$element['type']) ?>" style="<?= e(social_studio_overlay_element_style($element)) ?>"><?= e((string)$element['text']) ?></div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php elseif ($selectedOverlay['template'] === 'confidence_starts'): ?>
-                                        <div class="replica-confidence">
-                                            <div class="replica-copy">
-                                                <p class="replica-kicker">YOUR</p>
-                                                <h3 class="replica-title">CONFIDENCE<br>STARTS</h3>
-                                                <p class="replica-script">with your smile</p>
-                                                <div class="replica-rule"></div>
-                                                <p class="replica-deck">Custom veneers designed to enhance your natural beauty and help you feel confident every day.</p>
-                                                <div class="replica-features">
-                                                    <div class="replica-feature"><span class="replica-icon">◇</span><span>Custom veneers<br>Natural. Beautiful. You.</span></div>
-                                                    <div class="replica-feature"><span class="replica-icon">◡</span><span>Complimentary<br>consultation</span></div>
-                                                    <div class="replica-feature"><span class="replica-icon">$</span><span>Flexible financing<br>options</span></div>
-                                                </div>
-                                            </div>
-                                            <div class="replica-footer">● Draper, Utah<span>Invest in yourself.<br>Love your smile.</span></div>
-                                        </div>
-                                    <?php else: ?>
-                                        <div class="creative-overlay overlay-<?= e((string)$selectedOverlay['position']) ?> overlay-theme-<?= e((string)$selectedOverlay['theme']) ?> overlay-font-<?= e((string)$selectedOverlay['font']) ?> overlay-title-<?= e((string)$selectedOverlay['scale']) ?>"><div><?php if ($selectedOverlay['eyebrow'] !== ''): ?><p class="overlay-eyebrow"><?= e((string)$selectedOverlay['eyebrow']) ?></p><?php endif; ?><h3><?= e((string)$selectedOverlay['title']) ?></h3></div><?php if ($selectedOverlay['benefits'] !== []): ?><div class="benefits"><?php foreach ($selectedOverlay['benefits'] as $benefit): ?><span><?= e((string)$benefit) ?></span><?php endforeach; ?></div><?php endif; ?><div class="creative-cta"><?= e((string)$selectedOverlay['cta']) ?></div></div>
-                                    <?php endif; ?>
-                                </div>
-                            <?php else: ?>
-                                <div class="review-image flex items-end bg-gradient-to-br from-slate-950 via-slate-700 to-amber-300 p-5 text-white">
-                                    <h3 class="max-w-sm text-2xl font-semibold leading-tight tracking-tight"><?= e((string)$selected['title']) ?></h3>
-                                </div>
-                            <?php endif; ?>
-                            <div class="border-b border-slate-100 px-3 py-2 text-lg tracking-[0.35em] text-slate-900">♡　◌　➤ <span class="float-right tracking-normal">⌑</span></div>
-                            <div class="space-y-3 p-4">
-                                <p class="text-xs font-semibold text-slate-900">128 likes</p>
-                                <p class="text-sm leading-6 text-slate-700"><?= e((string)$selected['caption']) ?></p>
-                                <?php if (!empty($selected['cta'])): ?><p class="text-sm font-semibold text-slate-900">CTA: <?= e((string)$selected['cta']) ?></p><?php endif; ?>
-                                <p class="text-xs leading-5 text-slate-500"><?= e((string)$selected['hashtags']) ?></p>
-                                <?php if (!empty($selected['image_prompt'])): ?>
-                                    <details class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-                                        <summary class="cursor-pointer font-semibold text-slate-700">OpenAI image prompt for Nano Banana</summary>
-                                        <p class="mt-2"><?= e((string)$selected['image_prompt']) ?></p>
-                                    </details>
-                                <?php endif; ?>
-                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>">
-                                    <?= csrf_input() ?>
-                                    <input type="hidden" name="draft_id" value="<?= e((string)$selected['id']) ?>">
-                                    <button class="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700" type="submit"><?= $selectedImageUrl !== '' ? 'Regenerate Image' : 'Generate Image' ?></button>
-                                </form>
-                            </div>
-                        </div>
-                    <?php else: ?>
-                        <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Generate drafts to preview one here.</div>
-                    <?php endif; ?>
-                </section>
-
-                <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-4 flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Schedule</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-900">Upcoming</h2>
-                        </div>
-                        <span class="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">1/day</span>
-                    </div>
-                    <div class="space-y-2">
-                        <?php if ($schedule === []): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No scheduled drafts yet.</div>
-                        <?php endif; ?>
-                        <?php foreach ($schedule as $item): ?>
-                            <div class="rounded-2xl border border-slate-200 bg-white p-3">
-                                <p class="text-sm font-semibold text-slate-900"><?= e(format_datetime((string)$item['scheduled_at'], 'D, M j')) ?> &middot; <?= e(format_datetime((string)$item['scheduled_at'], 'g:i A')) ?></p>
-                                <p class="mt-1 text-sm text-slate-600"><?= e((string)$item['title']) ?></p>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </section>
-
-                <section class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Settings</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-900">Default rules</h2>
-                    <div class="mt-4 space-y-3 text-sm text-slate-600">
-                        <p><span class="font-semibold text-slate-900">Publishing:</span> require approval before schedule.</p>
-                        <p><span class="font-semibold text-slate-900">Frequency:</span> 1 post per day.</p>
-                        <p><span class="font-semibold text-slate-900">Images:</span> clean Nano Banana visual, separate editable editorial layer. No logos inside the image.</p>
-                        <p><span class="font-semibold text-slate-900">Meta:</span> publishing disabled for this MVP.</p>
-                    </div>
-                </section>
-            </aside>
-        </section>
-    </main>
-    <dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-[1.5rem] border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
-        <div class="grid max-h-[92vh] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white lg:grid-cols-[minmax(0,1.18fr)_minmax(360px,.82fr)]">
-            <div class="flex min-h-[420px] items-center justify-center bg-slate-950 p-4 lg:min-h-[760px] lg:p-0"><img id="social-modal-image" class="max-h-[86vh] w-full object-contain" alt=""></div>
-            <div class="flex min-h-0 flex-col bg-white">
-                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div class="flex items-center gap-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles Instagram avatar"><div><p class="text-sm font-semibold text-slate-900">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div></div><div class="flex items-center gap-3"><span id="social-modal-status" class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Review</span><button type="button" data-social-close class="text-2xl leading-none text-slate-500 hover:text-slate-900" aria-label="Close post review">×</button></div></div>
-                <div class="min-h-0 flex-1 overflow-y-auto p-5"><p id="social-modal-caption" class="whitespace-pre-line text-sm leading-6 text-slate-700"></p><p class="mt-5 text-xs text-slate-400">8w</p></div>
-                <div class="border-t border-slate-100 px-5 py-4"><div class="mb-4 flex items-center gap-5 text-2xl text-slate-900">♡　◌　➤ <span class="ml-auto">⌑</span></div><p class="text-xs font-semibold text-slate-900">128 likes</p><button type="button" class="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700" data-social-close>Close preview</button></div>
+            <div class="grid gap-2 sm:grid-cols-2">
+                <label class="text-xs font-semibold text-slate-700">Search templates
+                    <input id="social-template-search" type="search" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" placeholder="Veneers, implants, confidence…">
+                </label>
+                <label class="text-xs font-semibold text-slate-700">Angle
+                    <select id="social-template-group" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                        <option value="">All angles</option>
+                        <?php foreach ($groups as $group): ?><option value="<?= e(mb_strtolower($group)) ?>"><?= e($group) ?></option><?php endforeach; ?>
+                    </select>
+                </label>
             </div>
         </div>
-    </dialog>
-    <script>
-        const socialModal = document.getElementById('social-post-modal');
-        const socialModalTitle = document.getElementById('social-modal-title');
-        const socialModalCaption = document.getElementById('social-modal-caption');
-        const socialModalImage = document.getElementById('social-modal-image');
-        const socialModalStatus = document.getElementById('social-modal-status');
-        const socialReferenceInput = document.getElementById('social-visual-reference');
-        document.querySelectorAll('[data-social-reference] img[data-source-fallback]').forEach((img) => img.addEventListener('error', () => {
-            const fallback = img.dataset.sourceFallback || '';
-            if (fallback && img.src !== fallback) { img.src = fallback; return; }
-            img.classList.add('hidden');
-            img.nextElementSibling?.classList.remove('hidden');
-            img.nextElementSibling?.classList.add('flex');
-        }));
-        document.querySelectorAll('[data-social-reference]').forEach((card) => card.addEventListener('click', () => {
-            socialReferenceInput.value = card.dataset.socialReference || 'none';
-            document.querySelectorAll('[data-social-reference]').forEach((item) => item.classList.remove('border-slate-950'));
-            card.classList.add('border-slate-950');
-        }));
-        document.querySelectorAll('[data-social-open]').forEach((button) => button.addEventListener('click', () => {
-            if (socialModalTitle) socialModalTitle.textContent = button.dataset.title || 'Selected draft';
-            socialModalCaption.textContent = button.dataset.caption || '';
-            socialModalStatus.textContent = button.dataset.status || 'Review';
-            socialModalImage.src = button.dataset.image || '';
-            socialModalImage.alt = button.dataset.title || 'Social post image';
-            socialModal.showModal();
-        }));
-        document.querySelector('[data-social-close]')?.addEventListener('click', () => socialModal.close());
-        socialModal?.addEventListener('click', (event) => { if (event.target === socialModal) socialModal.close(); });
-    </script>
+        <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-100" aria-label="Template analysis progress">
+            <?php $progressPercent = $baseAnalysisProgress['total'] > 0 ? (int)round(($baseAnalysisProgress['ready'] / $baseAnalysisProgress['total']) * 100) : 0; ?>
+            <div class="h-full rounded-full bg-emerald-500" style="width:<?= e((string)$progressPercent) ?>%"></div>
+        </div>
+        <div id="social-template-carousel" class="social-scrollbar mt-4 flex gap-3 overflow-x-auto pb-3">
+            <?php foreach ($visualReferences as $referenceKey => $reference): ?>
+                <?php $isReady = !empty($reference['ready']); ?>
+                <button type="button" class="social-template-card w-40 shrink-0 overflow-hidden rounded-xl border-2 border-transparent bg-slate-50 text-left transition hover:border-slate-400 disabled:hover:border-transparent" data-social-reference="<?= e($referenceKey) ?>" data-ready="<?= $isReady ? '1' : '0' ?>" data-search="<?= e(mb_strtolower(implode(' ', [(string)$reference['label'], (string)$reference['group'], (string)($reference['description'] ?? '')]))) ?>" data-group="<?= e(mb_strtolower((string)$reference['group'])) ?>" aria-pressed="<?= $referenceKey === $defaultReferenceKey ? 'true' : 'false' ?>" <?= $isReady ? '' : 'disabled' ?>>
+                    <?php if (!empty($reference['image_url'])): ?>
+                        <img src="<?= e((string)$reference['image_url']) ?>" class="h-32 w-full bg-slate-100 object-cover" width="160" height="128" loading="lazy" alt="<?= e((string)$reference['label']) ?>">
+                    <?php else: ?>
+                        <div class="grid h-32 place-items-center bg-slate-100 px-3 text-center text-xs text-slate-500">Image unavailable</div>
+                    <?php endif; ?>
+                    <span class="block px-3 pt-2 text-xs font-semibold leading-4 text-slate-900"><?= e((string)$reference['label']) ?></span>
+                    <span class="block px-3 pb-3 pt-1 text-[11px] font-semibold <?= $isReady ? 'text-emerald-700' : 'text-amber-700' ?>"><?= $isReady ? 'Ready · exact overlay' : 'Pending analysis' ?></span>
+                </button>
+            <?php endforeach; ?>
+        </div>
+        <p id="social-template-empty" class="mt-3 hidden rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">No templates match this filter.</p>
+    </section>
+
+    <div class="social-production-grid grid gap-5">
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="controls-title">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 2</p>
+            <h2 id="controls-title" class="mt-1 text-lg font-semibold text-slate-950">Create the new version</h2>
+            <p id="social-selected-template" class="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"><?= $defaultReferenceKey !== '' ? e((string)$visualReferences[$defaultReferenceKey]['label']) : 'No ready template selected' ?></p>
+
+            <form id="social-generate-form" class="mt-4 space-y-4" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
+                <?= csrf_input() ?>
+                <input type="hidden" name="visual_reference" id="social-visual-reference" value="<?= e($defaultReferenceKey) ?>">
+                <input type="hidden" name="creation_mode" value="remix">
+                <input type="hidden" name="copy_mode" value="preserve">
+
+                <label class="block text-sm font-semibold text-slate-800">Focus
+                    <select name="focus" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3">
+                        <option value="veneers">Veneers</option><option value="smile_makeover">Smile makeover</option><option value="implants">Implants / All-on-X</option><option value="lip_repositioning">Lip repositioning</option>
+                    </select>
+                </label>
+                <label class="block text-sm font-semibold text-slate-800">Purpose
+                    <select name="purpose" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="educational">Educational</option><option value="social_ad">Social media ad</option></select>
+                </label>
+                <label class="block text-sm font-semibold text-slate-800">Audience
+                    <select name="audience" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="any">Any adult</option><option value="woman">Woman</option><option value="man">Man</option></select>
+                </label>
+                <label class="block text-sm font-semibold text-slate-800">Age range
+                    <select name="age_range" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="any">Any adult</option><option value="25-34">25–34</option><option value="35-44">35–44</option><option value="45-54">45–54</option><option value="55+">55+</option></select>
+                </label>
+                <label class="block text-sm font-semibold text-slate-800">Text position
+                    <select name="text_position" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="source">Original position</option><option value="left">Move overlay left</option><option value="right">Move overlay right</option></select>
+                </label>
+
+                <div class="grid grid-cols-[1fr_92px] gap-2">
+                    <label class="block text-sm font-semibold text-slate-800">Photo direction <span class="font-normal text-slate-500">(optional)</span>
+                        <textarea name="instruction" rows="3" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Different background, wardrobe, expression, or life moment."></textarea>
+                    </label>
+                    <label class="block text-sm font-semibold text-slate-800">Posts
+                        <select name="count" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><?php for ($i=1;$i<=7;$i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?></select>
+                    </label>
+                </div>
+
+                <details class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <summary class="cursor-pointer text-sm font-semibold text-slate-700">Advanced: new wording or uploaded inspiration</summary>
+                    <div class="mt-3 space-y-3">
+                        <label class="block text-xs font-semibold text-slate-700">Overlay wording
+                            <select id="social-copy-mode-advanced" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="preserve">Keep approved wording exactly</option><option value="rewrite">Explicitly create new wording</option></select>
+                        </label>
+                        <label class="block text-xs font-semibold text-slate-700">Inspiration image
+                            <input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-1 block w-full rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs">
+                        </label>
+                    </div>
+                </details>
+
+                <button id="social-generate-button" type="submit" class="min-h-12 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" <?= $defaultReferenceKey === '' ? 'disabled' : '' ?>>Generate clean photo + exact overlay</button>
+                <p class="text-xs leading-5 text-slate-500">The photo remains text-free. The CRM applies the selected approved overlay afterward.</p>
+            </form>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="preview-title">
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 3</p><h2 id="preview-title" class="mt-1 text-lg font-semibold text-slate-950">Full post preview</h2></div>
+                <?php if ($selected): ?><span class="<?= e(social_studio_badge_class((string)$selected['status'])) ?> rounded-full border px-3 py-1 text-xs font-semibold"><?= e(social_studio_status_labels()[(string)$selected['status']] ?? (string)$selected['status']) ?></span><?php endif; ?>
+            </div>
+            <?php if ($selected): ?>
+                <article class="mx-auto max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <header class="flex items-center gap-3 border-b border-slate-100 px-4 py-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span class="ml-auto font-bold tracking-[0.2em]">···</span></header>
+                    <?php if ($selectedImageUrl !== ''): ?><img class="social-preview-image" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><?php else: ?><div class="grid aspect-[4/5] place-items-center bg-slate-100 p-8 text-center text-sm text-slate-500">Generate the clean photo to assemble this post.</div><?php endif; ?>
+                    <div class="border-t border-slate-100 px-4 py-3"><div class="mb-3 flex text-2xl"><span>♡　◯　➤</span><span class="ml-auto">⌑</span></div><p class="whitespace-pre-line text-sm leading-6 text-slate-700"><strong class="text-slate-950">elitesmilesutah</strong> <?= e((string)$selected['caption']) ?></p><p class="mt-3 text-xs leading-5 text-blue-700"><?= e((string)$selected['hashtags']) ?></p></div>
+                </article>
+            <?php else: ?>
+                <div class="grid min-h-[560px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div><p class="text-base font-semibold text-slate-800">No draft selected</p><p class="mt-2 text-sm text-slate-500">Choose a ready template and generate a version.</p></div></div>
+            <?php endif; ?>
+        </section>
+
+        <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="queue-title">
+            <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 4</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
+            <div class="social-scrollbar mt-4 max-h-[740px] space-y-3 overflow-y-auto pr-1">
+                <?php if ($drafts === []): ?><div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">No drafts waiting.</div><?php endif; ?>
+                <?php foreach ($drafts as $draft): ?>
+                    <?php $status=(string)($draft['status'] ?? 'review'); $imageUrl=social_studio_image_url($draft); $nextStatus=$status === 'approved' ? 'scheduled' : 'approved'; $nextLabel=$status === 'approved' ? 'Schedule' : 'Approve'; ?>
+                    <article class="rounded-xl border border-slate-200 p-3">
+                        <div class="flex gap-3"><?php if ($imageUrl !== ''): ?><img class="h-20 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" src="<?= e($imageUrl) ?>" alt=""><?php else: ?><div class="grid h-20 w-16 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] text-slate-500">No image</div><?php endif; ?><div class="min-w-0"><div class="flex flex-wrap items-center gap-1"><h3 class="text-sm font-semibold leading-5 text-slate-950"><?= e((string)$draft['title']) ?></h3><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-0.5 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status] ?? $status) ?></span></div><p class="mt-1 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'], 90)) ?></p><?php if ((string)($draft['generation_status'] ?? '') === 'failed'): ?><p class="mt-1 text-xs font-semibold text-rose-700"><?= e((string)($draft['generation_error'] ?? 'Image generation failed')) ?></p><?php endif; ?></div></div>
+                        <div class="mt-3 grid grid-cols-2 gap-2"><button type="button" class="min-h-11 rounded-lg border border-slate-300 text-xs font-semibold" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status] ?? $status) ?>">Open post</button><form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700" type="submit"><?= $imageUrl !== '' ? 'Regenerate' : 'Generate image' ?></button></form><form method="POST" action="<?= e(base_url('app/actions/social_studio_status.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="status" value="<?= e($nextStatus) ?>"><button class="min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" type="submit" <?= $status === 'scheduled' || $imageUrl === '' ? 'disabled' : '' ?>><?= e($status === 'scheduled' ? 'Scheduled' : $nextLabel) ?></button></form><form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" onsubmit="return confirm('Delete this draft?');"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-rose-200 text-xs font-semibold text-rose-700" type="submit">Delete</button></form></div>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        </aside>
+    </div>
+
+    <details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <summary class="cursor-pointer text-sm font-semibold text-slate-800">Template library maintenance</summary>
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <form method="POST" action="<?= e(base_url('app/actions/social_studio_reanalyze_bases.php')) ?>" class="rounded-xl border border-slate-200 p-4"><?= csrf_input() ?><input type="hidden" name="limit" value="5"><p class="text-sm font-semibold">Analyze the next 5 templates</p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> ready. Failed analysis is shown instead of silently accepted.</p><button class="mt-3 min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white" type="submit">Run analysis</button></form>
+            <form method="POST" action="<?= e(base_url('app/actions/social_studio_import_instagram.php')) ?>" class="rounded-xl border border-slate-200 p-4"><?= csrf_input() ?><input type="hidden" name="batch_index" value="0"><label class="text-sm font-semibold">Import Instagram inventory JSON<textarea name="posts_json" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","published_at":"2026-03-16","caption":"...","hashtags":["#EliteSmiles"],"image_url":"..."}]'></textarea></label><button class="mt-3 min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold" type="submit">Import first item</button></form>
+        </div>
+    </details>
+</main>
+
+<dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-2xl border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
+    <div class="grid max-h-[92vh] overflow-hidden rounded-2xl bg-white lg:grid-cols-[minmax(0,1.2fr)_minmax(340px,.8fr)]"><div class="grid min-h-[420px] place-items-center bg-slate-950"><img id="social-modal-image" class="max-h-[88vh] w-full object-contain" alt=""></div><div class="flex min-h-0 flex-col"><header class="flex items-center gap-3 border-b border-slate-100 p-4"><img class="h-9 w-9 rounded-full" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span id="social-modal-status" class="ml-auto rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold"></span><button type="button" data-social-close class="grid h-11 w-11 place-items-center rounded-full text-2xl" aria-label="Close preview">×</button></header><form method="POST" action="<?= e(base_url('app/actions/social_studio_update_draft.php')) ?>" class="flex min-h-0 flex-1 flex-col"><?= csrf_input() ?><input id="social-modal-draft-id" type="hidden" name="draft_id" value=""><div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5"><label class="block text-sm font-semibold text-slate-800">Caption<textarea id="social-modal-caption" name="caption" rows="10" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm leading-6"></textarea></label><label class="block text-sm font-semibold text-slate-800">Hashtags<textarea id="social-modal-hashtags" name="hashtags" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm leading-6"></textarea></label></div><footer class="grid grid-cols-2 gap-2 border-t border-slate-100 p-4"><button type="button" data-social-close class="min-h-11 rounded-xl border border-slate-300 text-sm font-semibold">Close</button><button type="submit" class="min-h-11 rounded-xl bg-slate-950 text-sm font-semibold text-white">Save copy</button></footer></form></div></div>
+</dialog>
+
+<script>
+(() => {
+    const autoGenerateIds = <?= json_encode($autoGenerateIds, JSON_UNESCAPED_SLASHES) ?>;
+    const referenceInput = document.getElementById('social-visual-reference');
+    const selectedLabel = document.getElementById('social-selected-template');
+    const generateButton = document.getElementById('social-generate-button');
+    const cards = [...document.querySelectorAll('[data-social-reference]')];
+    const search = document.getElementById('social-template-search');
+    const group = document.getElementById('social-template-group');
+    const empty = document.getElementById('social-template-empty');
+    const copyMode = document.querySelector('input[name="copy_mode"]');
+    document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => { copyMode.value = event.target.value; });
+
+    cards.filter(card => card.dataset.ready === '1').forEach(card => card.addEventListener('click', () => {
+        cards.forEach(item => item.setAttribute('aria-pressed', 'false'));
+        card.setAttribute('aria-pressed', 'true');
+        referenceInput.value = card.dataset.socialReference || '';
+        selectedLabel.textContent = card.querySelector('span')?.textContent?.trim() || 'Selected template';
+        generateButton.disabled = false;
+    }));
+
+    const filterTemplates = () => {
+        const query = (search.value || '').trim().toLowerCase();
+        const selectedGroup = group.value || '';
+        let visible = 0;
+        cards.forEach(card => {
+            const matches = (!query || (card.dataset.search || '').includes(query)) && (!selectedGroup || card.dataset.group === selectedGroup);
+            card.hidden = !matches;
+            if (matches) visible++;
+        });
+        empty.classList.toggle('hidden', visible > 0);
+    };
+    search?.addEventListener('input', filterTemplates);
+    group?.addEventListener('change', filterTemplates);
+
+    document.getElementById('social-generate-form')?.addEventListener('submit', event => {
+        if (!referenceInput.value) { event.preventDefault(); selectedLabel.textContent = 'Choose a Ready template first'; return; }
+        generateButton.disabled = true;
+        generateButton.textContent = 'Creating drafts…';
+    });
+
+    const modal = document.getElementById('social-post-modal');
+    document.querySelectorAll('[data-social-open]').forEach(button => button.addEventListener('click', () => {
+        document.getElementById('social-modal-caption').textContent = button.dataset.caption || '';
+        document.getElementById('social-modal-caption').value = button.dataset.caption || '';
+        document.getElementById('social-modal-hashtags').value = button.dataset.hashtags || '';
+        document.getElementById('social-modal-draft-id').value = button.dataset.draftId || '';
+        document.getElementById('social-modal-status').textContent = button.dataset.status || 'Review';
+        const image = document.getElementById('social-modal-image');
+        image.src = button.dataset.image || '';
+        image.alt = button.dataset.title || 'Social post preview';
+        modal.showModal();
+    }));
+    document.querySelectorAll('[data-social-close]').forEach(button => button.addEventListener('click', () => modal.close()));
+    modal?.addEventListener('click', event => { if (event.target === modal) modal.close(); });
+
+    if (autoGenerateIds.length) {
+        const progress = document.getElementById('social-generation-progress');
+        const csrfField = document.querySelector('#social-generate-form input[type="hidden"]');
+        const csrfName = csrfField?.name || '_csrf';
+        const csrfValue = csrfField?.value || '';
+        (async () => {
+            let completed = 0;
+            let failed = 0;
+            for (const draftId of autoGenerateIds) {
+                progress.textContent = `Generating image ${completed + 1} of ${autoGenerateIds.length}… Keep this page open.`;
+                const body = new FormData();
+                body.append(csrfName, csrfValue);
+                body.append('draft_id', String(draftId));
+                try {
+                    const response = await fetch('<?= e(base_url('app/actions/social_studio_generate_image_api.php')) ?>', {method:'POST', body, credentials:'same-origin'});
+                    const result = await response.json();
+                    if (!response.ok || !result.ok) failed++;
+                } catch (error) { failed++; }
+                completed++;
+            }
+            progress.className = failed ? 'mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800' : 'mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800';
+            progress.textContent = failed ? `${completed - failed} images completed; ${failed} failed. Reloading the review queue…` : `All ${completed} images are ready. Reloading the review queue…`;
+            window.setTimeout(() => window.location.reload(), 900);
+        })();
+    }
+})();
+</script>
 </body>
 </html>

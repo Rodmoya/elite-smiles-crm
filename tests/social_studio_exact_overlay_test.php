@@ -33,8 +33,8 @@ social_studio_exact_assert(
     'Template CTA must remain verbatim, including its manual line break.'
 );
 social_studio_exact_assert(
-    !social_studio_should_send_reference_image($template),
-    'Nano Banana must receive the analyzed photo brief—not the original ad pixels—when CRM will apply an approved overlay.'
+    social_studio_should_send_reference_image($template),
+    'Nano Banana must receive a cleaned source reference so composition remains anchored to the selected ad.'
 );
 $versionedUrl = social_studio_image_url([
     'id' => 30,
@@ -60,7 +60,7 @@ $svg = (string)file_get_contents($targetPath);
 social_studio_exact_assert(substr_count($svg, '<image ') === 2, 'Pixel-locked output must include the generated photo and original template pixels.');
 social_studio_exact_assert(substr_count($svg, '<use href="#approved-template-source"') === 1, 'Each approved overlay element must reuse the saved template pixels.');
 social_studio_exact_assert(!str_contains($svg, '<text '), 'Preserve mode must not reconstruct approved text with substitute fonts.');
-social_studio_exact_assert(str_contains($svg, 'viewBox="0.065 0.69 1 1"'), 'Source artwork region must remain tied to the approved template coordinates.');
+social_studio_exact_assert(str_contains($svg, 'viewBox="0.075 0.695 1 1"'), 'Source artwork region must remain tightly tied to the approved element coordinates.');
 
 $multiRegionTemplate = $template;
 $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
@@ -69,7 +69,18 @@ $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
 $subjectInstruction = social_studio_overlay_subject_instruction($multiRegionTemplate);
 social_studio_exact_assert(str_contains($subjectInstruction, 'right-side photo area'), 'A left-side approved overlay must reserve the right side for a complete, unobstructed face.');
 $regions = social_studio_overlay_pixel_regions($multiRegionTemplate, $multiRegionTemplate);
-social_studio_exact_assert(count($regions) === 2, 'Main artwork and bottom CTA must be preserved as coherent regions instead of text strips.');
+social_studio_exact_assert(count($regions) === 2, 'Each approved overlay element must be preserved as its own tight pixel region.');
+social_studio_exact_assert(abs((float)$regions[0]['source']['width'] - 33.0) < 0.001, 'Pixel-lock regions must use tight element bounds instead of copying a broad source panel.');
+social_studio_exact_assert(social_studio_base_is_ready([
+    'analysis_version' => 4,
+    'overlay_template_json' => social_studio_encode_overlay_template($template),
+    'base_prompt' => 'Clean portrait with right-side subject placement.',
+]), 'A fully analyzed template with overlay geometry and a clean-photo prompt must be selectable.');
+social_studio_exact_assert(!social_studio_base_is_ready([
+    'analysis_version' => 0,
+    'overlay_template_json' => null,
+    'base_prompt' => '',
+]), 'A pending Instagram image must never be selectable as a production template.');
 
 @unlink($targetPath);
 @unlink($sourcePath);

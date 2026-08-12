@@ -94,6 +94,8 @@ if (!$batch) {
                 'source_post_id' => (string)$post['post_id'], 'title' => (string)$data['title'],
                 'published_at' => (string)($post['published_at'] ?? ''), 'group_name' => (string)$data['group_name'],
                 'source_image_url' => (string)$post['image_url'], 'local_image_key' => (string)($localImageKeys[(string)$post['post_id']] ?? ($post['local_image_key'] ?? '')),
+                'source_caption' => (string)($post['caption'] ?? ''),
+                'source_hashtags' => is_array($post['hashtags'] ?? null) ? implode(' ', $post['hashtags']) : (string)($post['hashtags'] ?? ''),
                 'analysis_json' => json_encode($data['analysis'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'base_prompt' => (string)$data['base_prompt'], 'overlay_spec' => (string)$data['overlay_spec'],
                 'overlay_template' => (array)($data['overlay_template'] ?? []),

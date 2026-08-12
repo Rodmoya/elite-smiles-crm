@@ -20,11 +20,16 @@ if (!function_exists('social_studio_ensure_schema')) {
             group_name VARCHAR(120) NOT NULL DEFAULT 'Other',
             source_image_url VARCHAR(500) NULL,
             local_image_key VARCHAR(255) NULL,
+            source_caption MEDIUMTEXT NULL,
+            source_hashtags TEXT NULL,
             analysis_json LONGTEXT NULL,
             base_prompt TEXT NULL,
             overlay_spec TEXT NULL,
             overlay_template_json LONGTEXT NULL,
             analysis_version TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            analysis_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+            analysis_error TEXT NULL,
+            analyzed_at DATETIME NULL,
             status VARCHAR(32) NOT NULL DEFAULT 'active',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -53,6 +58,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             image_storage_key VARCHAR(255) NULL,
             branded_image_storage_key VARCHAR(255) NULL,
             image_generated_at DATETIME NULL,
+            generation_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+            generation_error TEXT NULL,
             scheduled_at DATETIME NULL,
             approved_at DATETIME NULL,
             approved_by INT UNSIGNED NULL,
@@ -77,6 +84,18 @@ if (!function_exists('social_studio_ensure_schema')) {
         if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE 'overlay_template_json'")) {
             db_query("ALTER TABLE social_studio_base_creatives ADD COLUMN overlay_template_json LONGTEXT NULL AFTER overlay_spec");
         }
+        foreach ([
+            'source_caption' => "ALTER TABLE social_studio_base_creatives ADD COLUMN source_caption MEDIUMTEXT NULL AFTER local_image_key",
+            'source_hashtags' => "ALTER TABLE social_studio_base_creatives ADD COLUMN source_hashtags TEXT NULL AFTER source_caption",
+            'analysis_status' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_status VARCHAR(24) NOT NULL DEFAULT 'pending' AFTER analysis_version",
+            'analysis_error' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_error TEXT NULL AFTER analysis_status",
+            'analyzed_at' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analyzed_at DATETIME NULL AFTER analysis_error",
+        ] as $column => $sql) {
+            $quotedColumn = db()->quote($column);
+            if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE {$quotedColumn}")) {
+                db_query($sql);
+            }
+        }
 
         foreach ([
             'image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url",
@@ -90,6 +109,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             'overlay_template_json' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_template_json LONGTEXT NULL AFTER overlay_blocks_json",
             'copy_mode' => "ALTER TABLE social_studio_drafts ADD COLUMN copy_mode VARCHAR(32) NOT NULL DEFAULT 'preserve' AFTER overlay_template_json",
             'text_position' => "ALTER TABLE social_studio_drafts ADD COLUMN text_position VARCHAR(16) NOT NULL DEFAULT 'source' AFTER copy_mode",
+            'generation_status' => "ALTER TABLE social_studio_drafts ADD COLUMN generation_status VARCHAR(24) NOT NULL DEFAULT 'pending' AFTER image_generated_at",
+            'generation_error' => "ALTER TABLE social_studio_drafts ADD COLUMN generation_error TEXT NULL AFTER generation_status",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -98,6 +119,8 @@ if (!function_exists('social_studio_ensure_schema')) {
                 db_query($sql);
             }
         }
+        db_execute('UPDATE social_studio_base_creatives SET analysis_status="ready", analyzed_at=COALESCE(analyzed_at, updated_at) WHERE analysis_version >= 4 AND analysis_status="pending"');
+        db_execute('UPDATE social_studio_drafts SET generation_status="ready", generation_error=NULL WHERE image_storage_key IS NOT NULL AND image_storage_key <> "" AND generation_status="pending"');
     }
 }
 
@@ -200,7 +223,7 @@ if (!function_exists('social_studio_base_analysis_progress')) {
         foreach (glob($directory . DIRECTORY_SEPARATOR . '*.jpg') ?: [] as $path) {
             $postId = pathinfo($path, PATHINFO_FILENAME);
             if ($postId === '' || isset($existing[$postId])) continue;
-            db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, group_name, analysis_version, status) VALUES ("instagram", :source_url, :source_post_id, :title, "Pending analysis", 0, "active")', [
+            db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, group_name, analysis_version, analysis_status, status) VALUES ("instagram", :source_url, :source_post_id, :title, "Pending analysis", 0, "pending", "active")', [
                 'source_url' => 'https://www.instagram.com/p/' . rawurlencode($postId) . '/',
                 'source_post_id' => $postId,
                 'title' => 'Instagram post ' . $postId,
@@ -217,12 +240,15 @@ if (!function_exists('social_studio_base_analysis_progress')) {
         social_studio_sync_bundled_creatives();
         $total = 0;
         $ready = 0;
-        foreach (db_all('SELECT source_url, source_post_id, local_image_key, analysis_version FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram"') as $base) {
+        foreach (db_all('SELECT source_url, source_post_id, local_image_key, analysis_version, analysis_status, overlay_template_json, base_prompt FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND (published_at IS NULL OR published_at >= "2026-03-16")') as $base) {
             if (social_studio_base_source_path($base) === '') {
                 continue;
             }
             $total++;
-            if ((int)($base['analysis_version'] ?? 0) >= 4) {
+            $template = json_decode((string)($base['overlay_template_json'] ?? ''), true);
+            if ((int)($base['analysis_version'] ?? 0) >= 4
+                && is_array($template) && ($template['elements'] ?? []) !== []
+                && trim((string)($base['base_prompt'] ?? '')) !== '') {
                 $ready++;
             }
         }
@@ -236,7 +262,7 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
         social_studio_ensure_schema();
         social_studio_sync_bundled_creatives();
         $limit = max(1, min(5, $limit));
-        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 4 ORDER BY published_at DESC, id DESC LIMIT 100');
+        $bases = db_all('SELECT id, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key FROM social_studio_base_creatives WHERE status = "active" AND source_type = "instagram" AND analysis_version < 4 AND (published_at IS NULL OR published_at >= "2026-03-16") ORDER BY published_at DESC, id DESC LIMIT 100');
         $bases = array_values(array_filter($bases, static fn(array $base): bool => social_studio_base_source_path($base) !== ''));
         $updated = 0;
         $failed = 0;
@@ -247,15 +273,20 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
                 break;
             }
             $path = social_studio_base_source_path($base);
+            db_execute('UPDATE social_studio_base_creatives SET analysis_status="processing", analysis_error=NULL WHERE id=:id LIMIT 1', ['id' => (int)$base['id']]);
             if (!$path || !is_file($path)) {
                 $failed++;
-                $errors[] = (string)$base['title'] . ' [' . (string)$base['source_post_id'] . '] ' . (string)$base['source_url'] . ': source image file not found';
+                $message = (string)$base['title'] . ' [' . (string)$base['source_post_id'] . '] ' . (string)$base['source_url'] . ': source image file not found';
+                $errors[] = $message;
+                db_execute('UPDATE social_studio_base_creatives SET analysis_status="failed", analysis_error=:error WHERE id=:id LIMIT 1', ['id' => (int)$base['id'], 'error' => $message]);
                 continue;
             }
             $bytes = @file_get_contents($path);
             if (!is_string($bytes) || $bytes === '') {
                 $failed++;
-                $errors[] = (string)$base['title'] . ': source image could not be read';
+                $message = (string)$base['title'] . ': source image could not be read';
+                $errors[] = $message;
+                db_execute('UPDATE social_studio_base_creatives SET analysis_status="failed", analysis_error=:error WHERE id=:id LIMIT 1', ['id' => (int)$base['id'], 'error' => $message]);
                 continue;
             }
             $mime = function_exists('mime_content_type') ? (string)(@mime_content_type($path) ?: 'image/jpeg') : 'image/jpeg';
@@ -264,14 +295,16 @@ if (!function_exists('social_studio_reanalyze_base_creatives')) {
             $analysis = social_studio_analyze_base_creative($post);
             if (empty($analysis['ok']) || !is_array($analysis['data'] ?? null)) {
                 $failed++;
-                $errors[] = (string)$base['title'] . ': ' . (string)($analysis['message'] ?? 'OpenAI analysis failed');
+                $message = (string)$base['title'] . ': ' . (string)($analysis['message'] ?? 'OpenAI analysis failed');
+                $errors[] = $message;
+                db_execute('UPDATE social_studio_base_creatives SET analysis_status="failed", analysis_error=:error WHERE id=:id LIMIT 1', ['id' => (int)$base['id'], 'error' => $message]);
                 continue;
             }
             $data = $analysis['data'];
             $analysisJson = is_array($data['analysis'] ?? null)
                 ? json_encode($data['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : (string)($data['analysis'] ?? '');
-            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=4 WHERE id=:id LIMIT 1', [
+            db_execute('UPDATE social_studio_base_creatives SET title=:title, group_name=:group_name, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=4, analysis_status="ready", analysis_error=NULL, analyzed_at=NOW() WHERE id=:id LIMIT 1', [
                 'id' => (int)$base['id'],
                 'title' => trim((string)($data['title'] ?? '')) ?: (string)$base['title'],
                 'group_name' => trim((string)($data['group_name'] ?? '')) ?: (string)$base['group_name'],
@@ -308,14 +341,29 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'base_prompt' => (string)($creative['base_prompt'] ?? ''),
             'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
             'overlay_template_json' => social_studio_encode_overlay_template((array)($creative['overlay_template'] ?? [])),
+            'source_caption' => trim((string)($creative['source_caption'] ?? '')) ?: null,
+            'source_hashtags' => trim((string)($creative['source_hashtags'] ?? '')) ?: null,
             'analysis_version' => !empty($creative['overlay_template']) ? 4 : 0,
+            'analysis_status' => !empty($creative['overlay_template']) ? 'ready' : 'pending',
+            'analyzed_at' => !empty($creative['overlay_template']) ? date('Y-m-d H:i:s') : null,
         ];
         if ($existing) {
-            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json', 'analysis_version']));
-            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=:analysis_version WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
+            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'source_caption', 'source_hashtags', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json', 'analysis_version', 'analysis_status', 'analyzed_at']));
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, source_caption=:source_caption, source_hashtags=:source_hashtags, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=:analysis_version, analysis_status=:analysis_status, analysis_error=NULL, analyzed_at=:analyzed_at WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
             return (int)$existing['id'];
         }
-        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, analysis_json, base_prompt, overlay_spec, overlay_template_json, analysis_version) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json,:analysis_version)', $params);
+        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, source_caption, source_hashtags, analysis_json, base_prompt, overlay_spec, overlay_template_json, analysis_version, analysis_status, analyzed_at) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:source_caption,:source_hashtags,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json,:analysis_version,:analysis_status,:analyzed_at)', $params);
+    }
+}
+
+if (!function_exists('social_studio_base_is_ready')) {
+    function social_studio_base_is_ready(array $base): bool
+    {
+        $template = json_decode((string)($base['overlay_template_json'] ?? ''), true);
+        return (int)($base['analysis_version'] ?? 0) >= 4
+            && is_array($template)
+            && ($template['elements'] ?? []) !== []
+            && trim((string)($base['base_prompt'] ?? '')) !== '';
     }
 }
 
@@ -365,7 +413,7 @@ if (!function_exists('social_studio_visual_references')) {
                 'image' => '',
             ],
         ];
-        foreach (db_all('SELECT id, source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, base_prompt, overlay_spec FROM social_studio_base_creatives WHERE status = "active" ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
+        foreach (db_all('SELECT id, source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, source_caption, source_hashtags, base_prompt, overlay_spec, overlay_template_json, analysis_version, analysis_status, analysis_error FROM social_studio_base_creatives WHERE status = "active" AND (source_type <> "instagram" OR published_at IS NULL OR published_at >= "2026-03-16") ORDER BY published_at DESC, id DESC LIMIT 300') as $base) {
             $key = 'base_' . (int)$base['id'];
             $safePostId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string)($base['source_post_id'] ?? '')) ?: '';
             $bundledImage = $safePostId !== '' ? 'assets/social-studio/instagram/' . $safePostId . '.jpg' : '';
@@ -388,6 +436,11 @@ if (!function_exists('social_studio_visual_references')) {
                 'base_prompt' => (string)($base['base_prompt'] ?? ''),
                 'source_url' => (string)($base['source_url'] ?? ''),
                 'source_image_url' => (string)($base['source_image_url'] ?? ''),
+                'source_caption' => (string)($base['source_caption'] ?? ''),
+                'source_hashtags' => (string)($base['source_hashtags'] ?? ''),
+                'ready' => social_studio_base_is_ready($base),
+                'analysis_status' => social_studio_base_is_ready($base) ? 'ready' : (string)($base['analysis_status'] ?: 'pending'),
+                'analysis_error' => (string)($base['analysis_error'] ?? ''),
             ];
         }
         foreach (db_all('SELECT id, title, image_storage_key, branded_image_storage_key FROM social_studio_drafts WHERE status IN ("approved", "published") AND (image_storage_key IS NOT NULL OR branded_image_storage_key IS NOT NULL) ORDER BY id DESC LIMIT 20') as $draft) {
@@ -403,6 +456,8 @@ if (!function_exists('social_studio_visual_references')) {
                 'date' => '',
                 'description' => 'Proven Elite Smiles approved creative. Preserve its strongest angle, hierarchy, CTA pattern, and visual language while creating a new original version.',
                 'image_url' => base_url('app/actions/social_studio_image.php?draft_id=' . $draftId . '&variant=branded'),
+                'ready' => true,
+                'analysis_status' => 'ready',
             ];
         }
         foreach (['instagram_2026_veneers_confidence', 'instagram_2026_veneers_benefits', 'instagram_2026_lip_repositioning', 'instagram_2026_all_on_x', 'none'] as $legacyKey) {
@@ -582,7 +637,7 @@ if (!function_exists('social_studio_seed_drafts')) {
             'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec', 'overlay_template'],
         ];
         $system = 'You are the Elite Smiles Master CMO and visual production director. Analyze the supplied Instagram creative as an IMMUTABLE approved production template. OCR every visible word exactly, preserving capitalization, punctuation, spelling, and manual line breaks. Measure each text block, divider line, and background box against the source pixels and encode it as a separate overlay_template element using percentages of the original canvas. font_size is percentage of canvas width. Select the closest available font_family by visual anatomy: bodoni, didot, playfair, garamond, georgia, montserrat, helvetica, arial, arial_narrow, or script. Record normal/italic style, weight, tracking, line height, alignment, colors, fills, borders, and geometry. Keep logos out of the template. base_prompt describes ONLY the clean photographic layer and explicitly requests no words, logo, watermark, icons, or graphic text. overlay_spec is a human-readable fidelity audit. This is forensic extraction, never redesign: do not improve, paraphrase, shorten, normalize, or invent any overlay copy.';
-        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR the exact overlay copy and encode a deterministic overlay_template with precise x, y, width, height, font family, font style, scale, weight, tracking, color, alignment, and decoration. Preserve deliberate whitespace and the exact relationship between text and subject. Use transparent when a fill or border is absent. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR every visible overlay word exactly and encode a deterministic overlay_template with precise x, y, width, height, font family, font style, scale, weight, tracking, color, alignment, and decoration. Each element bounding box must be tight around its visible glyphs, icon, rule, or panel—never one large box around unrelated items—because the original pixels inside each box will be composited onto a new photo. Preserve deliberate whitespace, manual line breaks, capitalization, punctuation, and the exact relationship between text and subject. Use transparent when a fill or border is absent. Exclude logos. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
     }
 
@@ -678,14 +733,29 @@ if (!function_exists('social_studio_seed_drafts')) {
         return ['ok'=>true, 'template'=>social_studio_normalize_overlay_template($template)];
     }
 
-    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = []): int
+    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = [], ?array &$createdIds = null): int
     {
         social_studio_ensure_schema();
 
         $focus = social_studio_normalize_focus($focus);
         $count = max(1, min(7, $count));
-        $hashtags = social_studio_default_hashtags($focus);
+        $sourceHashtags = trim((string)($remixTemplate['source_hashtags'] ?? ''));
+        $hashtags = $sourceHashtags !== '' ? preg_split('/\s+/', $sourceHashtags) : social_studio_default_hashtags($focus);
+        $hashtags = array_values(array_filter((array)$hashtags, static fn($tag): bool => is_string($tag) && str_starts_with(trim($tag), '#')));
+        if ($hashtags === []) {
+            $hashtags = social_studio_default_hashtags($focus);
+        }
         $topics = social_studio_generate_topics($focus, $count, $instruction, $inspirationImageDataUrl);
+        if ($topics === []) {
+            throw new RuntimeException('OpenAI returned no usable social drafts. Nothing was added to the review queue.');
+        }
+        foreach ($topics as $topic) {
+            if (trim((string)($topic['caption'] ?? '')) === ''
+                || trim((string)($topic['title'] ?? '')) === ''
+                || trim((string)($topic['image_prompt'] ?? '')) === '') {
+                throw new RuntimeException('OpenAI returned an incomplete draft. Nothing was added to the review queue.');
+            }
+        }
         $created = 0;
 
         foreach ($topics as $index => $topic) {
@@ -708,21 +778,20 @@ if (!function_exists('social_studio_seed_drafts')) {
                     $topic['image_prompt'] .= "\n\n1:1 CONTROL TEST: use the supplied source creative as the exact visual reference. Preserve the same woman, head tilt, expression, hair, wardrobe, indoor background, camera crop, lighting, and subject placement. Remove all existing words, icons, dividers, and graphic marks from the left side and reconstruct that area as clean softly blurred ivory background so the CRM can rebuild the typography separately. Do not add any text or symbols.";
                 }
             }
-            $scheduledAt = social_studio_next_slot($index);
             $caption = trim((string)($topic['caption'] ?? ''));
             if ($caption === '') {
-                $caption = social_studio_fallback_caption($focus, (int)$index);
+                throw new RuntimeException('OpenAI returned a draft without a caption. Nothing was added to the review queue.');
             }
             $title = trim((string)($topic['title'] ?? ''));
             if ($title === '') {
-                $title = social_studio_fallback_title($focus, (int)$index);
+                throw new RuntimeException('OpenAI returned a draft without a title. Nothing was added to the review queue.');
             }
             $imagePrompt = trim((string)($topic['image_prompt'] ?? ''));
             if ($imagePrompt === '') {
-                $imagePrompt = social_studio_fallback_image_prompt($focus, $title);
+                throw new RuntimeException('OpenAI returned a draft without an image prompt. Nothing was added to the review queue.');
             }
 
-            db_insert(
+            $createdId = (int)db_insert(
                 "INSERT INTO social_studio_drafts
                     (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, copy_mode, text_position, scheduled_at, created_by)
                  VALUES
@@ -744,10 +813,13 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'overlay_template_json' => social_studio_encode_overlay_template((array)($topic['overlay_template'] ?? [])),
                     'copy_mode' => (string)($remixTemplate['copy_mode'] ?? 'preserve'),
                     'text_position' => (string)($remixTemplate['text_position'] ?? 'source'),
-                    'scheduled_at' => $scheduledAt,
+                    'scheduled_at' => null,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
                 ]
             );
+            if (is_array($createdIds)) {
+                $createdIds[] = $createdId;
+            }
             $created++;
         }
 
@@ -759,7 +831,7 @@ if (!function_exists('social_studio_generate_topics')) {
     function social_studio_generate_topics(string $focus, int $count, string $instruction = '', string $inspirationImageDataUrl = ''): array
     {
         if (!elite_openai_is_configured()) {
-            return social_studio_fallback_topics($focus, $count);
+            throw new RuntimeException('OpenAI is not configured. No fallback drafts were created.');
         }
 
         $schema = [
@@ -796,7 +868,7 @@ if (!function_exists('social_studio_generate_topics')) {
         $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography, hierarchy, and CTA treatment. The deterministic overlay is handled separately by CRM; do not recreate, paraphrase, or position any on-image copy in these drafts. Create a fresh caption and closely related hashtags while directing only the clean photo through Focus, Purpose, Audience, Age range, and Text position. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the approved overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
-            return social_studio_fallback_topics($focus, $count);
+            throw new RuntimeException('OpenAI draft generation failed: ' . (string)($response['message'] ?? 'No structured drafts returned.'));
         }
 
         return array_slice(array_values($response['data']['drafts']), 0, $count);
@@ -812,7 +884,7 @@ if (!function_exists('social_studio_fallback_topics')) {
                 'title' => social_studio_fallback_title($focus, $i),
                 'post_type' => ['education', 'trust', 'consult_cta', 'faq'][$i % 4],
                 'caption' => social_studio_fallback_caption($focus, $i),
-                'cta' => $focus === 'veneers' ? 'Request a veneer quote today.' : 'Schedule a consult with Elite Smiles.',
+                'cta' => 'Schedule a complimentary consultation with Elite Smiles.',
                 'image_prompt' => social_studio_fallback_image_prompt($focus, social_studio_fallback_title($focus, $i)),
                 'overlay_eyebrow' => '',
                 'overlay_blocks' => [],
@@ -1020,7 +1092,7 @@ if (!function_exists('social_studio_store_imported_image')) {
 if (!function_exists('social_studio_should_send_reference_image')) {
     function social_studio_should_send_reference_image(array $overlayTemplate): bool
     {
-        return ($overlayTemplate['elements'] ?? []) === [];
+        return true;
     }
 }
 
@@ -1032,6 +1104,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         if (!$draft) {
             return ['ok' => false, 'message' => 'Social draft not found.'];
         }
+        db_execute('UPDATE social_studio_drafts SET generation_status="generating", generation_error=NULL WHERE id=:id LIMIT 1', ['id' => $draftId]);
 
         $prompt = social_studio_refine_image_prompt($draft);
         $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
@@ -1047,7 +1120,16 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             if (social_studio_should_send_reference_image($overlayTemplate) && $referencePath !== '' && is_file($referencePath)) {
                 $referenceBytes = @file_get_contents($referencePath);
                 if (is_string($referenceBytes) && $referenceBytes !== '') {
+                    if (($sourceOverlayTemplate['elements'] ?? []) !== []) {
+                        $cleanReference = social_studio_remove_reference_overlay($referenceBytes, $sourceOverlayTemplate);
+                        if ($cleanReference !== '') {
+                            $referenceBytes = $cleanReference;
+                        }
+                    }
                     $referenceMime = (string)(@mime_content_type($referencePath) ?: 'image/jpeg');
+                    if (str_starts_with($referenceBytes, "\xFF\xD8")) {
+                        $referenceMime = 'image/jpeg';
+                    }
                     $referenceImage = ['bytes' => $referenceBytes, 'mime_type' => $referenceMime];
                 }
             }
@@ -1059,7 +1141,9 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             'output_requirement' => 'Return one square 1:1 image matching the supplied Instagram source canvas.',
         ] : []);
         if (empty($generated['ok']) || !is_string($generated['bytes'] ?? null) || $generated['bytes'] === '') {
-            return ['ok' => false, 'message' => (string)($generated['message'] ?? 'Could not generate image.')];
+            $message = (string)($generated['message'] ?? 'Could not generate image.');
+            db_execute('UPDATE social_studio_drafts SET generation_status="failed", generation_error=:error WHERE id=:id LIMIT 1', ['id' => $draftId, 'error' => $message]);
+            return ['ok' => false, 'message' => $message];
         }
 
         $storagePrefix = 'drafts/' . $draftId;
@@ -1067,6 +1151,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         $rawKey = $storagePrefix . '/generated-' . date('Ymd-His') . '.' . $rawExt;
         $rawPath = social_studio_safe_storage_path($rawKey);
         if (!$rawPath || @file_put_contents($rawPath, $generated['bytes']) === false) {
+            db_execute('UPDATE social_studio_drafts SET generation_status="failed", generation_error="Could not save generated image." WHERE id=:id LIMIT 1', ['id' => $draftId]);
             return ['ok' => false, 'message' => 'Could not save generated image.'];
         }
 
@@ -1091,7 +1176,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
 
         db_execute(
             'UPDATE social_studio_drafts
-             SET image_prompt = :image_prompt, image_storage_key = :image_storage_key, branded_image_storage_key = :branded_image_storage_key, image_generated_at = NOW()
+             SET image_prompt = :image_prompt, image_storage_key = :image_storage_key, branded_image_storage_key = :branded_image_storage_key, image_generated_at = NOW(), generation_status="ready", generation_error=NULL
              WHERE id = :id LIMIT 1',
             [
                 'id' => $draftId,
@@ -1205,13 +1290,13 @@ if (!function_exists('social_studio_generate_image_binary')) {
     function social_studio_generate_image_binary(string $prompt, array $referenceImage = [], array $format = []): array
     {
         if (!elite_gemini_is_configured()) {
-            return social_studio_placeholder_image_binary($prompt);
+            return ['ok' => false, 'message' => 'Nano Banana image generation is not configured. No placeholder was created.'];
         }
 
         $model = defined('GOOGLE_GEMINI_IMAGE_MODEL') ? trim((string)GOOGLE_GEMINI_IMAGE_MODEL) : 'gemini-3.1-flash-image';
         $apiKey = defined('GOOGLE_GEMINI_API_KEY') ? trim((string)GOOGLE_GEMINI_API_KEY) : '';
         if ($apiKey === '') {
-            return social_studio_placeholder_image_binary($prompt);
+            return ['ok' => false, 'message' => 'Nano Banana API credentials are missing. No placeholder was created.'];
         }
 
         $imageFormat = [
@@ -1375,46 +1460,32 @@ if (!function_exists('social_studio_create_branded_image')) {
 if (!function_exists('social_studio_create_branded_svg')) {
     function social_studio_overlay_pixel_regions(array $targetTemplate, array $sourceTemplate): array
     {
-        $groups = ['main' => [], 'cta' => []];
+        $regions = [];
         foreach (($targetTemplate['elements'] ?? []) as $index => $targetElement) {
             $sourceElement = $sourceTemplate['elements'][$index] ?? null;
-            if (!is_array($sourceElement)) continue;
-            $text = trim((string)($sourceElement['text'] ?? ''));
-            $sourceY = (float)($sourceElement['y'] ?? 0);
-            $isCta = $sourceY >= 58
-                && $text !== ''
-                && preg_match('/consult|schedule|book|call|discover|learn more|financ|start/i', $text);
-            $groups[$isCta ? 'cta' : 'main'][] = [$targetElement, $sourceElement];
-        }
-
-        $regions = [];
-        foreach ($groups as $pairs) {
-            if ($pairs === []) continue;
-            $targetLeft = $sourceLeft = 100.0;
-            $targetTop = $sourceTop = 100.0;
-            $targetRight = $targetBottom = $sourceRight = $sourceBottom = 0.0;
-            foreach ($pairs as [$targetElement, $sourceElement]) {
-                $targetLeft = min($targetLeft, (float)$targetElement['x']);
-                $targetTop = min($targetTop, (float)$targetElement['y']);
-                $targetRight = max($targetRight, (float)$targetElement['x'] + (float)$targetElement['width']);
-                $targetBottom = max($targetBottom, (float)$targetElement['y'] + (float)$targetElement['height']);
-                $sourceLeft = min($sourceLeft, (float)$sourceElement['x']);
-                $sourceTop = min($sourceTop, (float)$sourceElement['y']);
-                $sourceRight = max($sourceRight, (float)$sourceElement['x'] + (float)$sourceElement['width']);
-                $sourceBottom = max($sourceBottom, (float)$sourceElement['y'] + (float)$sourceElement['height']);
+            if (!is_array($sourceElement)) {
+                continue;
             }
-            $paddingX = 1.5;
-            $paddingY = 1.0;
+            $paddingX = 0.5;
+            $paddingY = 0.5;
+            $targetLeft = max(0, (float)$targetElement['x'] - $paddingX);
+            $targetTop = max(0, (float)$targetElement['y'] - $paddingY);
+            $targetRight = min(100, (float)$targetElement['x'] + (float)$targetElement['width'] + $paddingX);
+            $targetBottom = min(100, (float)$targetElement['y'] + (float)$targetElement['height'] + $paddingY);
+            $sourceLeft = max(0, (float)$sourceElement['x'] - $paddingX);
+            $sourceTop = max(0, (float)$sourceElement['y'] - $paddingY);
+            $sourceRight = min(100, (float)$sourceElement['x'] + (float)$sourceElement['width'] + $paddingX);
+            $sourceBottom = min(100, (float)$sourceElement['y'] + (float)$sourceElement['height'] + $paddingY);
             $regions[] = [
                 'target' => [
-                    'x' => max(0, $targetLeft - $paddingX), 'y' => max(0, $targetTop - $paddingY),
-                    'width' => min(100, $targetRight + $paddingX) - max(0, $targetLeft - $paddingX),
-                    'height' => min(100, $targetBottom + $paddingY) - max(0, $targetTop - $paddingY),
+                    'x' => $targetLeft, 'y' => $targetTop,
+                    'width' => $targetRight - $targetLeft,
+                    'height' => $targetBottom - $targetTop,
                 ],
                 'source' => [
-                    'x' => max(0, $sourceLeft - $paddingX), 'y' => max(0, $sourceTop - $paddingY),
-                    'width' => min(100, $sourceRight + $paddingX) - max(0, $sourceLeft - $paddingX),
-                    'height' => min(100, $sourceBottom + $paddingY) - max(0, $sourceTop - $paddingY),
+                    'x' => $sourceLeft, 'y' => $sourceTop,
+                    'width' => $sourceRight - $sourceLeft,
+                    'height' => $sourceBottom - $sourceTop,
                 ],
             ];
         }
@@ -1577,6 +1648,19 @@ if (!function_exists('social_studio_update_status')) {
         social_studio_ensure_schema();
         $allowed = ['draft', 'review', 'approved', 'scheduled', 'published', 'rejected'];
         if ($draftId <= 0 || !in_array($status, $allowed, true)) {
+            return false;
+        }
+        $draft = db_one('SELECT status, branded_image_storage_key, generation_status FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
+        if (!$draft) {
+            return false;
+        }
+        if ($status === 'approved' && (trim((string)($draft['branded_image_storage_key'] ?? '')) === '' || (string)($draft['generation_status'] ?? '') !== 'ready')) {
+            return false;
+        }
+        if ($status === 'scheduled' && (string)($draft['status'] ?? '') !== 'approved') {
+            return false;
+        }
+        if ($status === 'published') {
             return false;
         }
 

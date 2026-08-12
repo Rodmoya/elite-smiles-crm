@@ -217,7 +217,7 @@ $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
     <details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <summary class="cursor-pointer text-sm font-semibold text-slate-800">Template library maintenance</summary>
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-            <form method="POST" action="<?= e(base_url('app/actions/social_studio_reanalyze_bases.php')) ?>" class="rounded-xl border border-slate-200 p-4"><?= csrf_input() ?><input type="hidden" name="limit" value="5"><p class="text-sm font-semibold">Analyze the next 5 templates</p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> ready. Failed analysis is shown instead of silently accepted.</p><button class="mt-3 min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white" type="submit">Run analysis</button></form>
+            <div class="rounded-xl border border-slate-200 p-4"><p class="text-sm font-semibold">Complete template analysis</p><p id="social-analysis-progress" class="mt-1 text-xs leading-5 text-slate-500"><?= e((string)$baseAnalysisProgress['ready']) ?> of <?= e((string)$baseAnalysisProgress['total']) ?> ready. Templates are processed one at a time so the page remains responsive.</p><button id="social-run-analysis" class="mt-3 min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" type="button" <?= $baseAnalysisProgress['remaining'] <= 0 ? 'disabled' : '' ?>>Analyze all <?= e((string)$baseAnalysisProgress['remaining']) ?> pending templates</button></div>
             <form method="POST" action="<?= e(base_url('app/actions/social_studio_import_instagram.php')) ?>" class="rounded-xl border border-slate-200 p-4"><?= csrf_input() ?><input type="hidden" name="batch_index" value="0"><label class="text-sm font-semibold">Import Instagram inventory JSON<textarea name="posts_json" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","published_at":"2026-03-16","caption":"...","hashtags":["#EliteSmiles"],"image_url":"..."}]'></textarea></label><button class="mt-3 min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold" type="submit">Import first item</button></form>
         </div>
     </details>
@@ -238,6 +238,8 @@ $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
     const group = document.getElementById('social-template-group');
     const empty = document.getElementById('social-template-empty');
     const copyMode = document.querySelector('input[name="copy_mode"]');
+    const analysisButton = document.getElementById('social-run-analysis');
+    const analysisProgress = document.getElementById('social-analysis-progress');
     document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => { copyMode.value = event.target.value; });
 
     cards.filter(card => card.dataset.ready === '1').forEach(card => card.addEventListener('click', () => {
@@ -282,6 +284,37 @@ $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
     }));
     document.querySelectorAll('[data-social-close]').forEach(button => button.addEventListener('click', () => modal.close()));
     modal?.addEventListener('click', event => { if (event.target === modal) modal.close(); });
+
+    analysisButton?.addEventListener('click', async () => {
+        analysisButton.disabled = true;
+        const csrfField = document.querySelector('#social-generate-form input[type="hidden"]');
+        const csrfName = csrfField?.name || '_csrf';
+        const csrfValue = csrfField?.value || '';
+        let ready = <?= (int)$baseAnalysisProgress['ready'] ?>;
+        const total = <?= (int)$baseAnalysisProgress['total'] ?>;
+        let consecutiveFailures = 0;
+        while (ready < total && consecutiveFailures < 3) {
+            analysisProgress.textContent = `Analyzing template ${ready + 1} of ${total}… Keep this page open.`;
+            analysisButton.textContent = `Analyzing ${ready + 1} of ${total}…`;
+            const body = new FormData(); body.append(csrfName, csrfValue);
+            try {
+                const response = await fetch('<?= e(base_url('app/actions/social_studio_analyze_template_api.php')) ?>', {method:'POST', body, credentials:'same-origin'});
+                const result = await response.json();
+                ready = Number(result.ready ?? ready);
+                consecutiveFailures = response.ok && result.ok ? 0 : consecutiveFailures + 1;
+                if (!response.ok && Array.isArray(result.errors) && result.errors.length) analysisProgress.textContent = result.errors[0];
+            } catch (error) { consecutiveFailures++; }
+        }
+        if (ready >= total) {
+            analysisProgress.textContent = `All ${total} templates are ready. Reloading the library…`;
+        } else {
+            analysisProgress.textContent = `Analysis paused after repeated failures. ${ready} of ${total} are ready; click Retry to continue.`;
+            analysisButton.textContent = 'Retry pending templates';
+            analysisButton.disabled = false;
+            return;
+        }
+        window.setTimeout(() => window.location.reload(), 900);
+    });
 
     if (autoGenerateIds.length) {
         const progress = document.getElementById('social-generation-progress');

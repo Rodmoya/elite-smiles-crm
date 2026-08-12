@@ -74,6 +74,20 @@ if (!function_exists('meta_cfg_graph_version')) {
     }
 }
 
+if (!function_exists('meta_cfg_page_id')) {
+    function meta_cfg_page_id(): string
+    {
+        return meta_cfg_string('page_id', '');
+    }
+}
+
+if (!function_exists('meta_cfg_instagram_account_id')) {
+    function meta_cfg_instagram_account_id(): string
+    {
+        return meta_cfg_string('instagram_account_id', '');
+    }
+}
+
 if (!function_exists('meta_cfg_form_ids')) {
     function meta_cfg_form_ids(): array
     {

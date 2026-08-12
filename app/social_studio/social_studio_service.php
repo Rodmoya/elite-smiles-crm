@@ -65,6 +65,12 @@ if (!function_exists('social_studio_ensure_schema')) {
             approved_by INT UNSIGNED NULL,
             published_at DATETIME NULL,
             meta_post_id VARCHAR(120) NULL,
+            meta_instagram_post_id VARCHAR(120) NULL,
+            meta_facebook_post_id VARCHAR(120) NULL,
+            publish_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            publish_error TEXT NULL,
+            publish_started_at DATETIME NULL,
+            last_publish_attempt_at DATETIME NULL,
             notes TEXT NULL,
             created_by INT UNSIGNED NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -111,6 +117,12 @@ if (!function_exists('social_studio_ensure_schema')) {
             'text_position' => "ALTER TABLE social_studio_drafts ADD COLUMN text_position VARCHAR(16) NOT NULL DEFAULT 'source' AFTER copy_mode",
             'generation_status' => "ALTER TABLE social_studio_drafts ADD COLUMN generation_status VARCHAR(24) NOT NULL DEFAULT 'pending' AFTER image_generated_at",
             'generation_error' => "ALTER TABLE social_studio_drafts ADD COLUMN generation_error TEXT NULL AFTER generation_status",
+            'meta_instagram_post_id' => "ALTER TABLE social_studio_drafts ADD COLUMN meta_instagram_post_id VARCHAR(120) NULL AFTER meta_post_id",
+            'meta_facebook_post_id' => "ALTER TABLE social_studio_drafts ADD COLUMN meta_facebook_post_id VARCHAR(120) NULL AFTER meta_instagram_post_id",
+            'publish_attempts' => "ALTER TABLE social_studio_drafts ADD COLUMN publish_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0 AFTER meta_facebook_post_id",
+            'publish_error' => "ALTER TABLE social_studio_drafts ADD COLUMN publish_error TEXT NULL AFTER publish_attempts",
+            'publish_started_at' => "ALTER TABLE social_studio_drafts ADD COLUMN publish_started_at DATETIME NULL AFTER publish_error",
+            'last_publish_attempt_at' => "ALTER TABLE social_studio_drafts ADD COLUMN last_publish_attempt_at DATETIME NULL AFTER publish_started_at",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -133,6 +145,8 @@ if (!function_exists('social_studio_status_labels')) {
             'approved' => 'Approved',
             'scheduled' => 'Scheduled',
             'published' => 'Published',
+            'publishing' => 'Publishing',
+            'publish_failed' => 'Publish failed',
             'rejected' => 'Rejected',
         ];
     }
@@ -970,11 +984,17 @@ if (!function_exists('social_studio_dashboard_data')) {
             $counts[(string)$row['status']] = (int)$row['total'];
         }
 
+        $requestedDraftId = function_exists('get') ? (int)get('draft', 0) : 0;
+        $selected = $requestedDraftId > 0
+            ? db_one('SELECT * FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $requestedDraftId])
+            : null;
+        $selected ??= db_one('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "approved", "scheduled", "publish_failed", "published") ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed", "scheduled", "published"), id DESC LIMIT 1');
+
         return [
             'counts' => $counts,
-            'drafts' => db_all('SELECT * FROM social_studio_drafts ORDER BY FIELD(status, "review", "draft", "approved", "scheduled", "published", "rejected"), COALESCE(scheduled_at, created_at) ASC, id DESC LIMIT 12'),
-            'selected' => db_one('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "approved") ORDER BY FIELD(status, "review", "draft", "approved"), id DESC LIMIT 1'),
-            'schedule' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at IS NOT NULL AND status IN ("review", "approved", "scheduled") ORDER BY scheduled_at ASC LIMIT 8'),
+            'drafts' => db_all('SELECT * FROM social_studio_drafts ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed", "scheduled", "publishing", "published", "rejected"), COALESCE(scheduled_at, created_at) ASC, id DESC LIMIT 12'),
+            'selected' => $selected,
+            'schedule' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at IS NOT NULL AND status IN ("approved", "scheduled", "publish_failed") ORDER BY scheduled_at ASC LIMIT 8'),
         ];
     }
 }

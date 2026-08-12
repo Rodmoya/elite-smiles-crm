@@ -11,7 +11,7 @@ require_csrf();
 header('Content-Type: application/json; charset=utf-8');
 
 try {
-    $result = social_studio_reanalyze_base_creatives(1);
+    $result = social_studio_reanalyze_base_creatives(1, (int)post('base_id', 0));
     $ok = (int)($result['updated'] ?? 0) === 1 || (int)($result['remaining'] ?? 0) === 0;
     http_response_code($ok ? 200 : 422);
     echo json_encode(['ok' => $ok] + $result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

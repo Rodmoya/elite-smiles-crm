@@ -1097,6 +1097,83 @@ if (!function_exists('social_studio_should_send_reference_image')) {
     }
 }
 
+if (!function_exists('social_studio_should_direct_edit_template')) {
+    function social_studio_should_direct_edit_template(array $draft, string $referencePath): bool
+    {
+        return $referencePath !== ''
+            && is_file($referencePath)
+            && (string)($draft['copy_mode'] ?? 'preserve') === 'preserve'
+            && (string)($draft['text_position'] ?? 'source') === 'source'
+            && preg_match('/^base_\d+$/', (string)($draft['base_reference_key'] ?? '')) === 1;
+    }
+}
+
+if (!function_exists('social_studio_direct_template_edit_prompt')) {
+    function social_studio_direct_template_edit_prompt(array $draft, array $overlayTemplate = []): string
+    {
+        $imagePrompt = trim((string)($draft['image_prompt'] ?? ''));
+        $variation = '';
+        if (preg_match('/Controlled substitutions only[^\n]*?(?:Focus:\s*([^;\n]+);\s*Purpose:\s*([^;\n]+);\s*Audience:\s*([^;\n]+);\s*Age range:\s*([^;\n]+))/iu', $imagePrompt, $match)) {
+            $variation = 'Focus: ' . trim((string)$match[1])
+                . '; Purpose: ' . trim((string)$match[2])
+                . '; Audience: ' . trim((string)$match[3])
+                . '; Age range: ' . trim((string)$match[4]) . '.';
+        }
+        if (preg_match('/Treatment-specific subject direction:\s*(.+?)(?:\n[A-Z][A-Z ]+:|$)/isu', $imagePrompt, $match)) {
+            $variation .= ($variation !== '' ? "\n" : '') . 'Additional photo direction: ' . trim((string)$match[1]);
+        }
+        if ($variation === '') {
+            $variation = 'Create a fresh photographic variation appropriate for ' . social_studio_focus_label((string)($draft['content_focus'] ?? 'veneers')) . '.';
+        }
+
+        $protectedCopy = [];
+        foreach ((array)($overlayTemplate['elements'] ?? []) as $element) {
+            if ((string)($element['type'] ?? '') !== 'text') continue;
+            $text = trim((string)($element['text'] ?? ''));
+            if ($text !== '') $protectedCopy[] = $text;
+        }
+
+        return "Edit the supplied approved Elite Smiles advertisement directly.\n\n"
+            . "CHANGE ONLY THE PHOTOGRAPHIC PERSON, PHOTOGRAPHIC DENTAL SUBJECT, AND PHOTOGRAPHIC BACKGROUND according to this request:\n{$variation}\n\n"
+            . "Keep the replacement subject at the same camera distance, scale, pose area, and side of the composition as the original. When a person is present, keep the complete face, both eyes, and full bright natural-looking smile visible and tack-sharp.\n\n"
+            . "PROTECTED DESIGN LOCK: Everything other than the photographic person/dental subject and photographic background is immutable. Preserve every design element visually identical to the input: all wording, spelling, punctuation, line breaks, fonts, font sizes, weights, positions, colors, icons, ornaments, underlines, circles, rules, panels, CTA, financing language, footer, brand treatment, spacing, margins, and canvas composition. Do not redraw, rewrite, move, resize, recolor, crop, blur, erase, or restyle protected design content. This is a localized photo replacement, not a redesign and not a new advertisement.\n\n"
+            . ($protectedCopy !== [] ? "Protected wording that must remain perfectly legible and unchanged:\n" . implode("\n---\n", $protectedCopy) . "\n\n" : '')
+            . "Return one image with the same aspect ratio and complete layout as the supplied advertisement. Never add new words, logos, badges, icons, or design elements.";
+    }
+}
+
+if (!function_exists('social_studio_match_template_canvas')) {
+    function social_studio_match_template_canvas(array $generated, string $templatePath): array
+    {
+        $bytes = is_string($generated['bytes'] ?? null) ? (string)$generated['bytes'] : '';
+        if ($bytes === '' || !is_file($templatePath) || !function_exists('imagecreatefromstring')) return $generated;
+        $templateSize = @getimagesize($templatePath);
+        $sourceSize = @getimagesizefromstring($bytes);
+        if (!is_array($templateSize) || !is_array($sourceSize) || empty($templateSize[0]) || empty($templateSize[1]) || empty($sourceSize[0]) || empty($sourceSize[1])) return $generated;
+        $targetWidth = (int)$templateSize[0]; $targetHeight = (int)$templateSize[1];
+        if ((int)$sourceSize[0] === $targetWidth && (int)$sourceSize[1] === $targetHeight) return $generated;
+        $source = @imagecreatefromstring($bytes);
+        if (!$source) return $generated;
+        $target = imagecreatetruecolor($targetWidth, $targetHeight);
+        if (!$target) { imagedestroy($source); return $generated; }
+        $sourceWidth = imagesx($source); $sourceHeight = imagesy($source);
+        $sourceRatio = $sourceWidth / max(1, $sourceHeight); $targetRatio = $targetWidth / max(1, $targetHeight);
+        if ($sourceRatio > $targetRatio) {
+            $cropHeight = $sourceHeight; $cropWidth = (int)round($sourceHeight * $targetRatio);
+            $cropX = (int)max(0, floor(($sourceWidth - $cropWidth) / 2)); $cropY = 0;
+        } else {
+            $cropWidth = $sourceWidth; $cropHeight = (int)round($sourceWidth / $targetRatio);
+            $cropX = 0; $cropY = (int)max(0, floor(($sourceHeight - $cropHeight) / 2));
+        }
+        imagecopyresampled($target, $source, 0, 0, $cropX, $cropY, $targetWidth, $targetHeight, $cropWidth, $cropHeight);
+        ob_start(); imagepng($target, null, 6); $normalized = (string)ob_get_clean();
+        imagedestroy($target); imagedestroy($source);
+        if ($normalized === '') return $generated;
+        $generated['bytes'] = $normalized; $generated['mime_type'] = 'image/png';
+        return $generated;
+    }
+}
+
 if (!function_exists('social_studio_generate_image_for_draft')) {
     function social_studio_generate_image_for_draft(int $draftId): array
     {
@@ -1107,7 +1184,6 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         }
         db_execute('UPDATE social_studio_drafts SET generation_status="generating", generation_error=NULL WHERE id=:id LIMIT 1', ['id' => $draftId]);
 
-        $prompt = social_studio_refine_image_prompt($draft);
         $overlayTemplate = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
         $overlayTemplate = is_array($overlayTemplate) ? social_studio_normalize_overlay_template($overlayTemplate) : [];
         $referenceImage = [];
@@ -1118,7 +1194,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             $referencePath = $base ? social_studio_base_source_path($base) : '';
             $sourceTemplateDecoded = $base ? json_decode((string)($base['overlay_template_json'] ?? ''), true) : null;
             $sourceOverlayTemplate = is_array($sourceTemplateDecoded) ? social_studio_normalize_overlay_template($sourceTemplateDecoded) : [];
-            if (social_studio_should_send_reference_image($overlayTemplate) && $referencePath !== '' && is_file($referencePath)) {
+            if (!social_studio_should_direct_edit_template($draft, $referencePath) && social_studio_should_send_reference_image($overlayTemplate) && $referencePath !== '' && is_file($referencePath)) {
                 $referenceBytes = @file_get_contents($referencePath);
                 if (is_string($referenceBytes) && $referenceBytes !== '') {
                     if (($sourceOverlayTemplate['elements'] ?? []) !== []) {
@@ -1135,12 +1211,25 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
                 }
             }
         }
+        $directTemplateEdit = social_studio_should_direct_edit_template($draft, $referencePath);
+        $prompt = $directTemplateEdit
+            ? social_studio_direct_template_edit_prompt($draft, $sourceOverlayTemplate)
+            : social_studio_refine_image_prompt($draft);
         $templateSquare = is_array($overlayTemplate) && (string)($overlayTemplate['aspect_ratio'] ?? '') === '1:1';
-        $generated = social_studio_generate_image_binary($prompt, $referenceImage, $templateSquare ? [
-            'aspect_ratio' => 'ASPECT_RATIO_ONE_BY_ONE',
-            'image_size' => 'IMAGE_SIZE_TWO_K',
-            'output_requirement' => 'Return one square 1:1 image matching the supplied Instagram source canvas.',
-        ] : []);
+        if ($directTemplateEdit) {
+            $edit = elite_gemini_generate_image_edit([$referencePath], $prompt);
+            $editBytes = !empty($edit['ok']) ? base64_decode((string)($edit['image_base64'] ?? ''), true) : false;
+            $generated = !empty($edit['ok']) && is_string($editBytes) && $editBytes !== ''
+                ? ['ok'=>true, 'bytes'=>$editBytes, 'mime_type'=>(string)($edit['mime_type'] ?? 'image/png')]
+                : ['ok'=>false, 'message'=>(string)($edit['message'] ?? 'Nano Banana could not edit the approved template.')];
+            $generated = social_studio_match_template_canvas($generated, $referencePath);
+        } else {
+            $generated = social_studio_generate_image_binary($prompt, $referenceImage, $templateSquare ? [
+                'aspect_ratio' => 'ASPECT_RATIO_ONE_BY_ONE',
+                'image_size' => 'IMAGE_SIZE_TWO_K',
+                'output_requirement' => 'Return one square 1:1 image matching the supplied Instagram source canvas.',
+            ] : []);
+        }
         if (empty($generated['ok']) || !is_string($generated['bytes'] ?? null) || $generated['bytes'] === '') {
             $message = (string)($generated['message'] ?? 'Could not generate image.');
             db_execute('UPDATE social_studio_drafts SET generation_status="failed", generation_error=:error WHERE id=:id LIMIT 1', ['id' => $draftId, 'error' => $message]);
@@ -1148,7 +1237,13 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         }
 
         $storagePrefix = 'drafts/' . $draftId;
-        $rawExt = (string)($generated['mime_type'] ?? '') === 'image/svg+xml' ? 'svg' : 'png';
+        $rawExt = match (strtolower((string)($generated['mime_type'] ?? 'image/png'))) {
+            'image/svg+xml' => 'svg',
+            'image/jpeg', 'image/jpg' => 'jpg',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            default => 'png',
+        };
         $rawKey = $storagePrefix . '/generated-' . date('Ymd-His') . '.' . $rawExt;
         $rawPath = social_studio_safe_storage_path($rawKey);
         if (!$rawPath || @file_put_contents($rawPath, $generated['bytes']) === false) {
@@ -1156,7 +1251,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             return ['ok' => false, 'message' => 'Could not save generated image.'];
         }
 
-        $hasOverlayTemplate = is_array($overlayTemplate) && ($overlayTemplate['elements'] ?? []) !== [];
+        $hasOverlayTemplate = !$directTemplateEdit && is_array($overlayTemplate) && ($overlayTemplate['elements'] ?? []) !== [];
         $brandedExt = $hasOverlayTemplate ? 'svg' : (social_studio_can_raster_brand_images() ? 'png' : 'svg');
         $brandedKey = $storagePrefix . '/branded-' . date('Ymd-His') . '.' . $brandedExt;
         $brandedPath = social_studio_safe_storage_path($brandedKey);
@@ -1165,7 +1260,9 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             && $referencePath !== ''
             && is_file($referencePath)
             && ($sourceOverlayTemplate['elements'] ?? []) !== [];
-        if (!$brandedPath || !social_studio_create_branded_image(
+        if ($directTemplateEdit) {
+            $brandedKey = $rawKey;
+        } elseif (!$brandedPath || !social_studio_create_branded_image(
             $rawPath,
             $brandedPath,
             $hasOverlayTemplate ? $overlayTemplate : [],

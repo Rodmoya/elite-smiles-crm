@@ -54,13 +54,13 @@ file_put_contents($sourcePath, (string)$png);
 
 social_studio_exact_assert(
     social_studio_create_branded_svg($rawPath, $targetPath, $template, $sourcePath, $template),
-    'Pixel-locked SVG should be created.'
+    'Reusable overlay SVG should be created.'
 );
 $svg = (string)file_get_contents($targetPath);
-social_studio_exact_assert(substr_count($svg, '<image ') === 2, 'Pixel-locked output must include the generated photo and original template pixels.');
-social_studio_exact_assert(substr_count($svg, '<use href="#approved-template-source"') === 1, 'Each approved overlay element must reuse the saved template pixels.');
-social_studio_exact_assert(!str_contains($svg, '<text '), 'Preserve mode must not reconstruct approved text with substitute fonts.');
-social_studio_exact_assert(str_contains($svg, 'viewBox="0.075 0.695 1 1"'), 'Source artwork region must remain tightly tied to the approved element coordinates.');
+social_studio_exact_assert(substr_count($svg, '<image ') === 1, 'Output must include only the newly generated photo.');
+social_studio_exact_assert(!str_contains($svg, 'approved-template-source'), 'Original Instagram pixels must never be embedded in the reusable overlay.');
+social_studio_exact_assert(str_contains($svg, '<text '), 'Approved wording must be rendered as an independent overlay element.');
+social_studio_exact_assert(str_contains($svg, 'COMPLIMENTARY'), 'Approved overlay wording must remain verbatim in the output.');
 
 $multiRegionTemplate = $template;
 $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
@@ -68,9 +68,6 @@ $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
 ]);
 $subjectInstruction = social_studio_overlay_subject_instruction($multiRegionTemplate);
 social_studio_exact_assert(str_contains($subjectInstruction, 'right-side photo area'), 'A left-side approved overlay must reserve the right side for a complete, unobstructed face.');
-$regions = social_studio_overlay_pixel_regions($multiRegionTemplate, $multiRegionTemplate);
-social_studio_exact_assert(count($regions) === 2, 'Each approved overlay element must be preserved as its own tight pixel region.');
-social_studio_exact_assert(abs((float)$regions[0]['source']['width'] - 33.0) < 0.001, 'Pixel-lock regions must use tight element bounds instead of copying a broad source panel.');
 social_studio_exact_assert(social_studio_base_is_ready([
     'analysis_version' => 4,
     'overlay_template_json' => social_studio_encode_overlay_template($template),

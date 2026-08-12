@@ -638,7 +638,7 @@ if (!function_exists('social_studio_seed_drafts')) {
             'required' => ['title', 'group_name', 'analysis', 'base_prompt', 'overlay_spec', 'overlay_template'],
         ];
         $system = 'You are the Elite Smiles Master CMO and visual production director. Analyze the supplied Instagram creative as an IMMUTABLE approved production template. OCR every visible word exactly, preserving capitalization, punctuation, spelling, and manual line breaks. Measure each text block, divider line, and background box against the source pixels and encode it as a separate overlay_template element using percentages of the original canvas. font_size is percentage of canvas width. Select the closest available font_family by visual anatomy: bodoni, didot, playfair, garamond, georgia, montserrat, helvetica, arial, arial_narrow, or script. Record normal/italic style, weight, tracking, line height, alignment, colors, fills, borders, and geometry. Keep logos out of the template. base_prompt describes ONLY the clean photographic layer and explicitly requests no words, logo, watermark, icons, or graphic text. overlay_spec is a human-readable fidelity audit. This is forensic extraction, never redesign: do not improve, paraphrase, shorten, normalize, or invent any overlay copy.';
-        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR every visible overlay word exactly and encode a deterministic overlay_template with precise x, y, width, height, font family, font style, scale, weight, tracking, color, alignment, and decoration. Each element bounding box must be tight around its visible glyphs, icon, rule, or panel—never one large box around unrelated items—because the original pixels inside each box will be composited onto a new photo. Preserve deliberate whitespace, manual line breaks, capitalization, punctuation, and the exact relationship between text and subject. Use transparent when a fill or border is absent. Exclude logos. The template must rebuild the source overlay on a newly generated clean photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $user = 'Analyze this existing Elite Smiles Instagram post pixel-by-pixel. Determine whether the source is 1:1 or 4:5. OCR every visible overlay word exactly and encode a deterministic overlay_template with precise x, y, width, height, font family, font style, scale, weight, tracking, color, alignment, and decoration. Treat text, icons, divider lines, and panels as independent reusable design elements; never rely on cropped source-image pixels. Preserve deliberate whitespace, manual line breaks, capitalization, punctuation, and the exact relationship between text and subject. Use transparent when a fill or border is absent. Exclude logos. The template must rebuild the source overlay cleanly on a newly generated photo without asking the image model to draw text. Source metadata: ' . json_encode(array_diff_key($post, ['image_url' => true]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return elite_openai_json_response($system, $user, $schema, 'elite_smiles_base_creative_analysis', (string)($post['image_url'] ?? ''));
     }
 
@@ -1459,40 +1459,6 @@ if (!function_exists('social_studio_create_branded_image')) {
 }
 
 if (!function_exists('social_studio_create_branded_svg')) {
-    function social_studio_overlay_pixel_regions(array $targetTemplate, array $sourceTemplate): array
-    {
-        $regions = [];
-        foreach (($targetTemplate['elements'] ?? []) as $index => $targetElement) {
-            $sourceElement = $sourceTemplate['elements'][$index] ?? null;
-            if (!is_array($sourceElement)) {
-                continue;
-            }
-            $paddingX = 0.5;
-            $paddingY = 0.5;
-            $targetLeft = max(0, (float)$targetElement['x'] - $paddingX);
-            $targetTop = max(0, (float)$targetElement['y'] - $paddingY);
-            $targetRight = min(100, (float)$targetElement['x'] + (float)$targetElement['width'] + $paddingX);
-            $targetBottom = min(100, (float)$targetElement['y'] + (float)$targetElement['height'] + $paddingY);
-            $sourceLeft = max(0, (float)$sourceElement['x'] - $paddingX);
-            $sourceTop = max(0, (float)$sourceElement['y'] - $paddingY);
-            $sourceRight = min(100, (float)$sourceElement['x'] + (float)$sourceElement['width'] + $paddingX);
-            $sourceBottom = min(100, (float)$sourceElement['y'] + (float)$sourceElement['height'] + $paddingY);
-            $regions[] = [
-                'target' => [
-                    'x' => $targetLeft, 'y' => $targetTop,
-                    'width' => $targetRight - $targetLeft,
-                    'height' => $targetBottom - $targetTop,
-                ],
-                'source' => [
-                    'x' => $sourceLeft, 'y' => $sourceTop,
-                    'width' => $sourceRight - $sourceLeft,
-                    'height' => $sourceBottom - $sourceTop,
-                ],
-            ];
-        }
-        return $regions;
-    }
-
     function social_studio_create_branded_svg(string $sourcePath, string $targetPath, array $overlayTemplate = [], string $templateSourcePath = '', array $sourceOverlayTemplate = []): bool
     {
         $sourceBytes = @file_get_contents($sourcePath);
@@ -1508,47 +1474,15 @@ if (!function_exists('social_studio_create_branded_svg')) {
         $height = is_array($size) && !empty($size[1]) ? (int)$size[1] : 1080;
         $sourceData = 'data:' . $sourceMime . ';base64,' . base64_encode($sourceBytes);
         $template = social_studio_normalize_overlay_template($overlayTemplate);
-        $sourceTemplate = social_studio_normalize_overlay_template($sourceOverlayTemplate);
-        $templateSourceBytes = $templateSourcePath !== '' && is_file($templateSourcePath) ? @file_get_contents($templateSourcePath) : false;
-        $templateSourceSize = $templateSourcePath !== '' ? @getimagesize($templateSourcePath) : false;
-        $pixelLocked = is_string($templateSourceBytes) && $templateSourceBytes !== ''
-            && is_array($templateSourceSize) && !empty($templateSourceSize[0]) && !empty($templateSourceSize[1])
-            && ($sourceTemplate['elements'] ?? []) !== [];
-        $templateSourceData = '';
-        $templateSourceWidth = 0;
-        $templateSourceHeight = 0;
-        if ($pixelLocked) {
-            $templateSourceMime = (string)($templateSourceSize['mime'] ?? (@mime_content_type($templateSourcePath) ?: 'image/jpeg'));
-            $templateSourceData = 'data:' . $templateSourceMime . ';base64,' . base64_encode((string)$templateSourceBytes);
-            $templateSourceWidth = (int)$templateSourceSize[0];
-            $templateSourceHeight = (int)$templateSourceSize[1];
-        }
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
-            . ($pixelLocked
-                ? '<defs><image id="approved-template-source" href="' . $templateSourceData . '" x="0" y="0" width="' . $templateSourceWidth . '" height="' . $templateSourceHeight . '" preserveAspectRatio="none"/></defs>'
-                : '')
             . '<rect width="100%" height="100%" fill="' . htmlspecialchars((string)($template['canvas_background'] ?? 'transparent'), ENT_QUOTES, 'UTF-8') . '"/>'
             . '<image href="' . $sourceData . '" x="0" y="0" width="' . $width . '" height="' . $height . '" preserveAspectRatio="xMidYMid slice"/>';
-        if ($pixelLocked) {
-            foreach (social_studio_overlay_pixel_regions($template, $sourceTemplate) as $region) {
-                $targetRegion = $region['target'];
-                $sourceRegion = $region['source'];
-                $x = (float)$targetRegion['x'] * $width / 100;
-                $y = (float)$targetRegion['y'] * $height / 100;
-                $w = (float)$targetRegion['width'] * $width / 100;
-                $h = (float)$targetRegion['height'] * $height / 100;
-                $sourceX = (float)$sourceRegion['x'] * $templateSourceWidth / 100;
-                $sourceY = (float)$sourceRegion['y'] * $templateSourceHeight / 100;
-                $sourceW = max(1, (float)$sourceRegion['width'] * $templateSourceWidth / 100);
-                $sourceH = max(1, (float)$sourceRegion['height'] * $templateSourceHeight / 100);
-                $svg .= '<svg x="' . $x . '" y="' . $y . '" width="' . $w . '" height="' . $h . '" viewBox="' . $sourceX . ' ' . $sourceY . ' ' . $sourceW . ' ' . $sourceH . '" preserveAspectRatio="none" overflow="hidden">'
-                    . '<use href="#approved-template-source"/>'
-                    . '</svg>';
-            }
-            $svg .= '</svg>';
-            return @file_put_contents($targetPath, $svg) !== false;
-        }
-        foreach (($template['elements'] ?? []) as $elementIndex => $element) {
+        $elements = (array)($template['elements'] ?? []);
+        usort($elements, static function (array $left, array $right): int {
+            $layer = static fn(array $element): int => (string)($element['type'] ?? '') === 'text' ? 1 : 0;
+            return $layer($left) <=> $layer($right);
+        });
+        foreach ($elements as $element) {
             $x = (float)$element['x'] * $width / 100; $y = (float)$element['y'] * $height / 100;
             $w = (float)$element['width'] * $width / 100; $h = (float)$element['height'] * $height / 100;
             $fill = htmlspecialchars((string)$element['background_color'], ENT_QUOTES, 'UTF-8');

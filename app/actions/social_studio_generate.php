@@ -31,6 +31,10 @@ if (str_starts_with($visualReferenceKey, 'base_')) {
         redirect(base_url('social-studio.php'));
     }
     if ($baseAnalysis && $creationMode !== 'manual') {
+        if (!social_studio_base_is_ready($baseAnalysis)) {
+            flash_set('error', 'That Instagram template is still being analyzed. Choose a Ready template or finish the library analysis first.');
+            redirect(base_url('social-studio.php'));
+        }
         $overlayTemplate = social_studio_get_or_create_overlay_template($baseAnalysis);
         if ($overlayTemplate === []) {
             flash_set('error', 'The selected ad could not be converted into an exact overlay template. Please choose another ad or reanalyze the library.');
@@ -78,6 +82,9 @@ if ($baseAnalysis) {
     $instruction .= "\nBASE POST ANALYSIS (source of truth):\n" . (string)$baseAnalysis['analysis_json'];
     $instruction .= "\nBASE POST PROMPT:\n" . (string)$baseAnalysis['base_prompt'];
     $instruction .= "\nBASE OVERLAY SPEC:\n" . (string)$baseAnalysis['overlay_spec'];
+    if (trim((string)($baseAnalysis['source_caption'] ?? '')) !== '') {
+        $instruction .= "\nSOURCE INSTAGRAM CAPTION (write a fresh but closely related caption; do not copy verbatim):\n" . (string)$baseAnalysis['source_caption'];
+    }
 }
 $instruction = $brief . "\n" . $instruction;
 $remixTemplate = $baseAnalysis ? [
@@ -94,8 +101,17 @@ $remixTemplate = $baseAnalysis ? [
     'age_range' => (string)post('age_range', 'any'),
     'text_position' => (string)post('text_position', 'source'),
     'copy_mode' => $copyMode,
+    'source_caption' => (string)($baseAnalysis['source_caption'] ?? ''),
+    'source_hashtags' => (string)($baseAnalysis['source_hashtags'] ?? ''),
 ] : [];
-$created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl, $remixTemplate);
+try {
+    $createdIds = [];
+    $created = social_studio_seed_drafts($focus, $count, (int)(auth_user_id() ?: 0), $instruction, $uploadedInspirationDataUrl, $remixTemplate, $createdIds);
+} catch (Throwable $exception) {
+    flash_set('error', $exception->getMessage());
+    redirect(base_url('social-studio.php'));
+}
 
-flash_set('success', 'Created ' . $created . ' social draft' . ($created === 1 ? '' : 's') . ' for review.');
+flash_set('success', 'Created ' . $created . ' social draft' . ($created === 1 ? '' : 's') . ' for review. Image production is starting now.');
+flash_set('social_auto_generate_ids', implode(',', array_map('intval', $createdIds)));
 redirect(base_url('social-studio.php'));

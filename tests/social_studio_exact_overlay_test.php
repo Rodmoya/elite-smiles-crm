@@ -79,6 +79,27 @@ social_studio_exact_assert(!social_studio_base_is_ready([
     'base_prompt' => '',
 ]), 'A pending Instagram image must never be selectable as a production template.');
 
+$directDraft = [
+    'copy_mode' => 'preserve',
+    'text_position' => 'source',
+    'base_reference_key' => 'base_48',
+    'content_focus' => 'veneers',
+    'image_prompt' => "Controlled substitutions only — Focus: Veneers; Purpose: educational; Audience: man; Age range: 35-44; Text position: source.\nTreatment-specific subject direction: Warm Draper interior.",
+];
+social_studio_exact_assert(
+    social_studio_should_direct_edit_template($directDraft, $sourcePath),
+    'Preserve mode with original text position must edit the complete approved template directly.'
+);
+$directPrompt = social_studio_direct_template_edit_prompt($directDraft, $template);
+social_studio_exact_assert(str_contains($directPrompt, 'PROTECTED DESIGN LOCK'), 'Direct template edits must lock all approved design content.');
+social_studio_exact_assert(str_contains($directPrompt, 'Audience: man'), 'Direct template edits must carry the selected demographic into the photo request.');
+social_studio_exact_assert(str_contains($directPrompt, 'COMPLIMENTARY'), 'Direct template edits must enumerate approved wording for preservation.');
+$movedDraft = $directDraft; $movedDraft['text_position'] = 'right';
+social_studio_exact_assert(
+    !social_studio_should_direct_edit_template($movedDraft, $sourcePath),
+    'Moving overlay geometry must use editable overlay mode instead of claiming an immutable direct edit.'
+);
+
 @unlink($targetPath);
 @unlink($sourcePath);
 @unlink($rawPath);

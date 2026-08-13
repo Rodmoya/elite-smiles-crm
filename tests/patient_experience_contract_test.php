@@ -38,8 +38,8 @@ try {
     contract_expect(str_contains($creatorMarkup, 'contract-original-copy') && str_contains($creatorMarkup, 'contract-signature-original'), 'Contract preview is missing the original document structure.');
     contract_expect(str_contains($creatorMarkup, 'id="contract-date" type="date" name="agreement_date" required'), 'Agreement date is not an editable required date field.');
     contract_expect(str_contains($creatorMarkup, 'id="preview-signature-patient"'), 'Patient name is missing beneath the preview signature line.');
-    contract_expect(str_contains($creatorMarkup, 'margin:8pt 0 8px;'), 'Preview signature row is not separated from the note by at least eight pixels.');
-    contract_expect(str_contains($creatorMarkup, '.contract-cancellation-bottom { margin-top:auto; margin-bottom:5px; }'), 'Contract preview cancellation language is not anchored five pixels above the bottom.');
+    contract_expect(str_contains($creatorMarkup, 'align-items:start; margin:8pt 0 10px;'), 'Preview signature and date are not aligned or separated ten pixels from the note.');
+    contract_expect(str_contains($creatorMarkup, '.contract-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Contract preview signature and cancellation language are not anchored together at the bottom.');
     contract_expect(str_contains($creatorMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language was not reduced by one point.');
     contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
@@ -63,8 +63,8 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Signing contract does not use the original document typography.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-original-copy') && str_contains($publicContractMarkup, 'agreement-signature-original'), 'Signing contract is missing the original document structure.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-signature-patient') && str_contains($publicContractMarkup, "\$agreement['patient_name']"), 'Patient name is missing beneath the public signature line.');
-    contract_expect(str_contains($publicContractMarkup, 'margin:8pt 0 8px;'), 'Public signature row is not separated from the note by at least eight pixels.');
-    contract_expect(str_contains($publicContractMarkup, '.agreement-cancellation-bottom { margin-top:auto; margin-bottom:5px; }'), 'Signing contract cancellation language is not anchored five pixels above the bottom.');
+    contract_expect(str_contains($publicContractMarkup, 'align-items:start; margin:8pt 0 10px;'), 'Public signature and date are not aligned or separated ten pixels from the note.');
+    contract_expect(str_contains($publicContractMarkup, '.agreement-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Signing-document signature and cancellation language are not anchored together at the bottom.');
     contract_expect(str_contains($publicContractMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Signing contract cancellation language was not reduced by one point.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');

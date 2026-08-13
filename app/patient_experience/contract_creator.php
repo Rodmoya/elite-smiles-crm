@@ -44,6 +44,7 @@ $originalTerms = patient_experience_contract_original_terms();
         #contract-preview .contract-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
         .contract-preview-tools { display:none !important; }
     }
+    @media (max-width: 700px) { .contract-payment-notice { white-space:normal; } }
     @media (prefers-reduced-motion: reduce) { .contract-transition { transition:none !important; } }
 </style>
 
@@ -377,8 +378,6 @@ $originalTerms = patient_experience_contract_original_terms();
             list.appendChild(li);
         });
     }
-    @media (max-width: 700px) { .contract-payment-notice { white-space:normal; } }
-
     function syncCustomItems() {
         const seen = new Set();
         customItems = customItems.filter(item => {

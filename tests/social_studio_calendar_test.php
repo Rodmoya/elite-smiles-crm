@@ -32,6 +32,8 @@ social_calendar_assert(str_contains($scheduleAction, 'status="approved" AND sche
 social_calendar_assert(str_contains($page, 'data-schedule-card'), 'Approved posts must be draggable calendar cards.');
 social_calendar_assert(str_contains($page, 'data-calendar-day'), 'Each calendar day must be a drop target.');
 social_calendar_assert(str_contains($page, 'data-schedule-time'), 'Scheduling must use a time dropdown.');
+social_calendar_assert(str_contains($page, '$minutes = 0; $minutes < 24 * 60'), 'The scheduling dropdown must cover the full 24-hour day.');
+social_calendar_assert(str_contains($page, 'Each day can hold multiple posts'), 'The calendar must explain that a day can contain multiple posts.');
 social_calendar_assert(str_contains($page, 'Choose day without dragging'), 'Drag scheduling must provide an accessible non-drag fallback.');
 social_calendar_assert(str_contains($publishAction, "post('schedule_day'"), 'The publisher must accept a day selected by the calendar.');
 social_calendar_assert(str_contains($publishAction, 'view=calendar'), 'Scheduling must return to the content calendar.');

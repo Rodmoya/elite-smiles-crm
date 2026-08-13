@@ -62,6 +62,17 @@ social_studio_exact_assert(!str_contains($svg, 'approved-template-source'), 'Ori
 social_studio_exact_assert(str_contains($svg, '<text '), 'Approved wording must be rendered as an independent overlay element.');
 social_studio_exact_assert(str_contains($svg, 'COMPLIMENTARY'), 'Approved overlay wording must remain verbatim in the output.');
 
+$seasonalTemplate = $template;
+$seasonalTemplate['elements'][0]['text'] = "UTAH SPRING\nSMILE EVENT";
+$replacement = social_studio_replace_overlay_text($seasonalTemplate, 'spring', 'Summer');
+social_studio_exact_assert(!empty($replacement['ok']), 'An exact case-insensitive overlay replacement must succeed.');
+social_studio_exact_assert(
+    (string)$replacement['template']['elements'][0]['text'] === "UTAH Summer\nSMILE EVENT",
+    'Text replacement must change only the requested phrase and preserve line structure.'
+);
+$missingReplacement = social_studio_replace_overlay_text($seasonalTemplate, 'Winter', 'Summer');
+social_studio_exact_assert(empty($missingReplacement['ok']), 'A missing source phrase must fail instead of silently changing unrelated copy.');
+
 $multiRegionTemplate = $template;
 $multiRegionTemplate['elements'][] = array_merge($template['elements'][0], [
     'text' => 'THE POWER OF VENEERS', 'x' => 7, 'y' => 8, 'width' => 45, 'height' => 12,
@@ -94,6 +105,13 @@ $directPrompt = social_studio_direct_template_edit_prompt($directDraft, $templat
 social_studio_exact_assert(str_contains($directPrompt, 'PROTECTED DESIGN LOCK'), 'Direct template edits must lock all approved design content.');
 social_studio_exact_assert(str_contains($directPrompt, 'Audience: man'), 'Direct template edits must carry the selected demographic into the photo request.');
 social_studio_exact_assert(str_contains($directPrompt, 'COMPLIMENTARY'), 'Direct template edits must enumerate approved wording for preservation.');
+$replacementDraft = $directDraft;
+$replacementDraft['copy_mode'] = 'replace';
+$replacementDraft['overlay_template_json'] = social_studio_encode_overlay_template((array)$replacement['template']);
+social_studio_exact_assert(social_studio_should_direct_edit_template($replacementDraft, $sourcePath), 'Exact replacement mode must retain direct template editing.');
+$replacementPrompt = social_studio_direct_template_edit_prompt($replacementDraft, $seasonalTemplate);
+social_studio_exact_assert(str_contains($replacementPrompt, 'PERMITTED TEXT SUBSTITUTION'), 'Direct editing must explicitly isolate the permitted text change.');
+social_studio_exact_assert(str_contains($replacementPrompt, 'UTAH Summer'), 'The direct-edit prompt must carry the exact replacement wording.');
 $movedDraft = $directDraft; $movedDraft['text_position'] = 'right';
 social_studio_exact_assert(
     !social_studio_should_direct_edit_template($movedDraft, $sourcePath),

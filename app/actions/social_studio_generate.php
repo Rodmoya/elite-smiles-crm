@@ -16,6 +16,16 @@ $visualReferenceKey = (string)post('visual_reference', 'none');
 $creationMode = (string)post('creation_mode', 'remix');
 $copyMode = (string)post('copy_mode', 'preserve');
 $copyMode = $copyMode === 'rewrite' ? 'rewrite' : 'preserve';
+$replaceTextFrom = trim((string)post('replace_text_from', ''));
+$replaceTextTo = trim((string)post('replace_text_to', ''));
+if (($replaceTextFrom === '') !== ($replaceTextTo === '')) {
+    flash_set('error', 'Enter both the approved text and the replacement text.');
+    redirect(base_url('social-studio.php'));
+}
+if ($copyMode === 'rewrite' && $replaceTextFrom !== '') {
+    flash_set('error', 'Use either exact text replacement or AI-generated new wording, not both.');
+    redirect(base_url('social-studio.php'));
+}
 $visualReferences = social_studio_visual_references();
 $visualReference = $visualReferences[$visualReferenceKey] ?? null;
 if ($creationMode !== 'manual' && (!$visualReference || !str_starts_with($visualReferenceKey, 'base_'))) {
@@ -47,6 +57,14 @@ if (str_starts_with($visualReferenceKey, 'base_')) {
                 redirect(base_url('social-studio.php'));
             }
             $overlayTemplate = $rewritten['template'];
+        } elseif ($replaceTextFrom !== '') {
+            $replaced = social_studio_replace_overlay_text($overlayTemplate, $replaceTextFrom, $replaceTextTo);
+            if (empty($replaced['ok']) || !is_array($replaced['template'] ?? null)) {
+                flash_set('error', (string)($replaced['message'] ?? 'The approved overlay text could not be replaced.'));
+                redirect(base_url('social-studio.php'));
+            }
+            $overlayTemplate = $replaced['template'];
+            $copyMode = 'replace';
         }
         $baseAnalysis = db_one('SELECT * FROM social_studio_base_creatives WHERE id = :id LIMIT 1', ['id' => $baseId]) ?: $baseAnalysis;
         $baseAnalysis['overlay_template'] = $overlayTemplate;
@@ -62,7 +80,7 @@ if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES
 }
 $brief = implode("\n", [
     'Creation mode: ' . ($creationMode === 'manual' ? 'Manual brief' : 'New photo using approved template'),
-    'Overlay copy: ' . ($copyMode === 'rewrite' ? 'Explicit new wording in the same approved structure' : 'Preserve every approved word exactly'),
+    'Overlay copy: ' . ($copyMode === 'rewrite' ? 'Explicit new wording in the same approved structure' : ($copyMode === 'replace' ? 'Exact text replacement: “' . $replaceTextFrom . '” to “' . $replaceTextTo . '”' : 'Preserve every approved word exactly')),
     'Purpose: ' . ((string)post('purpose', 'educational') === 'social_ad' ? 'Social media ad' : 'Educational'),
     'Focus: ' . $focus,
     'Audience: ' . (string)post('audience', 'any'),
@@ -74,7 +92,9 @@ $brief = implode("\n", [
         ? 'Manual mode: treat the user instruction as the primary creative direction and use the Master CMO system for quality, compliance, and consistency.'
         : ($copyMode === 'rewrite'
             ? 'LOCKED REWRITE MODE: generate only a clean photographic layer. CRM changes wording only, then applies the selected ad font, scale, line structure, spacing, palette, and geometry unchanged.'
-            : 'LOCKED PRODUCTION MODE: generate only a new clean photographic layer. The CRM reproduces the selected Instagram ad overlay from saved deterministic template data. Never ask OpenAI or Nano Banana to recreate, rewrite, paraphrase, position, or style the overlay. The selected ad copy remains exact.'),
+            : ($copyMode === 'replace'
+                ? 'LOCKED REPLACEMENT MODE: change only the exact requested words. Preserve every other word and all typography, scale, line structure, spacing, palette, and geometry.'
+                : 'LOCKED PRODUCTION MODE: generate only a new clean photographic layer. The CRM reproduces the selected Instagram ad overlay from saved deterministic template data. Never ask OpenAI or Nano Banana to recreate, rewrite, paraphrase, position, or style the overlay. The selected ad copy remains exact.')),
     'Reference style direction: ' . ($visualReference['description'] ?? 'Use the Elite Smiles Master CMO system.'),
     'Reference use rule: study typography scale, spacing, composition, palette, subject framing, and CTA treatment only; create an original asset and never copy the source image or bake text/logo into the generated image.',
 ]);
@@ -101,6 +121,8 @@ $remixTemplate = $baseAnalysis ? [
     'age_range' => (string)post('age_range', 'any'),
     'text_position' => (string)post('text_position', 'source'),
     'copy_mode' => $copyMode,
+    'replace_text_from' => $replaceTextFrom,
+    'replace_text_to' => $replaceTextTo,
     'source_caption' => (string)($baseAnalysis['source_caption'] ?? ''),
     'source_hashtags' => (string)($baseAnalysis['source_hashtags'] ?? ''),
 ] : [];

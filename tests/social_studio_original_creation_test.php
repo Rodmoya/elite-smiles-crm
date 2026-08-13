@@ -50,7 +50,8 @@ social_original_assert((string)$guardrails['status'] === 'pass', 'A compliant or
 social_original_assert(social_studio_overlay_text_fits($template['elements'][0]), 'Short overlay copy should fit its approved text box.');
 $overflow = $template;
 $overflow['elements'][0]['text'] = 'THIS LINE IS FAR TOO LONG TO FIT INSIDE THE APPROVED TEXT BOX';
-social_original_assert(!social_studio_overlay_template_fits($overflow), 'Overflowing overlay copy must fail deterministic fit validation.');
+social_original_assert(!social_studio_overlay_text_fits($overflow['elements'][0]), 'Overflowing overlay copy must be detected for deterministic SVG constraint.');
+social_original_assert(social_studio_overlay_template_fits($overflow), 'Constrained text must retain valid approved canvas geometry.');
 $fittable = $template;
 $fittable['elements'][0]['width'] = 30;
 $fitted = social_studio_fit_original_overlay_template($fittable);

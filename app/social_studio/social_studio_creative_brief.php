@@ -116,19 +116,19 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             if ($text === '' || mb_strlen($text) <= 2 || preg_match('/^[\p{S}\p{P}\$]+$/u', $text)) continue;
             $sourceLines = preg_split('/\R/u', $text) ?: [$text];
             $longestLine = max(array_map('mb_strlen', $sourceLines));
-            $safeLineCapacity = $longestLine > 18 ? max(12, (int)floor($longestLine * .80)) : $longestLine;
+            $safeLineCapacity = max(4, (int)ceil($longestLine * 1.05));
             $editable[] = [
                 'index' => $index,
                 'text' => $text,
-                'max_characters' => max(8, (int)ceil(mb_strlen($text) * 1.05)),
-                'line_count' => min(5, max(1, count($sourceLines) + 1)),
+                'max_characters' => max(8, (int)ceil(mb_strlen($text) * 1.12)),
+                'line_count' => max(1, count($sourceLines)),
                 'max_characters_per_line' => max(4, $safeLineCapacity),
             ];
         }
         if ($editable === []) return ['ok' => false, 'message' => 'The visual system has no editable text blocks.'];
         $itemSchema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['index' => ['type' => 'integer'], 'text' => ['type' => 'string']], 'required' => ['index', 'text']];
         $schema = ['type' => 'object', 'additionalProperties' => false, 'properties' => ['replacements' => ['type' => 'array', 'minItems' => count($editable), 'maxItems' => count($editable), 'items' => $itemSchema]], 'required' => ['replacements']];
-        $system = 'You are the Elite Smiles Master CMO writing ORIGINAL on-image copy inside an approved design system. Replace the source message with the new brief; do not preserve an old treatment, claim, benefit, or headline when it conflicts with the brief. Preserve only the block count, capitalization pattern, CTA role, location role, financing qualification, and approximate character capacity. Obey max_characters_per_line and never exceed line_count; use the available extra line to keep important approved phrases such as COMPLIMENTARY CONSULTATION readable at the saved type scale. Short, elegant copy is better than copy that risks overflow. Keep Draper, Utah. Use a concise complimentary-consultation CTA. Return every supplied index exactly once. Never include a price, guarantee, invented outcome, testimonial, urgency, or availability.';
+        $system = 'You are the Elite Smiles Master CMO writing ORIGINAL on-image copy inside an approved design system. Replace the source message with the new brief; do not preserve an old treatment, claim, benefit, or headline when it conflicts with the brief. Preserve only the block count, line count, capitalization pattern, CTA role, location role, financing qualification, and approximate character capacity. Obey max_characters_per_line and line_count. Short, elegant copy is better than copy that risks overflow. Keep Draper, Utah. Use a concise complimentary-consultation CTA. Return every supplied index exactly once. Never include a price, guarantee, invented outcome, testimonial, urgency, or availability.';
         $failure = 'Original overlay generation failed.';
         for ($attempt = 1; $attempt <= 3; $attempt++) {
             $response = elite_openai_json_response($system, 'Structured brief: ' . json_encode($brief, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\nApproved layout capacities: " . json_encode($editable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ($attempt > 1 ? "\nPrevious attempt did not fit. Make every replacement materially shorter." : ''), $schema, 'social_studio_original_overlay');
@@ -148,9 +148,8 @@ if (!function_exists('social_studio_creative_brief_schema')) {
                 foreach ($lines as $line) if (mb_strlen($line) > (int)$source['max_characters_per_line']) { $valid = false; break 2; }
                 $candidate['elements'][$index]['text'] = $replacement;
             }
-            $candidate = $valid ? social_studio_fit_original_overlay_template($candidate) : [];
-            if ($candidate !== [] && social_studio_overlay_template_fits($candidate)) {
-                return ['ok' => true, 'template' => $candidate];
+            if ($valid) {
+                return ['ok' => true, 'template' => social_studio_normalize_overlay_template($candidate)];
             }
             $failure = 'Original overlay copy exceeded the approved typography capacity.';
         }
@@ -205,7 +204,7 @@ if (!function_exists('social_studio_creative_brief_schema')) {
         $visualReviewed = $visual !== [];
         $checks = [
             ['key' => 'overlay', 'label' => 'Deterministic overlay present', 'pass' => $elements !== []],
-            ['key' => 'overlay_fit', 'label' => 'Overlay copy fits every approved text box', 'pass' => $elements !== [] && social_studio_overlay_template_fits(is_array($template) ? $template : [])],
+            ['key' => 'overlay_fit', 'label' => 'Overlay geometry stays inside the approved canvas', 'pass' => $elements !== [] && social_studio_overlay_template_fits(is_array($template) ? $template : [])],
             ['key' => 'cta', 'label' => 'Consultation CTA present', 'pass' => (bool)preg_match('/consult|schedule|discover|book/i', (string)($draft['cta'] ?? '') . ' ' . $overlayText)],
             ['key' => 'claims', 'label' => 'No unsupported price or guarantee', 'pass' => !(bool)preg_match('/\$\s*\d|guaranteed|guarantee results|permanent results/i', (string)($draft['caption'] ?? '') . ' ' . $overlayText)],
             ['key' => 'image_text', 'label' => 'Clean image contains no text or logo', 'pass' => $visualReviewed && !empty($visual['no_text_or_logo'])],

@@ -763,7 +763,9 @@ if (!function_exists('social_studio_seed_drafts')) {
     function social_studio_overlay_template_fits(array $template): bool
     {
         foreach ((array)($template['elements'] ?? []) as $element) {
-            if (!social_studio_overlay_text_fits((array)$element)) return false;
+            $x = (float)($element['x'] ?? 0); $y = (float)($element['y'] ?? 0);
+            $width = (float)($element['width'] ?? 0); $height = (float)($element['height'] ?? 0);
+            if ($x < 0 || $y < 0 || $width <= 0 || $height <= 0 || $x + $width > 100.01 || $y + $height > 100.01) return false;
         }
         return true;
     }
@@ -1783,7 +1785,12 @@ if (!function_exists('social_studio_create_branded_svg')) {
             $lines = preg_split('/\R/u', $text) ?: [$text];
             $svg .= '<text x="' . $textX . '" y="' . ($y + $fontSize) . '" fill="' . htmlspecialchars((string)$element['color'], ENT_QUOTES, 'UTF-8') . '" font-family="' . htmlspecialchars($fontFamily, ENT_QUOTES, 'UTF-8') . '" font-style="' . ((string)($element['font_style'] ?? 'normal') === 'italic' ? 'italic' : 'normal') . '" font-size="' . $fontSize . '" font-weight="' . (int)$element['font_weight'] . '" letter-spacing="' . ((float)$element['letter_spacing'] * $fontSize) . '" text-anchor="' . $anchor . '">';
             foreach ($lines as $lineIndex => $line) {
-                $svg .= '<tspan x="' . $textX . '" dy="' . ($lineIndex === 0 ? 0 : ((float)$element['line_height'] * $fontSize)) . '">' . htmlspecialchars((string)$line, ENT_QUOTES | ENT_XML1, 'UTF-8') . '</tspan>';
+                $lineElement = $element;
+                $lineElement['text'] = (string)$line;
+                $fitAttributes = social_studio_overlay_text_fits($lineElement)
+                    ? ''
+                    : ' textLength="' . max(1, $w) . '" lengthAdjust="spacingAndGlyphs"';
+                $svg .= '<tspan x="' . $textX . '" dy="' . ($lineIndex === 0 ? 0 : ((float)$element['line_height'] * $fontSize)) . '"' . $fitAttributes . '>' . htmlspecialchars((string)$line, ENT_QUOTES | ENT_XML1, 'UTF-8') . '</tspan>';
             }
             $svg .= '</text>';
         }

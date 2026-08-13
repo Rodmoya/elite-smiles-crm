@@ -771,6 +771,23 @@ if (!function_exists('social_studio_seed_drafts')) {
         return true;
     }
 
+    function social_studio_fit_original_overlay_template(array $template, float $minimumScale = .72): array
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        if ($template === []) return [];
+        foreach ((array)($template['elements'] ?? []) as $index => $element) {
+            if ((string)($element['type'] ?? '') !== 'text' || social_studio_overlay_text_fits($element)) continue;
+            $originalSize = max(.1, (float)($element['font_size'] ?? 1));
+            $fitted = false;
+            for ($scale = .98; $scale >= $minimumScale; $scale -= .02) {
+                $template['elements'][$index]['font_size'] = round($originalSize * $scale, 4);
+                if (social_studio_overlay_text_fits((array)$template['elements'][$index])) { $fitted = true; break; }
+            }
+            if (!$fitted) return [];
+        }
+        return social_studio_normalize_overlay_template($template);
+    }
+
     function social_studio_rewrite_overlay_copy(array $template, string $focus, string $instruction = ''): array
     {
         $template = social_studio_normalize_overlay_template($template);

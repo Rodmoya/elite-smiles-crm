@@ -110,7 +110,7 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             if ($text === '' || mb_strlen($text) <= 2 || preg_match('/^[\p{S}\p{P}\$]+$/u', $text)) continue;
             $sourceLines = preg_split('/\R/u', $text) ?: [$text];
             $longestLine = max(array_map('mb_strlen', $sourceLines));
-            $safeLineCapacity = $longestLine > 18 ? max(12, (int)floor($longestLine * .80)) : $longestLine;
+            $safeLineCapacity = $longestLine;
             $editable[] = [
                 'index' => $index,
                 'text' => $text,
@@ -140,11 +140,11 @@ if (!function_exists('social_studio_creative_brief_schema')) {
                 $lines = preg_split('/\R/u', $replacement) ?: [];
                 if ($replacement === '' || mb_strlen($replacement) > (int)$source['max_characters'] || count($lines) > (int)$source['line_count']) { $valid = false; break; }
                 foreach ($lines as $line) if (mb_strlen($line) > (int)$source['max_characters_per_line']) { $valid = false; break 2; }
-                if (!social_studio_overlay_text_fits((array)$candidate['elements'][$index], $replacement)) { $valid = false; break; }
                 $candidate['elements'][$index]['text'] = $replacement;
             }
-            if ($valid && social_studio_overlay_template_fits($candidate)) {
-                return ['ok' => true, 'template' => social_studio_normalize_overlay_template($candidate)];
+            $candidate = $valid ? social_studio_fit_original_overlay_template($candidate) : [];
+            if ($candidate !== [] && social_studio_overlay_template_fits($candidate)) {
+                return ['ok' => true, 'template' => $candidate];
             }
             $failure = 'Original overlay copy exceeded the approved typography capacity.';
         }

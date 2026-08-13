@@ -27,6 +27,9 @@ try {
     contract_expect(str_contains($sidebarMarkup, "'key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php?tab=contracts')"), 'Patient Experience navigation does not open Contracts first.');
     contract_expect($contractsTabPosition !== false && $patientsTabPosition !== false && $contractsTabPosition < $patientsTabPosition, 'Contracts is not the first Patient Experience tab.');
     contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
+    contract_expect(!str_contains($creatorMarkup, '>3. Treatment area<'), 'The obsolete standalone treatment-area section is still visible.');
+    contract_expect(str_contains($creatorMarkup, 'id="contract-area-modal"'), 'The per-procedure tooth selector modal is missing.');
+    contract_expect(str_contains($creatorMarkup, 'line_item_teeth['), 'Per-procedure tooth selections are not submitted with the contract.');
     contract_expect(str_contains($creatorMarkup, 'id="preview-line-items" class="contract-treatment-list'), 'Included treatment is not arranged in two columns in the contract preview.');
     contract_expect(!str_contains($creatorMarkup, 'contract-copy-grid'), 'Contract preview incorrectly splits the full agreement into two columns.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
@@ -50,6 +53,12 @@ try {
     foreach ($historicalOptions as $optionKey) {
         contract_expect(in_array($optionKey, $definedOptions, true), 'Historical treatment option is missing: ' . $optionKey);
     }
+    $definitions = patient_experience_contract_definitions();
+    contract_expect(($definitions['veneers']['option_area_modes']['veneers'] ?? '') === 'teeth', 'Veneers does not open the tooth selector.');
+    contract_expect(($definitions['veneers']['option_area_modes']['internal_restorations'] ?? '') === 'teeth', 'Internal restorations does not open the tooth selector.');
+    foreach (['extractions', 'crowns', 'bridges'] as $toothProcedure) {
+        contract_expect(($definitions['complex_restorative']['option_area_modes'][$toothProcedure] ?? '') === 'teeth', ucfirst($toothProcedure) . ' does not retain its own tooth selection.');
+    }
     $email = 'contract-test-' . bin2hex(random_bytes(5)) . '@example.invalid';
     $leadId = db_insert("INSERT INTO leads (full_name,email,phone,status,created_at,updated_at) VALUES ('Contract Test Patient',:email,'8015550100','contacted',NOW(),NOW())", ['email' => $email]);
 
@@ -59,29 +68,52 @@ try {
         'patient_phone' => '',
         'patient_email' => '',
         'treatment_key' => 'veneers',
-        'selected_teeth' => ['4', '5', '5', '13', '99'],
         'line_items' => ['veneers', 'gingivectomy'],
+        'line_item_teeth' => [
+            'veneers' => ['4', '5', '5', '13', '99'],
+            'gingivectomy' => ['6', '7'],
+        ],
         'original_price' => '20000',
         'discount_amount' => '4000',
         'final_price' => '16000',
         'insurance_estimate' => '1000',
         'deposit_amount' => '3750',
     ]);
-    contract_expect($normalized['selected_teeth'] === [4, 5, 13], 'Tooth normalization failed.');
+    contract_expect(($normalized['line_items'][0]['teeth'] ?? []) === [4, 5, 13], 'Per-procedure tooth normalization failed.');
+    contract_expect(($normalized['line_items'][1]['teeth'] ?? []) === [6, 7], 'A second procedure did not retain its independent tooth selection.');
     contract_expect((float)$normalized['patient_responsibility'] === 15000.0, 'Patient responsibility calculation failed.');
     contract_expect((float)$normalized['remaining_balance'] === 11250.0, 'Remaining balance calculation failed.');
     contract_expect(patient_experience_contract_validate($normalized) === [], 'Valid contract was rejected.');
 
+    $archNormalized = patient_experience_contract_input([
+        'patient_name' => 'Arch Test Patient',
+        'treatment_key' => 'all_on_x',
+        'line_items' => ['permanent_prosthesis'],
+        'line_item_arch' => ['permanent_prosthesis' => 'upper'],
+        'final_price' => 25000,
+    ]);
+    contract_expect(($archNormalized['line_items'][0]['arch_scope'] ?? '') === 'upper', 'An arch-based service did not retain its independent arch selection.');
+    contract_expect(patient_experience_contract_validate($archNormalized) === [], 'A valid arch-based procedure was rejected.');
+
+    $legacyNormalized = patient_experience_contract_input([
+        'patient_name' => 'Legacy Contract Patient',
+        'treatment_key' => 'veneers',
+        'line_items' => ['veneers'],
+        'selected_teeth' => [7, 8, 9, 10],
+        'final_price' => 12000,
+    ]);
+    contract_expect(($legacyNormalized['line_items'][0]['teeth'] ?? []) === [7, 8, 9, 10], 'Legacy global tooth selections are not migrated into the selected service.');
+
     $invalid = $normalized;
-    $invalid['selected_teeth'] = [];
-    contract_expect(isset(patient_experience_contract_validate($invalid)['selected_teeth']), 'Veneer contract did not require tooth selection.');
+    $invalid['line_items'][0]['teeth'] = [];
+    contract_expect(isset(patient_experience_contract_validate($invalid)['line_item_area']), 'A tooth-based procedure did not require its own tooth selection.');
 
     $saved = patient_experience_contract_save([
         'lead_id' => $leadId,
         'patient_name' => 'Contract Test Patient',
         'treatment_key' => 'veneers',
-        'selected_teeth' => [4, 5, 13],
         'line_items' => ['veneers', 'gingivectomy'],
+        'line_item_teeth' => ['veneers' => [4, 5, 13], 'gingivectomy' => [6, 7]],
         'original_price' => 20000,
         'discount_amount' => 4000,
         'final_price' => 16000,
@@ -93,6 +125,8 @@ try {
     $contract = patient_experience_contract_by_id($contractId);
     contract_expect((bool)$contract, 'Saved contract was not found.');
     contract_expect(str_starts_with((string)$contract['contract_number'], 'ES-'), 'Contract number was not generated.');
+    contract_expect(($contract['line_items'][0]['teeth'] ?? []) === [4, 5, 13], 'Saved contract lost the Veneers tooth assignment.');
+    contract_expect(($contract['line_items'][1]['teeth'] ?? []) === [6, 7], 'Saved contract lost the Gingivectomy tooth assignment.');
 
     $delivery = patient_experience_contract_prepare_delivery($contractId, [], null);
     contract_expect(!empty($delivery['ok']), 'Immutable delivery version was not created.');

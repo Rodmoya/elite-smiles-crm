@@ -53,7 +53,7 @@ if (!function_exists('elite_ai_tool_registry')) {
                 'mode' => 'draft',
                 'surfaces' => ['desktop', 'mobile'],
                 'approval_required' => true,
-                'approval' => 'send_approved',
+                'approval' => 'sms_send_approved',
             ],
             'lead.draft_email' => [
                 'label' => 'Draft email',
@@ -61,7 +61,7 @@ if (!function_exists('elite_ai_tool_registry')) {
                 'mode' => 'draft',
                 'surfaces' => ['desktop', 'mobile'],
                 'approval_required' => true,
-                'approval' => 'send_approved',
+                'approval' => 'email_send_approved',
             ],
             'lead.add_note' => [
                 'label' => 'Add note',

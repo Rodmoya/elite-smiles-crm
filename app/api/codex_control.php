@@ -2906,6 +2906,11 @@ if (!function_exists('codex_api_elite_ai_audit_recent')) {
                 l.response_summary,
                 l.lead_id,
                 l.page_context_json,
+                l.planner_provider,
+                l.planner_intent,
+                l.execution_intent,
+                l.execution_status,
+                l.mismatch_reason,
                 l.created_at
              FROM elite_ai_audit_logs l
              LEFT JOIN users u ON u.id = l.user_id
@@ -2928,6 +2933,11 @@ if (!function_exists('codex_api_elite_ai_audit_recent')) {
                 'response_summary' => (string) ($row['response_summary'] ?? ''),
                 'lead_id' => (int) ($row['lead_id'] ?? 0),
                 'page_context' => is_array($context) ? $context : [],
+                'planner_provider' => (string) ($row['planner_provider'] ?? ''),
+                'planner_intent' => (string) ($row['planner_intent'] ?? ''),
+                'execution_intent' => (string) ($row['execution_intent'] ?? ''),
+                'execution_status' => (string) ($row['execution_status'] ?? ''),
+                'mismatch_reason' => (string) ($row['mismatch_reason'] ?? ''),
                 'created_at' => (string) ($row['created_at'] ?? ''),
             ];
         }

@@ -43,6 +43,10 @@ $draft = [
 $visualPass = ['no_text_or_logo' => true, 'sharp_focus' => true, 'credible_anatomy' => true, 'framing_pass' => true, 'notes' => 'Pass'];
 $guardrails = social_studio_draft_guardrails($draft, $visualPass);
 social_original_assert((string)$guardrails['status'] === 'pass', 'A compliant original draft should pass guardrails.');
+social_original_assert(social_studio_overlay_text_fits($template['elements'][0]), 'Short overlay copy should fit its approved text box.');
+$overflow = $template;
+$overflow['elements'][0]['text'] = 'THIS LINE IS FAR TOO LONG TO FIT INSIDE THE APPROVED TEXT BOX';
+social_original_assert(!social_studio_overlay_template_fits($overflow), 'Overflowing overlay copy must fail deterministic fit validation.');
 $unsafe = $draft;
 $unsafe['caption'] = 'Guaranteed results for only $999.';
 $unsafeGuardrails = social_studio_draft_guardrails($unsafe, $visualPass);

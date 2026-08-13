@@ -31,8 +31,12 @@ try {
     contract_expect(!str_contains($creatorMarkup, '>3. Treatment area<'), 'The obsolete standalone treatment-area section is still visible.');
     contract_expect(str_contains($creatorMarkup, 'id="contract-area-modal"'), 'The per-procedure tooth selector modal is missing.');
     contract_expect(str_contains($creatorMarkup, 'line_item_teeth['), 'Per-procedure tooth selections are not submitted with the contract.');
-    contract_expect(str_contains($creatorMarkup, 'id="preview-line-items" class="contract-treatment-list'), 'Included treatment is not arranged in two columns in the contract preview.');
+    contract_expect(str_contains($creatorMarkup, 'id="preview-line-items" class="contract-treatment-list'), 'Included treatment list is missing from the contract preview.');
     contract_expect(!str_contains($creatorMarkup, 'contract-copy-grid'), 'Contract preview incorrectly splits the full agreement into two columns.');
+    contract_expect(!str_contains($creatorMarkup, '.contract-treatment-list { display:grid'), 'Contract preview does not use the original single-column treatment list.');
+    contract_expect(str_contains($creatorMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Contract preview does not use the original document typography.');
+    contract_expect(str_contains($creatorMarkup, 'contract-original-copy') && str_contains($creatorMarkup, 'contract-signature-original'), 'Contract preview is missing the original document structure.');
+    contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
     contract_expect(str_contains($creatorMarkup, 'contract-option flex h-[72px]'), 'Service controls do not use the compact, consistent 72px height.');
@@ -44,8 +48,12 @@ try {
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
     contract_expect($creatorScriptPosition !== false && !str_contains(substr($creatorMarkup, $creatorScriptPosition), '@media'), 'A CSS media rule was rendered inside the Contract Creator JavaScript.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
-    contract_expect(str_contains($publicContractMarkup, 'class="agreement-treatment-list'), 'Included treatment is not arranged in two columns in the signing contract.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-treatment-list'), 'Included treatment list is missing from the signing contract.');
     contract_expect(!str_contains($publicContractMarkup, 'agreement-copy-grid'), 'Signing contract incorrectly splits the full agreement into two columns.');
+    contract_expect(!str_contains($publicContractMarkup, '.agreement-treatment-list { display:grid'), 'Signing contract does not use the original single-column treatment list.');
+    contract_expect(str_contains($publicContractMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Signing contract does not use the original document typography.');
+    contract_expect(str_contains($publicContractMarkup, 'agreement-original-copy') && str_contains($publicContractMarkup, 'agreement-signature-original'), 'Signing contract is missing the original document structure.');
+    contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');
     contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');

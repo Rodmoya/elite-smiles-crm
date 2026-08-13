@@ -27,6 +27,7 @@ $originalTerms = patient_experience_contract_original_terms();
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }
     .contract-tooth input:checked + span { background:#0f172a; border-color:#0f172a; color:#fff; box-shadow:0 0 0 3px rgba(15,23,42,.12); }
     .contract-option input:checked + span { background:#eff6ff; border-color:#2563eb; color:#1e3a8a; }
+    .contract-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
     @media print {
         @page { size: letter; margin: 0; }
         body * { visibility:hidden !important; }
@@ -40,6 +41,7 @@ $originalTerms = patient_experience_contract_original_terms();
         #contract-preview .contract-treatment-list { column-gap:0.22in !important; row-gap:0.03in !important; }
         #contract-preview .contract-treatment-list li, #contract-preview .contract-signature { break-inside:avoid; page-break-inside:avoid; }
         #contract-preview .contract-legal-copy { font-size:11.25px !important; line-height:1.42 !important; }
+        #contract-preview .contract-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
         .contract-preview-tools { display:none !important; }
     }
     @media (prefers-reduced-motion: reduce) { .contract-transition { transition:none !important; } }
@@ -124,10 +126,10 @@ $originalTerms = patient_experience_contract_original_terms();
                                     $existingAreaTeeth = array_map('intval', (array)($existingArea['teeth'] ?? []));
                                     $existingAreaArch = (string)($existingArea['arch_scope'] ?? '');
                                     ?>
-                                    <div class="contract-option flex min-h-11 items-stretch overflow-hidden rounded-xl border border-slate-300" data-treatment-option="<?= e($definitionKey) ?>" data-option-key="<?= e($optionKey) ?>" data-option-label="<?= e((string)$optionLabel) ?>" data-area-mode="<?= e($areaMode) ?>">
+                                    <div class="contract-option flex h-24 items-stretch overflow-hidden rounded-xl border border-slate-300" data-treatment-option="<?= e($definitionKey) ?>" data-option-key="<?= e($optionKey) ?>" data-option-label="<?= e((string)$optionLabel) ?>" data-area-mode="<?= e($areaMode) ?>">
                                         <label class="flex min-w-0 flex-1 cursor-pointer items-center">
                                             <input class="peer sr-only" type="checkbox" name="line_items[]" value="<?= e($optionKey) ?>" <?= $treatmentKey === $definitionKey && in_array($optionKey, $selectedItemKeys, true) ? 'checked' : '' ?>>
-                                            <span class="flex min-h-11 w-full flex-col justify-center rounded-l-xl px-3 py-2 text-sm text-slate-700 transition peer-checked:bg-blue-50 peer-checked:text-blue-900 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100">
+                                            <span class="flex h-full w-full flex-col justify-center rounded-l-xl px-3 py-2 text-sm leading-5 text-slate-700 transition peer-checked:bg-blue-50 peer-checked:text-blue-900 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100">
                                                 <span><?= e((string)$optionLabel) ?></span>
                                                 <?php if ($areaMode !== 'none'): ?><span class="mt-0.5 text-xs font-medium text-slate-500" data-area-summary><?= $existingAreaTeeth ? 'Teeth ' . e(implode(', ', $existingAreaTeeth)) : ($existingAreaArch !== '' ? e(ucfirst($existingAreaArch) . ($existingAreaArch === 'both' ? ' arches' : ' arch')) : ($areaMode === 'teeth' ? 'Select teeth' : 'Select arch')) ?></span><?php endif; ?>
                                             </span>
@@ -141,8 +143,19 @@ $originalTerms = patient_experience_contract_original_terms();
                                 <?php endforeach; ?>
                             <?php endforeach; ?>
                         </div>
-                        <label for="contract-custom-items" class="mt-3 block text-sm font-medium text-slate-700">Additional custom items</label>
-                        <textarea id="contract-custom-items" name="custom_item_text" rows="3" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-base" placeholder="One treatment item per line"><?= e((string)($contract['custom_item_text'] ?? '')) ?></textarea>
+                        <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                            <label for="contract-custom-item-entry" class="block text-sm font-semibold text-slate-800">Additional custom service</label>
+                            <p class="mt-1 text-xs leading-5 text-slate-500">Add it only to this agreement, or save it to the selected treatment library for future contracts.</p>
+                            <input id="contract-custom-item-entry" class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base" maxlength="190" placeholder="Enter a service or procedure">
+                            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                                <button type="button" id="contract-add-custom-once" class="min-h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200">Add to this contract</button>
+                                <button type="button" id="contract-add-custom-library" class="min-h-12 rounded-xl bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200">Add to treatment library</button>
+                            </div>
+                            <p id="contract-custom-item-feedback" class="mt-2 hidden text-xs font-medium" role="status"></p>
+                            <div id="contract-custom-item-list" class="mt-3 space-y-2"></div>
+                            <textarea id="contract-custom-items" name="custom_item_text" class="hidden" aria-hidden="true"><?= e((string)($contract['custom_item_text'] ?? '')) ?></textarea>
+                            <input id="contract-custom-library-items" type="hidden" name="custom_library_items_json" value="[]">
+                        </div>
                     </fieldset>
                 </div>
 
@@ -154,7 +167,7 @@ $originalTerms = patient_experience_contract_original_terms();
                             <div><label for="contract-discount" class="block text-sm font-medium text-slate-700">Professional discount</label><input id="contract-discount" name="discount_amount" inputmode="decimal" value="<?= e($money($contract['discount_amount'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums"></div>
                             <div class="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><label for="contract-final-price" class="block text-sm font-semibold text-slate-900">Final approved price after discount <span class="text-red-600">*</span></label><input id="contract-final-price" name="final_price" required inputmode="decimal" value="<?= e($money($contract['final_price'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-400 px-3 text-lg font-semibold tabular-nums focus:border-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-200"></div>
                             <div><label for="contract-insurance" class="block text-sm font-medium text-slate-700">Estimated insurance</label><input id="contract-insurance" name="insurance_estimate" inputmode="decimal" value="<?= e($money($contract['insurance_estimate'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums"></div>
-                            <div><div class="flex items-center justify-between"><label for="contract-deposit" class="block text-sm font-medium text-slate-700">Deposit</label><button type="button" data-deposit-quarter class="text-xs font-semibold text-blue-700 hover:underline">Use 25%</button></div><input id="contract-deposit" name="deposit_amount" inputmode="decimal" value="<?= e($money($contract['deposit_amount'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums"></div>
+                            <div><div class="flex items-center justify-between"><label for="contract-deposit" class="block text-sm font-medium text-slate-700">Deposit</label><span class="text-xs font-medium text-slate-500">Defaults to 25%</span></div><input id="contract-deposit" name="deposit_amount" inputmode="decimal" value="<?= $contract ? e($money($contract['deposit_amount'] ?? 0)) : '' ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums" placeholder="Automatically 25%"></div>
                         </div>
                         <div class="mt-4 rounded-xl bg-slate-50 p-3 text-sm">
                             <div class="flex justify-between gap-4"><span class="text-slate-600">Patient responsibility</span><strong id="financial-responsibility" class="tabular-nums text-slate-900">$0.00</strong></div>
@@ -196,10 +209,7 @@ $originalTerms = patient_experience_contract_original_terms();
                     </div>
                     <h1 id="preview-treatment-title" class="mt-4 text-lg font-semibold text-slate-950">Dental Treatment for Veneers</h1>
                     <p id="preview-opening" class="mt-2.5"></p>
-                    <div class="mt-2 space-y-1 font-semibold text-slate-950">
-                        <p><?= e((string)$originalTerms['cashier_check']) ?></p>
-                        <p><?= e((string)$originalTerms['credit_card']) ?></p>
-                    </div>
+                    <div class="contract-payment-notice mt-2 rounded-lg px-2.5 py-2 font-semibold text-slate-950"><span><?= e((string)$originalTerms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$originalTerms['credit_card']) ?></span></div>
                     <div class="mt-3">
                         <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h2>
                         <ul id="preview-line-items" class="contract-treatment-list mt-1.5 pl-5"></ul>
@@ -304,6 +314,12 @@ $originalTerms = patient_experience_contract_original_terms();
     const areaModalError = q('contract-area-modal-error');
     const modalTeeth = Array.from(areaModal.querySelectorAll('[data-modal-tooth]'));
     const modalArches = Array.from(areaModal.querySelectorAll('[data-modal-arch]'));
+    const customEntry = q('contract-custom-item-entry');
+    const customTextarea = q('contract-custom-items');
+    const customLibraryInput = q('contract-custom-library-items');
+    const customList = q('contract-custom-item-list');
+    const customFeedback = q('contract-custom-item-feedback');
+    let customItems = customTextarea.value.split(/\r?\n/).map(label => label.trim()).filter(Boolean).map(label => ({label, library:false, treatment_key:selectedTreatment()}));
     let activeAreaCard = null;
     let uncheckOnCancel = false;
 
@@ -334,7 +350,8 @@ $originalTerms = patient_experience_contract_original_terms();
         const finalPrice = money(q('contract-final-price').value);
         const insurance = money(q('contract-insurance').value);
         const responsibility = Math.max(0, finalPrice - insurance);
-        const deposit = money(q('contract-deposit').value);
+        const depositInput = q('contract-deposit').value.trim();
+        const deposit = depositInput === '' ? Math.round(responsibility * 25) / 100 : money(depositInput);
         const balance = Math.max(0, responsibility - deposit);
         q('preview-patient-name').textContent = patient;
         q('preview-treatment-title').textContent = 'Dental Treatment for ' + definition.label;
@@ -359,6 +376,73 @@ $originalTerms = patient_experience_contract_original_terms();
             li.className = 'list-disc';
             list.appendChild(li);
         });
+    }
+    @media (max-width: 700px) { .contract-payment-notice { white-space:normal; } }
+
+    function syncCustomItems() {
+        const seen = new Set();
+        customItems = customItems.filter(item => {
+            const key = item.label.toLocaleLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        customTextarea.value = customItems.map(item => item.label).join('\n');
+        customLibraryInput.value = JSON.stringify(customItems.filter(item => item.library).map(item => ({
+            label: item.label,
+            area_mode: 'none',
+            treatment_key: item.treatment_key,
+        })));
+        customList.replaceChildren();
+        customItems.forEach((item, index) => {
+            const row = document.createElement('div');
+            row.className = 'flex min-h-12 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2';
+            const copy = document.createElement('div');
+            copy.className = 'min-w-0';
+            const label = document.createElement('p');
+            label.className = 'truncate text-sm font-semibold text-slate-800';
+            label.textContent = item.label;
+            const badge = document.createElement('p');
+            badge.className = 'mt-0.5 text-xs text-slate-500';
+            badge.textContent = item.library ? ((definitions[item.treatment_key]?.label || 'Treatment') + ' library') : 'This contract only';
+            copy.append(label, badge);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100';
+            remove.textContent = 'Remove';
+            remove.setAttribute('aria-label', 'Remove ' + item.label);
+            remove.addEventListener('click', () => { customItems.splice(index, 1); syncCustomItems(); syncPreview(); });
+            row.append(copy, remove);
+            customList.appendChild(row);
+        });
+    }
+
+    function addCustomItem(toLibrary) {
+        const label = customEntry.value.trim().slice(0, 190);
+        if (!label) {
+            customFeedback.textContent = 'Enter a service name first.';
+            customFeedback.className = 'mt-2 text-xs font-medium text-red-700';
+            customEntry.focus();
+            return;
+        }
+        const existing = customItems.find(item => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
+        if (existing) {
+            if (toLibrary) {
+                existing.library = true;
+                existing.treatment_key = selectedTreatment();
+                customFeedback.textContent = 'Added to the ' + (definitions[existing.treatment_key]?.label || 'treatment') + ' library.';
+            } else {
+                customFeedback.textContent = 'That service is already included.';
+            }
+        } else {
+            customItems.push({label, library:toLibrary, treatment_key:selectedTreatment()});
+            customFeedback.textContent = toLibrary ? 'Added to this contract and its treatment library.' : 'Added to this contract.';
+        }
+        customFeedback.className = 'mt-2 text-xs font-medium text-emerald-700';
+        customEntry.value = '';
+        syncCustomItems();
+        syncPreview();
+        customEntry.focus();
     }
 
     form.addEventListener('input', syncPreview);
@@ -476,10 +560,12 @@ $originalTerms = patient_experience_contract_original_terms();
         areaModalError.textContent = missing.dataset.areaMode === 'teeth' ? 'Select at least one tooth before saving.' : 'Select an arch before saving.';
         areaModalError.classList.remove('hidden');
     });
-    document.querySelector('[data-deposit-quarter]')?.addEventListener('click', () => {
-        const responsibility = Math.max(0, money(q('contract-final-price').value) - money(q('contract-insurance').value));
-        q('contract-deposit').value = (responsibility * .25).toFixed(2);
-        syncPreview();
+    q('contract-add-custom-once').addEventListener('click', () => addCustomItem(false));
+    q('contract-add-custom-library').addEventListener('click', () => addCustomItem(true));
+    customEntry.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        addCustomItem(false);
     });
     document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => {
         const preprinted = button.dataset.previewMode === 'preprinted';
@@ -495,6 +581,7 @@ $originalTerms = patient_experience_contract_original_terms();
         event.currentTarget.textContent = 'Copied';
     });
     syncTreatmentControls();
+    syncCustomItems();
     syncPreview();
 })();
 </script>

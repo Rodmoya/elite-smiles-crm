@@ -738,6 +738,39 @@ if (!function_exists('social_studio_seed_drafts')) {
         return social_studio_normalize_overlay_template($template);
     }
 
+    function social_studio_overlay_text_fits(array $element, ?string $replacement = null): bool
+    {
+        if ((string)($element['type'] ?? '') !== 'text') return true;
+        $text = $replacement ?? (string)($element['text'] ?? '');
+        $lines = preg_split('/\R/u', $text) ?: [$text];
+        $fontSize = max(0.1, (float)($element['font_size'] ?? 1));
+        $lineHeight = max(0.7, (float)($element['line_height'] ?? 1));
+        $boxWidth = max(0.1, (float)($element['width'] ?? 1));
+        $boxHeight = max(0.1, (float)($element['height'] ?? 1));
+        if (count($lines) * $fontSize * $lineHeight > $boxHeight * 1.08) return false;
+        foreach ($lines as $line) {
+            $units = 0.0;
+            foreach (preg_split('//u', (string)$line, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $character) {
+                if (preg_match('/\s/u', $character)) $units += .32;
+                elseif (preg_match('/[MW@%&]/iu', $character)) $units += .88;
+                elseif (preg_match('/[Iil1\.,:;!\'\|]/u', $character)) $units += .30;
+                else $units += .58;
+            }
+            $tracking = max(-.08, (float)($element['letter_spacing'] ?? 0));
+            $estimatedWidth = ($units + max(0, mb_strlen((string)$line) - 1) * $tracking) * $fontSize;
+            if ($estimatedWidth > $boxWidth * .96) return false;
+        }
+        return true;
+    }
+
+    function social_studio_overlay_template_fits(array $template): bool
+    {
+        foreach ((array)($template['elements'] ?? []) as $element) {
+            if (!social_studio_overlay_text_fits((array)$element)) return false;
+        }
+        return true;
+    }
+
     function social_studio_rewrite_overlay_copy(array $template, string $focus, string $instruction = ''): array
     {
         $template = social_studio_normalize_overlay_template($template);
@@ -1289,7 +1322,7 @@ if (!function_exists('social_studio_match_template_canvas')) {
 }
 
 if (!function_exists('social_studio_generate_image_for_draft')) {
-    function social_studio_generate_image_for_draft(int $draftId): array
+    function social_studio_generate_image_for_draft(int $draftId, int $qualityAttempt = 1): array
     {
         social_studio_ensure_schema();
         $draft = db_one('SELECT * FROM social_studio_drafts WHERE id = :id LIMIT 1', ['id' => $draftId]);
@@ -1398,12 +1431,29 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             ]
         );
 
+        $guardrails = [];
         if (function_exists('social_studio_review_generated_asset')) {
             try {
-                social_studio_review_generated_asset($draftId, $rawPath);
+                $guardrails = social_studio_review_generated_asset($draftId, $rawPath);
             } catch (Throwable $reviewError) {
                 esm_log('social_studio', 'Generated asset guardrail review failed.', ['draft_id' => $draftId, 'error' => $reviewError->getMessage()]);
             }
+        }
+
+        $visualGuardrailFailed = false;
+        foreach ((array)($guardrails['checks'] ?? []) as $check) {
+            if (in_array((string)($check['key'] ?? ''), ['image_text', 'focus', 'anatomy', 'framing'], true) && empty($check['pass'])) {
+                $visualGuardrailFailed = true;
+                break;
+            }
+        }
+        if ((string)($draft['creation_mode'] ?? '') === 'original'
+            && $visualGuardrailFailed
+            && $qualityAttempt < 2) {
+            if (is_file($rawPath)) @unlink($rawPath);
+            if ($brandedPath && is_file($brandedPath)) @unlink($brandedPath);
+            esm_log('social_studio', 'Retrying original image after guardrail review.', ['draft_id' => $draftId, 'attempt' => $qualityAttempt]);
+            return social_studio_generate_image_for_draft($draftId, $qualityAttempt + 1);
         }
 
         return ['ok' => true, 'message' => 'Image generated.', 'image_storage_key' => $rawKey, 'branded_image_storage_key' => $brandedKey];

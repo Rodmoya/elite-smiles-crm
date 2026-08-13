@@ -17,6 +17,8 @@ $isEditable = !$contract || $status === 'draft';
 $shareUrl = (string)($contractShareUrl ?? '');
 $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.', '');
 $originalTerms = patient_experience_contract_original_terms();
+$agreementDate = trim((string)($contract['agreement_date'] ?? ''));
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date('Y-m-d');
 ?>
 
 <style>
@@ -25,7 +27,9 @@ $originalTerms = patient_experience_contract_original_terms();
     .contract-treatment-list { margin:0 0 8pt; padding-left:.42in; }
     .contract-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
-    .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0; }
+    .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0 8px; }
+    .contract-signature-primary { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.08in; align-items:end; }
+    .contract-signature-patient { grid-column:2; margin-top:2px; font-size:9pt; line-height:1.1; }
     .contract-signature-rule { min-height:.3in; border-bottom:1px solid #111827; }
     .contract-cancellation-bottom { margin-top:auto; margin-bottom:5px; }
     .contract-page.preprinted .contract-digital-letterhead,
@@ -102,8 +106,9 @@ $originalTerms = patient_experience_contract_original_terms();
                     <label for="contract-patient-name" class="mt-3 block text-sm font-medium text-slate-700">Patient legal name <span class="text-red-600">*</span></label>
                     <input id="contract-patient-name" name="patient_name" required value="<?= e((string)($contract['patient_name'] ?? '')) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base focus:border-slate-600 focus:outline-none focus:ring-4 focus:ring-slate-200" autocomplete="name">
                     <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                        <div><label for="contract-date" class="block text-sm font-medium text-slate-700">Agreement date <span class="text-red-600">*</span></label><input id="contract-date" type="date" name="agreement_date" required value="<?= e($agreementDate) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base"></div>
                         <div><label for="contract-phone" class="block text-sm font-medium text-slate-700">Mobile phone</label><input id="contract-phone" name="patient_phone" value="<?= e((string)($contract['patient_phone'] ?? '')) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base" autocomplete="tel"></div>
-                        <div><label for="contract-email" class="block text-sm font-medium text-slate-700">Email</label><input id="contract-email" type="email" name="patient_email" value="<?= e((string)($contract['patient_email'] ?? '')) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base" autocomplete="email"></div>
+                        <div class="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><label for="contract-email" class="block text-sm font-medium text-slate-700">Email</label><input id="contract-email" type="email" name="patient_email" value="<?= e((string)($contract['patient_email'] ?? '')) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base" autocomplete="email"></div>
                     </div>
                 </div>
 
@@ -210,7 +215,7 @@ $originalTerms = patient_experience_contract_original_terms();
                 </header>
                 <div class="contract-paper-body px-[1in] pb-[0.65in] pt-[0.42in] text-[11pt] leading-[1.08]">
                     <div class="contract-original-copy">
-                        <p id="preview-date"><?= e(date('F j, Y')) ?></p>
+                        <p id="preview-date"><?= e(date('F j, Y', strtotime($agreementDate))) ?></p>
                         <p id="preview-treatment-title">Dental Treatment for Patient name:</p>
                         <p id="preview-opening"></p>
                     </div>
@@ -224,7 +229,7 @@ $originalTerms = patient_experience_contract_original_terms();
                         <p><?= e((string)$originalTerms['discount_acceptance']) ?></p>
                     </div>
                     <div class="contract-signature contract-signature-original">
-                        <div class="flex items-end gap-2"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0 flex-1"></span></div>
+                        <div class="contract-signature-primary"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0"></span><span id="preview-signature-patient" class="contract-signature-patient">Patient name</span></div>
                         <div class="flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"></span></div>
                     </div>
                     <div class="contract-cancellation-bottom">
@@ -351,6 +356,10 @@ $originalTerms = patient_experience_contract_original_terms();
         const key = selectedTreatment();
         const definition = definitions[key] || definitions.custom;
         const patient = q('contract-patient-name').value.trim() || 'Patient name';
+        const dateParts = q('contract-date').value.split('-').map(Number);
+        const agreementDate = dateParts.length === 3 && dateParts.every(Number.isFinite)
+            ? new Intl.DateTimeFormat('en-US', {month:'long', day:'numeric', year:'numeric'}).format(new Date(dateParts[0], dateParts[1] - 1, dateParts[2]))
+            : '';
         const finalPrice = money(q('contract-final-price').value);
         const insurance = money(q('contract-insurance').value);
         const responsibility = Math.max(0, finalPrice - insurance);
@@ -358,6 +367,8 @@ $originalTerms = patient_experience_contract_original_terms();
         const deposit = depositInput === '' ? Math.round(responsibility * 25) / 100 : money(depositInput);
         const balance = Math.max(0, responsibility - deposit);
         q('preview-treatment-title').textContent = 'Dental Treatment for ' + patient + ':';
+        q('preview-date').textContent = agreementDate;
+        q('preview-signature-patient').textContent = patient;
         let financialLanguage = patient + ', Your estimated out of pocket portion of your Dental Treatment cost will be ' + formatMoney(finalPrice) + ' after a professional discount is applied. A deposit of ' + formatMoney(deposit) + ' will be made prior to your appointment. ';
         if (insurance > 0) financialLanguage += 'Your insurance estimated payment is ' + formatMoney(insurance) + '. ';
         financialLanguage += 'Your remaining balance of ' + formatMoney(balance) + ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';

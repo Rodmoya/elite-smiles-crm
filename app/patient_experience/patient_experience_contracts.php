@@ -182,6 +182,16 @@ if (!function_exists('patient_experience_contract_original_terms')) {
     }
 }
 
+if (!function_exists('patient_experience_contract_column_exists')) {
+    function patient_experience_contract_column_exists(string $column): bool
+    {
+        return (bool)db_value(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=:schema AND TABLE_NAME='patient_experience_contracts' AND COLUMN_NAME=:column_name",
+            ['schema' => DB_NAME, 'column_name' => $column]
+        );
+    }
+}
+
 if (!function_exists('patient_experience_contract_ensure_schema')) {
     function patient_experience_contract_ensure_schema(): void
     {
@@ -193,6 +203,7 @@ if (!function_exists('patient_experience_contract_ensure_schema')) {
         db_query("CREATE TABLE IF NOT EXISTS patient_experience_contracts (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             contract_number VARCHAR(40) NOT NULL DEFAULT '',
+            agreement_date DATE NULL,
             lead_id INT UNSIGNED NULL,
             patient_name VARCHAR(190) NOT NULL DEFAULT '',
             patient_phone VARCHAR(80) NOT NULL DEFAULT '',
@@ -231,6 +242,10 @@ if (!function_exists('patient_experience_contract_ensure_schema')) {
             KEY idx_patient_exp_contract_status (status),
             KEY idx_patient_exp_contract_created (created_at)
         ) {$charset}");
+
+        if (!patient_experience_contract_column_exists('agreement_date')) {
+            db_query('ALTER TABLE patient_experience_contracts ADD COLUMN agreement_date DATE NULL AFTER contract_number');
+        }
 
         db_query("CREATE TABLE IF NOT EXISTS patient_experience_contract_versions (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -388,9 +403,14 @@ if (!function_exists('patient_experience_contract_input')) {
         $responsibility = max(0, round($finalPrice - $insurance, 2));
         $depositInput = trim((string)($input['deposit_amount'] ?? ''));
         $deposit = $depositInput === '' ? round($responsibility * 0.25, 2) : patient_experience_contract_money($depositInput);
+        $dateInput = trim((string)($input['agreement_date'] ?? ''));
+        if ($dateInput === '') $dateInput = date('Y-m-d');
+        $dateValue = DateTimeImmutable::createFromFormat('!Y-m-d', $dateInput);
+        $agreementDate = $dateValue && $dateValue->format('Y-m-d') === $dateInput ? $dateInput : '';
 
         return [
             'lead_id' => max(0, (int)($input['lead_id'] ?? 0)),
+            'agreement_date' => $agreementDate,
             'patient_name' => mb_substr(trim((string)($input['patient_name'] ?? '')), 0, 190),
             'patient_phone' => mb_substr(trim((string)($input['patient_phone'] ?? '')), 0, 80),
             'patient_email' => mb_substr(strtolower(trim((string)($input['patient_email'] ?? ''))), 0, 190),
@@ -419,6 +439,7 @@ if (!function_exists('patient_experience_contract_validate')) {
     function patient_experience_contract_validate(array $data): array
     {
         $errors = [];
+        if (($data['agreement_date'] ?? '') === '') $errors['agreement_date'] = 'Enter a valid agreement date.';
         if (($data['patient_name'] ?? '') === '') $errors['patient_name'] = 'Select or enter the patient’s legal name.';
         if (($data['patient_email'] ?? '') !== '' && !filter_var((string)$data['patient_email'], FILTER_VALIDATE_EMAIL)) $errors['patient_email'] = 'Enter a valid email address.';
         if (($data['tooth_mode'] ?? '') === 'teeth' && empty($data['selected_teeth'])) $errors['selected_teeth'] = 'Select at least one tooth for this treatment.';
@@ -447,7 +468,7 @@ if (!function_exists('patient_experience_contract_db_params')) {
     function patient_experience_contract_db_params(array $data): array
     {
         $keys = [
-            'lead_id', 'patient_name', 'patient_phone', 'patient_email', 'treatment_key', 'treatment_label',
+            'agreement_date', 'lead_id', 'patient_name', 'patient_phone', 'patient_email', 'treatment_key', 'treatment_label',
             'arch_scope', 'custom_item_text', 'original_price', 'discount_amount', 'final_price',
             'insurance_estimate', 'patient_responsibility', 'deposit_amount', 'remaining_balance',
             'card_fee_percent', 'cancellation_fee_max', 'cancellation_text',
@@ -474,7 +495,7 @@ if (!function_exists('patient_experience_contract_save')) {
             if (!$existing) return ['ok' => false, 'errors' => ['contract' => 'Contract not found.'], 'data' => $data];
             if (!in_array((string)$existing['status'], ['draft'], true)) return ['ok' => false, 'errors' => ['contract' => 'Sent or signed contracts cannot be edited. Create a new contract instead.'], 'data' => $data];
             db_execute('UPDATE patient_experience_contracts SET
-                lead_id=:lead_id, patient_name=:patient_name, patient_phone=:patient_phone, patient_email=:patient_email,
+                agreement_date=:agreement_date, lead_id=:lead_id, patient_name=:patient_name, patient_phone=:patient_phone, patient_email=:patient_email,
                 treatment_key=:treatment_key, treatment_label=:treatment_label, arch_scope=:arch_scope,
                 selected_teeth_json=:selected_teeth_json, line_items_json=:line_items_json, custom_item_text=:custom_item_text,
                 original_price=:original_price, discount_amount=:discount_amount, final_price=:final_price,
@@ -487,12 +508,12 @@ if (!function_exists('patient_experience_contract_save')) {
                 ]));
         } else {
             db_execute('INSERT INTO patient_experience_contracts
-                (contract_number, lead_id, patient_name, patient_phone, patient_email, treatment_key, treatment_label, arch_scope,
+                (contract_number, agreement_date, lead_id, patient_name, patient_phone, patient_email, treatment_key, treatment_label, arch_scope,
                  selected_teeth_json, line_items_json, custom_item_text, original_price, discount_amount, final_price,
                  insurance_estimate, patient_responsibility, deposit_amount, remaining_balance, card_fee_percent,
                  cancellation_fee_max, cancellation_text, status, created_by_user_id, updated_by_user_id, created_at)
                 VALUES
-                (:contract_number, :lead_id, :patient_name, :patient_phone, :patient_email, :treatment_key, :treatment_label, :arch_scope,
+                (:contract_number, :agreement_date, :lead_id, :patient_name, :patient_phone, :patient_email, :treatment_key, :treatment_label, :arch_scope,
                  :selected_teeth_json, :line_items_json, :custom_item_text, :original_price, :discount_amount, :final_price,
                  :insurance_estimate, :patient_responsibility, :deposit_amount, :remaining_balance, :card_fee_percent,
                  :cancellation_fee_max, :cancellation_text, \'draft\', :created_by_user_id, :updated_by_user_id, NOW())', array_merge(patient_experience_contract_db_params($data), [
@@ -555,8 +576,10 @@ if (!function_exists('patient_experience_contract_patient_options')) {
 if (!function_exists('patient_experience_contract_snapshot')) {
     function patient_experience_contract_snapshot(array $contract): array
     {
+        $agreementDate = trim((string)($contract['agreement_date'] ?? ''));
+        $agreementTimestamp = preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate) ? strtotime($agreementDate . ' 12:00:00') : time();
         return [
-            'schema_version' => 3,
+            'schema_version' => 4,
             'terms_version' => 2,
             'practice' => [
                 'name' => 'Elite Smiles',
@@ -566,7 +589,7 @@ if (!function_exists('patient_experience_contract_snapshot')) {
             'contract' => [
                 'id' => (int)$contract['id'],
                 'number' => (string)$contract['contract_number'],
-                'date' => date('F j, Y'),
+                'date' => date('F j, Y', $agreementTimestamp ?: time()),
                 'patient_name' => (string)$contract['patient_name'],
                 'patient_phone' => (string)$contract['patient_phone'],
                 'patient_email' => (string)$contract['patient_email'],

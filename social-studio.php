@@ -81,7 +81,7 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex,nofollow">
     <title><?= e(APP_NAME) ?> | Social Studio</title>
-    <link rel="stylesheet" href="<?= e(base_url('assets/css/lead-agent.css')) ?>">
+    <link rel="stylesheet" href="<?= e(base_url('assets/css/lead-agent.css?v=' . (string)(@filemtime(__DIR__ . '/assets/css/lead-agent.css') ?: '1'))) ?>">
     <style>
         .social-template-card[aria-pressed="true"] { border-color:#0f172a; box-shadow:0 0 0 2px #0f172a; }
         .social-template-card:disabled { cursor:not-allowed; opacity:.68; }

@@ -29,5 +29,9 @@ if ($status === 'scheduled' && (string)($draft['status'] ?? '') !== 'approved') 
 }
 
 $ok = social_studio_update_status($draftId, $status, (int)(auth_user_id() ?: 0));
+if ($ok && $status === 'approved') {
+    flash_set('success', 'Post approved. Choose its publishing date and time, or use Fill week.');
+    redirect(base_url('social-studio.php?view=calendar&draft=' . $draftId));
+}
 flash_set($ok ? 'success' : 'error', $ok ? ('Draft marked ' . strtolower($labels[$status]) . '.') : 'No draft was updated.');
 redirect(base_url('social-studio.php'));

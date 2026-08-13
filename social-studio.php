@@ -30,6 +30,18 @@ $counts = $data['counts'];
 $drafts = $data['drafts'];
 $selected = $data['selected'];
 $schedule = $data['schedule'];
+$approvedUnscheduled = $data['approved_unscheduled'];
+$calendarItems = $data['calendar_items'];
+$publishedDrafts = $data['published_drafts'];
+$weekStart = $data['week_start'];
+$weekEnd = $data['week_end'];
+$weekDays = social_studio_week_days($weekStart);
+$activeView = strtolower(trim((string)get('view', 'create')));
+if (!in_array($activeView, ['create', 'calendar', 'published'], true)) $activeView = 'create';
+$calendarByDay = [];
+foreach ($calendarItems as $calendarItem) {
+    $calendarByDay[date('Y-m-d', strtotime((string)$calendarItem['scheduled_at']))][] = $calendarItem;
+}
 $baseAnalysisProgress = social_studio_base_analysis_progress();
 $readyReferences = array_filter($visualReferences, static fn(array $reference): bool => !empty($reference['ready']));
 $pendingBaseIds = array_values(array_map(static fn(string $key): int => (int)substr($key, 5), array_filter(array_keys($visualReferences), static fn(string $key): bool => str_starts_with($key, 'base_') && empty($visualReferences[$key]['ready']))));
@@ -50,6 +62,17 @@ function social_studio_badge_class(string $status): string
 
 $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
 $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0)));
+$calendarNow = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+$calendarDefaultSlot = null;
+foreach ($weekDays as $calendarDay) {
+    $candidateSlot = $calendarDay->setTime(10, 30);
+    if ($candidateSlot > $calendarNow->modify('+1 minute')) {
+        $calendarDefaultSlot = $candidateSlot;
+        break;
+    }
+}
+$calendarDefaultSlot ??= $weekStart->modify('+7 days')->setTime(10, 30);
+$calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -65,6 +88,11 @@ $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0))
         .social-template-card[hidden] { display:none; }
         .social-preview-image { aspect-ratio:4/5; width:100%; object-fit:contain; background:#f1f5f9; }
         .social-scrollbar { scrollbar-width:thin; scrollbar-color:#94a3b8 transparent; }
+        .social-workspace-tab[aria-current="page"] { background:#0f172a; border-color:#0f172a; color:#fff; }
+        .social-calendar-day-today { border-color:#0f172a; box-shadow:0 0 0 1px #0f172a; }
+        .social-calendar-card { transition:transform .2s ease, box-shadow .2s ease; }
+        .social-calendar-card:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(15,23,42,.08); }
+        @media (prefers-reduced-motion:reduce) { .social-calendar-card { transition:none; } .social-calendar-card:hover { transform:none; } }
         @media (min-width:1280px) { .social-production-grid { grid-template-columns:300px minmax(420px,1fr) 360px; } }
     </style>
 </head>
@@ -85,10 +113,17 @@ $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0))
         </div>
     </header>
 
+    <nav class="mb-5 grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-3" aria-label="Social Studio workspace">
+        <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=create')) ?>" aria-current="<?= $activeView === 'create' ? 'page' : 'false' ?>"><span>Create &amp; review</span><span class="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"><?= e((string)($counts['review'] ?? 0)) ?></span></a>
+        <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->format('Y-m-d'))) ?>" aria-current="<?= $activeView === 'calendar' ? 'page' : 'false' ?>"><span>Content calendar</span><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700"><?= e((string)($counts['scheduled'] ?? 0)) ?></span></a>
+        <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=published')) ?>" aria-current="<?= $activeView === 'published' ? 'page' : 'false' ?>"><span>Published</span><span class="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700"><?= e((string)($counts['published'] ?? 0)) ?></span></a>
+    </nav>
+
     <?php if ($successMessage !== ''): ?><div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><?= e((string)$successMessage) ?></div><?php endif; ?>
     <?php if ($errorMessage !== ''): ?><div role="alert" class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><?= e((string)$errorMessage) ?></div><?php endif; ?>
     <?php if ($autoGenerateIds !== []): ?><div id="social-generation-progress" role="status" aria-live="polite" class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Preparing image generation…</div><?php endif; ?>
 
+    <?php if ($activeView === 'create'): ?>
     <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="template-library-title">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -213,7 +248,7 @@ $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0))
                             <button type="button" class="min-h-11 rounded-lg border border-slate-300 text-xs font-semibold" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status] ?? $status) ?>">Open post</button>
                             <form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700" type="submit"><?= $imageUrl !== '' ? 'Regenerate' : 'Generate image' ?></button></form>
                             <?php if (in_array($status, ['review','draft'], true)): ?>
-                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_status.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="status" value="approved"><button class="min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 disabled:opacity-50" type="submit" <?= $imageUrl === '' ? 'disabled' : '' ?>>Approve</button></form>
+                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_status.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="status" value="approved"><button class="min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" type="submit" <?= $imageUrl === '' ? 'disabled' : '' ?>>Approve &amp; schedule</button></form>
                             <?php elseif ($canPublish): ?>
                                 <form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" onsubmit="return confirm('Publish this approved post now to Elite Smiles on Facebook and Instagram?');"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="now"><button class="min-h-11 w-full rounded-lg bg-emerald-600 text-xs font-semibold text-white" type="submit"><?= $status === 'publish_failed' ? 'Retry publish' : 'Publish now' ?></button></form>
                             <?php else: ?>
@@ -235,6 +270,62 @@ $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0))
             <form method="POST" action="<?= e(base_url('app/actions/social_studio_import_instagram.php')) ?>" class="rounded-xl border border-slate-200 p-4"><?= csrf_input() ?><input type="hidden" name="batch_index" value="0"><label class="text-sm font-semibold">Import Instagram inventory JSON<textarea name="posts_json" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder='[{"post_id":"...","published_at":"2026-03-16","caption":"...","hashtags":["#EliteSmiles"],"image_url":"..."}]'></textarea></label><button class="mt-3 min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold" type="submit">Import first item</button></form>
         </div>
     </details>
+    <?php elseif ($activeView === 'calendar'): ?>
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="calendar-title">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Content planner</p>
+                    <h2 id="calendar-title" class="mt-1 text-xl font-semibold text-slate-950">Week of <?= e($weekStart->format('F j')) ?>–<?= e($weekStart->modify('+6 days')->format('F j, Y')) ?></h2>
+                    <p class="mt-1 text-sm text-slate-600">Approved posts wait above the timeline until you assign a date. Scheduled posts publish automatically through Meta.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <a class="grid min-h-11 place-items-center rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->modify('-7 days')->format('Y-m-d'))) ?>">Previous</a>
+                    <a class="grid min-h-11 place-items-center rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700" href="<?= e(base_url('social-studio.php?view=calendar')) ?>">Today</a>
+                    <a class="grid min-h-11 place-items-center rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->modify('+7 days')->format('Y-m-d'))) ?>">Next</a>
+                </div>
+            </div>
+
+            <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 class="text-sm font-semibold text-slate-950">Ready to schedule</h3><p class="mt-1 text-xs text-slate-600"><?= e((string)count($approvedUnscheduled)) ?> approved post<?= count($approvedUnscheduled) === 1 ? '' : 's' ?> waiting for a time.</p></div><a class="text-sm font-semibold text-slate-700 underline underline-offset-4" href="<?= e(base_url('social-studio.php?view=create')) ?>">Create more posts</a></div>
+                    <?php if ($approvedUnscheduled === []): ?><div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">No approved posts are waiting. Approve a finished post and it will appear here.</div><?php endif; ?>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <?php foreach ($approvedUnscheduled as $draft): ?><?php $imageUrl=social_studio_image_url($draft); ?>
+                            <article class="rounded-xl border border-slate-200 bg-white p-3 <?= (int)get('draft',0)===(int)$draft['id'] ? 'ring-2 ring-slate-900' : '' ?>">
+                                <div class="flex gap-3"><?php if ($imageUrl !== ''): ?><img class="h-20 w-16 rounded-lg bg-slate-100 object-cover" src="<?= e($imageUrl) ?>" width="64" height="80" alt="<?= e((string)$draft['title']) ?>"><?php endif; ?><div class="min-w-0"><h4 class="text-sm font-semibold text-slate-950"><?= e((string)$draft['title']) ?></h4><p class="mt-1 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'], 65)) ?></p></div></div>
+                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-3 grid gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><label class="text-xs font-semibold text-slate-700" for="calendar-schedule-<?= e((string)$draft['id']) ?>">Publish date and time</label><input id="calendar-schedule-<?= e((string)$draft['id']) ?>" name="scheduled_at" type="datetime-local" value="<?= e($calendarDefaultScheduleLocal) ?>" min="<?= e(date('Y-m-d\TH:i', time()+60)) ?>" class="min-h-11 rounded-lg border border-slate-300 px-2 text-sm"><button class="min-h-11 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white" type="submit">Add to calendar</button></form>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <form method="POST" action="<?= e(base_url('app/actions/social_studio_schedule_week.php')) ?>" class="rounded-xl border border-slate-200 p-4">
+                    <?= csrf_input() ?><input type="hidden" name="week_start" value="<?= e($weekStart->format('Y-m-d')) ?>">
+                    <h3 class="text-sm font-semibold text-slate-950">Fill this week</h3><p class="mt-1 text-xs leading-5 text-slate-600">Place one approved post per future day. You can adjust each time afterward.</p>
+                    <div class="mt-4 grid grid-cols-2 gap-3"><label class="text-xs font-semibold text-slate-700">Posts<select name="count" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><?php for($i=1;$i<=7;$i++): ?><option value="<?= $i ?>" <?= $i===min(7,max(1,count($approvedUnscheduled)))?'selected':'' ?>><?= $i ?></option><?php endfor; ?></select></label><label class="text-xs font-semibold text-slate-700">Daily time<input name="publish_time" type="time" value="10:30" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label></div>
+                    <button type="submit" class="mt-3 min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800" <?= $approvedUnscheduled === [] ? 'disabled' : '' ?>>Fill week with approved posts</button>
+                </form>
+            </div>
+
+            <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-7" aria-label="Weekly publishing timeline">
+                <?php $today=(new DateTimeImmutable('now',new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d'); foreach ($weekDays as $day): ?><?php $dayKey=$day->format('Y-m-d'); $dayItems=$calendarByDay[$dayKey]??[]; ?>
+                    <section class="min-h-[360px] rounded-xl border bg-slate-50 p-3 <?= $dayKey===$today?'social-calendar-day-today':'border-slate-200' ?>" aria-labelledby="day-<?= e($dayKey) ?>">
+                        <div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"><?= e($day->format('D')) ?></p><h3 id="day-<?= e($dayKey) ?>" class="text-lg font-semibold text-slate-950"><?= e($day->format('j')) ?></h3></div><?php if($dayKey===$today): ?><span class="rounded-full bg-slate-950 px-2 py-1 text-[10px] font-semibold text-white">Today</span><?php endif; ?></div>
+                        <div class="mt-3 space-y-3"><?php if($dayItems===[]): ?><div class="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">Open day</div><?php endif; ?>
+                            <?php foreach($dayItems as $draft): ?><?php $imageUrl=social_studio_image_url($draft); $status=(string)$draft['status']; ?>
+                                <article class="social-calendar-card rounded-lg border border-slate-200 bg-white p-2"><div class="flex gap-2"><?php if($imageUrl!==''): ?><img class="h-14 w-11 rounded-md object-cover" src="<?= e($imageUrl) ?>" width="44" height="56" alt=""><?php endif; ?><div class="min-w-0"><p class="text-xs font-semibold text-slate-950"><?= e(date('g:i A',strtotime((string)$draft['scheduled_at']))) ?></p><p class="mt-1 text-xs leading-4 text-slate-600"><?= e(str_limit((string)$draft['title'],35)) ?></p></div></div><div class="mt-2 flex items-center justify-between gap-2"><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-1 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status]??$status) ?></span><button type="button" class="min-h-11 px-2 text-xs font-semibold text-slate-700" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status]??$status) ?>">Open</button></div><?php if(in_array($status,['scheduled','publish_failed'],true)): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-2 grid gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><label class="sr-only" for="move-<?= e((string)$draft['id']) ?>">Reschedule post</label><input id="move-<?= e((string)$draft['id']) ?>" name="scheduled_at" type="datetime-local" value="<?= e(date('Y-m-d\TH:i',strtotime((string)$draft['scheduled_at']))) ?>" min="<?= e(date('Y-m-d\TH:i',time()+60)) ?>" class="min-h-11 min-w-0 rounded-md border border-slate-300 px-2 text-xs"><button type="submit" class="min-h-11 rounded-md border border-slate-300 text-xs font-semibold">Update time</button></form><?php endif; ?></article>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php else: ?>
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="published-title">
+            <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Content archive</p><h2 id="published-title" class="mt-1 text-xl font-semibold text-slate-950">Published posts</h2><p class="mt-1 text-sm text-slate-600">A permanent record of posts successfully sent through Meta, newest first.</p></div>
+            <?php if($publishedDrafts===[]): ?><div class="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No posts have been published yet.</div><?php endif; ?>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><?php foreach($publishedDrafts as $draft): ?><?php $imageUrl=social_studio_image_url($draft); ?><article class="overflow-hidden rounded-xl border border-slate-200 bg-white"><?php if($imageUrl!==''): ?><img class="aspect-[4/5] w-full bg-slate-100 object-contain" src="<?= e($imageUrl) ?>" alt="<?= e((string)$draft['title']) ?>" loading="lazy"><?php endif; ?><div class="p-4"><div class="flex items-start justify-between gap-2"><h3 class="text-sm font-semibold text-slate-950"><?= e((string)$draft['title']) ?></h3><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">Published</span></div><p class="mt-2 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'],100)) ?></p><p class="mt-3 text-xs font-semibold text-slate-700"><?= e(!empty($draft['published_at'])?date('M j, Y · g:i A',strtotime((string)$draft['published_at'])):'Published') ?></p><button type="button" class="mt-3 min-h-11 w-full rounded-lg border border-slate-300 text-xs font-semibold" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="Published">Open post</button></div></article><?php endforeach; ?></div>
+        </section>
+    <?php endif; ?>
 </main>
 
 <dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-2xl border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
@@ -292,6 +383,12 @@ $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0))
         document.getElementById('social-modal-hashtags').value = button.dataset.hashtags || '';
         document.getElementById('social-modal-draft-id').value = button.dataset.draftId || '';
         document.getElementById('social-modal-status').textContent = button.dataset.status || 'Review';
+        const isPublished = (button.dataset.status || '').toLowerCase() === 'published';
+        document.getElementById('social-modal-caption').readOnly = isPublished;
+        document.getElementById('social-modal-hashtags').readOnly = isPublished;
+        const saveButton = modal.querySelector('button[type="submit"]');
+        saveButton?.classList.toggle('invisible', isPublished);
+        if (saveButton) saveButton.disabled = isPublished;
         const image = document.getElementById('social-modal-image');
         image.src = button.dataset.image || '';
         image.alt = button.dataset.title || 'Social post preview';

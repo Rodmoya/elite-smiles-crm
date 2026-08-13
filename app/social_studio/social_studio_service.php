@@ -962,6 +962,28 @@ if (!function_exists('social_studio_next_slot')) {
     }
 }
 
+if (!function_exists('social_studio_week_start')) {
+    function social_studio_week_start(string $requested = ''): DateTimeImmutable
+    {
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        try {
+            $date = $requested !== '' ? new DateTimeImmutable($requested, $timezone) : new DateTimeImmutable('now', $timezone);
+        } catch (Throwable) {
+            $date = new DateTimeImmutable('now', $timezone);
+        }
+        return $date->modify('monday this week')->setTime(0, 0);
+    }
+
+    function social_studio_week_days(DateTimeImmutable $weekStart): array
+    {
+        $days = [];
+        for ($offset = 0; $offset < 7; $offset++) {
+            $days[] = $weekStart->modify('+' . $offset . ' days');
+        }
+        return $days;
+    }
+}
+
 if (!function_exists('social_studio_dashboard_data')) {
     function social_studio_dashboard_data(): array
     {
@@ -990,11 +1012,22 @@ if (!function_exists('social_studio_dashboard_data')) {
             : null;
         $selected ??= db_one('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "approved", "scheduled", "publish_failed", "published") ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed", "scheduled", "published"), id DESC LIMIT 1');
 
+        $weekStart = social_studio_week_start(function_exists('get') ? trim((string)get('week', '')) : '');
+        $weekEnd = $weekStart->modify('+7 days');
+
         return [
             'counts' => $counts,
-            'drafts' => db_all('SELECT * FROM social_studio_drafts ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed", "scheduled", "publishing", "published", "rejected"), COALESCE(scheduled_at, created_at) ASC, id DESC LIMIT 12'),
+            'drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "approved", "publish_failed") ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed"), id DESC LIMIT 24'),
             'selected' => $selected,
             'schedule' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at IS NOT NULL AND status IN ("approved", "scheduled", "publish_failed") ORDER BY scheduled_at ASC LIMIT 8'),
+            'approved_unscheduled' => db_all('SELECT * FROM social_studio_drafts WHERE status="approved" AND scheduled_at IS NULL ORDER BY COALESCE(approved_at, created_at) ASC, id ASC LIMIT 50'),
+            'calendar_items' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at >= :week_start AND scheduled_at < :week_end AND status IN ("scheduled", "publishing", "published", "publish_failed") ORDER BY scheduled_at ASC, id ASC', [
+                'week_start' => $weekStart->format('Y-m-d H:i:s'),
+                'week_end' => $weekEnd->format('Y-m-d H:i:s'),
+            ]),
+            'published_drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status="published" ORDER BY published_at DESC, id DESC LIMIT 100'),
+            'week_start' => $weekStart,
+            'week_end' => $weekEnd,
         ];
     }
 }

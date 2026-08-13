@@ -10,6 +10,7 @@ function contract_expect(bool $condition, string $message): void
 
 $leadId = 0;
 $contractId = 0;
+$libraryLabel = 'Contract QA ' . bin2hex(random_bytes(5));
 try {
     patient_experience_ensure_schema();
     $creatorMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/patient_experience/contract_creator.php');
@@ -34,11 +35,16 @@ try {
     contract_expect(!str_contains($creatorMarkup, 'contract-copy-grid'), 'Contract preview incorrectly splits the full agreement into two columns.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
+    contract_expect(str_contains($creatorMarkup, 'contract-option flex h-24'), 'Service controls do not use one consistent height.');
+    contract_expect(str_contains($creatorMarkup, 'Add to this contract') && str_contains($creatorMarkup, 'Add to treatment library'), 'Custom service one-time and library actions are missing.');
+    contract_expect(str_contains($creatorMarkup, 'Defaults to 25%'), 'The automatic deposit behavior is not explained in the form.');
+    contract_expect(str_contains($creatorMarkup, 'contract-payment-notice') && str_contains($creatorMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the preview.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
     contract_expect(str_contains($publicContractMarkup, 'class="agreement-treatment-list'), 'Included treatment is not arranged in two columns in the signing contract.');
     contract_expect(!str_contains($publicContractMarkup, 'agreement-copy-grid'), 'Signing contract incorrectly splits the full agreement into two columns.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');
+    contract_expect(str_contains($publicContractMarkup, 'agreement-payment-notice') && str_contains($publicContractMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the signing document.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
         contract_expect(trim((string)(patient_experience_contract_original_terms()[$termKey] ?? '')) !== '', 'Original contract language is missing: ' . $termKey);
     }
@@ -85,6 +91,18 @@ try {
     contract_expect((float)$normalized['remaining_balance'] === 11250.0, 'Remaining balance calculation failed.');
     contract_expect(patient_experience_contract_validate($normalized) === [], 'Valid contract was rejected.');
 
+    $automaticDeposit = patient_experience_contract_input([
+        'patient_name' => 'Automatic Deposit Patient',
+        'treatment_key' => 'veneers',
+        'line_items' => ['veneers'],
+        'line_item_teeth' => ['veneers' => [7, 8, 9, 10]],
+        'final_price' => 16000,
+        'insurance_estimate' => 1000,
+        'deposit_amount' => '',
+    ]);
+    contract_expect((float)$automaticDeposit['deposit_amount'] === 3750.0, 'Blank deposit did not default to 25% of patient responsibility.');
+    contract_expect((float)$automaticDeposit['remaining_balance'] === 11250.0, 'Automatic deposit did not update the remaining balance.');
+
     $archNormalized = patient_experience_contract_input([
         'patient_name' => 'Arch Test Patient',
         'treatment_key' => 'all_on_x',
@@ -119,6 +137,8 @@ try {
         'final_price' => 16000,
         'insurance_estimate' => 1000,
         'deposit_amount' => 3750,
+        'custom_item_text' => $libraryLabel,
+        'custom_library_items_json' => json_encode([['label' => $libraryLabel, 'area_mode' => 'none', 'treatment_key' => 'veneers']]),
     ], null);
     contract_expect(!empty($saved['ok']), 'Contract draft was not saved.');
     $contractId = (int)$saved['contract_id'];
@@ -127,6 +147,11 @@ try {
     contract_expect(str_starts_with((string)$contract['contract_number'], 'ES-'), 'Contract number was not generated.');
     contract_expect(($contract['line_items'][0]['teeth'] ?? []) === [4, 5, 13], 'Saved contract lost the Veneers tooth assignment.');
     contract_expect(($contract['line_items'][1]['teeth'] ?? []) === [6, 7], 'Saved contract lost the Gingivectomy tooth assignment.');
+    contract_expect(in_array($libraryLabel, array_column((array)$contract['line_items'], 'label'), true), 'Saved contract lost the custom service.');
+    $libraryRow = db_one('SELECT treatment_key,label FROM patient_experience_contract_library_items WHERE label=:label LIMIT 1', ['label' => $libraryLabel]);
+    contract_expect((string)($libraryRow['treatment_key'] ?? '') === 'veneers', 'Custom service was not saved to the selected treatment library.');
+    $libraryDefinitions = patient_experience_contract_definitions();
+    contract_expect(in_array($libraryLabel, (array)($libraryDefinitions['veneers']['options'] ?? []), true), 'Saved library service is not available on the next contract.');
 
     $delivery = patient_experience_contract_prepare_delivery($contractId, [], null);
     contract_expect(!empty($delivery['ok']), 'Immutable delivery version was not created.');
@@ -155,6 +180,7 @@ try {
     $editAttempt = patient_experience_contract_save(array_merge($normalized, ['contract_id' => $contractId]), null);
     contract_expect(empty($editAttempt['ok']), 'Signed contract was incorrectly editable.');
 } finally {
+    db_query('DELETE FROM patient_experience_contract_library_items WHERE label=:label', ['label' => $libraryLabel]);
     if ($contractId > 0) {
         db_query('DELETE FROM patient_experience_contract_deliveries WHERE contract_id=:id', ['id' => $contractId]);
         db_query('DELETE FROM patient_experience_contract_signatures WHERE contract_id=:id', ['id' => $contractId]);

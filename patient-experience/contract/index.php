@@ -61,6 +61,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     <style>
         .agreement-page { width:min(100%, 8.5in); min-height:11in; }
         .agreement-treatment-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:0.28in; row-gap:0.08in; }
+        .agreement-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
         .agreement-page.preprinted .digital-letterhead,
         .agreement-page.preprinted .digital-footer { display:none; }
         .agreement-page.preprinted .paper-body { padding-top:1.65in; }
@@ -79,8 +80,10 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
             #agreement-document .agreement-treatment-list { column-gap:0.22in !important; row-gap:0.03in !important; }
             #agreement-document .agreement-treatment-list li, #agreement-document .agreement-signature { break-inside:avoid; page-break-inside:avoid; }
             #agreement-document .agreement-legal-copy { font-size:11.25px !important; line-height:1.42 !important; }
+            #agreement-document .agreement-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
             .no-print { display:none !important; }
         }
+        @media (max-width:700px) { .agreement-payment-notice { white-space:normal; } }
         @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
     </style>
 </head>
@@ -117,7 +120,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                 </div>
                 <h2 class="mt-4 text-lg font-semibold text-slate-950">Dental Treatment for <?= e((string)($agreement['treatment_label'] ?? '')) ?></h2>
                 <p class="mt-2.5"><?= e($financialLanguage) ?></p>
-                <?php if ($hasOriginalTerms): ?><div class="mt-2 space-y-1 font-semibold text-slate-950"><p><?= e((string)$terms['cashier_check']) ?></p><p><?= e((string)$terms['credit_card']) ?></p></div><?php endif; ?>
+                <?php if ($hasOriginalTerms): ?><div class="agreement-payment-notice mt-2 rounded-lg px-2.5 py-2 font-semibold text-slate-950"><span><?= e((string)$terms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$terms['credit_card']) ?></span></div><?php endif; ?>
                 <section class="mt-3"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="agreement-treatment-list mt-1.5 pl-5">
                     <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><?php $itemArea = $lineItemAreaLabel((array)$item); ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $itemArea !== '' && (!empty($item['teeth']) || !empty($item['arch_scope']) || $index === 0) ? ' — ' . e($itemArea) : '' ?></li><?php endforeach; ?>
                 </ul></section>

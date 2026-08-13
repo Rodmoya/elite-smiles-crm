@@ -16,7 +16,7 @@ require_once __DIR__ . '/../core/twilio.php';
 if (!function_exists('patient_experience_contract_definitions')) {
     function patient_experience_contract_definitions(): array
     {
-        return [
+        $definitions = [
             'veneers' => [
                 'label' => 'Veneers',
                 'tooth_mode' => 'none',
@@ -140,6 +140,22 @@ if (!function_exists('patient_experience_contract_definitions')) {
                 'option_area_modes' => [],
             ],
         ];
+        try {
+            $libraryItems = db_all("SELECT id, treatment_key, label, area_mode FROM patient_experience_contract_library_items WHERE is_active=1 ORDER BY treatment_key, label");
+            foreach ($libraryItems as $libraryItem) {
+                $treatmentKey = (string)($libraryItem['treatment_key'] ?? '');
+                if (!isset($definitions[$treatmentKey])) continue;
+                $optionKey = 'library_' . (int)$libraryItem['id'];
+                $definitions[$treatmentKey]['options'][$optionKey] = (string)$libraryItem['label'];
+                $areaMode = (string)($libraryItem['area_mode'] ?? 'none');
+                if (in_array($areaMode, ['teeth', 'arch'], true)) {
+                    $definitions[$treatmentKey]['option_area_modes'][$optionKey] = $areaMode;
+                }
+            }
+        } catch (Throwable) {
+            // The base library remains available while the schema is created.
+        }
+        return $definitions;
     }
 }
 
@@ -259,6 +275,48 @@ if (!function_exists('patient_experience_contract_ensure_schema')) {
             KEY idx_patient_exp_contract_delivery_contract (contract_id),
             KEY idx_patient_exp_contract_delivery_status (status)
         ) {$charset}");
+
+        db_query("CREATE TABLE IF NOT EXISTS patient_experience_contract_library_items (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            treatment_key VARCHAR(80) NOT NULL,
+            label VARCHAR(190) NOT NULL,
+            area_mode VARCHAR(20) NOT NULL DEFAULT 'none',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_by_user_id INT UNSIGNED NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_patient_exp_contract_library_label (treatment_key, label),
+            KEY idx_patient_exp_contract_library_active (treatment_key, is_active)
+        ) {$charset}");
+    }
+}
+
+if (!function_exists('patient_experience_contract_save_library_items')) {
+    function patient_experience_contract_save_library_items(string $treatmentKey, mixed $items, ?int $userId = null): array
+    {
+        patient_experience_contract_ensure_schema();
+        $definitions = patient_experience_contract_definitions();
+        if (!isset($definitions[$treatmentKey])) return [];
+        if (is_string($items)) $items = json_decode($items, true);
+        if (!is_array($items)) return [];
+        $saved = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) continue;
+            $itemTreatmentKey = strtolower(trim((string)($item['treatment_key'] ?? $treatmentKey)));
+            if (!isset($definitions[$itemTreatmentKey])) $itemTreatmentKey = $treatmentKey;
+            $label = mb_substr(trim((string)($item['label'] ?? '')), 0, 190);
+            if ($label === '') continue;
+            $areaMode = (string)($item['area_mode'] ?? 'none');
+            if (!in_array($areaMode, ['none', 'teeth', 'arch'], true)) $areaMode = 'none';
+            db_execute('INSERT INTO patient_experience_contract_library_items (treatment_key,label,area_mode,is_active,created_by_user_id,created_at) VALUES (:treatment_key,:label,:area_mode,1,:user_id,NOW()) ON DUPLICATE KEY UPDATE area_mode=VALUES(area_mode),is_active=1,updated_at=NOW()', [
+                'treatment_key' => $itemTreatmentKey,
+                'label' => $label,
+                'area_mode' => $areaMode,
+                'user_id' => $userId,
+            ]);
+            $saved[] = ['label' => $label, 'area_mode' => $areaMode, 'treatment_key' => $itemTreatmentKey];
+        }
+        return $saved;
     }
 }
 
@@ -328,7 +386,8 @@ if (!function_exists('patient_experience_contract_input')) {
         $finalPrice = patient_experience_contract_money($input['final_price'] ?? 0);
         $insurance = patient_experience_contract_money($input['insurance_estimate'] ?? 0);
         $responsibility = max(0, round($finalPrice - $insurance, 2));
-        $deposit = patient_experience_contract_money($input['deposit_amount'] ?? 0);
+        $depositInput = trim((string)($input['deposit_amount'] ?? ''));
+        $deposit = $depositInput === '' ? round($responsibility * 0.25, 2) : patient_experience_contract_money($depositInput);
 
         return [
             'lead_id' => max(0, (int)($input['lead_id'] ?? 0)),
@@ -449,7 +508,8 @@ if (!function_exists('patient_experience_contract_save')) {
         if (function_exists('patient_experience_audit')) {
             patient_experience_audit('contract_draft_saved', ['contract_id' => $contractId], null, $data['lead_id'] ?: null, $userId);
         }
-        return ['ok' => true, 'contract_id' => $contractId, 'contract' => patient_experience_contract_by_id($contractId)];
+        $savedLibraryItems = patient_experience_contract_save_library_items((string)$data['treatment_key'], $input['custom_library_items_json'] ?? [], $userId);
+        return ['ok' => true, 'contract_id' => $contractId, 'contract' => patient_experience_contract_by_id($contractId), 'library_items' => $savedLibraryItems];
     }
 }
 

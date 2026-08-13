@@ -74,7 +74,7 @@ foreach ($weekDays as $calendarDay) {
 $calendarDefaultSlot ??= $weekStart->modify('+7 days')->setTime(10, 30);
 $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
 $calendarTimeOptions = [];
-for ($minutes = 8 * 60; $minutes <= 20 * 60; $minutes += 30) {
+for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
     $calendarTimeOptions[sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60)] = date('g:i A', strtotime(sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60)));
 }
 $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled'] ?? 0);
@@ -285,7 +285,7 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Content planner</p>
                     <h2 id="calendar-title" class="mt-1 text-xl font-semibold text-slate-950">Week of <?= e($weekStart->format('F j')) ?>–<?= e($weekStart->modify('+6 days')->format('F j, Y')) ?></h2>
-                    <p class="mt-1 text-sm text-slate-600">Approved posts wait above the timeline until you assign a date. Scheduled posts publish automatically through Meta.</p>
+                    <p class="mt-1 text-sm text-slate-600">Approved posts wait above the timeline until you assign a date. Each day can hold multiple posts, and scheduled posts publish automatically through Meta.</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <a class="grid min-h-11 place-items-center rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->modify('-7 days')->format('Y-m-d'))) ?>">Previous</a>
@@ -312,7 +312,7 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
                 </div>
                 <form method="POST" action="<?= e(base_url('app/actions/social_studio_schedule_week.php')) ?>" class="rounded-xl border border-slate-200 p-4">
                     <?= csrf_input() ?><input type="hidden" name="week_start" value="<?= e($weekStart->format('Y-m-d')) ?>">
-                    <h3 class="text-sm font-semibold text-slate-950">Fill this week</h3><p class="mt-1 text-xs leading-5 text-slate-600">Place one approved post per future day. You can adjust each time afterward.</p>
+                    <h3 class="text-sm font-semibold text-slate-950">Fill this week</h3><p class="mt-1 text-xs leading-5 text-slate-600">Automatically spread approved posts across future days. You can then stack multiple posts on any day.</p>
                     <div class="mt-4 grid grid-cols-2 gap-3"><label class="text-xs font-semibold text-slate-700">Posts<select name="count" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><?php for($i=1;$i<=7;$i++): ?><option value="<?= $i ?>" <?= $i===min(7,max(1,count($approvedUnscheduled)))?'selected':'' ?>><?= $i ?></option><?php endfor; ?></select></label><label class="text-xs font-semibold text-slate-700">Daily time<input name="publish_time" type="time" value="10:30" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label></div>
                     <button type="submit" class="mt-3 min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800" <?= $approvedUnscheduled === [] ? 'disabled' : '' ?>>Fill week with approved posts</button>
                 </form>

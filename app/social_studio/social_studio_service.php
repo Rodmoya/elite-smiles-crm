@@ -1017,7 +1017,7 @@ if (!function_exists('social_studio_dashboard_data')) {
 
         return [
             'counts' => $counts,
-            'drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "approved", "publish_failed") ORDER BY FIELD(status, "review", "draft", "approved", "publish_failed"), id DESC LIMIT 24'),
+            'drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft") ORDER BY FIELD(status, "review", "draft"), id DESC LIMIT 24'),
             'selected' => $selected,
             'schedule' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at IS NOT NULL AND status IN ("approved", "scheduled", "publish_failed") ORDER BY scheduled_at ASC LIMIT 8'),
             'approved_unscheduled' => db_all('SELECT * FROM social_studio_drafts WHERE status="approved" AND scheduled_at IS NULL ORDER BY COALESCE(approved_at, created_at) ASC, id ASC LIMIT 50'),
@@ -1735,12 +1735,22 @@ if (!function_exists('social_studio_update_status')) {
         if ($draftId <= 0 || !in_array($status, $allowed, true)) {
             return false;
         }
-        $draft = db_one('SELECT status, branded_image_storage_key, generation_status FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
+        $draft = db_one('SELECT status, image_storage_key, branded_image_storage_key, generation_status FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
         if (!$draft) {
             return false;
         }
-        if ($status === 'approved' && (trim((string)($draft['branded_image_storage_key'] ?? '')) === '' || (string)($draft['generation_status'] ?? '') !== 'ready')) {
-            return false;
+        if ($status === 'approved') {
+            $brandedKey = trim((string)($draft['branded_image_storage_key'] ?? ''));
+            $rawKey = trim((string)($draft['image_storage_key'] ?? ''));
+            if ($brandedKey === '' && $rawKey === '') {
+                return false;
+            }
+            if ($brandedKey === '' && $rawKey !== '') {
+                db_execute('UPDATE social_studio_drafts SET branded_image_storage_key=:image_key, generation_status="ready", generation_error=NULL WHERE id=:id LIMIT 1', [
+                    'id' => $draftId,
+                    'image_key' => $rawKey,
+                ]);
+            }
         }
         if ($status === 'scheduled' && (string)($draft['status'] ?? '') !== 'approved') {
             return false;

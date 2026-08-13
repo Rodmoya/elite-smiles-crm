@@ -73,6 +73,11 @@ foreach ($weekDays as $calendarDay) {
 }
 $calendarDefaultSlot ??= $weekStart->modify('+7 days')->setTime(10, 30);
 $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
+$calendarTimeOptions = [];
+for ($minutes = 8 * 60; $minutes <= 20 * 60; $minutes += 30) {
+    $calendarTimeOptions[sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60)] = date('g:i A', strtotime(sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60)));
+}
+$calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -92,6 +97,10 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
         .social-calendar-day-today { border-color:#0f172a; box-shadow:0 0 0 1px #0f172a; }
         .social-calendar-card { transition:transform .2s ease, box-shadow .2s ease; }
         .social-calendar-card:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(15,23,42,.08); }
+        .social-schedule-card[draggable="true"] { cursor:grab; }
+        .social-schedule-card[draggable="true"]:active { cursor:grabbing; }
+        .social-schedule-card.is-dragging { opacity:.45; transform:scale(.98); }
+        .social-calendar-dropzone.is-dragover { border-color:#059669; background:#ecfdf5; box-shadow:0 0 0 3px rgba(5,150,105,.15); }
         @media (prefers-reduced-motion:reduce) { .social-calendar-card { transition:none; } .social-calendar-card:hover { transform:none; } }
         @media (min-width:1280px) { .social-production-grid { grid-template-columns:300px minmax(420px,1fr) 360px; } }
     </style>
@@ -115,7 +124,7 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
 
     <nav class="mb-5 grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-3" aria-label="Social Studio workspace">
         <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=create')) ?>" aria-current="<?= $activeView === 'create' ? 'page' : 'false' ?>"><span>Create &amp; review</span><span class="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"><?= e((string)($counts['review'] ?? 0)) ?></span></a>
-        <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->format('Y-m-d'))) ?>" aria-current="<?= $activeView === 'calendar' ? 'page' : 'false' ?>"><span>Content calendar</span><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700"><?= e((string)($counts['scheduled'] ?? 0)) ?></span></a>
+        <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=calendar&week=' . $weekStart->format('Y-m-d'))) ?>" aria-current="<?= $activeView === 'calendar' ? 'page' : 'false' ?>"><span>Content calendar</span><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700"><?= e((string)$calendarWorkspaceCount) ?></span></a>
         <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=published')) ?>" aria-current="<?= $activeView === 'published' ? 'page' : 'false' ?>"><span>Published</span><span class="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700"><?= e((string)($counts['published'] ?? 0)) ?></span></a>
     </nav>
 
@@ -287,13 +296,16 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
 
             <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 class="text-sm font-semibold text-slate-950">Ready to schedule</h3><p class="mt-1 text-xs text-slate-600"><?= e((string)count($approvedUnscheduled)) ?> approved post<?= count($approvedUnscheduled) === 1 ? '' : 's' ?> waiting for a time.</p></div><a class="text-sm font-semibold text-slate-700 underline underline-offset-4" href="<?= e(base_url('social-studio.php?view=create')) ?>">Create more posts</a></div>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 class="text-sm font-semibold text-slate-950">Ready to schedule</h3><p class="mt-1 text-xs text-slate-600"><?= e((string)count($approvedUnscheduled)) ?> approved post<?= count($approvedUnscheduled) === 1 ? '' : 's' ?> waiting. Choose a time, then drag a card onto a day.</p></div><a class="text-sm font-semibold text-slate-700 underline underline-offset-4" href="<?= e(base_url('social-studio.php?view=create')) ?>">Create more posts</a></div>
                     <?php if ($approvedUnscheduled === []): ?><div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">No approved posts are waiting. Approve a finished post and it will appear here.</div><?php endif; ?>
                     <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <?php foreach ($approvedUnscheduled as $draft): ?><?php $imageUrl=social_studio_image_url($draft); ?>
-                            <article class="rounded-xl border border-slate-200 bg-white p-3 <?= (int)get('draft',0)===(int)$draft['id'] ? 'ring-2 ring-slate-900' : '' ?>">
+                            <article class="social-schedule-card rounded-xl border border-slate-200 bg-white p-3 <?= (int)get('draft',0)===(int)$draft['id'] ? 'ring-2 ring-slate-900' : '' ?>" draggable="true" tabindex="0" data-schedule-card data-draft-id="<?= e((string)$draft['id']) ?>" aria-label="<?= e('Schedule ' . (string)$draft['title']) ?>">
                                 <div class="flex gap-3"><?php if ($imageUrl !== ''): ?><img class="h-20 w-16 rounded-lg bg-slate-100 object-cover" src="<?= e($imageUrl) ?>" width="64" height="80" alt="<?= e((string)$draft['title']) ?>"><?php endif; ?><div class="min-w-0"><h4 class="text-sm font-semibold text-slate-950"><?= e((string)$draft['title']) ?></h4><p class="mt-1 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'], 65)) ?></p></div></div>
-                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-3 grid gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><label class="text-xs font-semibold text-slate-700" for="calendar-schedule-<?= e((string)$draft['id']) ?>">Publish date and time</label><input id="calendar-schedule-<?= e((string)$draft['id']) ?>" name="scheduled_at" type="datetime-local" value="<?= e($calendarDefaultScheduleLocal) ?>" min="<?= e(date('Y-m-d\TH:i', time()+60)) ?>" class="min-h-11 rounded-lg border border-slate-300 px-2 text-sm"><button class="min-h-11 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white" type="submit">Add to calendar</button></form>
+                                <label class="mt-3 block text-xs font-semibold text-slate-700" for="ready-time-<?= e((string)$draft['id']) ?>">Publishing time</label>
+                                <select id="ready-time-<?= e((string)$draft['id']) ?>" data-schedule-time class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><?php foreach($calendarTimeOptions as $value=>$label): ?><option value="<?= e($value) ?>" <?= $value==='10:30'?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select>
+                                <p class="mt-2 hidden text-xs font-semibold text-emerald-700 lg:block">Drag to Monday–Sunday below</p>
+                                <details class="mt-2"><summary class="min-h-11 cursor-pointer py-3 text-xs font-semibold text-slate-600">Choose day without dragging</summary><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="grid gap-2" data-schedule-fallback><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><input type="hidden" name="week" value="<?= e($weekStart->format('Y-m-d')) ?>"><label class="text-xs font-semibold text-slate-700">Day<select name="schedule_day" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><?php foreach($weekDays as $optionDay): ?><?php if($optionDay->setTime(23,59)>$calendarNow): ?><option value="<?= e($optionDay->format('Y-m-d')) ?>"><?= e($optionDay->format('l, M j')) ?></option><?php endif; ?><?php endforeach; ?></select></label><input type="hidden" name="schedule_time" value="10:30" data-fallback-time><button class="min-h-11 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white" type="submit">Schedule post</button></form></details>
                             </article>
                         <?php endforeach; ?>
                     </div>
@@ -308,11 +320,11 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
 
             <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-7" aria-label="Weekly publishing timeline">
                 <?php $today=(new DateTimeImmutable('now',new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d'); foreach ($weekDays as $day): ?><?php $dayKey=$day->format('Y-m-d'); $dayItems=$calendarByDay[$dayKey]??[]; ?>
-                    <section class="min-h-[360px] rounded-xl border bg-slate-50 p-3 <?= $dayKey===$today?'social-calendar-day-today':'border-slate-200' ?>" aria-labelledby="day-<?= e($dayKey) ?>">
+                    <section class="social-calendar-dropzone min-h-[360px] rounded-xl border bg-slate-50 p-3 transition <?= $dayKey===$today?'social-calendar-day-today':'border-slate-200' ?>" aria-labelledby="day-<?= e($dayKey) ?>" data-calendar-day="<?= e($dayKey) ?>">
                         <div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"><?= e($day->format('D')) ?></p><h3 id="day-<?= e($dayKey) ?>" class="text-lg font-semibold text-slate-950"><?= e($day->format('j')) ?></h3></div><?php if($dayKey===$today): ?><span class="rounded-full bg-slate-950 px-2 py-1 text-[10px] font-semibold text-white">Today</span><?php endif; ?></div>
-                        <div class="mt-3 space-y-3"><?php if($dayItems===[]): ?><div class="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">Open day</div><?php endif; ?>
+                        <div class="mt-3 space-y-3"><?php if($dayItems===[]): ?><div class="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">Drop post here</div><?php endif; ?>
                             <?php foreach($dayItems as $draft): ?><?php $imageUrl=social_studio_image_url($draft); $status=(string)$draft['status']; ?>
-                                <article class="social-calendar-card rounded-lg border border-slate-200 bg-white p-2"><div class="flex gap-2"><?php if($imageUrl!==''): ?><img class="h-14 w-11 rounded-md object-cover" src="<?= e($imageUrl) ?>" width="44" height="56" alt=""><?php endif; ?><div class="min-w-0"><p class="text-xs font-semibold text-slate-950"><?= e(date('g:i A',strtotime((string)$draft['scheduled_at']))) ?></p><p class="mt-1 text-xs leading-4 text-slate-600"><?= e(str_limit((string)$draft['title'],35)) ?></p></div></div><div class="mt-2 flex items-center justify-between gap-2"><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-1 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status]??$status) ?></span><button type="button" class="min-h-11 px-2 text-xs font-semibold text-slate-700" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status]??$status) ?>">Open</button></div><?php if(in_array($status,['scheduled','publish_failed'],true)): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-2 grid gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><label class="sr-only" for="move-<?= e((string)$draft['id']) ?>">Reschedule post</label><input id="move-<?= e((string)$draft['id']) ?>" name="scheduled_at" type="datetime-local" value="<?= e(date('Y-m-d\TH:i',strtotime((string)$draft['scheduled_at']))) ?>" min="<?= e(date('Y-m-d\TH:i',time()+60)) ?>" class="min-h-11 min-w-0 rounded-md border border-slate-300 px-2 text-xs"><button type="submit" class="min-h-11 rounded-md border border-slate-300 text-xs font-semibold">Update time</button></form><?php endif; ?></article>
+                                <article class="social-calendar-card social-schedule-card rounded-lg border border-slate-200 bg-white p-2" <?= in_array($status,['scheduled','publish_failed'],true)?'draggable="true" tabindex="0" data-schedule-card data-draft-id="'.e((string)$draft['id']).'"':'' ?>><div class="flex gap-2"><?php if($imageUrl!==''): ?><img class="h-14 w-11 rounded-md object-cover" src="<?= e($imageUrl) ?>" width="44" height="56" alt=""><?php endif; ?><div class="min-w-0"><p class="text-xs font-semibold text-slate-950"><?= e(date('g:i A',strtotime((string)$draft['scheduled_at']))) ?></p><p class="mt-1 text-xs leading-4 text-slate-600"><?= e(str_limit((string)$draft['title'],35)) ?></p></div></div><div class="mt-2 flex items-center justify-between gap-2"><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-1 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status]??$status) ?></span><button type="button" class="min-h-11 px-2 text-xs font-semibold text-slate-700" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status]??$status) ?>">Open</button></div><?php if(in_array($status,['scheduled','publish_failed'],true)): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-2 grid gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><input type="hidden" name="week" value="<?= e($weekStart->format('Y-m-d')) ?>"><input type="hidden" name="schedule_day" value="<?= e($dayKey) ?>"><label class="text-xs font-semibold text-slate-700" for="move-<?= e((string)$draft['id']) ?>">Publishing time</label><select id="move-<?= e((string)$draft['id']) ?>" name="schedule_time" data-schedule-time class="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs"><?php $currentTime=date('H:i',strtotime((string)$draft['scheduled_at'])); foreach($calendarTimeOptions as $value=>$label): ?><option value="<?= e($value) ?>" <?= $value===$currentTime?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select><button type="submit" class="min-h-11 rounded-md border border-slate-300 text-xs font-semibold">Update time</button></form><?php endif; ?></article>
                             <?php endforeach; ?>
                         </div>
                     </section>
@@ -326,6 +338,8 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
             <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><?php foreach($publishedDrafts as $draft): ?><?php $imageUrl=social_studio_image_url($draft); ?><article class="overflow-hidden rounded-xl border border-slate-200 bg-white"><?php if($imageUrl!==''): ?><img class="aspect-[4/5] w-full bg-slate-100 object-contain" src="<?= e($imageUrl) ?>" alt="<?= e((string)$draft['title']) ?>" loading="lazy"><?php endif; ?><div class="p-4"><div class="flex items-start justify-between gap-2"><h3 class="text-sm font-semibold text-slate-950"><?= e((string)$draft['title']) ?></h3><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">Published</span></div><p class="mt-2 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'],100)) ?></p><p class="mt-3 text-xs font-semibold text-slate-700"><?= e(!empty($draft['published_at'])?date('M j, Y · g:i A',strtotime((string)$draft['published_at'])):'Published') ?></p><button type="button" class="mt-3 min-h-11 w-full rounded-lg border border-slate-300 text-xs font-semibold" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="Published">Open post</button></div></article><?php endforeach; ?></div>
         </section>
     <?php endif; ?>
+    <form id="social-drop-schedule-form" method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="hidden"><?= csrf_input() ?><input type="hidden" name="draft_id" value=""><input type="hidden" name="mode" value="schedule"><input type="hidden" name="week" value="<?= e($weekStart->format('Y-m-d')) ?>"><input type="hidden" name="schedule_day" value=""><input type="hidden" name="schedule_time" value=""></form>
+    <div id="social-schedule-announcement" class="sr-only" role="status" aria-live="polite"></div>
 </main>
 
 <dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-2xl border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
@@ -346,7 +360,63 @@ $calendarDefaultScheduleLocal = $calendarDefaultSlot->format('Y-m-d\TH:i');
     const copyMode = document.querySelector('input[name="copy_mode"]');
     const analysisButton = document.getElementById('social-run-analysis');
     const analysisProgress = document.getElementById('social-analysis-progress');
+    const scheduleForm = document.getElementById('social-drop-schedule-form');
+    const scheduleAnnouncement = document.getElementById('social-schedule-announcement');
+    const scheduleCards = [...document.querySelectorAll('[data-schedule-card]')];
+    const calendarDays = [...document.querySelectorAll('[data-calendar-day]')];
+    let draggedScheduleCard = null;
     document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => { copyMode.value = event.target.value; });
+
+    const submitSchedule = (card, day) => {
+        const time = card?.querySelector('[data-schedule-time]')?.value || '10:30';
+        const scheduled = new Date(`${day}T${time}:00`);
+        if (!Number.isFinite(scheduled.getTime()) || scheduled.getTime() < Date.now() + 60000) {
+            window.alert('Choose a future day and time.');
+            return;
+        }
+        scheduleForm.elements.draft_id.value = card.dataset.draftId || '';
+        scheduleForm.elements.schedule_day.value = day;
+        scheduleForm.elements.schedule_time.value = time;
+        scheduleAnnouncement.textContent = `Scheduling post for ${day} at ${time}.`;
+        scheduleForm.submit();
+    };
+
+    scheduleCards.forEach(card => {
+        card.addEventListener('dragstart', event => {
+            if (event.target.closest('button, select, input, summary, a')) { event.preventDefault(); return; }
+            draggedScheduleCard = card;
+            card.classList.add('is-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', card.dataset.draftId || '');
+        });
+        card.addEventListener('dragend', () => {
+            card.classList.remove('is-dragging');
+            calendarDays.forEach(day => day.classList.remove('is-dragover'));
+            draggedScheduleCard = null;
+        });
+        const fallbackForm = card.querySelector('[data-schedule-fallback]');
+        fallbackForm?.addEventListener('submit', () => {
+            const fallbackTime = fallbackForm.querySelector('[data-fallback-time]');
+            if (fallbackTime) fallbackTime.value = card.querySelector('[data-schedule-time]')?.value || '10:30';
+        });
+    });
+
+    calendarDays.forEach(day => {
+        day.addEventListener('dragover', event => {
+            if (!draggedScheduleCard) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            day.classList.add('is-dragover');
+        });
+        day.addEventListener('dragleave', event => {
+            if (!day.contains(event.relatedTarget)) day.classList.remove('is-dragover');
+        });
+        day.addEventListener('drop', event => {
+            event.preventDefault();
+            day.classList.remove('is-dragover');
+            if (draggedScheduleCard) submitSchedule(draggedScheduleCard, day.dataset.calendarDay || '');
+        });
+    });
 
     cards.filter(card => card.dataset.ready === '1').forEach(card => card.addEventListener('click', () => {
         cards.forEach(item => item.setAttribute('aria-pressed', 'false'));

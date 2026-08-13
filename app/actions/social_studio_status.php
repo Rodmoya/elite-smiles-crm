@@ -18,9 +18,9 @@ if (!isset($labels[$status]) || $draftId <= 0) {
     redirect(base_url('social-studio.php'));
 }
 
-$draft = db_one('SELECT status, branded_image_storage_key, generation_status FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
-if ($status === 'approved' && (!$draft || trim((string)($draft['branded_image_storage_key'] ?? '')) === '' || (string)($draft['generation_status'] ?? '') !== 'ready')) {
-    flash_set('error', 'Generate and review the finished image before approving this draft.');
+$draft = db_one('SELECT status, image_storage_key, branded_image_storage_key, generation_status FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
+if ($status === 'approved' && (!$draft || (trim((string)($draft['branded_image_storage_key'] ?? '')) === '' && trim((string)($draft['image_storage_key'] ?? '')) === ''))) {
+    flash_set('error', 'Generate a finished image before approving this draft.');
     redirect(base_url('social-studio.php'));
 }
 if ($status === 'scheduled' && (string)($draft['status'] ?? '') !== 'approved') {

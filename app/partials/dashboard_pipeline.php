@@ -2323,7 +2323,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-body" class="min-h-0 w-full flex-1 overflow-hidden">
+                            <div id="modal-composer-body" class="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain pr-1">
                             <div id="modal-ai-assistant-panel" class="hidden mb-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-3">
                                     <label for="modal-ai-instruction-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">AI Instruction</label>
@@ -2436,7 +2436,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-panel-email" data-composer-panel="email" class="hidden h-full min-h-0 rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                            <div id="modal-composer-panel-email" data-composer-panel="email" class="hidden h-full min-h-[260px] flex-col rounded-[1.5rem] border border-slate-200 bg-white p-3">
 
                                 <div class="hidden">
 
@@ -2461,13 +2461,13 @@ $consultationOptions = [
                                         rows="7"
                                         aria-label="Patient email"
                                     id="modal-lead-email-body-input"
-                                    class="mt-2 max-h-[118px] w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
+                                    class="mt-2 min-h-[72px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Draft a polished patient email..."
                                 ></textarea>
 
-                                <p id="modal-lead-email-status" class="mt-2 min-h-4 text-xs text-slate-500"></p>
+                                <p id="modal-lead-email-status" class="mt-2 min-h-4 shrink-0 text-xs text-slate-500"></p>
 
-                                <div class="mt-3 flex flex-wrap gap-3">
+                                <div class="mt-3 flex shrink-0 flex-wrap gap-3">
 
                                     <button
                                         type="button"
@@ -4244,6 +4244,10 @@ $consultationOptions = [
         }
 
         refreshComposerSafetyCue();
+
+        window.setTimeout(function () {
+            applyCommunicationViewportFit();
+        }, 0);
 
     }
 
@@ -6172,7 +6176,12 @@ function applyCommunicationViewportFit() {
         leadDetailBody.style.overflowY = 'hidden';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerBudget = isComposerCollapsed ? 58 : Math.max(240, Math.floor(viewportBudget / 3));
+        const composerMinimum = composerMode === 'email' ? 340 : (composerMode === 'note' ? 280 : 240);
+        const composerRatio = composerMode === 'email' ? 0.43 : (1 / 3);
+        const maximumComposerBudget = Math.max(240, viewportBudget - 196);
+        const composerBudget = isComposerCollapsed
+            ? 58
+            : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));
         const listBudget = Math.max(180, viewportBudget - composerBudget - 16);
 
         leadDetailBody.style.maxHeight = `${viewportBudget}px`;

@@ -54,11 +54,26 @@ foreach ($directives as $phrase => [$expectedStage, $expectedLeadQuery]) {
     );
 }
 
-$historical = 'I already changed Jordan to consultation booked';
-elite_ai_stage_expect(!elite_ai_prompt_requests_stage_move($historical), 'Historical status statement must not execute as a new stage command.');
+$historicalStatements = [
+    'I already changed Jordan to consultation booked',
+    'I moved Jordan to consultation booked yesterday',
+    'Jordan was moved to consultation booked',
+    'Jordan moved to consultation booked',
+    'We changed Jordan to consultation booked this morning',
+    'Jordan is now consultation booked',
+];
+foreach ($historicalStatements as $historical) {
+    elite_ai_stage_expect(elite_ai_prompt_is_historical_stage_statement($historical), "Historical stage statement was not recognized: {$historical}");
+    elite_ai_stage_expect(!elite_ai_prompt_requests_stage_move($historical), "Historical status statement must not execute as a new stage command: {$historical}");
+    $readOnlyPlan = elite_ai_plan_request($historical, '', []);
+    elite_ai_stage_expect((string) ($readOnlyPlan['intent'] ?? '') === 'lead_summary', "Historical stage wording must plan a read-only summary: {$historical}");
+    elite_ai_stage_expect((string) ($readOnlyPlan['target_stage'] ?? '') === '', "Historical stage wording must not carry a target: {$historical}");
+}
 $historicalPlan = elite_ai_plan_request('I already changed the lead with email test@meta.com to consultation booked.', '', ['lead_id' => 48]);
 elite_ai_stage_expect((string) ($historicalPlan['intent'] ?? '') === 'lead_summary', 'Historical stage wording must remain read-only.');
 elite_ai_stage_expect((string) ($historicalPlan['target_stage'] ?? '') === '', 'Historical stage wording must not carry an executable target.');
+elite_ai_stage_expect(elite_ai_prompt_requests_stage_move('Please have Jordan moved to consultation booked'), 'Causative stage instruction was not recognized.');
+elite_ai_stage_expect(!elite_ai_prompt_is_historical_stage_statement('Please have Jordan moved to consultation booked'), 'Causative stage instruction was mistaken for history.');
 elite_ai_stage_expect((string) ($historicalPlan['lead_query'] ?? '') === 'test@meta.com', 'Historical stage summaries must still resolve the explicitly named lead.');
 elite_ai_stage_expect(
     elite_ai_requested_stage_key('move Jordan from consultation booked to lost') === 'lost_lead',
@@ -78,6 +93,60 @@ elite_ai_stage_expect(
     elite_ai_plan_target_stage(['target_stage' => 'not_a_stage'], 'move this lead to consultation booked') === 'consultation_booked',
     'Invalid planner stages must be rejected and safely parsed from the explicit prompt.'
 );
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_schedule_approval(['stage_approved' => true, 'instruction' => 'move Jordan to consultation booked']),
+    'Stage approval must never authorize scheduling.'
+);
+elite_ai_stage_expect(
+    elite_ai_request_has_explicit_schedule_approval(['instruction' => 'Schedule Jordan for a consultation Friday at 3pm']),
+    'An explicit scheduling instruction should authorize only the requested scheduling action.'
+);
+elite_ai_stage_expect(
+    elite_ai_request_has_explicit_send_permission(['sms_send_approved' => true], 'sms'),
+    'Typed SMS approval must authorize an SMS draft.'
+);
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_send_permission(['email_send_approved' => true], 'sms'),
+    'Email approval must not authorize an SMS draft.'
+);
+elite_ai_stage_expect(
+    elite_ai_request_has_explicit_send_permission(['email_send_approved' => true], 'email'),
+    'Typed email approval must authorize an email draft.'
+);
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_send_permission(['sms_send_approved' => true], 'email'),
+    'SMS approval must not authorize an email draft.'
+);
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_send_permission(['instruction' => 'Send the approved email draft'], 'sms'),
+    'An explicit email instruction must not authorize an SMS draft.'
+);
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_send_permission(['instruction' => 'Send the approved SMS draft'], 'email'),
+    'An explicit SMS instruction must not authorize an email draft.'
+);
+elite_ai_stage_expect(
+    !elite_ai_request_has_explicit_send_permission(['send_approved' => true], 'email'),
+    'Legacy generic approval without a matching channel must not authorize a queued email.'
+);
+elite_ai_stage_expect(
+    elite_ai_request_has_explicit_send_permission(['send_approved' => true, 'approved_channel' => 'email'], 'email'),
+    'A channel-bound legacy approval should remain compatible with a queued email.'
+);
+
+$mismatchObservation = elite_ai_execution_observation(
+    ['provider' => 'openai', 'intent' => 'move_stage'],
+    'lead_summary',
+    ['tools_used' => ['lead_lookup']],
+    null
+);
+elite_ai_stage_expect((string) ($mismatchObservation['execution_status'] ?? '') === 'routed_override', 'Planner/execution mismatch must be observable.');
+elite_ai_stage_expect((string) ($mismatchObservation['mismatch_reason'] ?? '') === 'planner_execution_intent_changed', 'Planner/execution mismatch needs a stable reason code.');
+
+$smsActions = elite_ai_build_draft_preview_actions(10, 20, 'draft_sms');
+$emailActions = elite_ai_build_draft_preview_actions(10, 21, 'draft_email');
+elite_ai_stage_expect((string) ($smsActions[0]['channel'] ?? '') === 'sms', 'SMS draft action must carry its typed channel.');
+elite_ai_stage_expect((string) ($emailActions[0]['channel'] ?? '') === 'email', 'Email draft action must carry its typed channel.');
 
 $schema = elite_ai_planner_schema();
 elite_ai_stage_expect(isset($schema['properties']['target_stage']), 'Planner schema must define target_stage.');
@@ -109,6 +178,14 @@ try {
         ['email' => $emailTarget]
     );
     $cleanupLeadIds[] = $emailTargetId;
+
+    $endToEndEmail = 'elite-ai-e2e-' . bin2hex(random_bytes(6)) . '@example.invalid';
+    $endToEndLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Elite AI End To End', '+18015550195', :email, 'contacted', 'opted_in', 'subscribed', NOW(), NOW())",
+        ['email' => $endToEndEmail]
+    );
+    $cleanupLeadIds[] = $endToEndLeadId;
     $emailPrompt = 'The test lead with email ' . $emailTarget . ' should be moved to consultation booked.';
     $emailPlan = elite_ai_plan_request($emailPrompt, '', ['lead_id' => $contextLeadId]);
     $emailResolved = elite_ai_resolve_lead_from_plan($emailPlan, $emailPrompt, ['lead_id' => $contextLeadId]);
@@ -129,6 +206,53 @@ try {
         (int) ($numberResolved['lead']['id'] ?? 0) === $emailTargetId,
         'An explicit lead number must override the current-lead context.'
     );
+
+    $operator = ['id' => 0, 'first_name' => 'Test', 'role' => 'admin'];
+    $endToEndPrompt = 'Move the lead with email ' . $endToEndEmail . ' to consultation booked';
+    $endToEnd = elite_ai_handle_request($operator, [
+        'surface' => 'desktop',
+        'prompt' => $endToEndPrompt,
+        'instruction' => $endToEndPrompt,
+        'context' => ['page' => 'leads'],
+    ]);
+    elite_ai_stage_expect(!empty($endToEnd['ok']), 'The complete Elite AI request path failed.');
+    elite_ai_stage_expect((int) ($endToEnd['lead_id'] ?? 0) === $endToEndLeadId, 'The complete request path resolved the wrong lead.');
+    elite_ai_stage_expect((string) db_value('SELECT status FROM leads WHERE id = :id', ['id' => $endToEndLeadId]) === 'consultation_booked', 'The complete request path did not update the requested stage.');
+    elite_ai_stage_expect(
+        (string) ($endToEnd['execution_observation']['execution_status'] ?? '') === 'executed',
+        'Successful stage execution was not observed as executed: ' . json_encode($endToEnd['execution_observation'] ?? null)
+    );
+
+    $audit = db_one('SELECT planner_intent, execution_intent, execution_status, mismatch_reason FROM elite_ai_audit_logs WHERE prompt = :prompt ORDER BY id DESC LIMIT 1', ['prompt' => $endToEndPrompt]);
+    elite_ai_stage_expect((string) ($audit['planner_intent'] ?? '') === 'move_stage', 'Audit log did not capture planner intent.');
+    elite_ai_stage_expect((string) ($audit['execution_intent'] ?? '') === 'move_stage', 'Audit log did not capture execution intent.');
+    elite_ai_stage_expect((string) ($audit['execution_status'] ?? '') === 'executed', 'Audit log did not capture successful execution.');
+    elite_ai_stage_expect((string) ($audit['mismatch_reason'] ?? '') === '', 'Successful matching execution should not record a mismatch.');
+
+    db_query('UPDATE leads SET status = :status WHERE id = :id', ['status' => 'contacted', 'id' => $endToEndLeadId]);
+    $historicalEndToEndPrompt = 'I moved this lead to consultation booked yesterday';
+    $historicalEndToEnd = elite_ai_handle_request($operator, [
+        'surface' => 'desktop',
+        'prompt' => $historicalEndToEndPrompt,
+        'instruction' => $historicalEndToEndPrompt,
+        'context' => ['page' => 'leads', 'lead_id' => $endToEndLeadId],
+    ]);
+    elite_ai_stage_expect((string) db_value('SELECT status FROM leads WHERE id = :id', ['id' => $endToEndLeadId]) === 'contacted', 'Historical wording changed CRM state through the complete request path.');
+    elite_ai_stage_expect((string) ($historicalEndToEnd['execution_observation']['execution_intent'] ?? '') === 'lead_summary', 'Historical wording did not remain read-only through execution.');
+
+    $scheduleLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Elite AI Schedule Approval', '+18015550194', 'elite-ai-schedule-test@example.invalid', 'contacted', 'opted_in', 'subscribed', NOW(), NOW())"
+    );
+    $cleanupLeadIds[] = $scheduleLeadId;
+    $wrongApproval = elite_ai_handle_schedule_consultation_action($operator, [
+        'lead_id' => $scheduleLeadId,
+        'consultation_date' => date('Y-m-d H:i:s', strtotime('+3 days 3pm')),
+        'instruction' => 'Move this lead to consultation booked',
+        'stage_approved' => true,
+    ], 'desktop');
+    elite_ai_stage_expect(!empty($wrongApproval['requires_approval']), 'Stage approval improperly authorized a consultation booking.');
+    elite_ai_stage_expect((string) db_value('SELECT status FROM leads WHERE id = :id', ['id' => $scheduleLeadId]) === 'contacted', 'Cross-action approval changed the scheduled lead.');
 
     $ambiguous = elite_ai_handle_move_stage_action(
         ['id' => 0, 'first_name' => 'Test', 'role' => 'admin'],

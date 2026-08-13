@@ -24,6 +24,11 @@ if (!function_exists('elite_ai_ensure_schema')) {
                     response_summary TEXT NOT NULL,
                     lead_id INT UNSIGNED DEFAULT NULL,
                     page_context_json LONGTEXT DEFAULT NULL,
+                    planner_provider VARCHAR(40) NOT NULL DEFAULT '',
+                    planner_intent VARCHAR(60) NOT NULL DEFAULT '',
+                    execution_intent VARCHAR(60) NOT NULL DEFAULT '',
+                    execution_status VARCHAR(40) NOT NULL DEFAULT '',
+                    mismatch_reason VARCHAR(120) NOT NULL DEFAULT '',
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     KEY idx_elite_ai_audit_user (user_id),
@@ -55,6 +60,31 @@ if (!function_exists('elite_ai_ensure_schema')) {
                     KEY idx_elite_ai_action_queue_created (created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
+
+            $auditColumns = [
+                'planner_provider' => "ALTER TABLE elite_ai_audit_logs ADD COLUMN planner_provider VARCHAR(40) NOT NULL DEFAULT '' AFTER page_context_json",
+                'planner_intent' => "ALTER TABLE elite_ai_audit_logs ADD COLUMN planner_intent VARCHAR(60) NOT NULL DEFAULT '' AFTER planner_provider",
+                'execution_intent' => "ALTER TABLE elite_ai_audit_logs ADD COLUMN execution_intent VARCHAR(60) NOT NULL DEFAULT '' AFTER planner_intent",
+                'execution_status' => "ALTER TABLE elite_ai_audit_logs ADD COLUMN execution_status VARCHAR(40) NOT NULL DEFAULT '' AFTER execution_intent",
+                'mismatch_reason' => "ALTER TABLE elite_ai_audit_logs ADD COLUMN mismatch_reason VARCHAR(120) NOT NULL DEFAULT '' AFTER execution_status",
+            ];
+
+            foreach ($auditColumns as $column => $sql) {
+                try {
+                    $exists = (int) db_value(
+                        'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column',
+                        ['table' => 'elite_ai_audit_logs', 'column' => $column]
+                    );
+                    if ($exists === 0) {
+                        db_query($sql);
+                    }
+                } catch (Throwable $e) {
+                    esm_log('elite_ai', 'Could not ensure Elite AI audit column.', [
+                        'column' => $column,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             $queueColumns = [
                 'surface' => "ALTER TABLE elite_ai_action_queue ADD COLUMN surface VARCHAR(32) NOT NULL DEFAULT 'desktop' AFTER user_id",
@@ -912,19 +942,41 @@ function elite_ai_normalize_context(array $request): array
 }
 
 if (!function_exists('elite_ai_request_has_explicit_send_permission')) {
-    function elite_ai_request_has_explicit_send_permission(array $request): bool
+    function elite_ai_request_has_explicit_send_permission(array $request, string $channel = ''): bool
     {
-        if (filter_var($request['send_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        $channel = strtolower(trim($channel));
+        if ($channel === 'sms') {
+            if (filter_var($request['sms_send_approved'] ?? $request['send_sms_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return true;
+            }
+            if (filter_var($request['email_send_approved'] ?? $request['send_email_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return false;
+            }
+        }
+        if ($channel === 'email') {
+            if (filter_var($request['email_send_approved'] ?? $request['send_email_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return true;
+            }
+            if (filter_var($request['sms_send_approved'] ?? $request['send_sms_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return false;
+            }
+        }
+        $approvedChannel = strtolower(trim((string) ($request['approved_channel'] ?? '')));
+        if (filter_var($request['send_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && ($channel === '' || $approvedChannel === $channel)) {
             return true;
         }
-        if (filter_var($request['send_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        if (filter_var($request['send_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && ($channel === '' || $approvedChannel === $channel)) {
             return true;
         }
-        if (filter_var($request['send_now'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        if (filter_var($request['send_now'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && ($channel === '' || $approvedChannel === $channel)) {
             return true;
         }
         $executionMode = strtolower(trim((string) ($request['execution_mode'] ?? '')));
-        if (in_array($executionMode, ['send', 'send_now', 'send_approved', 'send-confirmed', 'approved_send'], true)) {
+        if (in_array($executionMode, ['send', 'send_now', 'send_approved', 'send-confirmed', 'approved_send'], true)
+            && ($channel === '' || $approvedChannel === $channel)) {
             return true;
         }
 
@@ -935,6 +987,15 @@ if (!function_exists('elite_ai_request_has_explicit_send_permission')) {
 
         $normalizedInstruction = preg_replace('/[^a-z0-9\\s]+/i', ' ', $instruction);
         $normalizedInstruction = trim((string) preg_replace('/\\s+/', ' ', $normalizedInstruction));
+
+        if ($channel !== '') {
+            $mentionsSms = (bool) preg_match('/\\b(?:sms|text|text message)\\b/i', $normalizedInstruction);
+            $mentionsEmail = (bool) preg_match('/\\b(?:email|e mail)\\b/i', $normalizedInstruction);
+            if (($channel === 'sms' && $mentionsEmail && !$mentionsSms)
+                || ($channel === 'email' && $mentionsSms && !$mentionsEmail)) {
+                return false;
+            }
+        }
 
         if ((bool) preg_match('/\\bsend\\s+the\\s+approved\\s+(?:sms|text|email)\\s+drafts?\\b/i', $normalizedInstruction)) {
             return true;
@@ -985,13 +1046,20 @@ if (!function_exists('elite_ai_request_has_explicit_schedule_approval')) {
             return true;
         }
 
-        return elite_ai_request_has_explicit_stage_approval($request);
+        $instruction = strtolower(trim((string) ($request['instruction'] ?? '')));
+        return $instruction !== '' && elite_ai_prompt_requests_consult_schedule($instruction);
     }
 }
 
 if (!function_exists('elite_ai_execution_policy_tag')) {
     function elite_ai_execution_policy_tag(array $request): string
     {
+        if (filter_var($request['sms_send_approved'] ?? $request['send_sms_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return 'sms-send-approved';
+        }
+        if (filter_var($request['email_send_approved'] ?? $request['send_email_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return 'email-send-approved';
+        }
         if (elite_ai_request_has_explicit_send_permission($request)) {
             return 'send-approved';
         }
@@ -3222,10 +3290,11 @@ if (!function_exists('elite_ai_normalize_draft_payload_for_response')) {
 }
 
 if (!function_exists('elite_ai_build_draft_preview_actions')) {
-    function elite_ai_build_draft_preview_actions(int $leadId, int $actionId): array
+    function elite_ai_build_draft_preview_actions(int $leadId, int $actionId, string $draftType = ''): array
     {
+        $channel = $draftType === 'draft_email' ? 'email' : ($draftType === 'draft_sms' ? 'sms' : '');
         $base = [
-            ['type' => 'send_draft', 'label' => 'Send Draft', 'lead_id' => $leadId, 'action_id' => $actionId],
+            ['type' => 'send_draft', 'label' => 'Send Draft', 'lead_id' => $leadId, 'action_id' => $actionId, 'channel' => $channel],
             ['type' => 'edit_draft', 'label' => 'Edit Draft', 'lead_id' => $leadId, 'action_id' => $actionId],
             ['type' => 'cancel_draft', 'label' => 'Cancel', 'lead_id' => $leadId, 'action_id' => $actionId],
         ];
@@ -3236,6 +3305,7 @@ if (!function_exists('elite_ai_build_draft_preview_actions')) {
                 'label' => $action['label'],
                 'lead_id' => $action['lead_id'],
                 'action_id' => $action['action_id'],
+                'channel' => (string) ($action['channel'] ?? ''),
             ],
             $base
         );
@@ -3261,7 +3331,7 @@ if (!function_exists('elite_ai_pending_action_row')) {
             'draft_preview' => $preview,
             'draft' => $payload,
             'created_at' => (string) ($row['updated_at'] ?? ''),
-            'actions' => elite_ai_build_draft_preview_actions($leadId, (int) ($row['id'] ?? 0)),
+            'actions' => elite_ai_build_draft_preview_actions($leadId, (int) ($row['id'] ?? 0), $actionType),
         ];
     }
 }
@@ -3733,9 +3803,18 @@ if (!function_exists('elite_ai_prompt_is_historical_stage_statement')) {
     function elite_ai_prompt_is_historical_stage_statement(string $prompt): bool
     {
         $normalized = strtolower(trim($prompt));
-        return $normalized !== ''
-            && (bool) preg_match('/\b(?:already|previously|earlier)\s+(?:moved|sent|put|set|changed|marked|advanced|shifted)\b/i', $normalized)
-            && elite_ai_requested_stage_key($normalized) !== '';
+        if ($normalized === '' || elite_ai_requested_stage_key($normalized) === '') {
+            return false;
+        }
+
+        $pastVerb = '(?:moved|sent|put|set|changed|marked|advanced|shifted)';
+        $temporalPast = (bool) preg_match('/\b(?:already|previously|earlier|yesterday|last\s+night|this\s+morning|this\s+afternoon|just)\b.{0,80}\b' . $pastVerb . '\b|\b' . $pastVerb . '\b.{0,80}\b(?:already|previously|earlier|yesterday|last\s+night|this\s+morning|this\s+afternoon)\b/i', $normalized);
+        $passivePast = (bool) preg_match('/\b(?:was|were|has\s+been|have\s+been|had\s+been)\s+' . $pastVerb . '\b/i', $normalized);
+        $operatorPast = (bool) preg_match('/\b(?:i|we)\s+' . $pastVerb . '\b/i', $normalized);
+        $subjectPast = (bool) preg_match('/^(?!.*\b(?:should|must|needs?\s+to)\s+be\b)(?!.*\b(?:please\s+)?(?:have|get)\b).+\s+' . $pastVerb . '\s+(?:to|as|into)\b/i', $normalized);
+        $currentState = (bool) preg_match('/\b(?:is|are)\s+now\b/i', $normalized);
+
+        return $temporalPast || $passivePast || $operatorPast || $subjectPast || $currentState;
     }
 }
 
@@ -3749,7 +3828,8 @@ if (!function_exists('elite_ai_prompt_requests_stage_move')) {
 
         $imperative = (bool) preg_match('/\b(?:move|send|put|set|change|mark|advance|shift)\b.+\b(?:to|as|into)\b/i', $normalized);
         $passiveDirective = (bool) preg_match('/\b(?:should|must|needs?\s+to)\s+be\s+(?:moved|sent|put|set|changed|marked|advanced|shifted)\b.+\b(?:to|as|into)\b/i', $normalized);
-        return ($imperative || $passiveDirective) && elite_ai_requested_stage_key($normalized) !== '';
+        $causativeDirective = (bool) preg_match('/\b(?:please\s+)?(?:have|get)\b.+\b(?:moved|sent|put|set|changed|marked|advanced|shifted)\s+(?:to|as|into)\b/i', $normalized);
+        return ($imperative || $passiveDirective || $causativeDirective) && elite_ai_requested_stage_key($normalized) !== '';
     }
 }
 
@@ -4610,7 +4690,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                         'payload' => $draftPayload,
                         'draft_preview' => elite_ai_draft_preview_text($draftType, $draftPayload),
                         'draft_badge' => 'Lab dry run - not cancelled',
-                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, $draftType),
                         'channel' => elite_ai_draft_channel_label($draftType),
                     ];
                 }
@@ -4644,12 +4724,13 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                         'payload' => $draftPayload,
                         'draft_preview' => elite_ai_draft_preview_text($draftType, $draftPayload),
                         'draft_badge' => 'Lab dry run - not sent',
-                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, $draftType),
                         'channel' => elite_ai_draft_channel_label($draftType),
                     ];
                 }
                 $leadName = trim((string) ($lead['full_name'] ?? ''));
-                if (!elite_ai_request_has_explicit_send_permission($request)) {
+                $sendChannel = $draftType === 'draft_email' ? 'email' : 'sms';
+                if (!elite_ai_request_has_explicit_send_permission($request, $sendChannel)) {
                     return [
                         'ok' => true,
                         'surface' => $surface,
@@ -4665,7 +4746,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                         'payload' => $draftPayload,
                         'draft_preview' => elite_ai_draft_preview_text($draftType, $draftPayload),
                         'draft_badge' => 'Draft only - approval required',
-                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                        'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, $draftType),
                         'channel' => elite_ai_draft_channel_label($draftType),
                     ];
                 }
@@ -4690,7 +4771,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                     'message' => (string) ($sendResult['message'] ?? (!empty($sendResult['ok']) ? 'Draft sent.' : 'Draft send failed.')),
                     'delivery' => $sendResult,
                     'draft_badge' => !empty($sendResult['ok']) ? 'Sent' : 'Send failed',
-                    'draft_actions' => !empty($sendResult['ok']) ? [] : elite_ai_build_draft_preview_actions($leadId, $actionId),
+                    'draft_actions' => !empty($sendResult['ok']) ? [] : elite_ai_build_draft_preview_actions($leadId, $actionId, $draftType),
                 ];
             }
 
@@ -4705,7 +4786,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'payload' => $draftPayload,
                 'draft_preview' => elite_ai_draft_preview_text($draftType, $draftPayload),
                 'draft_badge' => 'Draft only - not sent',
-                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, $draftType),
                 'status' => 'pending_review',
                 'message' => $actionType === 'edit_draft'
                     ? 'Draft ready in edit mode.'
@@ -4756,7 +4837,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'payload' => $existingPayload,
                 'draft_preview' => $existingPreview,
                 'draft_badge' => 'Draft only - not sent',
-                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $existingActionId),
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $existingActionId, $actionType),
                 'status' => 'pending_review',
                 'message' => $existingMessage,
                 'warning' => null,
@@ -4808,7 +4889,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'payload' => $draftPayload,
                 'draft_preview' => $draftPreview,
                 'draft_badge' => 'Draft only - not sent',
-                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, 'draft_sms'),
                 'status' => 'pending_review',
                 'message' => 'SMS draft created and queued for approval.' . ($draftPreview !== '' ? "\n\nDraft:\n" . $draftPreview : ''),
                 'warning' => $usedFallback ? 'AI draft fallback used.' : null,
@@ -4851,7 +4932,7 @@ if (!function_exists('elite_ai_prepare_action_draft')) {
                 'payload' => $draftPayload,
                 'draft_preview' => $draftPreview,
                 'draft_badge' => 'Draft only - not sent',
-                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId),
+                'draft_actions' => elite_ai_build_draft_preview_actions($leadId, $actionId, 'draft_email'),
                 'status' => 'pending_review',
                 'message' => 'Email draft created and queued for approval.' . ($draftPreview !== '' ? "\n\nDraft:\n" . $draftPreview : ''),
                 'warning' => $usedFallback ? 'AI draft fallback used.' : null,
@@ -4868,6 +4949,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             $context = elite_ai_normalize_context($request);
             $result = elite_ai_tool_run($user, 'lead.move_stage', $request + ['surface' => $surface], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
+            $executionObservation = elite_ai_execution_observation(['provider' => 'action', 'intent' => 'move_stage'], 'move_stage', $result, (int) ($result['lead_id'] ?? 0) ?: null);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -4875,10 +4957,12 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 ['lead.move_stage'],
                 trim((string) ($result['answer'] ?? $result['message'] ?? 'Stage action completed.')),
                 (int) ($result['lead_id'] ?? 0),
-                $context
+                $context,
+                $executionObservation
             );
 
             return $result + [
+                'execution_observation' => $executionObservation,
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
@@ -4890,6 +4974,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             $context = elite_ai_normalize_context($request);
             $result = elite_ai_tool_run($user, 'lead.add_note', $request + ['surface' => $surface], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
+            $executionObservation = elite_ai_execution_observation(['provider' => 'action', 'intent' => 'add_note'], 'add_note', $result, (int) ($result['lead_id'] ?? 0) ?: null);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -4897,10 +4982,12 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 ['lead.add_note'],
                 trim((string) ($result['answer'] ?? $result['message'] ?? 'Note action completed.')),
                 (int) ($result['lead_id'] ?? 0),
-                $context
+                $context,
+                $executionObservation
             );
 
             return $result + [
+                'execution_observation' => $executionObservation,
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
@@ -4912,6 +4999,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
             $context = elite_ai_normalize_context($request);
             $result = elite_ai_handle_schedule_consultation_action($user, $request + ['surface' => $surface], $surface);
             $result = elite_ai_plain_text_payload($result);
+            $executionObservation = elite_ai_execution_observation(['provider' => 'action', 'intent' => 'schedule_consultation'], 'schedule_consultation', $result, (int) ($result['lead_id'] ?? 0) ?: null);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -4919,10 +5007,12 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 ['lead.schedule_consultation'],
                 trim((string) ($result['answer'] ?? $result['message'] ?? 'Consultation action completed.')),
                 (int) ($result['lead_id'] ?? 0),
-                $context
+                $context,
+                $executionObservation
             );
 
             return $result + [
+                'execution_observation' => $executionObservation,
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
@@ -4939,6 +5029,7 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 'source' => 'elite_ai_action_button',
             ], $context + ['surface' => $surface]);
             $result = elite_ai_plain_text_payload($result);
+            $executionObservation = elite_ai_execution_observation(['provider' => 'action', 'intent' => 'mark_reviewed'], 'mark_reviewed', $result, $leadId ?: null);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -4946,11 +5037,13 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 ['notifications.mark_reviewed'],
                 trim((string) ($result['message'] ?? 'Notification review action completed.')),
                 $leadId,
-                $context
+                $context,
+                $executionObservation
             );
 
             return $result + [
                 'surface' => $surface,
+                'execution_observation' => $executionObservation,
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload($leadId),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
@@ -4988,6 +5081,8 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 $result['answer'] = trim((string) ($result['message'] ?? 'Draft ready.')) . "\n\n" . trim((string) $result['draft_preview']);
             }
             $result = elite_ai_plain_text_payload($result);
+            $executionIntent = $assistantAction !== '' ? $assistantAction : (string) ($result['action'] ?? 'draft');
+            $executionObservation = elite_ai_execution_observation(['provider' => 'action', 'intent' => $executionIntent], $executionIntent, $result, (int) ($result['lead_id'] ?? 0) ?: null);
             elite_ai_log_interaction(
                 $user,
                 $surface,
@@ -4995,11 +5090,13 @@ if (!function_exists('elite_ai_handle_action_request')) {
                 ['draft_' . (string) ($result['action'] ?? 'prepared')],
                 trim((string) ($result['message'] ?? 'Draft action prepared for review.')),
                 (int) ($result['lead_id'] ?? 0),
-                $context
+                $context,
+                $executionObservation
             );
 
             return $result + [
                 'ok' => true,
+                'execution_observation' => $executionObservation,
                 'context' => $context,
                 'current_subject' => elite_ai_current_subject_payload((int) ($result['lead_id'] ?? 0) ?: null),
                 'tool_capabilities' => elite_ai_tool_capabilities($surface),
@@ -5843,14 +5940,56 @@ if (!function_exists('elite_ai_appointment_status_payload')) {
     }
 }
 
+if (!function_exists('elite_ai_execution_observation')) {
+    function elite_ai_execution_observation(array $plan, string $executionIntent, array $payload, ?int $leadId): array
+    {
+        $plannerIntent = trim((string) ($plan['intent'] ?? ''));
+        $provider = trim((string) ($plan['provider'] ?? ''));
+        $status = 'completed';
+        $reason = '';
+
+        if (!empty($plan['needs_clarification'])) {
+            $status = 'clarification';
+            $reason = 'planner_requested_clarification';
+        } elseif ($plannerIntent !== '' && $executionIntent !== '' && $plannerIntent !== $executionIntent) {
+            $status = 'routed_override';
+            $reason = 'planner_execution_intent_changed';
+        } elseif (!empty($payload['requires_approval'])) {
+            $status = 'approval_required';
+            $reason = $executionIntent . '_approval_required';
+        } elseif (array_key_exists('ok', $payload) && empty($payload['ok'])) {
+            $status = 'failed';
+            $reason = $executionIntent . '_execution_failed';
+        } elseif ($executionIntent === 'move_stage' && in_array('stage_move_parse', (array) ($payload['tools_used'] ?? []), true)) {
+            $status = 'clarification';
+            $reason = 'missing_target_stage';
+        } elseif ($leadId === null && in_array('lead_lookup', (array) ($payload['tools_used'] ?? []), true)) {
+            $status = 'clarification';
+            $reason = 'lead_resolution_failed_or_ambiguous';
+        } elseif (in_array($executionIntent, ['move_stage', 'schedule_consultation', 'send_draft', 'add_note', 'mark_reviewed'], true)) {
+            $status = 'executed';
+        }
+
+        return [
+            'planner_provider' => mb_substr($provider, 0, 40),
+            'planner_intent' => mb_substr($plannerIntent, 0, 60),
+            'execution_intent' => mb_substr($executionIntent, 0, 60),
+            'execution_status' => mb_substr($status, 0, 40),
+            'mismatch_reason' => mb_substr($reason, 0, 120),
+        ];
+    }
+}
+
 if (!function_exists('elite_ai_log_interaction')) {
-    function elite_ai_log_interaction(array $user, string $surface, string $prompt, array $toolsUsed, string $responseSummary, ?int $leadId, array $context): void
+    function elite_ai_log_interaction(array $user, string $surface, string $prompt, array $toolsUsed, string $responseSummary, ?int $leadId, array $context, array $execution = []): void
     {
         try {
             elite_ai_ensure_schema();
             db_insert(
-                'INSERT INTO elite_ai_audit_logs (user_id, surface, prompt, tools_used_json, response_summary, lead_id, page_context_json, created_at)
-                 VALUES (:user_id, :surface, :prompt, :tools_used_json, :response_summary, :lead_id, :page_context_json, :created_at)',
+                'INSERT INTO elite_ai_audit_logs
+                    (user_id, surface, prompt, tools_used_json, response_summary, lead_id, page_context_json, planner_provider, planner_intent, execution_intent, execution_status, mismatch_reason, created_at)
+                 VALUES
+                    (:user_id, :surface, :prompt, :tools_used_json, :response_summary, :lead_id, :page_context_json, :planner_provider, :planner_intent, :execution_intent, :execution_status, :mismatch_reason, :created_at)',
                 [
                     'user_id' => (int) ($user['id'] ?? 0),
                     'surface' => $surface,
@@ -5859,6 +5998,11 @@ if (!function_exists('elite_ai_log_interaction')) {
                     'response_summary' => mb_substr($responseSummary, 0, 1000),
                     'lead_id' => $leadId ?: null,
                     'page_context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'planner_provider' => mb_substr(trim((string) ($execution['planner_provider'] ?? '')), 0, 40),
+                    'planner_intent' => mb_substr(trim((string) ($execution['planner_intent'] ?? '')), 0, 60),
+                    'execution_intent' => mb_substr(trim((string) ($execution['execution_intent'] ?? '')), 0, 60),
+                    'execution_status' => mb_substr(trim((string) ($execution['execution_status'] ?? '')), 0, 40),
+                    'mismatch_reason' => mb_substr(trim((string) ($execution['mismatch_reason'] ?? '')), 0, 120),
                     'created_at' => now(),
                 ]
             );
@@ -6266,13 +6410,20 @@ function elite_ai_handle_request(array $user, array $request): array
                 ], $context + ['surface' => $surface]);
                 $moveResult = elite_ai_plain_text_payload($moveResult);
                 $summary = trim((string) ($moveResult['answer'] ?? $moveResult['message'] ?? 'Stage action completed.'));
-                elite_ai_log_interaction($user, $surface, $prompt, ['lead.lookup', 'lead.move_stage'], $summary, $leadId, $context);
+                $executionObservation = elite_ai_execution_observation(
+                    $stagePlan,
+                    'move_stage',
+                    $moveResult + ['tools_used' => ['lead.lookup', 'lead.move_stage']],
+                    $leadId
+                );
+                elite_ai_log_interaction($user, $surface, $prompt, ['lead.lookup', 'lead.move_stage'], $summary, $leadId, $context, $executionObservation);
 
                 return [
                     'ok' => !array_key_exists('ok', $moveResult) || !empty($moveResult['ok']),
                     'surface' => $surface,
                     'answer' => $summary,
                     'execution_policy' => elite_ai_execution_policy_tag($request),
+                    'execution_observation' => $executionObservation,
                     'pending_drafts' => elite_ai_pending_drafts_for_context($user, $context, $leadId, 8),
                     'cards' => array_values((array) ($moveResult['cards'] ?? [])),
                     'actions' => array_values((array) ($moveResult['actions'] ?? [])),
@@ -6627,7 +6778,8 @@ function elite_ai_handle_request(array $user, array $request): array
 
         $payload = elite_ai_plain_text_payload($payload);
         $summary = trim((string) ($payload['answer'] ?? 'Elite AI completed a read-only response.'));
-        elite_ai_log_interaction($user, $surface, $prompt !== '' ? $prompt : $quickAction, (array) ($payload['tools_used'] ?? []), $summary, $leadId, $context);
+        $executionObservation = elite_ai_execution_observation($plan, $intent, $payload, $leadId);
+        elite_ai_log_interaction($user, $surface, $prompt !== '' ? $prompt : $quickAction, (array) ($payload['tools_used'] ?? []), $summary, $leadId, $context, $executionObservation);
 
         $executionPolicy = elite_ai_execution_policy_tag($request);
 
@@ -6636,6 +6788,7 @@ function elite_ai_handle_request(array $user, array $request): array
             'surface' => $surface,
             'answer' => $summary,
             'execution_policy' => $executionPolicy,
+            'execution_observation' => $executionObservation,
             'pending_drafts' => array_values((array) ($payload['pending_drafts'] ?? elite_ai_pending_drafts_for_context($user, $context, $leadId, 8))),
             'cards' => array_values((array) ($payload['cards'] ?? [])),
             'actions' => array_values((array) ($payload['actions'] ?? [])),

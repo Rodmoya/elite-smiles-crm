@@ -145,7 +145,6 @@ if (!function_exists('social_studio_creative_brief_schema')) {
                 $replacement = $replacements[$index] ?? '';
                 $lines = preg_split('/\R/u', $replacement) ?: [];
                 if ($replacement === '' || mb_strlen($replacement) > (int)$source['max_characters'] || count($lines) > (int)$source['line_count']) { $valid = false; break; }
-                foreach ($lines as $line) if (mb_strlen($line) > (int)$source['max_characters_per_line']) { $valid = false; break 2; }
                 $candidate['elements'][$index]['text'] = $replacement;
             }
             if ($valid) {

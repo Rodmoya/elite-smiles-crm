@@ -27,7 +27,7 @@ $originalTerms = patient_experience_contract_original_terms();
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
     .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0; }
     .contract-signature-rule { min-height:.3in; border-bottom:1px solid #111827; }
-    .contract-cancellation-bottom { margin-top:auto; }
+    .contract-cancellation-bottom { margin-top:auto; margin-bottom:5px; }
     .contract-page.preprinted .contract-digital-letterhead,
     .contract-page.preprinted .contract-digital-footer { display: none; }
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }

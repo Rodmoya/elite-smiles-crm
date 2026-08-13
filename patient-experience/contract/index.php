@@ -65,7 +65,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         .agreement-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
         .agreement-original-copy > p, .agreement-legal-copy > p { margin:0 0 8pt; }
         .agreement-closing-block { margin-top:auto; margin-bottom:5px; }
-        .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:start; margin:8pt 0 10px; }
+        .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:start; margin:8pt 0 20px; }
         .agreement-signature-primary { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.08in; align-items:end; }
         .agreement-signature-patient { grid-column:2; margin-top:2px; font-size:9pt; line-height:1.1; }
         .agreement-signature-field { display:flex; align-items:flex-end; gap:.08in; }

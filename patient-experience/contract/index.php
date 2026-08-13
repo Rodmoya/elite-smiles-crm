@@ -59,8 +59,15 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     <title>Elite Smiles | Secure Treatment Agreement</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .agreement-page { width:min(100%, 8.5in); min-height:11in; }
-        .agreement-treatment-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:0.28in; row-gap:0.08in; }
+        .agreement-page { width:min(100%, 8.5in); min-height:11in; font-family:Calibri, Arial, sans-serif; color:#111827; }
+        .agreement-treatment-list { margin:0 0 8pt; padding-left:.42in; }
+        .agreement-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
+        .agreement-original-copy > p, .agreement-legal-copy > p { margin:0 0 8pt; }
+        .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0; }
+        .agreement-signature-field { display:flex; align-items:flex-end; gap:.08in; }
+        .agreement-signature-field > span:first-child { white-space:nowrap; }
+        .agreement-signature-rule { display:flex; min-width:0; min-height:.3in; flex:1; align-items:flex-end; border-bottom:1px solid #111827; }
+        .agreement-signature-rule img { max-width:100%; max-height:.42in; object-fit:contain; object-position:left bottom; }
         .agreement-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
         .agreement-page.preprinted .digital-letterhead,
         .agreement-page.preprinted .digital-footer { display:none; }
@@ -74,12 +81,11 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
             #agreement-document { position:absolute; inset:0; box-sizing:border-box; width:8.5in; height:11in; min-height:11in; overflow:hidden; border:0; box-shadow:none; }
             #agreement-document .digital-letterhead { padding-top:0.13in !important; padding-bottom:0.10in !important; }
             #agreement-document .digital-letterhead img { width:1.20in !important; }
-            #agreement-document .paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.5px !important; line-height:1.4 !important; }
-            #agreement-document:not(.preprinted) .paper-body { padding-top:0.28in !important; }
+            #agreement-document .paper-body { padding-right:1in !important; padding-bottom:0.58in !important; padding-left:1in !important; font-size:11pt !important; line-height:1.08 !important; }
+            #agreement-document:not(.preprinted) .paper-body { padding-top:0.35in !important; }
             #agreement-document.preprinted .paper-body { padding-top:1.65in !important; }
-            #agreement-document .agreement-treatment-list { column-gap:0.22in !important; row-gap:0.03in !important; }
             #agreement-document .agreement-treatment-list li, #agreement-document .agreement-signature { break-inside:avoid; page-break-inside:avoid; }
-            #agreement-document .agreement-legal-copy { font-size:11.25px !important; line-height:1.42 !important; }
+            #agreement-document .agreement-legal-copy { font-size:11pt !important; line-height:1.08 !important; }
             #agreement-document .agreement-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
             .no-print { display:none !important; }
         }
@@ -113,34 +119,33 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                 <img src="<?= e(base_url('assets/img/ES-Logo-Stack-500-x-150-px.png')) ?>" alt="Elite Smiles" class="mx-auto w-[147px] max-w-full">
                 <p class="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dental Treatment Agreement</p>
             </header>
-            <div class="paper-body px-[8%] py-[6%] text-[13px] leading-[1.55] text-slate-800">
-                <div class="flex items-start justify-between gap-6 border-b border-slate-200 pb-4">
-                    <div><p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Patient</p><h1 class="mt-1 text-xl font-semibold text-slate-950"><?= e((string)($agreement['patient_name'] ?? '')) ?></h1></div>
-                    <div class="text-right"><p class="font-medium"><?= e((string)($agreement['date'] ?? '')) ?></p><p class="mt-1 text-xs text-slate-500"><?= e((string)($agreement['number'] ?? '')) ?> · Version <?= e((string)($contract['version_number'] ?? 1)) ?></p></div>
+            <div class="paper-body px-[1in] pb-[0.65in] pt-[0.42in] text-[11pt] leading-[1.08]">
+                <div class="agreement-original-copy">
+                    <p><?= e((string)($agreement['date'] ?? '')) ?></p>
+                    <p>Dental Treatment for <?= e((string)($agreement['patient_name'] ?? '')) ?>:</p>
+                    <p><?= e($financialLanguage) ?></p>
                 </div>
-                <h2 class="mt-4 text-lg font-semibold text-slate-950">Dental Treatment for <?= e((string)($agreement['treatment_label'] ?? '')) ?></h2>
-                <p class="mt-2.5"><?= e($financialLanguage) ?></p>
-                <?php if ($hasOriginalTerms): ?><div class="agreement-payment-notice mt-2 rounded-lg px-2.5 py-2 font-semibold text-slate-950"><span><?= e((string)$terms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$terms['credit_card']) ?></span></div><?php endif; ?>
-                <section class="mt-3"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="agreement-treatment-list mt-1.5 pl-5">
+                <?php if ($hasOriginalTerms): ?><div class="agreement-payment-notice mb-[8pt] rounded px-2 py-1.5 text-center font-semibold text-slate-950"><span><?= e((string)$terms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$terms['credit_card']) ?></span></div><?php endif; ?>
+                <section><ul class="agreement-treatment-list">
                     <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><?php $itemArea = $lineItemAreaLabel((array)$item); ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $itemArea !== '' && (!empty($item['teeth']) || !empty($item['arch_scope']) || $index === 0) ? ' — ' . e($itemArea) : '' ?></li><?php endforeach; ?>
                 </ul></section>
-                <section class="agreement-legal-copy mt-3 space-y-2 text-[11px] leading-[1.4]">
+                <section class="agreement-legal-copy text-[11pt] leading-[1.08]">
                     <?php if ($hasOriginalTerms): ?>
                         <p><?= e((string)$terms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
                         <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
                         <p><?= e((string)$terms['sedation']) ?></p>
                         <p><?= e((string)$terms['discount_acceptance']) ?></p>
-                        <p class="font-semibold"><?= e((string)$terms['original_cancellation']) ?></p>
                     <?php else: ?>
                         <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
                     <?php endif; ?>
-                    <div class="rounded-lg border border-amber-300 bg-amber-50 p-2"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></div>
                 </section>
-                <section class="agreement-signature mt-4 grid grid-cols-[1fr_150px] gap-8 border-t border-slate-300 pt-3">
-                    <div><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature" class="h-12 max-w-full object-contain object-left-bottom"><?php else: ?><div class="h-12"></div><?php endif; ?><div class="border-t border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500"><?= $signature ? e((string)$signature['signer_name']) : 'Patient or responsible-party signature' ?></p></div>
-                    <div><div class="flex h-12 items-end pb-1"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></div><div class="border-t border-slate-500"></div><p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Date</p></div>
+                <section class="agreement-signature agreement-signature-original">
+                    <div class="agreement-signature-field"><span>Patient Signature/Responsible Party:</span><span class="agreement-signature-rule"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature"><?php endif; ?></span></div>
+                    <div class="agreement-signature-field"><span>Date:</span><span class="agreement-signature-rule"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
                 </section>
+                <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
+                <p class="text-[10pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
             </div>
             <footer class="digital-footer absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white px-[7%] py-3 text-center text-[10px] leading-4 text-slate-500"><?= e((string)($practice['name'] ?? 'Elite Smiles')) ?> by Dr. Walter Meden · <?= e((string)($practice['address'] ?? '')) ?><br>Confidential Patient Document · <?= e((string)($agreement['number'] ?? '')) ?> · SHA-256 <?= e(substr((string)$contract['snapshot_hash'], 0, 12)) ?></footer>
         </article>

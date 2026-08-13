@@ -39,6 +39,8 @@ try {
     contract_expect(str_contains($creatorMarkup, 'Add to this contract') && str_contains($creatorMarkup, 'Add to treatment library'), 'Custom service one-time and library actions are missing.');
     contract_expect(str_contains($creatorMarkup, 'Defaults to 25%'), 'The automatic deposit behavior is not explained in the form.');
     contract_expect(str_contains($creatorMarkup, 'contract-payment-notice') && str_contains($creatorMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the preview.');
+    $creatorScriptPosition = strpos($creatorMarkup, '<script>');
+    contract_expect($creatorScriptPosition !== false && !str_contains(substr($creatorMarkup, $creatorScriptPosition), '@media'), 'A CSS media rule was rendered inside the Contract Creator JavaScript.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
     contract_expect(str_contains($publicContractMarkup, 'class="agreement-treatment-list'), 'Included treatment is not arranged in two columns in the signing contract.');
     contract_expect(!str_contains($publicContractMarkup, 'agreement-copy-grid'), 'Signing contract incorrectly splits the full agreement into two columns.');

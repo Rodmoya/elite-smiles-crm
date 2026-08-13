@@ -36,6 +36,9 @@ try {
     contract_expect(!str_contains($creatorMarkup, '.contract-treatment-list { display:grid'), 'Contract preview does not use the original single-column treatment list.');
     contract_expect(str_contains($creatorMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Contract preview does not use the original document typography.');
     contract_expect(str_contains($creatorMarkup, 'contract-original-copy') && str_contains($creatorMarkup, 'contract-signature-original'), 'Contract preview is missing the original document structure.');
+    contract_expect(str_contains($creatorMarkup, 'id="contract-date" type="date" name="agreement_date" required'), 'Agreement date is not an editable required date field.');
+    contract_expect(str_contains($creatorMarkup, 'id="preview-signature-patient"'), 'Patient name is missing beneath the preview signature line.');
+    contract_expect(str_contains($creatorMarkup, 'margin:8pt 0 8px;'), 'Preview signature row is not separated from the note by at least eight pixels.');
     contract_expect(str_contains($creatorMarkup, '.contract-cancellation-bottom { margin-top:auto; margin-bottom:5px; }'), 'Contract preview cancellation language is not anchored five pixels above the bottom.');
     contract_expect(str_contains($creatorMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language was not reduced by one point.');
     contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
@@ -55,6 +58,8 @@ try {
     contract_expect(!str_contains($publicContractMarkup, '.agreement-treatment-list { display:grid'), 'Signing contract does not use the original single-column treatment list.');
     contract_expect(str_contains($publicContractMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Signing contract does not use the original document typography.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-original-copy') && str_contains($publicContractMarkup, 'agreement-signature-original'), 'Signing contract is missing the original document structure.');
+    contract_expect(str_contains($publicContractMarkup, 'agreement-signature-patient') && str_contains($publicContractMarkup, "\$agreement['patient_name']"), 'Patient name is missing beneath the public signature line.');
+    contract_expect(str_contains($publicContractMarkup, 'margin:8pt 0 8px;'), 'Public signature row is not separated from the note by at least eight pixels.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-cancellation-bottom { margin-top:auto; margin-bottom:5px; }'), 'Signing contract cancellation language is not anchored five pixels above the bottom.');
     contract_expect(str_contains($publicContractMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Signing contract cancellation language was not reduced by one point.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
@@ -87,6 +92,7 @@ try {
 
     $normalized = patient_experience_contract_input([
         'lead_id' => $leadId,
+        'agreement_date' => '2026-09-15',
         'patient_name' => 'Contract Test Patient',
         'patient_phone' => '',
         'patient_email' => '',
@@ -106,6 +112,7 @@ try {
     contract_expect(($normalized['line_items'][1]['teeth'] ?? []) === [6, 7], 'A second procedure did not retain its independent tooth selection.');
     contract_expect((float)$normalized['patient_responsibility'] === 15000.0, 'Patient responsibility calculation failed.');
     contract_expect((float)$normalized['remaining_balance'] === 11250.0, 'Remaining balance calculation failed.');
+    contract_expect($normalized['agreement_date'] === '2026-09-15', 'Editable agreement date was not normalized correctly.');
     contract_expect(patient_experience_contract_validate($normalized) === [], 'Valid contract was rejected.');
 
     $automaticDeposit = patient_experience_contract_input([
@@ -145,6 +152,7 @@ try {
 
     $saved = patient_experience_contract_save([
         'lead_id' => $leadId,
+        'agreement_date' => '2026-09-15',
         'patient_name' => 'Contract Test Patient',
         'treatment_key' => 'veneers',
         'line_items' => ['veneers', 'gingivectomy'],
@@ -162,6 +170,7 @@ try {
     $contract = patient_experience_contract_by_id($contractId);
     contract_expect((bool)$contract, 'Saved contract was not found.');
     contract_expect(str_starts_with((string)$contract['contract_number'], 'ES-'), 'Contract number was not generated.');
+    contract_expect((string)$contract['agreement_date'] === '2026-09-15', 'Saved contract lost the edited agreement date.');
     contract_expect(($contract['line_items'][0]['teeth'] ?? []) === [4, 5, 13], 'Saved contract lost the Veneers tooth assignment.');
     contract_expect(($contract['line_items'][1]['teeth'] ?? []) === [6, 7], 'Saved contract lost the Gingivectomy tooth assignment.');
     contract_expect(in_array($libraryLabel, array_column((array)$contract['line_items'], 'label'), true), 'Saved contract lost the custom service.');
@@ -178,6 +187,7 @@ try {
     $resolved = patient_experience_contract_from_token($token, false);
     contract_expect((bool)$resolved, 'Secure contract token did not resolve.');
     contract_expect(hash('sha256', (string)$resolved['snapshot_json']) === (string)$resolved['snapshot_hash'], 'Immutable snapshot hash does not match.');
+    contract_expect((string)($resolved['snapshot']['contract']['date'] ?? '') === 'September 15, 2026', 'Immutable snapshot did not preserve the edited agreement date.');
 
     $_SERVER['REMOTE_ADDR'] = '203.0.113.25';
     $_SERVER['HTTP_USER_AGENT'] = 'Elite Smiles Contract Test';

@@ -19,7 +19,7 @@ if (!function_exists('patient_experience_contract_definitions')) {
         return [
             'veneers' => [
                 'label' => 'Veneers',
-                'tooth_mode' => 'teeth',
+                'tooth_mode' => 'none',
                 'options' => [
                     'veneers' => 'Veneers',
                     'internal_restorations' => 'Internal restorations',
@@ -33,10 +33,15 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'ppe' => 'Surgical PPE',
                     'rinses' => 'Rinses',
                 ],
+                'option_area_modes' => [
+                    'veneers' => 'teeth',
+                    'internal_restorations' => 'teeth',
+                    'gingivectomy' => 'teeth',
+                ],
             ],
             'all_on_x' => [
                 'label' => 'All-on-X',
-                'tooth_mode' => 'arch',
+                'tooth_mode' => 'none',
                 'options' => [
                     'digital_3d_design' => 'Digital 3D design',
                     'diagnostic_wax_up' => 'Diagnostic wax-up',
@@ -54,6 +59,16 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'ppe' => 'Surgical PPE',
                     'rinses' => 'Rinses',
                 ],
+                'option_area_modes' => [
+                    'extractions' => 'teeth',
+                    'alveoloplasty' => 'arch',
+                    'bone_membrane_grafts' => 'teeth',
+                    'implants_abutments' => 'teeth',
+                    'immediate_prosthesis' => 'arch',
+                    'transitional_prosthesis' => 'arch',
+                    'permanent_prosthesis' => 'arch',
+                    'zirconia' => 'arch',
+                ],
             ],
             'lip_repositioning' => [
                 'label' => 'Lip Repositioning',
@@ -65,10 +80,11 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'ppe' => 'Surgical PPE',
                     'rinses' => 'Rinses',
                 ],
+                'option_area_modes' => [],
             ],
             'complex_restorative' => [
                 'label' => 'Complex Restorative',
-                'tooth_mode' => 'teeth_optional',
+                'tooth_mode' => 'none',
                 'options' => [
                     'digital_scan' => 'Digital scan and design',
                     'root_canal' => 'Root canal therapy',
@@ -98,11 +114,30 @@ if (!function_exists('patient_experience_contract_definitions')) {
                     'ppe' => 'Surgical PPE',
                     'rinses' => 'Rinses',
                 ],
+                'option_area_modes' => [
+                    'root_canal' => 'teeth',
+                    'post_core' => 'teeth',
+                    'core_buildup' => 'teeth',
+                    'crowns' => 'teeth',
+                    'bridges' => 'teeth',
+                    'veneers' => 'teeth',
+                    'internal_restorations' => 'teeth',
+                    'extractions' => 'teeth',
+                    'bone_membrane_grafts' => 'teeth',
+                    'implants_abutments' => 'teeth',
+                    'implant_abutment_crown' => 'teeth',
+                    'crown_lengthening' => 'teeth',
+                    'gingivectomy' => 'teeth',
+                    'full_mouth_debridement' => 'arch',
+                    'pedicle_graft' => 'teeth',
+                    'high_end_temporaries' => 'arch',
+                ],
             ],
             'custom' => [
                 'label' => 'Custom Treatment',
                 'tooth_mode' => 'teeth_optional',
                 'options' => [],
+                'option_area_modes' => [],
             ],
         ];
     }
@@ -264,9 +299,22 @@ if (!function_exists('patient_experience_contract_input')) {
         }
         $selectedKeys = array_values($selectedKeys);
         $lineItems = [];
+        $submittedItemTeeth = is_array($input['line_item_teeth'] ?? null) ? $input['line_item_teeth'] : [];
+        $submittedItemArches = is_array($input['line_item_arch'] ?? null) ? $input['line_item_arch'] : [];
+        $legacyTeeth = patient_experience_contract_normalize_teeth($input['selected_teeth'] ?? []);
+        $legacyArch = in_array((string)($input['arch_scope'] ?? ''), ['upper', 'lower', 'both'], true) ? (string)$input['arch_scope'] : '';
+        $areaModes = (array)($definition['option_area_modes'] ?? []);
         foreach ($selectedKeys as $key) {
             if (isset($definition['options'][$key])) {
-                $lineItems[] = ['key' => $key, 'label' => (string)$definition['options'][$key]];
+                $areaMode = (string)($areaModes[$key] ?? 'none');
+                $item = ['key' => $key, 'label' => (string)$definition['options'][$key], 'area_mode' => $areaMode];
+                if ($areaMode === 'teeth') {
+                    $item['teeth'] = patient_experience_contract_normalize_teeth($submittedItemTeeth[$key] ?? $legacyTeeth);
+                } elseif ($areaMode === 'arch') {
+                    $arch = (string)($submittedItemArches[$key] ?? $legacyArch);
+                    $item['arch_scope'] = in_array($arch, ['upper', 'lower', 'both'], true) ? $arch : '';
+                }
+                $lineItems[] = $item;
             }
         }
         $customLines = preg_split('/\r\n|\r|\n/', trim((string)($input['custom_item_text'] ?? ''))) ?: [];
@@ -317,6 +365,17 @@ if (!function_exists('patient_experience_contract_validate')) {
         if (($data['tooth_mode'] ?? '') === 'teeth' && empty($data['selected_teeth'])) $errors['selected_teeth'] = 'Select at least one tooth for this treatment.';
         if (($data['tooth_mode'] ?? '') === 'arch' && ($data['arch_scope'] ?? '') === '') $errors['arch_scope'] = 'Select the upper arch, lower arch, or both arches.';
         if (empty($data['line_items'])) $errors['line_items'] = 'Select at least one included treatment item.';
+        foreach ((array)($data['line_items'] ?? []) as $item) {
+            $areaMode = (string)($item['area_mode'] ?? 'none');
+            if ($areaMode === 'teeth' && empty($item['teeth'])) {
+                $errors['line_item_area'] = 'Select the teeth for ' . (string)($item['label'] ?? 'each tooth-based procedure') . '.';
+                break;
+            }
+            if ($areaMode === 'arch' && empty($item['arch_scope'])) {
+                $errors['line_item_area'] = 'Select the treatment arch for ' . (string)($item['label'] ?? 'each arch-based procedure') . '.';
+                break;
+            }
+        }
         if ((float)($data['final_price'] ?? 0) <= 0) $errors['final_price'] = 'Enter the final approved treatment price.';
         if ((float)($data['original_price'] ?? 0) > 0 && (float)$data['final_price'] > (float)$data['original_price']) $errors['final_price'] = 'Final price cannot exceed the original price.';
         if ((float)($data['insurance_estimate'] ?? 0) > (float)($data['final_price'] ?? 0)) $errors['insurance_estimate'] = 'Insurance estimate cannot exceed the final price.';
@@ -437,7 +496,7 @@ if (!function_exists('patient_experience_contract_snapshot')) {
     function patient_experience_contract_snapshot(array $contract): array
     {
         return [
-            'schema_version' => 2,
+            'schema_version' => 3,
             'terms_version' => 2,
             'practice' => [
                 'name' => 'Elite Smiles',

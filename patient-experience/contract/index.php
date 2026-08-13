@@ -32,11 +32,19 @@ $terms = (array)($snapshot['terms'] ?? []);
 $practice = (array)($snapshot['practice'] ?? []);
 $signature = (array)($contract['signature'] ?? []);
 $money = static fn(mixed $amount): string => '$' . number_format((float)$amount, 2);
-$archLabel = match ((string)($agreement['arch_scope'] ?? '')) {
-    'upper' => 'Upper arch', 'lower' => 'Lower arch', 'both' => 'Upper and lower arches', default => '',
+$legacyArchLabel = match ((string)($agreement['arch_scope'] ?? '')) {
+    'upper' => 'Upper arch', 'lower' => 'Lower arch', 'both' => 'Both arches', default => '',
 };
-$teeth = array_map('intval', (array)($agreement['selected_teeth'] ?? []));
-$areaLabel = $archLabel !== '' ? $archLabel : ($teeth ? 'Teeth ' . implode(', ', $teeth) : '');
+$legacyTeeth = array_map('intval', (array)($agreement['selected_teeth'] ?? []));
+$legacyAreaLabel = $legacyArchLabel !== '' ? $legacyArchLabel : ($legacyTeeth ? 'Teeth ' . implode(', ', $legacyTeeth) : '');
+$lineItemAreaLabel = static function (array $item) use ($legacyAreaLabel): string {
+    $teeth = patient_experience_contract_normalize_teeth($item['teeth'] ?? []);
+    if ($teeth) return 'Teeth ' . implode(', ', $teeth);
+    $arch = (string)($item['arch_scope'] ?? '');
+    if ($arch === 'both') return 'Both arches';
+    if (in_array($arch, ['upper', 'lower'], true)) return ucfirst($arch) . ' arch';
+    return $legacyAreaLabel;
+};
 $hasOriginalTerms = isset($terms['cashier_check']);
 $financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($financials['final_price'] ?? 0) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
 if ((float)($financials['insurance_estimate'] ?? 0) > 0) $financialLanguage .= 'Your insurance estimated payment is ' . $money($financials['insurance_estimate']) . '. ';
@@ -111,7 +119,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                 <p class="mt-2.5"><?= e($financialLanguage) ?></p>
                 <?php if ($hasOriginalTerms): ?><div class="mt-2 space-y-1 font-semibold text-slate-950"><p><?= e((string)$terms['cashier_check']) ?></p><p><?= e((string)$terms['credit_card']) ?></p></div><?php endif; ?>
                 <section class="mt-3"><h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Included treatment</h3><ul class="agreement-treatment-list mt-1.5 pl-5">
-                    <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $index === 0 && $areaLabel !== '' ? ' — ' . e($areaLabel) : '' ?></li><?php endforeach; ?>
+                    <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><?php $itemArea = $lineItemAreaLabel((array)$item); ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $itemArea !== '' && (!empty($item['teeth']) || !empty($item['arch_scope']) || $index === 0) ? ' — ' . e($itemArea) : '' ?></li><?php endforeach; ?>
                 </ul></section>
                 <section class="agreement-legal-copy mt-3 space-y-2 text-[11px] leading-[1.4]">
                     <?php if ($hasOriginalTerms): ?>

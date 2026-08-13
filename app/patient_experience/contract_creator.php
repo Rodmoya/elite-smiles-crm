@@ -7,6 +7,10 @@ $patients = $contractPatients ?? [];
 $contracts = $contracts ?? [];
 $selectedTeeth = array_map('intval', (array)($contract['selected_teeth'] ?? []));
 $selectedItemKeys = array_map(static fn(array $item): string => (string)($item['key'] ?? ''), (array)($contract['line_items'] ?? []));
+$selectedItemsByKey = [];
+foreach ((array)($contract['line_items'] ?? []) as $selectedItem) {
+    $selectedItemsByKey[(string)($selectedItem['key'] ?? '')] = $selectedItem;
+}
 $treatmentKey = (string)($contract['treatment_key'] ?? 'veneers');
 $status = (string)($contract['status'] ?? 'draft');
 $isEditable = !$contract || $status === 'draft';
@@ -107,44 +111,33 @@ $originalTerms = patient_experience_contract_original_terms();
                     </div>
                 </div>
 
-                <div id="contract-arch-section" class="rounded-2xl border border-slate-200 p-4">
-                    <fieldset>
-                        <legend class="text-sm font-semibold text-slate-900">3. Treatment area</legend>
-                        <div id="contract-arch-controls" class="mt-3 grid grid-cols-3 gap-2">
-                            <?php foreach (['upper' => 'Upper', 'lower' => 'Lower', 'both' => 'Both'] as $value => $label): ?>
-                                <label class="cursor-pointer"><input class="peer sr-only" type="radio" name="arch_scope" value="<?= e($value) ?>" <?= (string)($contract['arch_scope'] ?? '') === $value ? 'checked' : '' ?>><span class="flex min-h-11 items-center justify-center rounded-xl border border-slate-300 text-sm font-semibold peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:text-blue-800 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100"><?= e($label) ?></span></label>
-                            <?php endforeach; ?>
-                        </div>
-                        <div id="contract-teeth-controls" class="mt-3">
-                            <div class="mb-3 flex flex-wrap gap-2">
-                                <button type="button" data-select-teeth="upper" class="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Select upper</button>
-                                <button type="button" data-select-teeth="lower" class="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Select lower</button>
-                                <button type="button" data-select-teeth="all" class="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Full mouth</button>
-                                <button type="button" data-select-teeth="clear" class="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Clear</button>
-                            </div>
-                            <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Upper</p>
-                            <div class="grid grid-cols-8 gap-1.5">
-                                <?php foreach (range(1, 16) as $tooth): ?><label class="contract-tooth cursor-pointer"><input class="sr-only" type="checkbox" name="selected_teeth[]" value="<?= $tooth ?>" <?= in_array($tooth, $selectedTeeth, true) ? 'checked' : '' ?>><span class="flex min-h-10 items-center justify-center rounded-lg border border-slate-300 text-xs font-semibold transition"><?= $tooth ?></span></label><?php endforeach; ?>
-                            </div>
-                            <p class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Lower</p>
-                            <div class="grid grid-cols-8 gap-1.5">
-                                <?php foreach (range(32, 17) as $tooth): ?><label class="contract-tooth cursor-pointer"><input class="sr-only" type="checkbox" name="selected_teeth[]" value="<?= $tooth ?>" <?= in_array($tooth, $selectedTeeth, true) ? 'checked' : '' ?>><span class="flex min-h-10 items-center justify-center rounded-lg border border-slate-300 text-xs font-semibold transition"><?= $tooth ?></span></label><?php endforeach; ?>
-                            </div>
-                        </div>
-                        <p id="contract-no-teeth" class="mt-3 hidden rounded-xl bg-slate-50 p-3 text-sm text-slate-600">This treatment does not require tooth selection.</p>
-                    </fieldset>
-                </div>
-
                 <div class="rounded-2xl border border-slate-200 p-4">
                     <fieldset>
-                        <legend class="text-sm font-semibold text-slate-900">4. Included services</legend>
+                        <legend class="text-sm font-semibold text-slate-900">3. Included services</legend>
+                        <p class="mt-2 text-xs leading-5 text-slate-500">Procedures involving specific teeth will ask you to select them when the procedure is chosen.</p>
                         <div id="contract-options" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <?php foreach ($definitions as $definitionKey => $definition): ?>
                                 <?php foreach ((array)$definition['options'] as $optionKey => $optionLabel): ?>
-                                    <label class="contract-option cursor-pointer" data-treatment-option="<?= e($definitionKey) ?>">
-                                        <input class="peer sr-only" type="checkbox" name="line_items[]" value="<?= e($optionKey) ?>" <?= $treatmentKey === $definitionKey && in_array($optionKey, $selectedItemKeys, true) ? 'checked' : '' ?>>
-                                        <span class="flex min-h-11 items-center rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100"><?= e((string)$optionLabel) ?></span>
-                                    </label>
+                                    <?php
+                                    $areaMode = (string)(($definition['option_area_modes'] ?? [])[$optionKey] ?? 'none');
+                                    $existingArea = (array)($selectedItemsByKey[$optionKey] ?? []);
+                                    $existingAreaTeeth = array_map('intval', (array)($existingArea['teeth'] ?? []));
+                                    $existingAreaArch = (string)($existingArea['arch_scope'] ?? '');
+                                    ?>
+                                    <div class="contract-option flex min-h-11 items-stretch rounded-xl border border-slate-300" data-treatment-option="<?= e($definitionKey) ?>" data-option-key="<?= e($optionKey) ?>" data-option-label="<?= e((string)$optionLabel) ?>" data-area-mode="<?= e($areaMode) ?>">
+                                        <label class="flex min-w-0 flex-1 cursor-pointer items-center">
+                                            <input class="peer sr-only" type="checkbox" name="line_items[]" value="<?= e($optionKey) ?>" <?= $treatmentKey === $definitionKey && in_array($optionKey, $selectedItemKeys, true) ? 'checked' : '' ?>>
+                                            <span class="flex min-h-11 w-full flex-col justify-center rounded-l-xl px-3 py-2 text-sm text-slate-700 transition peer-checked:bg-blue-50 peer-checked:text-blue-900 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100">
+                                                <span><?= e((string)$optionLabel) ?></span>
+                                                <?php if ($areaMode !== 'none'): ?><span class="mt-0.5 text-xs font-medium text-slate-500" data-area-summary><?= $existingAreaTeeth ? 'Teeth ' . e(implode(', ', $existingAreaTeeth)) : ($existingAreaArch !== '' ? e(ucfirst($existingAreaArch) . ($existingAreaArch === 'both' ? ' arches' : ' arch')) : ($areaMode === 'teeth' ? 'Select teeth' : 'Select arch')) ?></span><?php endif; ?>
+                                            </span>
+                                        </label>
+                                        <?php if ($areaMode !== 'none'): ?><button type="button" data-edit-item-area class="min-w-20 rounded-r-xl border-l border-slate-300 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-blue-100"><?= $areaMode === 'teeth' ? 'Teeth' : 'Arch' ?></button><?php endif; ?>
+                                        <div data-item-area-inputs>
+                                            <?php foreach ($existingAreaTeeth as $tooth): ?><input type="hidden" name="line_item_teeth[<?= e($optionKey) ?>][]" value="<?= $tooth ?>"><?php endforeach; ?>
+                                            <?php if ($existingAreaArch !== ''): ?><input type="hidden" name="line_item_arch[<?= e($optionKey) ?>]" value="<?= e($existingAreaArch) ?>"><?php endif; ?>
+                                        </div>
+                                    </div>
                                 <?php endforeach; ?>
                             <?php endforeach; ?>
                         </div>
@@ -155,7 +148,7 @@ $originalTerms = patient_experience_contract_original_terms();
 
                 <div class="rounded-2xl border border-slate-200 p-4">
                     <fieldset>
-                        <legend class="text-sm font-semibold text-slate-900">5. Financials</legend>
+                        <legend class="text-sm font-semibold text-slate-900">4. Financials</legend>
                         <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                             <div><label for="contract-original-price" class="block text-sm font-medium text-slate-700">Original price <span class="text-slate-400">optional</span></label><input id="contract-original-price" name="original_price" inputmode="decimal" value="<?= e($money($contract['original_price'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums"></div>
                             <div><label for="contract-discount" class="block text-sm font-medium text-slate-700">Professional discount</label><input id="contract-discount" name="discount_amount" inputmode="decimal" value="<?= e($money($contract['discount_amount'] ?? 0)) ?>" class="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base tabular-nums"></div>
@@ -257,6 +250,45 @@ $originalTerms = patient_experience_contract_original_terms();
     </div>
 </section>
 
+<div id="contract-area-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" aria-hidden="true">
+    <div class="w-full max-w-xl rounded-[2rem] bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="contract-area-modal-title">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Procedure area</p>
+                <h2 id="contract-area-modal-title" class="mt-1 text-xl font-semibold text-slate-950">Select teeth</h2>
+                <p id="contract-area-modal-help" class="mt-1 text-sm text-slate-600">Choose every tooth included in this procedure.</p>
+            </div>
+            <button type="button" data-area-cancel class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 text-xl text-slate-600 hover:bg-slate-100" aria-label="Close tooth selector">&times;</button>
+        </div>
+        <p id="contract-area-modal-error" class="mt-3 hidden rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800" role="alert"></p>
+        <div id="contract-modal-teeth" class="mt-5">
+            <div class="mb-3 flex flex-wrap gap-2">
+                <button type="button" data-modal-select="upper" class="min-h-11 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Select upper</button>
+                <button type="button" data-modal-select="lower" class="min-h-11 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Select lower</button>
+                <button type="button" data-modal-select="all" class="min-h-11 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Full mouth</button>
+                <button type="button" data-modal-select="clear" class="min-h-11 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Clear</button>
+            </div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Upper</p>
+            <div class="grid grid-cols-8 gap-1.5">
+                <?php foreach (range(1, 16) as $tooth): ?><label class="contract-tooth cursor-pointer"><input class="sr-only" type="checkbox" data-modal-tooth value="<?= $tooth ?>"><span class="flex min-h-11 items-center justify-center rounded-lg border border-slate-300 text-xs font-semibold transition"><?= $tooth ?></span></label><?php endforeach; ?>
+            </div>
+            <p class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Lower</p>
+            <div class="grid grid-cols-8 gap-1.5">
+                <?php foreach (range(32, 17) as $tooth): ?><label class="contract-tooth cursor-pointer"><input class="sr-only" type="checkbox" data-modal-tooth value="<?= $tooth ?>"><span class="flex min-h-11 items-center justify-center rounded-lg border border-slate-300 text-xs font-semibold transition"><?= $tooth ?></span></label><?php endforeach; ?>
+            </div>
+        </div>
+        <div id="contract-modal-arch" class="mt-5 hidden grid grid-cols-3 gap-2">
+            <?php foreach (['upper' => 'Upper', 'lower' => 'Lower', 'both' => 'Both'] as $value => $label): ?>
+                <label class="cursor-pointer"><input class="peer sr-only" type="radio" data-modal-arch name="contract_modal_arch" value="<?= e($value) ?>"><span class="flex min-h-12 items-center justify-center rounded-xl border border-slate-300 text-sm font-semibold peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:text-blue-800 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100"><?= e($label) ?></span></label>
+            <?php endforeach; ?>
+        </div>
+        <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" data-area-cancel class="min-h-12 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+            <button type="button" id="contract-area-apply" class="min-h-12 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300">Apply selection</button>
+        </div>
+    </div>
+</div>
+
 <script>
 (function () {
     const form = document.getElementById('contract-form');
@@ -266,7 +298,14 @@ $originalTerms = patient_experience_contract_original_terms();
     const formatMoney = value => new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(Math.max(0, value));
     const selectedTreatment = () => form.querySelector('input[name="treatment_key"]:checked')?.value || 'veneers';
     const q = id => document.getElementById(id);
-    const escapeText = value => String(value || '');
+    const areaModal = q('contract-area-modal');
+    const areaModalTitle = q('contract-area-modal-title');
+    const areaModalHelp = q('contract-area-modal-help');
+    const areaModalError = q('contract-area-modal-error');
+    const modalTeeth = Array.from(areaModal.querySelectorAll('[data-modal-tooth]'));
+    const modalArches = Array.from(areaModal.querySelectorAll('[data-modal-arch]'));
+    let activeAreaCard = null;
+    let uncheckOnCancel = false;
 
     function syncPatient() {
         const select = q('contract-lead');
@@ -279,10 +318,6 @@ $originalTerms = patient_experience_contract_original_terms();
 
     function syncTreatmentControls() {
         const key = selectedTreatment();
-        const mode = definitions[key]?.tooth_mode || 'none';
-        q('contract-arch-controls').classList.toggle('hidden', mode !== 'arch');
-        q('contract-teeth-controls').classList.toggle('hidden', !['teeth','teeth_optional'].includes(mode));
-        q('contract-no-teeth').classList.toggle('hidden', mode !== 'none');
         document.querySelectorAll('[data-treatment-option]').forEach(label => {
             const visible = label.dataset.treatmentOption === key;
             label.classList.toggle('hidden', !visible);
@@ -311,16 +346,16 @@ $originalTerms = patient_experience_contract_original_terms();
         q('financial-responsibility').textContent = formatMoney(responsibility);
         q('financial-balance').textContent = formatMoney(balance);
 
-        const teeth = Array.from(form.querySelectorAll('input[name="selected_teeth[]"]:checked')).map(input => input.value);
-        const arch = form.querySelector('input[name="arch_scope"]:checked')?.value || '';
-        const area = definition.tooth_mode === 'arch' && arch ? ' — ' + (arch === 'both' ? 'Upper and lower arches' : arch.charAt(0).toUpperCase() + arch.slice(1) + ' arch') : (teeth.length ? ' — Teeth ' + teeth.join(', ') : '');
-        const items = Array.from(form.querySelectorAll('input[name="line_items[]"]:checked:not(:disabled)')).map(input => input.nextElementSibling?.textContent?.trim() || input.value);
+        const items = Array.from(form.querySelectorAll('[data-treatment-option]')).filter(card => card.querySelector('input[name="line_items[]"]:checked:not(:disabled)')).map(card => {
+            const summary = card.querySelector('[data-area-summary]')?.textContent?.trim() || '';
+            return card.dataset.optionLabel + (summary && !summary.startsWith('Select ') ? ' — ' + summary : '');
+        });
         q('contract-custom-items').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).forEach(line => items.push(line));
         const list = q('preview-line-items');
         list.replaceChildren();
-        (items.length ? items : ['Select included treatment items']).forEach((item, index) => {
+        (items.length ? items : ['Select included treatment items']).forEach(item => {
             const li = document.createElement('li');
-            li.textContent = item + (index === 0 ? area : '');
+            li.textContent = item;
             li.className = 'list-disc';
             list.appendChild(li);
         });
@@ -332,15 +367,115 @@ $originalTerms = patient_experience_contract_original_terms();
         if (event.target.name === 'treatment_key') syncTreatmentControls();
         syncPreview();
     });
-    document.querySelectorAll('[data-select-teeth]').forEach(button => button.addEventListener('click', () => {
-        const mode = button.dataset.selectTeeth;
-        form.querySelectorAll('input[name="selected_teeth[]"]').forEach(input => {
+    function areaInputs(card) { return card.querySelector('[data-item-area-inputs]'); }
+    function hasArea(card) {
+        if (card.dataset.areaMode === 'teeth') return areaInputs(card).querySelectorAll('input[name^="line_item_teeth"]').length > 0;
+        if (card.dataset.areaMode === 'arch') return Boolean(areaInputs(card).querySelector('input[name^="line_item_arch"]')?.value);
+        return true;
+    }
+    function updateAreaSummary(card) {
+        const summary = card.querySelector('[data-area-summary]');
+        if (!summary) return;
+        const teeth = Array.from(areaInputs(card).querySelectorAll('input[name^="line_item_teeth"]')).map(input => Number(input.value)).sort((a, b) => a - b);
+        const arch = areaInputs(card).querySelector('input[name^="line_item_arch"]')?.value || '';
+        summary.textContent = teeth.length ? 'Teeth ' + teeth.join(', ') : (arch ? (arch === 'both' ? 'Both arches' : arch.charAt(0).toUpperCase() + arch.slice(1) + ' arch') : (card.dataset.areaMode === 'teeth' ? 'Select teeth' : 'Select arch'));
+    }
+    function openAreaModal(card, shouldUncheck = false) {
+        activeAreaCard = card;
+        uncheckOnCancel = shouldUncheck;
+        const teethMode = card.dataset.areaMode === 'teeth';
+        areaModalTitle.textContent = (teethMode ? 'Select teeth for ' : 'Select arch for ') + card.dataset.optionLabel;
+        areaModalHelp.textContent = teethMode ? 'Choose every tooth included in this procedure.' : 'Choose the arch or arches included in this procedure.';
+        q('contract-modal-teeth').classList.toggle('hidden', !teethMode);
+        q('contract-modal-arch').classList.toggle('hidden', teethMode);
+        areaModalError.classList.add('hidden');
+        areaModalError.textContent = '';
+        const selectedTeeth = new Set(Array.from(areaInputs(card).querySelectorAll('input[name^="line_item_teeth"]')).map(input => input.value));
+        modalTeeth.forEach(input => { input.checked = selectedTeeth.has(input.value); });
+        const selectedArch = areaInputs(card).querySelector('input[name^="line_item_arch"]')?.value || '';
+        modalArches.forEach(input => { input.checked = input.value === selectedArch; });
+        areaModal.classList.remove('hidden');
+        areaModal.classList.add('flex');
+        areaModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('overflow-hidden');
+        (teethMode ? modalTeeth[0] : modalArches[0])?.focus();
+    }
+    function closeAreaModal(cancelled = false) {
+        if (cancelled && uncheckOnCancel && activeAreaCard) activeAreaCard.querySelector('input[name="line_items[]"]').checked = false;
+        areaModal.classList.add('hidden');
+        areaModal.classList.remove('flex');
+        areaModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('overflow-hidden');
+        activeAreaCard?.querySelector('[data-edit-item-area]')?.focus();
+        activeAreaCard = null;
+        uncheckOnCancel = false;
+        syncPreview();
+    }
+    document.querySelectorAll('[data-treatment-option]').forEach(card => {
+        const checkbox = card.querySelector('input[name="line_items[]"]');
+        checkbox.addEventListener('change', () => {
+            if (card.dataset.areaMode !== 'none' && checkbox.checked && !hasArea(card)) openAreaModal(card, true);
+            if (!checkbox.checked && card.dataset.areaMode !== 'none') {
+                areaInputs(card).replaceChildren();
+                updateAreaSummary(card);
+            }
+            syncPreview();
+        });
+        card.querySelector('[data-edit-item-area]')?.addEventListener('click', () => {
+            const newlyChecked = !checkbox.checked;
+            checkbox.checked = true;
+            openAreaModal(card, newlyChecked);
+        });
+        updateAreaSummary(card);
+    });
+    areaModal.querySelectorAll('[data-area-cancel]').forEach(button => button.addEventListener('click', () => closeAreaModal(true)));
+    areaModal.addEventListener('click', event => { if (event.target === areaModal) closeAreaModal(true); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !areaModal.classList.contains('hidden')) closeAreaModal(true); });
+    areaModal.querySelectorAll('[data-modal-select]').forEach(button => button.addEventListener('click', () => {
+        const mode = button.dataset.modalSelect;
+        modalTeeth.forEach(input => {
             const tooth = Number(input.value);
             input.checked = mode === 'all' || (mode === 'upper' && tooth <= 16) || (mode === 'lower' && tooth >= 17);
             if (mode === 'clear') input.checked = false;
         });
-        syncPreview();
     }));
+    q('contract-area-apply').addEventListener('click', () => {
+        if (!activeAreaCard) return;
+        const teeth = modalTeeth.filter(input => input.checked).map(input => input.value);
+        const arch = modalArches.find(input => input.checked)?.value || '';
+        if ((activeAreaCard.dataset.areaMode === 'teeth' && !teeth.length) || (activeAreaCard.dataset.areaMode === 'arch' && !arch)) {
+            areaModalError.textContent = activeAreaCard.dataset.areaMode === 'teeth' ? 'Select at least one tooth.' : 'Select upper, lower, or both arches.';
+            areaModalError.classList.remove('hidden');
+            return;
+        }
+        const holder = areaInputs(activeAreaCard);
+        holder.replaceChildren();
+        if (activeAreaCard.dataset.areaMode === 'teeth') {
+            teeth.forEach(tooth => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'line_item_teeth[' + activeAreaCard.dataset.optionKey + '][]';
+                input.value = tooth;
+                holder.appendChild(input);
+            });
+        } else {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'line_item_arch[' + activeAreaCard.dataset.optionKey + ']';
+            input.value = arch;
+            holder.appendChild(input);
+        }
+        updateAreaSummary(activeAreaCard);
+        closeAreaModal(false);
+    });
+    form.addEventListener('submit', event => {
+        const missing = Array.from(form.querySelectorAll('[data-treatment-option]')).find(card => card.querySelector('input[name="line_items[]"]:checked:not(:disabled)') && !hasArea(card));
+        if (!missing) return;
+        event.preventDefault();
+        openAreaModal(missing, false);
+        areaModalError.textContent = missing.dataset.areaMode === 'teeth' ? 'Select at least one tooth before saving.' : 'Select an arch before saving.';
+        areaModalError.classList.remove('hidden');
+    });
     document.querySelector('[data-deposit-quarter]')?.addEventListener('click', () => {
         const responsibility = Math.max(0, money(q('contract-final-price').value) - money(q('contract-insurance').value));
         q('contract-deposit').value = (responsibility * .25).toFixed(2);

@@ -61,7 +61,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     <style>
         .agreement-page { display:flex; width:min(100%, 8.5in); min-height:11in; flex-direction:column; font-family:Calibri, Arial, sans-serif; color:#111827; }
         .paper-body { display:flex; min-height:0; flex:1; flex-direction:column; }
-        .agreement-treatment-list { margin:0 0 8pt; padding-left:.42in; }
+        .agreement-treatment-list { margin:0 0 16pt; padding-left:.42in; }
         .agreement-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
         .agreement-original-copy > p, .agreement-legal-copy > p { margin:0 0 8pt; }
         .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0 8px; }
@@ -72,7 +72,8 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         .agreement-signature-rule { display:flex; min-width:0; min-height:.3in; flex:1; align-items:flex-end; border-bottom:1px solid #111827; }
         .agreement-signature-rule img { max-width:100%; max-height:.42in; object-fit:contain; object-position:left bottom; }
         .agreement-cancellation-bottom { margin-top:auto; margin-bottom:5px; }
-        .agreement-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
+        .agreement-payment-notice { margin-bottom:16pt; background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
+        .agreement-sedation { color:#b91c1c; }
         .agreement-page.preprinted .digital-letterhead,
         .agreement-page.preprinted .digital-footer { display:none; }
         .agreement-page.preprinted .paper-body { padding-top:1.65in; }
@@ -129,7 +130,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                     <p>Dental Treatment for <?= e((string)($agreement['patient_name'] ?? '')) ?>:</p>
                     <p><?= e($financialLanguage) ?></p>
                 </div>
-                <?php if ($hasOriginalTerms): ?><div class="agreement-payment-notice mb-[8pt] rounded px-2 py-1.5 text-center font-semibold text-slate-950"><span><?= e((string)$terms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$terms['credit_card']) ?></span></div><?php endif; ?>
+                <?php if ($hasOriginalTerms): ?><div class="agreement-payment-notice rounded px-2 py-1.5 text-center font-semibold text-slate-950"><span><?= e((string)$terms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$terms['credit_card']) ?></span></div><?php endif; ?>
                 <section><ul class="agreement-treatment-list">
                     <?php foreach ((array)($agreement['line_items'] ?? []) as $index => $item): ?><?php $itemArea = $lineItemAreaLabel((array)$item); ?><li class="list-disc"><?= e((string)($item['label'] ?? '')) ?><?= $itemArea !== '' && (!empty($item['teeth']) || !empty($item['arch_scope']) || $index === 0) ? ' — ' . e($itemArea) : '' ?></li><?php endforeach; ?>
                 </ul></section>
@@ -138,8 +139,8 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                         <p><?= e((string)$terms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
                         <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
-                        <p><?= e((string)$terms['sedation']) ?></p>
-                        <p><?= e((string)$terms['discount_acceptance']) ?></p>
+                        <p class="agreement-sedation"><?= e((string)$terms['sedation']) ?></p>
+                        <p><strong><?= e((string)$terms['discount_acceptance']) ?></strong></p>
                     <?php else: ?>
                         <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
                     <?php endif; ?>

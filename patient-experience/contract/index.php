@@ -59,7 +59,8 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     <title>Elite Smiles | Secure Treatment Agreement</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .agreement-page { width:min(100%, 8.5in); min-height:11in; font-family:Calibri, Arial, sans-serif; color:#111827; }
+        .agreement-page { display:flex; width:min(100%, 8.5in); min-height:11in; flex-direction:column; font-family:Calibri, Arial, sans-serif; color:#111827; }
+        .paper-body { display:flex; min-height:0; flex:1; flex-direction:column; }
         .agreement-treatment-list { margin:0 0 8pt; padding-left:.42in; }
         .agreement-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
         .agreement-original-copy > p, .agreement-legal-copy > p { margin:0 0 8pt; }
@@ -68,6 +69,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         .agreement-signature-field > span:first-child { white-space:nowrap; }
         .agreement-signature-rule { display:flex; min-width:0; min-height:.3in; flex:1; align-items:flex-end; border-bottom:1px solid #111827; }
         .agreement-signature-rule img { max-width:100%; max-height:.42in; object-fit:contain; object-position:left bottom; }
+        .agreement-cancellation-bottom { margin-top:auto; }
         .agreement-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
         .agreement-page.preprinted .digital-letterhead,
         .agreement-page.preprinted .digital-footer { display:none; }
@@ -144,8 +146,10 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                     <div class="agreement-signature-field"><span>Patient Signature/Responsible Party:</span><span class="agreement-signature-rule"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature"><?php endif; ?></span></div>
                     <div class="agreement-signature-field"><span>Date:</span><span class="agreement-signature-rule"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
                 </section>
-                <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
-                <p class="text-[10pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
+                <div class="agreement-cancellation-bottom">
+                    <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
+                    <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
+                </div>
             </div>
             <footer class="digital-footer absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white px-[7%] py-3 text-center text-[10px] leading-4 text-slate-500"><?= e((string)($practice['name'] ?? 'Elite Smiles')) ?> by Dr. Walter Meden · <?= e((string)($practice['address'] ?? '')) ?><br>Confidential Patient Document · <?= e((string)($agreement['number'] ?? '')) ?> · SHA-256 <?= e(substr((string)$contract['snapshot_hash'], 0, 12)) ?></footer>
         </article>

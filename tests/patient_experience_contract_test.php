@@ -36,6 +36,8 @@ try {
     contract_expect(!str_contains($creatorMarkup, '.contract-treatment-list { display:grid'), 'Contract preview does not use the original single-column treatment list.');
     contract_expect(str_contains($creatorMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Contract preview does not use the original document typography.');
     contract_expect(str_contains($creatorMarkup, 'contract-original-copy') && str_contains($creatorMarkup, 'contract-signature-original'), 'Contract preview is missing the original document structure.');
+    contract_expect(str_contains($creatorMarkup, '.contract-cancellation-bottom { margin-top:auto; }'), 'Contract preview cancellation language is not anchored to the bottom.');
+    contract_expect(str_contains($creatorMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language was not reduced by one point.');
     contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
@@ -53,6 +55,8 @@ try {
     contract_expect(!str_contains($publicContractMarkup, '.agreement-treatment-list { display:grid'), 'Signing contract does not use the original single-column treatment list.');
     contract_expect(str_contains($publicContractMarkup, 'font-family:Calibri, Arial, sans-serif'), 'Signing contract does not use the original document typography.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-original-copy') && str_contains($publicContractMarkup, 'agreement-signature-original'), 'Signing contract is missing the original document structure.');
+    contract_expect(str_contains($publicContractMarkup, '.agreement-cancellation-bottom { margin-top:auto; }'), 'Signing contract cancellation language is not anchored to the bottom.');
+    contract_expect(str_contains($publicContractMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Signing contract cancellation language was not reduced by one point.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');

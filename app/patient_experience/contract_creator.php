@@ -20,12 +20,14 @@ $originalTerms = patient_experience_contract_original_terms();
 ?>
 
 <style>
-    .contract-page { aspect-ratio:8.5 / 11; min-height:900px; font-family:Calibri, Arial, sans-serif; color:#111827; }
+    .contract-page { display:flex; aspect-ratio:8.5 / 11; min-height:900px; flex-direction:column; font-family:Calibri, Arial, sans-serif; color:#111827; }
+    .contract-paper-body { display:flex; min-height:0; flex:1; flex-direction:column; }
     .contract-treatment-list { margin:0 0 8pt; padding-left:.42in; }
     .contract-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
     .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0; }
     .contract-signature-rule { min-height:.3in; border-bottom:1px solid #111827; }
+    .contract-cancellation-bottom { margin-top:auto; }
     .contract-page.preprinted .contract-digital-letterhead,
     .contract-page.preprinted .contract-digital-footer { display: none; }
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }
@@ -225,8 +227,10 @@ $originalTerms = patient_experience_contract_original_terms();
                         <div class="flex items-end gap-2"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0 flex-1"></span></div>
                         <div class="flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"></span></div>
                     </div>
-                    <p class="mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
-                    <p class="text-[10pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
+                    <div class="contract-cancellation-bottom">
+                        <p class="mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
+                        <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
+                    </div>
                 </div>
                 <footer class="contract-digital-footer absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white px-[7%] py-3 text-center text-[10px] leading-4 text-slate-500">Elite Smiles by Dr. Walter Meden · 11762 South State, Suite 300, Draper, UT 84020<br>Confidential Patient Document · <span><?= e((string)($contract['contract_number'] ?? 'Draft')) ?></span></footer>
             </article>

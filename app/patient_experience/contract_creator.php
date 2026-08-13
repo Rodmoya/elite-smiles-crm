@@ -127,7 +127,7 @@ $originalTerms = patient_experience_contract_original_terms();
                                     $existingAreaTeeth = array_map('intval', (array)($existingArea['teeth'] ?? []));
                                     $existingAreaArch = (string)($existingArea['arch_scope'] ?? '');
                                     ?>
-                                    <div class="contract-option flex h-24 items-stretch overflow-hidden rounded-xl border border-slate-300" data-treatment-option="<?= e($definitionKey) ?>" data-option-key="<?= e($optionKey) ?>" data-option-label="<?= e((string)$optionLabel) ?>" data-area-mode="<?= e($areaMode) ?>">
+                                    <div class="contract-option flex h-[72px] items-stretch overflow-hidden rounded-xl border border-slate-300" data-treatment-option="<?= e($definitionKey) ?>" data-option-key="<?= e($optionKey) ?>" data-option-label="<?= e((string)$optionLabel) ?>" data-area-mode="<?= e($areaMode) ?>">
                                         <label class="flex min-w-0 flex-1 cursor-pointer items-center">
                                             <input class="peer sr-only" type="checkbox" name="line_items[]" value="<?= e($optionKey) ?>" <?= $treatmentKey === $definitionKey && in_array($optionKey, $selectedItemKeys, true) ? 'checked' : '' ?>>
                                             <span class="flex h-full w-full flex-col justify-center rounded-l-xl px-3 py-2 text-sm leading-5 text-slate-700 transition peer-checked:bg-blue-50 peer-checked:text-blue-900 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100">

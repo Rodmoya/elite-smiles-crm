@@ -35,7 +35,7 @@ try {
     contract_expect(!str_contains($creatorMarkup, 'contract-copy-grid'), 'Contract preview incorrectly splits the full agreement into two columns.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
-    contract_expect(str_contains($creatorMarkup, 'contract-option flex h-24'), 'Service controls do not use one consistent height.');
+    contract_expect(str_contains($creatorMarkup, 'contract-option flex h-[72px]'), 'Service controls do not use the compact, consistent 72px height.');
     contract_expect(str_contains($creatorMarkup, 'Add to this contract') && str_contains($creatorMarkup, 'Add to treatment library'), 'Custom service one-time and library actions are missing.');
     contract_expect(str_contains($creatorMarkup, 'Defaults to 25%'), 'The automatic deposit behavior is not explained in the form.');
     contract_expect(str_contains($creatorMarkup, 'w-[147px]') && str_contains($creatorMarkup, 'text-[10px]'), 'The digital branded preview header was not reduced by about 30%.');

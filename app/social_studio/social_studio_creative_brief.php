@@ -61,7 +61,13 @@ if (!function_exists('social_studio_creative_brief_schema')) {
     function social_studio_ready_brand_library(): array
     {
         social_studio_ensure_schema();
-        return db_all('SELECT id, source_type, source_post_id, title, published_at, group_name, source_caption, source_hashtags, analysis_json, base_prompt, overlay_spec, overlay_template_json, local_image_key FROM social_studio_base_creatives WHERE status="active" AND analysis_status="ready" AND analysis_version >= 4 AND overlay_template_json IS NOT NULL AND overlay_template_json <> "" ORDER BY COALESCE(published_at, DATE(created_at)) DESC, id DESC');
+        $rows = db_all('SELECT id, source_type, source_post_id, title, published_at, group_name, source_caption, source_hashtags, analysis_json, base_prompt, overlay_spec, overlay_template_json, local_image_key FROM social_studio_base_creatives WHERE status="active" AND analysis_status="ready" AND analysis_version >= 4 AND overlay_template_json IS NOT NULL AND overlay_template_json <> "" ORDER BY COALESCE(published_at, DATE(created_at)) DESC, id DESC');
+        return array_values(array_filter($rows, static function (array $row): bool {
+            $decoded = json_decode((string)($row['overlay_template_json'] ?? ''), true);
+            if (!is_array($decoded)) return false;
+            $normalized = social_studio_normalize_overlay_template($decoded);
+            return ($normalized['elements'] ?? []) !== [];
+        }));
     }
 
     function social_studio_recommend_brand_reference(array $brief): array

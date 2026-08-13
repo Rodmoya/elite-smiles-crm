@@ -23,6 +23,10 @@ foreach (['creation_mode', 'creative_brief_json', 'reference_reason', 'guardrail
 }
 $baseColumns = array_column(db_all('SHOW COLUMNS FROM social_studio_base_creatives'), 'Field');
 social_original_assert(in_array('clean_image_key', $baseColumns, true), 'Brand Library must preserve the clean photographic layer separately.');
+foreach (social_studio_ready_brand_library() as $readyBase) {
+    $readyTemplate = json_decode((string)$readyBase['overlay_template_json'], true);
+    social_original_assert(is_array($readyTemplate) && (social_studio_normalize_overlay_template($readyTemplate)['elements'] ?? []) !== [], 'Ready Brand Library choices must have a reusable overlay.');
+}
 
 $template = social_studio_normalize_overlay_template([
     'version' => 1,

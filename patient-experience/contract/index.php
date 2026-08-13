@@ -64,14 +64,15 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         .agreement-treatment-list { margin:0 0 16pt; padding-left:.42in; }
         .agreement-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
         .agreement-original-copy > p, .agreement-legal-copy > p { margin:0 0 8pt; }
-        .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0 8px; }
+        .agreement-closing-block { margin-top:auto; margin-bottom:5px; }
+        .agreement-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:start; margin:8pt 0 10px; }
         .agreement-signature-primary { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.08in; align-items:end; }
         .agreement-signature-patient { grid-column:2; margin-top:2px; font-size:9pt; line-height:1.1; }
         .agreement-signature-field { display:flex; align-items:flex-end; gap:.08in; }
         .agreement-signature-field > span:first-child { white-space:nowrap; }
         .agreement-signature-rule { display:flex; min-width:0; min-height:.3in; flex:1; align-items:flex-end; border-bottom:1px solid #111827; }
         .agreement-signature-rule img { max-width:100%; max-height:.42in; object-fit:contain; object-position:left bottom; }
-        .agreement-cancellation-bottom { margin-top:auto; margin-bottom:5px; }
+        .agreement-cancellation-bottom { margin:0; }
         .agreement-payment-notice { margin-bottom:16pt; background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
         .agreement-sedation { color:#b91c1c; }
         .agreement-page.preprinted .digital-letterhead,
@@ -145,13 +146,15 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                         <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
                     <?php endif; ?>
                 </section>
-                <section class="agreement-signature agreement-signature-original">
-                    <div class="agreement-signature-primary"><span>Patient Signature/Responsible Party:</span><span class="agreement-signature-rule"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature"><?php endif; ?></span><span class="agreement-signature-patient"><?= e((string)($agreement['patient_name'] ?? '')) ?></span></div>
-                    <div class="agreement-signature-field"><span>Date:</span><span class="agreement-signature-rule"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
-                </section>
-                <div class="agreement-cancellation-bottom">
-                    <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
-                    <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
+                <div class="agreement-closing-block">
+                    <section class="agreement-signature agreement-signature-original">
+                        <div class="agreement-signature-primary"><span>Patient Signature/Responsible Party:</span><span class="agreement-signature-rule"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature"><?php endif; ?></span><span class="agreement-signature-patient"><?= e((string)($agreement['patient_name'] ?? '')) ?></span></div>
+                        <div class="agreement-signature-field"><span>Date:</span><span class="agreement-signature-rule"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
+                    </section>
+                    <div class="agreement-cancellation-bottom">
+                        <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
+                        <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
+                    </div>
                 </div>
             </div>
             <footer class="digital-footer absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white px-[7%] py-3 text-center text-[10px] leading-4 text-slate-500"><?= e((string)($practice['name'] ?? 'Elite Smiles')) ?> by Dr. Walter Meden · <?= e((string)($practice['address'] ?? '')) ?><br>Confidential Patient Document · <?= e((string)($agreement['number'] ?? '')) ?> · SHA-256 <?= e(substr((string)$contract['snapshot_hash'], 0, 12)) ?></footer>

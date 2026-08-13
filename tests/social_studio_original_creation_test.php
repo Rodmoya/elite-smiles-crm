@@ -47,6 +47,11 @@ social_original_assert(social_studio_overlay_text_fits($template['elements'][0])
 $overflow = $template;
 $overflow['elements'][0]['text'] = 'THIS LINE IS FAR TOO LONG TO FIT INSIDE THE APPROVED TEXT BOX';
 social_original_assert(!social_studio_overlay_template_fits($overflow), 'Overflowing overlay copy must fail deterministic fit validation.');
+$fittable = $template;
+$fittable['elements'][0]['width'] = 30;
+$fitted = social_studio_fit_original_overlay_template($fittable);
+social_original_assert($fitted !== [] && social_studio_overlay_template_fits($fitted), 'Original overlays should receive a bounded font-size adjustment when needed.');
+social_original_assert((float)$fitted['elements'][0]['font_size'] < (float)$fittable['elements'][0]['font_size'], 'Fit adjustment must preserve typography while reducing only the overflowing size.');
 $unsafe = $draft;
 $unsafe['caption'] = 'Guaranteed results for only $999.';
 $unsafeGuardrails = social_studio_draft_guardrails($unsafe, $visualPass);

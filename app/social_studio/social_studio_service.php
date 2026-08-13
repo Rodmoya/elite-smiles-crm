@@ -744,10 +744,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         $text = $replacement ?? (string)($element['text'] ?? '');
         $lines = preg_split('/\R/u', $text) ?: [$text];
         $fontSize = max(0.1, (float)($element['font_size'] ?? 1));
-        $lineHeight = max(0.7, (float)($element['line_height'] ?? 1));
         $boxWidth = max(0.1, (float)($element['width'] ?? 1));
-        $boxHeight = max(0.1, (float)($element['height'] ?? 1));
-        if (count($lines) * $fontSize * $lineHeight > $boxHeight * 1.08) return false;
         foreach ($lines as $line) {
             $units = 0.0;
             foreach (preg_split('//u', (string)$line, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $character) {

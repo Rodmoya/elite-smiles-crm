@@ -72,8 +72,8 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
             body * { visibility:hidden !important; }
             #agreement-document, #agreement-document * { visibility:visible !important; }
             #agreement-document { position:absolute; inset:0; box-sizing:border-box; width:8.5in; height:11in; min-height:11in; overflow:hidden; border:0; box-shadow:none; }
-            #agreement-document .digital-letterhead { padding-top:0.18in !important; padding-bottom:0.14in !important; }
-            #agreement-document .digital-letterhead img { width:1.72in !important; }
+            #agreement-document .digital-letterhead { padding-top:0.13in !important; padding-bottom:0.10in !important; }
+            #agreement-document .digital-letterhead img { width:1.20in !important; }
             #agreement-document .paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.5px !important; line-height:1.4 !important; }
             #agreement-document:not(.preprinted) .paper-body { padding-top:0.28in !important; }
             #agreement-document.preprinted .paper-body { padding-top:1.65in !important; }
@@ -109,9 +109,9 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
 
     <main class="mx-auto grid max-w-6xl items-start gap-6 px-3 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-6">
         <article id="agreement-document" class="agreement-page relative mx-auto overflow-hidden border border-slate-300 bg-white shadow-xl">
-            <header class="digital-letterhead border-b border-slate-200 px-[7%] py-7 text-center">
-                <img src="<?= e(base_url('assets/img/ES-Logo-Stack-500-x-150-px.png')) ?>" alt="Elite Smiles" class="mx-auto w-[210px] max-w-full">
-                <p class="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dental Treatment Agreement</p>
+            <header class="digital-letterhead border-b border-slate-200 px-[7%] py-5 text-center">
+                <img src="<?= e(base_url('assets/img/ES-Logo-Stack-500-x-150-px.png')) ?>" alt="Elite Smiles" class="mx-auto w-[147px] max-w-full">
+                <p class="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dental Treatment Agreement</p>
             </header>
             <div class="paper-body px-[8%] py-[6%] text-[13px] leading-[1.55] text-slate-800">
                 <div class="flex items-start justify-between gap-6 border-b border-slate-200 pb-4">

@@ -38,6 +38,7 @@ try {
     contract_expect(str_contains($creatorMarkup, 'contract-option flex h-24'), 'Service controls do not use one consistent height.');
     contract_expect(str_contains($creatorMarkup, 'Add to this contract') && str_contains($creatorMarkup, 'Add to treatment library'), 'Custom service one-time and library actions are missing.');
     contract_expect(str_contains($creatorMarkup, 'Defaults to 25%'), 'The automatic deposit behavior is not explained in the form.');
+    contract_expect(str_contains($creatorMarkup, 'w-[147px]') && str_contains($creatorMarkup, 'text-[10px]'), 'The digital branded preview header was not reduced by about 30%.');
     contract_expect(str_contains($creatorMarkup, 'contract-payment-notice') && str_contains($creatorMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the preview.');
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
     contract_expect($creatorScriptPosition !== false && !str_contains(substr($creatorMarkup, $creatorScriptPosition), '@media'), 'A CSS media rule was rendered inside the Contract Creator JavaScript.');
@@ -45,6 +46,7 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'class="agreement-treatment-list'), 'Included treatment is not arranged in two columns in the signing contract.');
     contract_expect(!str_contains($publicContractMarkup, 'agreement-copy-grid'), 'Signing contract incorrectly splits the full agreement into two columns.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
+    contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');
     contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-payment-notice') && str_contains($publicContractMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the signing document.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {

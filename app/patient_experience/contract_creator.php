@@ -33,8 +33,8 @@ $originalTerms = patient_experience_contract_original_terms();
         body * { visibility:hidden !important; }
         #contract-preview, #contract-preview * { visibility:visible !important; }
         #contract-preview { position:absolute !important; inset:0 !important; box-sizing:border-box !important; width:8.5in !important; height:11in !important; min-height:11in !important; margin:0 !important; overflow:hidden !important; box-shadow:none !important; border:0 !important; transform:none !important; }
-        #contract-preview .contract-digital-letterhead { padding-top:0.18in !important; padding-bottom:0.14in !important; }
-        #contract-preview .contract-digital-letterhead img { width:1.72in !important; }
+        #contract-preview .contract-digital-letterhead { padding-top:0.13in !important; padding-bottom:0.10in !important; }
+        #contract-preview .contract-digital-letterhead img { width:1.20in !important; }
         #contract-preview .contract-paper-body { padding-right:0.55in !important; padding-bottom:0.58in !important; padding-left:0.55in !important; font-size:11.5px !important; line-height:1.4 !important; }
         #contract-preview:not(.preprinted) .contract-paper-body { padding-top:0.28in !important; }
         #contract-preview.preprinted .contract-paper-body { padding-top:1.65in !important; }
@@ -199,9 +199,9 @@ $originalTerms = patient_experience_contract_original_terms();
             </div>
 
             <article id="contract-preview" class="contract-page contract-transition relative mx-auto w-full max-w-[850px] overflow-hidden border border-slate-300 bg-white shadow-xl">
-                <header class="contract-digital-letterhead border-b border-slate-200 px-[7%] py-7 text-center">
-                    <img src="<?= e(base_url('assets/img/ES-Logo-Stack-500-x-150-px.png')) ?>" alt="Elite Smiles" class="mx-auto h-auto w-[210px] max-w-full">
-                    <p class="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Dental Treatment Agreement</p>
+                <header class="contract-digital-letterhead border-b border-slate-200 px-[7%] py-5 text-center">
+                    <img src="<?= e(base_url('assets/img/ES-Logo-Stack-500-x-150-px.png')) ?>" alt="Elite Smiles" class="mx-auto h-auto w-[147px] max-w-full">
+                    <p class="mt-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">Dental Treatment Agreement</p>
                 </header>
                 <div class="contract-paper-body px-[8%] py-[6%] text-[13px] leading-[1.5] text-slate-800">
                     <div class="flex items-start justify-between gap-6 border-b border-slate-200 pb-4">

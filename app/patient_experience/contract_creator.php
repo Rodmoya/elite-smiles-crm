@@ -25,7 +25,8 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     .contract-page { display:flex; aspect-ratio:8.5 / 11; min-height:900px; flex-direction:column; font-family:Calibri, Arial, sans-serif; color:#111827; }
     .contract-paper-body { display:flex; min-height:0; flex:1; flex-direction:column; }
     .contract-treatment-list { margin:0 0 16pt; padding-left:.42in; }
-    .contract-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
+    .contract-treatment-list li { margin:0 0 3pt; padding-left:.04in; line-height:1.08; }
+    .contract-treatment-list li:last-child { margin-bottom:0; }
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
     .contract-closing-block { margin-top:auto; margin-bottom:5px; }
     .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:start; margin:8pt 0 20px; }

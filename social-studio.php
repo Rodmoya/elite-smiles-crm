@@ -38,6 +38,8 @@ $weekEnd = $data['week_end'];
 $weekDays = social_studio_week_days($weekStart);
 $activeView = strtolower(trim((string)get('view', 'create')));
 if (!in_array($activeView, ['create', 'calendar', 'published'], true)) $activeView = 'create';
+$createMode = strtolower(trim((string)get('mode', 'remix')));
+if (!in_array($createMode, ['remix', 'original'], true)) $createMode = 'remix';
 $calendarByDay = [];
 foreach ($calendarItems as $calendarItem) {
     $calendarByDay[date('Y-m-d', strtotime((string)$calendarItem['scheduled_at']))][] = $calendarItem;
@@ -61,6 +63,10 @@ function social_studio_badge_class(string $status): string
 }
 
 $selectedImageUrl = $selected ? social_studio_image_url($selected) : '';
+$selectedGuardrails = $selected ? json_decode((string)($selected['guardrail_json'] ?? ''), true) : null;
+$selectedGuardrails = is_array($selectedGuardrails) ? $selectedGuardrails : null;
+$selectedBrief = $selected ? json_decode((string)($selected['creative_brief_json'] ?? ''), true) : null;
+$selectedBrief = is_array($selectedBrief) ? $selectedBrief : null;
 $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0)));
 $calendarNow = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
 $calendarDefaultSlot = null;
@@ -91,6 +97,8 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
         .social-template-card[aria-pressed="true"] { border-color:#0f172a; box-shadow:0 0 0 2px #0f172a; }
         .social-template-card:disabled { cursor:not-allowed; opacity:.68; }
         .social-template-card[hidden] { display:none; }
+        [data-social-mode-panel][hidden], [data-social-mode-only][hidden] { display:none; }
+        .social-mode-button[aria-pressed="true"] { border-color:#0f172a; background:#0f172a; color:#fff; }
         .social-preview-image { aspect-ratio:4/5; width:100%; object-fit:contain; background:#f1f5f9; }
         .social-scrollbar { scrollbar-width:thin; scrollbar-color:#94a3b8 transparent; }
         .social-workspace-tab[aria-current="page"] { background:#0f172a; border-color:#0f172a; color:#fff; }
@@ -112,8 +120,8 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
     <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Marketing / Social Studio</p>
-            <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Create from what already works</h1>
-            <p class="mt-1 text-sm text-slate-600">Choose an approved post, change the photo direction, then review the exact overlay before approval.</p>
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Create inside the Elite Smiles editorial line</h1>
+            <p class="mt-1 text-sm text-slate-600">Remix an approved post or describe an original idea. Both use the same review, calendar, and Meta publishing pipeline.</p>
         </div>
         <div class="flex flex-wrap gap-2 text-xs font-semibold">
             <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800"><?= e((string)$baseAnalysisProgress['ready']) ?> ready</span>
@@ -133,10 +141,19 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
     <?php if ($autoGenerateIds !== []): ?><div id="social-generation-progress" role="status" aria-live="polite" class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Preparing image generation…</div><?php endif; ?>
 
     <?php if ($activeView === 'create'): ?>
-    <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="template-library-title">
+    <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="creation-path-title">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 1 · Brief</p>
+        <h2 id="creation-path-title" class="mt-1 text-lg font-semibold text-slate-950">How do you want to create?</h2>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2" role="group" aria-label="Creation mode">
+            <button type="button" class="social-mode-button min-h-20 rounded-xl border border-slate-300 px-4 py-3 text-left transition hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" data-social-mode="remix" aria-pressed="<?= $createMode === 'remix' ? 'true' : 'false' ?>"><span class="block text-sm font-semibold">Remix approved post</span><span class="mt-1 block text-xs leading-5 opacity-75">Keep its approved copy and design; change only what you select.</span></button>
+            <button type="button" class="social-mode-button min-h-20 rounded-xl border border-slate-300 px-4 py-3 text-left transition hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" data-social-mode="original" aria-pressed="<?= $createMode === 'original' ? 'true' : 'false' ?>"><span class="block text-sm font-semibold">Create original</span><span class="mt-1 block text-xs leading-5 opacity-75">Describe the idea; the CMO selects a brand system and creates new copy and photography.</span></button>
+        </div>
+    </section>
+
+    <section data-social-mode-only="remix" <?= $createMode === 'remix' ? '' : 'hidden' ?> class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="template-library-title">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 1</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Brand Library</p>
                 <h2 id="template-library-title" class="mt-1 text-lg font-semibold text-slate-950">Choose the approved Instagram template</h2>
                 <p class="mt-1 text-sm text-slate-600">Ready templates preserve approved wording and artwork. Pending templates stay visible but cannot generate yet.</p>
             </div>
@@ -175,11 +192,11 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
 
     <div class="social-production-grid grid gap-5">
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="controls-title">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 2</p>
-            <h2 id="controls-title" class="mt-1 text-lg font-semibold text-slate-950">Create the new version</h2>
-            <p id="social-selected-template" class="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"><?= $defaultReferenceKey !== '' ? e((string)$visualReferences[$defaultReferenceKey]['label']) : 'No ready template selected' ?></p>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 2 · Create</p>
+            <h2 id="controls-title" class="mt-1 text-lg font-semibold text-slate-950"><?= $createMode === 'original' ? 'Describe the original post' : 'Create the new version' ?></h2>
+            <p id="social-selected-template" data-social-mode-only="remix" <?= $createMode === 'remix' ? '' : 'hidden' ?> class="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"><?= $defaultReferenceKey !== '' ? e((string)$visualReferences[$defaultReferenceKey]['label']) : 'No ready template selected' ?></p>
 
-            <form id="social-generate-form" class="mt-4 space-y-4" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
+            <form id="social-generate-form" data-social-mode-panel="remix" <?= $createMode === 'remix' ? '' : 'hidden' ?> class="mt-4 space-y-4" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate.php')) ?>">
                 <?= csrf_input() ?>
                 <input type="hidden" name="visual_reference" id="social-visual-reference" value="<?= e($defaultReferenceKey) ?>">
                 <input type="hidden" name="creation_mode" value="remix">
@@ -236,32 +253,53 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
                 <button id="social-generate-button" type="submit" class="min-h-12 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" <?= $defaultReferenceKey === '' ? 'disabled' : '' ?>>Generate clean photo + exact overlay</button>
                 <p class="text-xs leading-5 text-slate-500">The photo remains text-free. The CRM applies the selected approved overlay afterward.</p>
             </form>
+
+            <form id="social-original-form" data-social-mode-panel="original" <?= $createMode === 'original' ? '' : 'hidden' ?> class="mt-4 space-y-4" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/social_studio_generate_original.php')) ?>">
+                <?= csrf_input() ?>
+                <label class="block text-sm font-semibold text-slate-800">What should we create?
+                    <textarea name="creative_request" rows="6" maxlength="1800" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6" placeholder="Example: Create an educational veneers post using a clean 3D model style we have used before. Explain how veneers are planned to look natural, with a confident woman in her 30s and text on the left."></textarea>
+                    <span class="mt-1 block text-xs leading-5 text-slate-500">Write naturally. The Elite Smiles CMO turns this into a structured production brief.</span>
+                </label>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="block text-xs font-semibold text-slate-700">Focus<select name="focus" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="veneers">Veneers</option><option value="smile_makeover">Smile makeover</option><option value="implants">Implants / All-on-X</option><option value="lip_repositioning">Lip repositioning</option><option value="dental_education">Dental education / 3D</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Purpose<select name="purpose" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="educational">Educational</option><option value="social_ad">Social media ad</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Audience<select name="audience" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="any">Any adult</option><option value="woman">Woman</option><option value="man">Man</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Age range<select name="age_range" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="25-34">25–34</option><option value="35-44">35–44</option><option value="45-54">45–54</option><option value="55+">55+</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Text position<select name="text_position" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="source">Recommended position</option><option value="left">Left</option><option value="right">Right</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Posts<select name="count" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><?php for ($i=1;$i<=7;$i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?></select></label>
+                </div>
+                <details class="rounded-xl border border-slate-200 bg-slate-50 p-3"><summary class="cursor-pointer text-sm font-semibold text-slate-700">Optional visual inspiration</summary><label class="mt-3 block text-xs font-semibold text-slate-700">Upload image<input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-1 block w-full rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs"></label></details>
+                <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><strong class="block">The CMO will:</strong> interpret the brief, choose the strongest approved Brand Library system, write new overlay copy and caption, generate a clean image, assemble the typography, and run guardrail checks.</div>
+                <button id="social-original-button" type="submit" class="min-h-12 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Create original post</button>
+            </form>
         </section>
 
         <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="preview-title">
             <div class="mb-4 flex items-center justify-between gap-3">
-                <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 3</p><h2 id="preview-title" class="mt-1 text-lg font-semibold text-slate-950">Full post preview</h2></div>
+                <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 3 · Review</p><h2 id="preview-title" class="mt-1 text-lg font-semibold text-slate-950">Full post preview</h2></div>
                 <?php if ($selected): ?><span class="<?= e(social_studio_badge_class((string)$selected['status'])) ?> rounded-full border px-3 py-1 text-xs font-semibold"><?= e(social_studio_status_labels()[(string)$selected['status']] ?? (string)$selected['status']) ?></span><?php endif; ?>
             </div>
             <?php if ($selected): ?>
+                <?php if ($selectedBrief): ?><div class="mx-auto mb-4 max-w-[620px] rounded-xl border border-violet-200 bg-violet-50 p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-violet-950">CMO interpretation</p><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">Original</span></div><dl class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4"><div><dt class="text-violet-600">Focus</dt><dd class="mt-1 font-semibold text-violet-950"><?= e(social_studio_focus_label((string)($selectedBrief['focus'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Purpose</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e(str_replace('_', ' ', (string)($selectedBrief['purpose'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Audience</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['audience'] ?? 'Any')) ?></dd></div><div><dt class="text-violet-600">Text</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['text_position'] ?? 'Recommended')) ?></dd></div></dl><?php if (trim((string)($selected['reference_reason'] ?? '')) !== ''): ?><p class="mt-3 border-t border-violet-200 pt-3 text-xs leading-5 text-violet-900"><strong>Brand Library choice:</strong> <?= e((string)$selected['reference_reason']) ?></p><?php endif; ?></div><?php endif; ?>
                 <article class="mx-auto max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header class="flex items-center gap-3 border-b border-slate-100 px-4 py-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span class="ml-auto font-bold tracking-[0.2em]">···</span></header>
                     <?php if ($selectedImageUrl !== ''): ?><img class="social-preview-image" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><?php else: ?><div class="grid aspect-[4/5] place-items-center bg-slate-100 p-8 text-center text-sm text-slate-500">Generate the clean photo to assemble this post.</div><?php endif; ?>
                     <div class="border-t border-slate-100 px-4 py-3"><div class="mb-3 flex text-2xl"><span>♡　◯　➤</span><span class="ml-auto">⌑</span></div><p class="whitespace-pre-line text-sm leading-6 text-slate-700"><strong class="text-slate-950">elitesmilesutah</strong> <?= e((string)$selected['caption']) ?></p><p class="mt-3 text-xs leading-5 text-blue-700"><?= e((string)$selected['hashtags']) ?></p></div>
                 </article>
+                <?php if ($selectedGuardrails): ?><div class="mx-auto mt-4 max-w-[620px] rounded-xl border <?= ($selectedGuardrails['status'] ?? '') === 'pass' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' ?> p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-slate-900">Quality guardrails</p><span class="rounded-full bg-white px-2 py-1 text-xs font-semibold"><?= e((string)($selectedGuardrails['passed'] ?? 0)) ?>/<?= e((string)($selectedGuardrails['total'] ?? 0)) ?> passed</span></div><ul class="mt-3 grid gap-2 sm:grid-cols-2"><?php foreach ((array)($selectedGuardrails['checks'] ?? []) as $check): ?><li class="flex gap-2 text-xs leading-5 <?= !empty($check['pass']) ? 'text-emerald-800' : 'text-amber-900' ?>"><span aria-hidden="true"><?= !empty($check['pass']) ? '✓' : '!' ?></span><span><?= e((string)($check['label'] ?? 'Quality check')) ?></span></li><?php endforeach; ?></ul><?php if (trim((string)($selectedGuardrails['visual_notes'] ?? '')) !== ''): ?><p class="mt-3 text-xs leading-5 text-slate-700"><?= e((string)$selectedGuardrails['visual_notes']) ?></p><?php endif; ?></div><?php endif; ?>
             <?php else: ?>
-                <div class="grid min-h-[560px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div><p class="text-base font-semibold text-slate-800">No draft selected</p><p class="mt-2 text-sm text-slate-500">Choose a ready template and generate a version.</p></div></div>
+                <div class="grid min-h-[560px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div><p class="text-base font-semibold text-slate-800">No draft selected</p><p class="mt-2 text-sm text-slate-500">Create a remix or original post to begin the review.</p></div></div>
             <?php endif; ?>
         </section>
 
         <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="queue-title">
-            <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 4</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
+            <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 3 · Review</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
             <div class="social-scrollbar mt-4 max-h-[740px] space-y-3 overflow-y-auto pr-1">
                 <?php if ($drafts === []): ?><div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">No drafts waiting.</div><?php endif; ?>
                 <?php foreach ($drafts as $draft): ?>
                     <?php $status=(string)($draft['status'] ?? 'review'); $imageUrl=social_studio_image_url($draft); $canPublish=in_array($status, ['approved','scheduled','publish_failed'], true); ?>
                     <article class="rounded-xl border border-slate-200 p-3">
-                        <div class="flex gap-3"><?php if ($imageUrl !== ''): ?><img class="h-20 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" src="<?= e($imageUrl) ?>" alt=""><?php else: ?><div class="grid h-20 w-16 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] text-slate-500">No image</div><?php endif; ?><div class="min-w-0"><div class="flex flex-wrap items-center gap-1"><h3 class="text-sm font-semibold leading-5 text-slate-950"><?= e((string)$draft['title']) ?></h3><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-0.5 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status] ?? $status) ?></span></div><p class="mt-1 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'], 90)) ?></p><?php if ((string)($draft['generation_status'] ?? '') === 'failed'): ?><p class="mt-1 text-xs font-semibold text-rose-700"><?= e((string)($draft['generation_error'] ?? 'Image generation failed')) ?></p><?php endif; ?><?php if (trim((string)($draft['publish_error'] ?? '')) !== ''): ?><p class="mt-1 text-xs font-semibold text-rose-700"><?= e(str_limit((string)$draft['publish_error'], 140)) ?></p><?php endif; ?><?php if ($status === 'scheduled' && !empty($draft['scheduled_at'])): ?><p class="mt-1 text-xs font-semibold text-emerald-700"><?= e(date('M j, g:i A T', strtotime((string)$draft['scheduled_at']))) ?></p><?php endif; ?></div></div>
+                        <div class="flex gap-3"><?php if ($imageUrl !== ''): ?><img class="h-20 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" src="<?= e($imageUrl) ?>" alt=""><?php else: ?><div class="grid h-20 w-16 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] text-slate-500">No image</div><?php endif; ?><div class="min-w-0"><div class="flex flex-wrap items-center gap-1"><h3 class="text-sm font-semibold leading-5 text-slate-950"><?= e((string)$draft['title']) ?></h3><span class="<?= e(social_studio_badge_class($status)) ?> rounded-full border px-2 py-0.5 text-[10px] font-semibold"><?= e(social_studio_status_labels()[$status] ?? $status) ?></span><?php if ((string)($draft['creation_mode'] ?? 'remix') === 'original'): ?><span class="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Original</span><?php endif; ?></div><p class="mt-1 text-xs leading-5 text-slate-500"><?= e(str_limit((string)$draft['caption'], 90)) ?></p><?php if ((string)($draft['generation_status'] ?? '') === 'failed'): ?><p class="mt-1 text-xs font-semibold text-rose-700"><?= e((string)($draft['generation_error'] ?? 'Image generation failed')) ?></p><?php endif; ?><?php if (trim((string)($draft['publish_error'] ?? '')) !== ''): ?><p class="mt-1 text-xs font-semibold text-rose-700"><?= e(str_limit((string)$draft['publish_error'], 140)) ?></p><?php endif; ?><?php if ($status === 'scheduled' && !empty($draft['scheduled_at'])): ?><p class="mt-1 text-xs font-semibold text-emerald-700"><?= e(date('M j, g:i A T', strtotime((string)$draft['scheduled_at']))) ?></p><?php endif; ?></div></div>
                         <div class="mt-3 grid grid-cols-2 gap-2">
                             <button type="button" class="min-h-11 rounded-lg border border-slate-300 text-xs font-semibold" data-social-open data-draft-id="<?= e((string)$draft['id']) ?>" data-title="<?= e((string)$draft['title']) ?>" data-caption="<?= e((string)$draft['caption']) ?>" data-hashtags="<?= e((string)$draft['hashtags']) ?>" data-image="<?= e($imageUrl) ?>" data-status="<?= e(social_studio_status_labels()[$status] ?? $status) ?>">Open post</button>
                             <form method="POST" action="<?= e(base_url('app/actions/social_studio_generate_image.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700" type="submit"><?= $imageUrl !== '' ? 'Regenerate' : 'Generate image' ?></button></form>
@@ -371,11 +409,25 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
     const replaceTo = document.getElementById('social-replace-to');
     const analysisButton = document.getElementById('social-run-analysis');
     const analysisProgress = document.getElementById('social-analysis-progress');
+    const modeButtons = [...document.querySelectorAll('[data-social-mode]')];
+    const modePanels = [...document.querySelectorAll('[data-social-mode-panel], [data-social-mode-only]')];
+    const controlsTitle = document.getElementById('controls-title');
+    const originalForm = document.getElementById('social-original-form');
+    const originalButton = document.getElementById('social-original-button');
     const scheduleForm = document.getElementById('social-drop-schedule-form');
     const scheduleAnnouncement = document.getElementById('social-schedule-announcement');
     const scheduleCards = [...document.querySelectorAll('[data-schedule-card]')];
     const calendarDays = [...document.querySelectorAll('[data-calendar-day]')];
     let draggedScheduleCard = null;
+    const setCreationMode = mode => {
+        modeButtons.forEach(button => button.setAttribute('aria-pressed', button.dataset.socialMode === mode ? 'true' : 'false'));
+        modePanels.forEach(panel => { panel.hidden = panel.dataset.socialModePanel !== mode && panel.dataset.socialModeOnly !== mode; });
+        if (controlsTitle) controlsTitle.textContent = mode === 'original' ? 'Describe the original post' : 'Create the new version';
+        const url = new URL(window.location.href);
+        url.searchParams.set('mode', mode);
+        window.history.replaceState({}, '', url);
+    };
+    modeButtons.forEach(button => button.addEventListener('click', () => setCreationMode(button.dataset.socialMode || 'remix')));
     document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => {
         copyMode.value = event.target.value;
         const rewriting = event.target.value === 'rewrite';
@@ -465,6 +517,16 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
         }
         generateButton.disabled = true;
         generateButton.textContent = 'Creating drafts…';
+    });
+    originalForm?.addEventListener('submit', event => {
+        const request = originalForm.querySelector('[name="creative_request"]');
+        if (!request?.value.trim()) {
+            event.preventDefault();
+            request?.focus();
+            return;
+        }
+        originalButton.disabled = true;
+        originalButton.textContent = 'CMO is building the brief…';
     });
 
     const modal = document.getElementById('social-post-modal');

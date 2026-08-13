@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/openai.php';
 require_once dirname(__DIR__) . '/core/google_gemini.php';
 require_once __DIR__ . '/elite_smiles_master_cmo.php';
+require_once __DIR__ . '/social_studio_creative_brief.php';
 
 if (!function_exists('social_studio_ensure_schema')) {
     function social_studio_ensure_schema(): void
@@ -20,6 +21,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             group_name VARCHAR(120) NOT NULL DEFAULT 'Other',
             source_image_url VARCHAR(500) NULL,
             local_image_key VARCHAR(255) NULL,
+            clean_image_key VARCHAR(255) NULL,
             source_caption MEDIUMTEXT NULL,
             source_hashtags TEXT NULL,
             analysis_json LONGTEXT NULL,
@@ -72,6 +74,12 @@ if (!function_exists('social_studio_ensure_schema')) {
             publish_started_at DATETIME NULL,
             last_publish_attempt_at DATETIME NULL,
             notes TEXT NULL,
+            creation_mode VARCHAR(24) NOT NULL DEFAULT 'remix',
+            creative_brief_json LONGTEXT NULL,
+            reference_reason TEXT NULL,
+            guardrail_json LONGTEXT NULL,
+            parent_draft_id INT UNSIGNED NULL,
+            version_number SMALLINT UNSIGNED NOT NULL DEFAULT 1,
             created_by INT UNSIGNED NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -96,6 +104,7 @@ if (!function_exists('social_studio_ensure_schema')) {
             'analysis_status' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_status VARCHAR(24) NOT NULL DEFAULT 'pending' AFTER analysis_version",
             'analysis_error' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analysis_error TEXT NULL AFTER analysis_status",
             'analyzed_at' => "ALTER TABLE social_studio_base_creatives ADD COLUMN analyzed_at DATETIME NULL AFTER analysis_error",
+            'clean_image_key' => "ALTER TABLE social_studio_base_creatives ADD COLUMN clean_image_key VARCHAR(255) NULL AFTER local_image_key",
         ] as $column => $sql) {
             $quotedColumn = db()->quote($column);
             if (!db_one("SHOW COLUMNS FROM social_studio_base_creatives LIKE {$quotedColumn}")) {
@@ -123,6 +132,12 @@ if (!function_exists('social_studio_ensure_schema')) {
             'publish_error' => "ALTER TABLE social_studio_drafts ADD COLUMN publish_error TEXT NULL AFTER publish_attempts",
             'publish_started_at' => "ALTER TABLE social_studio_drafts ADD COLUMN publish_started_at DATETIME NULL AFTER publish_error",
             'last_publish_attempt_at' => "ALTER TABLE social_studio_drafts ADD COLUMN last_publish_attempt_at DATETIME NULL AFTER publish_started_at",
+            'creation_mode' => "ALTER TABLE social_studio_drafts ADD COLUMN creation_mode VARCHAR(24) NOT NULL DEFAULT 'remix' AFTER notes",
+            'creative_brief_json' => "ALTER TABLE social_studio_drafts ADD COLUMN creative_brief_json LONGTEXT NULL AFTER creation_mode",
+            'reference_reason' => "ALTER TABLE social_studio_drafts ADD COLUMN reference_reason TEXT NULL AFTER creative_brief_json",
+            'guardrail_json' => "ALTER TABLE social_studio_drafts ADD COLUMN guardrail_json LONGTEXT NULL AFTER reference_reason",
+            'parent_draft_id' => "ALTER TABLE social_studio_drafts ADD COLUMN parent_draft_id INT UNSIGNED NULL AFTER guardrail_json",
+            'version_number' => "ALTER TABLE social_studio_drafts ADD COLUMN version_number SMALLINT UNSIGNED NOT NULL DEFAULT 1 AFTER parent_draft_id",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -159,6 +174,7 @@ if (!function_exists('social_studio_default_hashtags')) {
             'implants' => ['#DentalImplants', '#EliteSmilesUtah', '#DraperUtah', '#ImplantDentistry', '#ToothReplacement', '#SmileRestoration', '#UtahDentist', '#DraperDentist', '#AllOnX', '#FixedTeeth', '#SmileWithConfidence'],
             'smile_makeover' => ['#EliteSmilesUtah', '#SmileMakeover', '#CosmeticDentistry', '#DraperUtah', '#SmileDesign', '#NaturalLookingSmile', '#SmileConfidence', '#LoveYourSmile', '#UtahSmiles', '#DraperDentist'],
             'lip_repositioning' => ['#LipRepositioning', '#GummySmile', '#SmileMakeover', '#EliteSmilesUtah', '#DraperUtah', '#CosmeticDentistry', '#SmileConfidence', '#GummySmileCorrection', '#BeautifulSmile'],
+            'dental_education' => ['#EliteSmilesUtah', '#DentalEducation', '#CosmeticDentistry', '#DraperUtah', '#SmileDesign', '#OralHealth', '#DentalTechnology', '#DraperDentist'],
             default => ['#EliteSmilesUtah', '#Veneers', '#PorcelainVeneers', '#SmileMakeover', '#CosmeticDentistry', '#DraperUtah', '#UtahVeneers', '#DraperDentist', '#SmileDesign', '#NaturalLookingVeneers', '#SmileConfidence', '#LoveYourSmile'],
         };
     }
@@ -179,6 +195,7 @@ if (!function_exists('social_studio_focus_label')) {
             'implants' => 'Implants',
             'smile_makeover' => 'Smile Makeover',
             'lip_repositioning' => 'Lip Repositioning',
+            'dental_education' => 'Dental Education',
             default => 'Veneers',
         };
     }
@@ -352,6 +369,7 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'group_name' => (string)($creative['group_name'] ?? 'Other'),
             'source_image_url' => (string)($creative['source_image_url'] ?? ''),
             'local_image_key' => (string)($creative['local_image_key'] ?? ''),
+            'clean_image_key' => trim((string)($creative['clean_image_key'] ?? '')) ?: null,
             'analysis_json' => is_array($creative['analysis'] ?? null) ? json_encode($creative['analysis'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)($creative['analysis_json'] ?? ''),
             'base_prompt' => (string)($creative['base_prompt'] ?? ''),
             'overlay_spec' => (string)($creative['overlay_spec'] ?? ''),
@@ -363,11 +381,11 @@ if (!function_exists('social_studio_upsert_base_creative')) {
             'analyzed_at' => !empty($creative['overlay_template']) ? date('Y-m-d H:i:s') : null,
         ];
         if ($existing) {
-            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'source_caption', 'source_hashtags', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json', 'analysis_version', 'analysis_status', 'analyzed_at']));
-            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, source_caption=:source_caption, source_hashtags=:source_hashtags, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=:analysis_version, analysis_status=:analysis_status, analysis_error=NULL, analyzed_at=:analyzed_at WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
+            $updateParams = array_intersect_key($params, array_flip(['source_url', 'title', 'published_at', 'group_name', 'source_image_url', 'local_image_key', 'clean_image_key', 'source_caption', 'source_hashtags', 'analysis_json', 'base_prompt', 'overlay_spec', 'overlay_template_json', 'analysis_version', 'analysis_status', 'analyzed_at']));
+            db_execute('UPDATE social_studio_base_creatives SET source_url=:source_url, title=:title, published_at=:published_at, group_name=:group_name, source_image_url=:source_image_url, local_image_key=:local_image_key, clean_image_key=:clean_image_key, source_caption=:source_caption, source_hashtags=:source_hashtags, analysis_json=:analysis_json, base_prompt=:base_prompt, overlay_spec=:overlay_spec, overlay_template_json=:overlay_template_json, analysis_version=:analysis_version, analysis_status=:analysis_status, analysis_error=NULL, analyzed_at=:analyzed_at WHERE id=:id LIMIT 1', $updateParams + ['id' => (int)$existing['id']]);
             return (int)$existing['id'];
         }
-        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, source_caption, source_hashtags, analysis_json, base_prompt, overlay_spec, overlay_template_json, analysis_version, analysis_status, analyzed_at) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:source_caption,:source_hashtags,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json,:analysis_version,:analysis_status,:analyzed_at)', $params);
+        return (int)db_insert('INSERT INTO social_studio_base_creatives (source_type, source_url, source_post_id, title, published_at, group_name, source_image_url, local_image_key, clean_image_key, source_caption, source_hashtags, analysis_json, base_prompt, overlay_spec, overlay_template_json, analysis_version, analysis_status, analyzed_at) VALUES (:source_type,:source_url,:source_post_id,:title,:published_at,:group_name,:source_image_url,:local_image_key,:clean_image_key,:source_caption,:source_hashtags,:analysis_json,:base_prompt,:overlay_spec,:overlay_template_json,:analysis_version,:analysis_status,:analyzed_at)', $params);
     }
 }
 
@@ -907,7 +925,11 @@ if (!function_exists('social_studio_generate_topics')) {
         ];
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
-        $user = "Create {$count} draft social posts for {$focus}. In remix mode, the selected base post is a LOCKED template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography, hierarchy, and CTA treatment. The deterministic overlay is handled separately by CRM; do not recreate, paraphrase, or position any on-image copy in these drafts. Create a fresh caption and closely related hashtags while directing only the clean photo through Focus, Purpose, Audience, Age range, and Text position. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the approved overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must preserve the base visual recipe and request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present. The image itself remains unbranded with no text/logo/watermark/typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $isOriginal = str_contains($instruction, 'ORIGINAL CREATION BRIEF');
+        $modeDirection = $isOriginal
+            ? 'This is an ORIGINAL creation inside an approved Elite Smiles design system. Develop a genuinely new concept, hook, caption, and photographic direction from the structured brief. Reuse only the design grammar and saved overlay geometry; never copy source-photo pixels or old treatment claims.'
+            : 'This is a REMIX. The selected base post is a locked template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography, hierarchy, CTA treatment, and approved overlay copy except for explicitly requested substitutions.';
+        $user = "Create {$count} draft social posts for {$focus}. {$modeDirection} The deterministic overlay is handled separately by CRM; do not render or position on-image copy in these drafts. Create a fresh caption while directing only the clean photo through the supplied brief. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present; for clinical or 3D education, use complete credible anatomy and a clear focal model. The image remains unbranded with no text, logo, watermark, or typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             throw new RuntimeException('OpenAI draft generation failed: ' . (string)($response['message'] ?? 'No structured drafts returned.'));
@@ -976,7 +998,7 @@ if (!function_exists('social_studio_normalize_focus')) {
     function social_studio_normalize_focus(string $focus): string
     {
         $focus = trim($focus);
-        return in_array($focus, ['veneers', 'implants', 'smile_makeover', 'lip_repositioning'], true) ? $focus : 'veneers';
+        return in_array($focus, ['veneers', 'implants', 'smile_makeover', 'lip_repositioning', 'dental_education'], true) ? $focus : 'veneers';
     }
 }
 
@@ -1282,7 +1304,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
         $referencePath = '';
         $sourceOverlayTemplate = [];
         if (preg_match('/^base_(\d+)$/', (string)($draft['base_reference_key'] ?? ''), $baseMatch)) {
-            $base = db_one('SELECT source_url, source_post_id, local_image_key, overlay_template_json FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
+            $base = db_one('SELECT source_url, source_post_id, COALESCE(NULLIF(clean_image_key, ""), local_image_key) AS local_image_key, overlay_template_json FROM social_studio_base_creatives WHERE id=:id AND status="active" LIMIT 1', ['id' => (int)$baseMatch[1]]);
             $referencePath = $base ? social_studio_base_source_path($base) : '';
             $sourceTemplateDecoded = $base ? json_decode((string)($base['overlay_template_json'] ?? ''), true) : null;
             $sourceOverlayTemplate = is_array($sourceTemplateDecoded) ? social_studio_normalize_overlay_template($sourceTemplateDecoded) : [];
@@ -1375,6 +1397,14 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
                 'branded_image_storage_key' => $brandedKey,
             ]
         );
+
+        if (function_exists('social_studio_review_generated_asset')) {
+            try {
+                social_studio_review_generated_asset($draftId, $rawPath);
+            } catch (Throwable $reviewError) {
+                esm_log('social_studio', 'Generated asset guardrail review failed.', ['draft_id' => $draftId, 'error' => $reviewError->getMessage()]);
+            }
+        }
 
         return ['ok' => true, 'message' => 'Image generated.', 'image_storage_key' => $rawKey, 'branded_image_storage_key' => $brandedKey];
     }
@@ -1741,7 +1771,8 @@ if (!function_exists('social_studio_update_status')) {
             return false;
         }
         $sourceImageUrl = base_url('app/actions/social_studio_image.php?draft_id=' . $draftId . '&variant=branded');
-        $analysis = json_encode([
+        $storedBrief = trim((string)($draft['creative_brief_json'] ?? ''));
+        $analysis = $storedBrief !== '' ? $storedBrief : json_encode([
             'source' => 'approved_social_studio_draft',
             'draft_id' => $draftId,
             'focus' => (string)($draft['content_focus'] ?? ''),
@@ -1751,16 +1782,19 @@ if (!function_exists('social_studio_update_status')) {
             'hashtags' => (string)($draft['hashtags'] ?? ''),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         social_studio_upsert_base_creative([
-            'source_type' => 'approved_draft',
+            'source_type' => (string)($draft['creation_mode'] ?? 'remix') === 'original' ? 'generated' : 'approved_draft',
             'source_url' => '',
             'source_post_id' => 'draft_' . $draftId,
             'title' => (string)($draft['title'] ?? ('Approved creative ' . $draftId)),
             'published_at' => date('Y-m-d'),
-            'group_name' => (string)($draft['content_focus'] ?? 'Approved creative'),
+            'group_name' => (string)($draft['creation_mode'] ?? 'remix') === 'original' ? 'Approved original / ' . (string)($draft['post_type'] ?? 'creative') : (string)($draft['content_focus'] ?? 'Approved creative'),
             'source_image_url' => $sourceImageUrl,
             'local_image_key' => (string)($draft['branded_image_storage_key'] ?: ($draft['image_storage_key'] ?? '')),
+            'clean_image_key' => (string)($draft['image_storage_key'] ?? ''),
+            'source_caption' => (string)($draft['caption'] ?? ''),
+            'source_hashtags' => (string)($draft['hashtags'] ?? ''),
             'analysis_json' => $analysis ?: '{}',
-            'base_prompt' => (string)($draft['base_post_prompt'] ?: ($draft['image_prompt'] ?? '')),
+            'base_prompt' => (string)($draft['image_prompt'] ?: ($draft['base_post_prompt'] ?? '')),
             'overlay_spec' => (string)($draft['overlay_spec'] ?? ''),
             'overlay_template' => (array)(json_decode((string)($draft['overlay_template_json'] ?? ''), true) ?: []),
         ]);

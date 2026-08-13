@@ -30,6 +30,10 @@ lead_composer_expect(
     'Email mode must use the larger responsive composer ratio.'
 );
 lead_composer_expect(
+    str_contains($source, 'data-composer-panel="email" class="hidden flex h-full'),
+    'The email panel must be a flex container so its body can shrink without pushing actions below the fold.'
+);
+lead_composer_expect(
     substr_count($source, 'applyCommunicationViewportFit();') >= 4,
     'Changing composer mode must recalculate the communication workspace layout.'
 );

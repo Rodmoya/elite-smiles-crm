@@ -2436,7 +2436,7 @@ $consultationOptions = [
 
                             </div>
 
-                            <div id="modal-composer-panel-email" data-composer-panel="email" class="hidden h-full min-h-[260px] flex-col rounded-[1.5rem] border border-slate-200 bg-white p-3">
+                            <div id="modal-composer-panel-email" data-composer-panel="email" class="hidden flex h-full min-h-[260px] flex-col rounded-[1.5rem] border border-slate-200 bg-white p-3">
 
                                 <div class="hidden">
 

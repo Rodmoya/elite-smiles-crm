@@ -38,5 +38,6 @@ social_calendar_assert(str_contains($page, 'Choose day without dragging'), 'Drag
 social_calendar_assert(str_contains($publishAction, "post('schedule_day'"), 'The publisher must accept a day selected by the calendar.');
 social_calendar_assert(str_contains($publishAction, 'view=calendar'), 'Scheduling must return to the content calendar.');
 social_calendar_assert(str_contains($statusAction, 'image_storage_key'), 'Approval must accept the finished image visible in the review queue.');
+social_calendar_assert(str_contains($page, 'Replace text'), 'Step 2 must expose deterministic approved-overlay text replacement.');
 
 echo "Social Studio calendar tests passed.\n";

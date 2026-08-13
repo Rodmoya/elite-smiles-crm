@@ -748,6 +748,33 @@ if (!function_exists('social_studio_seed_drafts')) {
         return ['ok'=>true, 'template'=>social_studio_normalize_overlay_template($template)];
     }
 
+    function social_studio_replace_overlay_text(array $template, string $find, string $replace): array
+    {
+        $template = social_studio_normalize_overlay_template($template);
+        $find = trim(mb_substr($find, 0, 120));
+        $replace = trim(mb_substr($replace, 0, 120));
+        if ($template === [] || $find === '' || $replace === '') {
+            return ['ok' => false, 'message' => 'Enter both the approved text and its replacement.'];
+        }
+        if (mb_strtolower($find) === mb_strtolower($replace)) {
+            return ['ok' => false, 'message' => 'The replacement must be different from the approved text.'];
+        }
+        $count = 0;
+        $pattern = '/' . preg_quote($find, '/') . '/iu';
+        foreach (($template['elements'] ?? []) as $index => $element) {
+            if ((string)($element['type'] ?? '') !== 'text') continue;
+            $updated = preg_replace_callback($pattern, static fn(): string => $replace, (string)($element['text'] ?? ''), -1, $elementCount);
+            if (is_string($updated) && $elementCount > 0) {
+                $template['elements'][$index]['text'] = $updated;
+                $count += $elementCount;
+            }
+        }
+        if ($count === 0) {
+            return ['ok' => false, 'message' => '“' . $find . '” was not found in the selected post overlay.'];
+        }
+        return ['ok' => true, 'template' => social_studio_normalize_overlay_template($template), 'count' => $count];
+    }
+
     function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = [], ?array &$createdIds = null): int
     {
         social_studio_ensure_schema();
@@ -1155,7 +1182,7 @@ if (!function_exists('social_studio_should_direct_edit_template')) {
     {
         return $referencePath !== ''
             && is_file($referencePath)
-            && (string)($draft['copy_mode'] ?? 'preserve') === 'preserve'
+            && in_array((string)($draft['copy_mode'] ?? 'preserve'), ['preserve', 'replace'], true)
             && (string)($draft['text_position'] ?? 'source') === 'source'
             && preg_match('/^base_\d+$/', (string)($draft['base_reference_key'] ?? '')) === 1;
     }
@@ -1179,8 +1206,19 @@ if (!function_exists('social_studio_direct_template_edit_prompt')) {
             $variation = 'Create a fresh photographic variation appropriate for ' . social_studio_focus_label((string)($draft['content_focus'] ?? 'veneers')) . '.';
         }
 
+        $targetTemplate = social_studio_normalize_overlay_template((array)(json_decode((string)($draft['overlay_template_json'] ?? ''), true) ?: []));
+        $requestedChanges = [];
+        foreach ((array)($overlayTemplate['elements'] ?? []) as $index => $sourceElement) {
+            if ((string)($sourceElement['type'] ?? '') !== 'text') continue;
+            $sourceText = trim((string)($sourceElement['text'] ?? ''));
+            $targetText = trim((string)($targetTemplate['elements'][$index]['text'] ?? $sourceText));
+            if ($sourceText !== '' && $targetText !== '' && $sourceText !== $targetText) {
+                $requestedChanges[] = 'Replace exactly “' . $sourceText . '” with “' . $targetText . '”.';
+            }
+        }
+
         $protectedCopy = [];
-        foreach ((array)($overlayTemplate['elements'] ?? []) as $element) {
+        foreach ((array)(($targetTemplate['elements'] ?? []) ?: ($overlayTemplate['elements'] ?? [])) as $element) {
             if ((string)($element['type'] ?? '') !== 'text') continue;
             $text = trim((string)($element['text'] ?? ''));
             if ($text !== '') $protectedCopy[] = $text;
@@ -1189,7 +1227,8 @@ if (!function_exists('social_studio_direct_template_edit_prompt')) {
         return "Edit the supplied approved Elite Smiles advertisement directly.\n\n"
             . "CHANGE ONLY THE PHOTOGRAPHIC PERSON, PHOTOGRAPHIC DENTAL SUBJECT, AND PHOTOGRAPHIC BACKGROUND according to this request:\n{$variation}\n\n"
             . "Keep the replacement subject at the same camera distance, scale, pose area, and side of the composition as the original. When a person is present, keep the complete face, both eyes, and full bright natural-looking smile visible and tack-sharp.\n\n"
-            . "PROTECTED DESIGN LOCK: Everything other than the photographic person/dental subject and photographic background is immutable. Preserve every design element visually identical to the input: all wording, spelling, punctuation, line breaks, fonts, font sizes, weights, positions, colors, icons, ornaments, underlines, circles, rules, panels, CTA, financing language, footer, brand treatment, spacing, margins, and canvas composition. Do not redraw, rewrite, move, resize, recolor, crop, blur, erase, or restyle protected design content. This is a localized photo replacement, not a redesign and not a new advertisement.\n\n"
+            . ($requestedChanges !== [] ? "PERMITTED TEXT SUBSTITUTION — make only the following exact wording change while preserving its font, size, weight, color, capitalization pattern, line structure, alignment, and position:\n" . implode("\n", $requestedChanges) . "\n\n" : '')
+            . "PROTECTED DESIGN LOCK: Everything other than the requested photographic change and the explicitly permitted text substitution above is immutable. Preserve every other design element visually identical to the input: wording, spelling, punctuation, line breaks, fonts, font sizes, weights, positions, colors, icons, ornaments, underlines, circles, rules, panels, CTA, financing language, footer, brand treatment, spacing, margins, and canvas composition. Do not redraw, rewrite, move, resize, recolor, crop, blur, erase, or restyle protected design content. This is a localized replacement, not a redesign and not a new advertisement.\n\n"
             . ($protectedCopy !== [] ? "Protected wording that must remain perfectly legible and unchanged:\n" . implode("\n---\n", $protectedCopy) . "\n\n" : '')
             . "Return one image with the same aspect ratio and complete layout as the supplied advertisement. Never add new words, logos, badges, icons, or design elements.";
     }

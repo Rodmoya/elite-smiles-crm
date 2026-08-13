@@ -203,6 +203,15 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
                     <select name="text_position" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="source">Original position</option><option value="left">Move overlay left</option><option value="right">Move overlay right</option></select>
                 </label>
 
+                <fieldset class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <legend class="px-1 text-sm font-semibold text-slate-800">Replace text <span class="font-normal text-slate-500">(optional)</span></legend>
+                    <p class="mb-3 text-xs leading-5 text-slate-600">Change only an exact word or phrase while preserving the approved font, size, style, and position. Example: Spring → Summer.</p>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                        <label class="block text-xs font-semibold text-slate-700">Current approved text<input id="social-replace-from" name="replace_text_from" type="text" maxlength="120" autocomplete="off" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm" placeholder="Spring"></label>
+                        <label class="block text-xs font-semibold text-slate-700">Replace with<input id="social-replace-to" name="replace_text_to" type="text" maxlength="120" autocomplete="off" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm" placeholder="Summer"></label>
+                    </div>
+                </fieldset>
+
                 <div class="grid grid-cols-[1fr_92px] gap-2">
                     <label class="block text-sm font-semibold text-slate-800">Photo direction <span class="font-normal text-slate-500">(optional)</span>
                         <textarea name="instruction" rows="3" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Different background, wardrobe, expression, or life moment."></textarea>
@@ -358,6 +367,8 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
     const group = document.getElementById('social-template-group');
     const empty = document.getElementById('social-template-empty');
     const copyMode = document.querySelector('input[name="copy_mode"]');
+    const replaceFrom = document.getElementById('social-replace-from');
+    const replaceTo = document.getElementById('social-replace-to');
     const analysisButton = document.getElementById('social-run-analysis');
     const analysisProgress = document.getElementById('social-analysis-progress');
     const scheduleForm = document.getElementById('social-drop-schedule-form');
@@ -365,7 +376,11 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
     const scheduleCards = [...document.querySelectorAll('[data-schedule-card]')];
     const calendarDays = [...document.querySelectorAll('[data-calendar-day]')];
     let draggedScheduleCard = null;
-    document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => { copyMode.value = event.target.value; });
+    document.getElementById('social-copy-mode-advanced')?.addEventListener('change', event => {
+        copyMode.value = event.target.value;
+        const rewriting = event.target.value === 'rewrite';
+        [replaceFrom, replaceTo].forEach(input => { if (input) input.disabled = rewriting; });
+    });
 
     const submitSchedule = (card, day) => {
         const time = card?.querySelector('[data-schedule-time]')?.value || '10:30';
@@ -442,6 +457,12 @@ $calendarWorkspaceCount = count($approvedUnscheduled) + (int)($counts['scheduled
 
     document.getElementById('social-generate-form')?.addEventListener('submit', event => {
         if (!referenceInput.value) { event.preventDefault(); selectedLabel.textContent = 'Choose a Ready template first'; return; }
+        if ((replaceFrom?.value.trim() === '') !== (replaceTo?.value.trim() === '')) {
+            event.preventDefault();
+            window.alert('Enter both the current approved text and its replacement.');
+            (replaceFrom?.value.trim() === '' ? replaceFrom : replaceTo)?.focus();
+            return;
+        }
         generateButton.disabled = true;
         generateButton.textContent = 'Creating drafts…';
     });

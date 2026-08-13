@@ -50,6 +50,10 @@ try {
     contract_expect(str_contains($creatorMarkup, 'Defaults to 25%'), 'The automatic deposit behavior is not explained in the form.');
     contract_expect(str_contains($creatorMarkup, 'w-[147px]') && str_contains($creatorMarkup, 'text-[10px]'), 'The digital branded preview header was not reduced by about 30%.');
     contract_expect(str_contains($creatorMarkup, 'contract-payment-notice') && str_contains($creatorMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the preview.');
+    contract_expect(str_contains($creatorMarkup, '.contract-payment-notice { margin-bottom:16pt;'), 'Preview needs more space between the payment notice and procedures.');
+    contract_expect(str_contains($creatorMarkup, '.contract-treatment-list { margin:0 0 16pt;'), 'Preview needs more space between procedures and legal language.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-sedation"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language is not red.');
+    contract_expect(str_contains($creatorMarkup, "<strong><?= e((string)\$originalTerms['discount_acceptance']) ?></strong>"), 'Preview discounted-price language is not bold.');
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
     contract_expect($creatorScriptPosition !== false && !str_contains(substr($creatorMarkup, $creatorScriptPosition), '@media'), 'A CSS media rule was rendered inside the Contract Creator JavaScript.');
     $publicContractMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience/contract/index.php');
@@ -67,6 +71,10 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');
     contract_expect(!str_contains($publicContractMarkup, '>Financial summary<'), 'The signing contract still contains the non-original financial summary box.');
     contract_expect(str_contains($publicContractMarkup, 'agreement-payment-notice') && str_contains($publicContractMarkup, 'white-space:nowrap'), 'The highlighted one-line payment notice is missing from the signing document.');
+    contract_expect(str_contains($publicContractMarkup, '.agreement-payment-notice { margin-bottom:16pt;'), 'Signing document needs more space between the payment notice and procedures.');
+    contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list { margin:0 0 16pt;'), 'Signing document needs more space between procedures and legal language.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
+    contract_expect(str_contains($publicContractMarkup, "<strong><?= e((string)\$terms['discount_acceptance']) ?></strong>"), 'Signing-document discounted-price language is not bold.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
         contract_expect(trim((string)(patient_experience_contract_original_terms()[$termKey] ?? '')) !== '', 'Original contract language is missing: ' . $termKey);
     }

@@ -24,7 +24,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
 <style>
     .contract-page { display:flex; aspect-ratio:8.5 / 11; min-height:900px; flex-direction:column; font-family:Calibri, Arial, sans-serif; color:#111827; }
     .contract-paper-body { display:flex; min-height:0; flex:1; flex-direction:column; }
-    .contract-treatment-list { margin:0 0 8pt; padding-left:.42in; }
+    .contract-treatment-list { margin:0 0 16pt; padding-left:.42in; }
     .contract-treatment-list li { margin:0; padding-left:.04in; line-height:1.08; }
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
     .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:end; margin:8pt 0 8px; }
@@ -37,7 +37,8 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }
     .contract-tooth input:checked + span { background:#0f172a; border-color:#0f172a; color:#fff; box-shadow:0 0 0 3px rgba(15,23,42,.12); }
     .contract-option input:checked + span { background:#eff6ff; border-color:#2563eb; color:#1e3a8a; }
-    .contract-payment-notice { background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
+    .contract-payment-notice { margin-bottom:16pt; background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
+    .contract-sedation { color:#b91c1c; }
     @media print {
         @page { size: letter; margin: 0; }
         body * { visibility:hidden !important; }
@@ -219,14 +220,14 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                         <p id="preview-treatment-title">Dental Treatment for Patient name:</p>
                         <p id="preview-opening"></p>
                     </div>
-                    <div class="contract-payment-notice mb-[8pt] rounded px-2 py-1.5 text-center font-semibold text-slate-950"><span><?= e((string)$originalTerms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$originalTerms['credit_card']) ?></span></div>
+                    <div class="contract-payment-notice rounded px-2 py-1.5 text-center font-semibold text-slate-950"><span><?= e((string)$originalTerms['cashier_check']) ?></span><span class="mx-1.5 text-amber-700" aria-hidden="true">&bull;</span><span><?= e((string)$originalTerms['credit_card']) ?></span></div>
                     <ul id="preview-line-items" class="contract-treatment-list"></ul>
                     <div class="contract-legal-copy text-[11pt] leading-[1.08]">
                         <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
                         <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
-                        <p><?= e((string)$originalTerms['sedation']) ?></p>
-                        <p><?= e((string)$originalTerms['discount_acceptance']) ?></p>
+                        <p class="contract-sedation"><?= e((string)$originalTerms['sedation']) ?></p>
+                        <p><strong><?= e((string)$originalTerms['discount_acceptance']) ?></strong></p>
                     </div>
                     <div class="contract-signature contract-signature-original">
                         <div class="contract-signature-primary"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0"></span><span id="preview-signature-patient" class="contract-signature-patient">Patient name</span></div>

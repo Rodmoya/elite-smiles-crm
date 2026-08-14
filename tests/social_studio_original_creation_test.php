@@ -70,5 +70,13 @@ $actionSource = file_get_contents(dirname(__DIR__) . '/app/actions/social_studio
 social_original_assert(str_contains($pageSource, 'data-social-mode="original"'), 'Original Creation mode is missing from Social Studio.');
 social_original_assert(str_contains($pageSource, 'What should we create?'), 'Original Creation needs a natural-language brief.');
 social_original_assert(str_contains($actionSource, 'social_studio_create_original_drafts'), 'Original Creation action is not connected to the service.');
+social_original_assert(
+    preg_match('/id="social-template-carousel"[^>]*\boverflow-y-hidden\b/', $pageSource) === 1,
+    'The horizontal template carousel must not trap vertical page scrolling.'
+);
+social_original_assert(
+    str_contains($pageSource, 'max-h-[92dvh] overflow-y-auto') && str_contains($pageSource, 'lg:overflow-hidden'),
+    'The post preview must scroll as one surface on smaller viewports.'
+);
 
 echo "Social Studio original creation tests passed.\n";

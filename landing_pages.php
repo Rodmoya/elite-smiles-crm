@@ -526,7 +526,7 @@ async function togglePage(id, btn) {
 
 // Bulk procedure
 async function bulkProcedure(proc, status) {
-    if (!confirm((status ? 'Activate' : 'Deactivate') + ' all pages for this procedure?')) return;
+    if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all pages for this procedure?'))) return;
     const data = await api({ action: 'bulk_procedure', procedure: proc, status });
     if (data.ok) location.reload();
     else alert(data.message);
@@ -534,7 +534,7 @@ async function bulkProcedure(proc, status) {
 
 // Bulk city
 async function bulkCity(city, status) {
-    if (!confirm((status ? 'Activate' : 'Deactivate') + ' all pages for this city?')) return;
+    if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all pages for this city?'))) return;
     const data = await api({ action: 'bulk_city', city, status });
     if (data.ok) location.reload();
     else alert(data.message);
@@ -542,7 +542,7 @@ async function bulkCity(city, status) {
 
 // Bulk angle
 async function bulkAngle(proc, angle, status) {
-    if (!confirm((status ? 'Activate' : 'Deactivate') + ' all ' + (angle || 'base') + ' pages?')) return;
+    if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all ' + (angle || 'base') + ' pages?'))) return;
     const data = await api({ action: 'bulk_angle', procedure: proc, angle, status });
     if (data.ok) location.reload();
     else alert(data.message);
@@ -630,6 +630,7 @@ async function savePage() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
 </script>
+<script src="<?= e(base_url('assets/js/crm-confirm-dialog.js?v=' . (string)(@filemtime(__DIR__ . '/assets/js/crm-confirm-dialog.js') ?: '1'))) ?>" defer></script>
 
 </body>
 </html>

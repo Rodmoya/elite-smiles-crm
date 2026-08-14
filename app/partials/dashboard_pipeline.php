@@ -3088,7 +3088,7 @@ $consultationOptions = [
             }
             const previewNames = rows.slice(0, 6).map(row => row.full_name || row.name || row.email || row.phone_number || row.phone || 'Unnamed lead');
             const previewText = previewNames.join('\n');
-            const proceed = window.confirm(`Found ${rows.length} lead(s) in this file.\n\n${previewText}${rows.length > 6 ? `\n...and ${rows.length - 6} more.` : ''}\n\nOnly non-duplicates will be imported. Continue?`);
+            const proceed = await window.crmConfirm(`Found ${rows.length} lead(s) in this file.\n\n${previewText}${rows.length > 6 ? `\n...and ${rows.length - 6} more.` : ''}\n\nOnly non-duplicates will be imported. Continue?`, { title: 'Import these leads?', confirmLabel: 'Import leads' });
             if (!proceed) {
                 importLeadsFileInput.value = '';
                 if (importLeadsStatus) importLeadsStatus.textContent = 'Lead import cancelled.';
@@ -7940,9 +7940,11 @@ function applyCommunicationViewportFit() {
 
         const leadName = (activeCard.dataset.leadName || 'this lead').trim();
 
-        const confirmed = window.confirm(
+        const confirmed = await window.crmConfirm(
 
-            'Delete ' + leadName + ' permanently from the database?\n\nThis cannot be undone.'
+            'Delete ' + leadName + ' permanently from the database?\n\nThis cannot be undone.',
+
+            { title: 'Delete this lead?', confirmLabel: 'Delete lead', tone: 'danger' }
 
         );
 

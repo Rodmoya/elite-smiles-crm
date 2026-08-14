@@ -627,7 +627,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                                         </form>
                                     <?php endif; ?>
                                     <?php if ($canDeleteVideo): ?>
-                                        <form method="POST" action="<?= e((string)($videoDelete['action'] ?? '')) ?>" onsubmit="return confirm('Delete this reveal video?');">
+                                        <form method="POST" action="<?= e((string)($videoDelete['action'] ?? '')) ?>" data-crm-confirm="Delete this reveal video?" data-crm-confirm-label="Delete video">
                                             <?= csrf_input() ?>
                                             <?php foreach ((array)($videoDelete['hidden'] ?? []) as $name => $value): ?>
                                                 <input type="hidden" name="<?= e((string)$name) ?>" value="<?= e((string)$value) ?>">

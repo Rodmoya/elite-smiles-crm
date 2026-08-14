@@ -55,7 +55,7 @@ $mapEntry = $registry['map'][$slug] ?? null;
 
 // Organic pages consolidate the old marketing-angle variants into one authoritative URL.
 // Keep query parameters so campaign attribution survives the permanent redirect.
-if (request_method() === 'GET' && is_array($mapEntry) && trim((string) ($mapEntry['angle'] ?? '')) !== '') {
+if (in_array(request_method(), ['GET', 'HEAD'], true) && is_array($mapEntry) && trim((string) ($mapEntry['angle'] ?? '')) !== '') {
     $baseSlug = lp_organic_base_slug(
         (string) ($mapEntry['procedure'] ?? $mapEntry['procedure_type'] ?? ''),
         (string) ($mapEntry['city'] ?? '')

@@ -68,6 +68,7 @@ foreach ($map as $slug => $row) {
 
 $routerSource = file_get_contents($root . '/landing.php') ?: '';
 organic_assert(str_contains($routerSource, "header('Location: ' . \$target, true, 301)"), 'Historical aliases must use permanent redirects.');
+organic_assert(str_contains($routerSource, "['GET', 'HEAD']"), 'Historical aliases must redirect consistently for GET and HEAD requests.');
 organic_assert(str_contains($routerSource, "(int) (\$pageRow['is_active'] ?? 0) !== 1"), 'Inactive DB pages must fail closed.');
 $templateSource = file_get_contents($root . '/app/landing_pages/templates/organic-master-base.php') ?: '';
 organic_assert(str_contains($templateSource, "trackEvent('lead_success'"), 'Organic pages must track confirmed lead creation.');

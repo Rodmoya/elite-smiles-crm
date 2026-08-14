@@ -11,6 +11,7 @@ require_once __DIR__ . '/social_studio_creative_brief.php';
 if (!function_exists('social_studio_ensure_schema')) {
     function social_studio_ensure_schema(): void
     {
+        social_studio_brand_book_ensure_schema();
         db_query("CREATE TABLE IF NOT EXISTS social_studio_base_creatives (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             source_type VARCHAR(32) NOT NULL DEFAULT 'instagram',
@@ -138,6 +139,8 @@ if (!function_exists('social_studio_ensure_schema')) {
             'guardrail_json' => "ALTER TABLE social_studio_drafts ADD COLUMN guardrail_json LONGTEXT NULL AFTER reference_reason",
             'parent_draft_id' => "ALTER TABLE social_studio_drafts ADD COLUMN parent_draft_id INT UNSIGNED NULL AFTER guardrail_json",
             'version_number' => "ALTER TABLE social_studio_drafts ADD COLUMN version_number SMALLINT UNSIGNED NOT NULL DEFAULT 1 AFTER parent_draft_id",
+            'brand_book_id' => "ALTER TABLE social_studio_drafts ADD COLUMN brand_book_id INT UNSIGNED NULL AFTER version_number",
+            'brand_book_version' => "ALTER TABLE social_studio_drafts ADD COLUMN brand_book_version SMALLINT UNSIGNED NULL AFTER brand_book_id",
         ] as $column => $sql) {
             // MariaDB does not accept bound parameters in SHOW COLUMNS LIKE clauses.
             // Quote the value through PDO, then keep the DDL itself fixed and controlled.
@@ -801,7 +804,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         if ($editable === []) return ['ok'=>false, 'message'=>'The selected template has no editable copy blocks.'];
         $itemSchema = ['type'=>'object','additionalProperties'=>false,'properties'=>['index'=>['type'=>'integer'],'text'=>['type'=>'string']],'required'=>['index','text']];
         $schema = ['type'=>'object','additionalProperties'=>false,'properties'=>['replacements'=>['type'=>'array','minItems'=>count($editable),'maxItems'=>count($editable),'items'=>$itemSchema]],'required'=>['replacements']];
-        $system = 'You are the Elite Smiles Master CMO. Rewrite only the supplied approved overlay wording. Keep the exact concept, treatment claims, CTA intent, location, financing qualifications, capitalization pattern, number of blocks, and manual line count. Each replacement must fit the same visual box: stay close to the original character count per line. Do not change typography, geometry, colors, icons, or layout. Return every supplied index exactly once.';
+        $system = 'You are the Elite Smiles Master CMO. Rewrite only the supplied approved overlay wording. Keep the exact concept, treatment claims, CTA intent, location, financing qualifications, capitalization pattern, number of blocks, and manual line count. Each replacement must fit the same visual box: stay close to the original character count per line. Do not change typography, geometry, colors, icons, or layout. Return every supplied index exactly once. ' . social_studio_editorial_context();
         $user = 'Focus: ' . social_studio_focus_label($focus) . "\nOptional direction: " . trim($instruction) . "\nApproved text blocks:\n" . json_encode($editable, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_overlay_rewrite');
         if (empty($response['ok']) || !is_array($response['data']['replacements'] ?? null)) return ['ok'=>false, 'message'=>(string)($response['message'] ?? 'Overlay rewrite failed.')];
@@ -866,6 +869,7 @@ if (!function_exists('social_studio_seed_drafts')) {
             }
         }
         $created = 0;
+        $brandBook = social_studio_active_brand_book();
 
         foreach ($topics as $index => $topic) {
             if ($remixTemplate !== []) {
@@ -902,9 +906,9 @@ if (!function_exists('social_studio_seed_drafts')) {
 
             $createdId = (int)db_insert(
                 "INSERT INTO social_studio_drafts
-                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, copy_mode, text_position, scheduled_at, created_by)
+                    (title, status, platform, content_focus, post_type, caption, cta, hashtags, image_prompt, base_reference_key, base_post_prompt, overlay_spec, overlay_eyebrow, overlay_blocks_json, overlay_template_json, copy_mode, text_position, scheduled_at, created_by, brand_book_id, brand_book_version)
                  VALUES
-                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :overlay_template_json, :copy_mode, :text_position, :scheduled_at, :created_by)",
+                    (:title, 'review', :platform, :content_focus, :post_type, :caption, :cta, :hashtags, :image_prompt, :base_reference_key, :base_post_prompt, :overlay_spec, :overlay_eyebrow, :overlay_blocks_json, :overlay_template_json, :copy_mode, :text_position, :scheduled_at, :created_by, :brand_book_id, :brand_book_version)",
                 [
                     'title' => $title,
                     'platform' => 'facebook_instagram',
@@ -924,6 +928,8 @@ if (!function_exists('social_studio_seed_drafts')) {
                     'text_position' => (string)($remixTemplate['text_position'] ?? 'source'),
                     'scheduled_at' => null,
                     'created_by' => $createdBy > 0 ? $createdBy : null,
+                    'brand_book_id' => (int)($brandBook['id'] ?? 0) ?: null,
+                    'brand_book_version' => (int)($brandBook['version'] ?? 1),
                 ]
             );
             if (is_array($createdIds)) {

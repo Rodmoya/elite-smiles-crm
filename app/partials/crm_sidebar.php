@@ -1377,4 +1377,5 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
     });
 })();
 </script>
+<script src="<?= e(base_url('assets/js/crm-confirm-dialog.js?v=' . (string)(@filemtime(dirname(__DIR__, 2) . '/assets/js/crm-confirm-dialog.js') ?: '1'))) ?>" defer></script>
 

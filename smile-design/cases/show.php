@@ -801,11 +801,11 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                         <?php if (!empty($version['notes'])): ?><p class="mt-3 text-sm leading-6 text-slate-600"><?= e((string)$version['notes']) ?></p><?php endif; ?>
                                         <div class="mt-4 flex flex-wrap gap-2">
                                             <?php foreach ([['archive', (int)$version['archived'] === 1 ? 'Archived' : 'Archive'], ['delete', 'Delete']] as [$action, $text]): ?>
-                                                <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_update.php')) ?>">
+                                                <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_update.php')) ?>" <?= $action === 'delete' ? 'data-crm-confirm="Delete this after version? This cannot be undone." data-crm-confirm-label="Delete version"' : '' ?>>
                                                     <?= csrf_input() ?>
                                                     <input type="hidden" name="after_version_id" value="<?= e((string)$version['id']) ?>">
                                                     <input type="hidden" name="after_action" value="<?= e($action) ?>">
-                                                    <button class="rounded-md border <?= $action === 'delete' ? 'border-rose-300 text-rose-700' : 'border-slate-300 text-slate-700' ?> px-2 py-1.5 text-xs font-semibold" type="submit" <?= $action === 'delete' ? 'onclick="return confirm(\'Delete this after version? This cannot be undone.\')"' : '' ?> <?= $action === 'archive' && (int)$version['archived'] === 1 ? 'disabled' : '' ?>><?= e($text) ?></button>
+                                                    <button class="rounded-md border <?= $action === 'delete' ? 'border-rose-300 text-rose-700' : 'border-slate-300 text-slate-700' ?> px-2 py-1.5 text-xs font-semibold" type="submit" <?= $action === 'archive' && (int)$version['archived'] === 1 ? 'disabled' : '' ?>><?= e($text) ?></button>
                                                 </form>
                                             <?php endforeach; ?>
                                         </div>

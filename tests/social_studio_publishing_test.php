@@ -43,6 +43,8 @@ social_publish_assert(str_contains($pageSource, 'name="approve_first" value="1"'
 social_publish_assert(str_contains($pageSource, 'id="social-action-loader"'), 'Immediate publish and delete actions must show a centered blocking loader.');
 social_publish_assert(str_contains($pageSource, 'data-social-loading-message="Publishing to Facebook and Instagram…"'), 'Immediate publishing must explain what is happening while Meta delivery is in progress.');
 social_publish_assert(str_contains($pageSource, 'data-social-loading-message="Deleting draft…"'), 'Draft deletion must explain what is happening while the request is in progress.');
+social_publish_assert(str_contains($pageSource, 'data-crm-confirm="Delete this draft?"'), 'Draft deletion must use the shared branded CRM confirmation dialog.');
+social_publish_assert(!str_contains($pageSource, 'window.confirm('), 'Social Studio must not use native browser confirmation dialogs.');
 social_publish_assert(str_contains($pageSource, 'id="social-toast"'), 'Social Studio flash results must render as a centered toast.');
 social_publish_assert(str_contains($pageSource, 'aria-live="<?= $toastIsError ? \'assertive\' : \'polite\' ?>"'), 'The centered result toast must announce success and failure accessibly.');
 social_publish_assert(str_contains($pageSource, "document.querySelectorAll('[data-social-action-form]')"), 'Action forms must share double-submit prevention and loader behavior.');

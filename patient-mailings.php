@@ -200,7 +200,7 @@ function mailing_badge_class(string $status): string
                                             <button class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold" type="submit">Test</button>
                                         </form>
                                         <?php if (in_array($status, ['approved', 'review'], true)): ?>
-                                            <form method="POST" action="<?= e(base_url('app/actions/mailing_send.php')) ?>" onsubmit="return confirm('Send this mailing to subscribed contacts now?');">
+                                            <form method="POST" action="<?= e(base_url('app/actions/mailing_send.php')) ?>" data-crm-confirm="Send this mailing to subscribed contacts now?" data-crm-confirm-label="Send mailing">
                                                 <?= csrf_input() ?>
                                                 <input type="hidden" name="campaign_id" value="<?= e((string)$campaign['id']) ?>">
                                                 <button class="rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white" type="submit">Send</button>

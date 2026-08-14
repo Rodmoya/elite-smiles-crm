@@ -32,10 +32,16 @@ social_publish_assert(
 );
 
 $publisherSource = file_get_contents(dirname(__DIR__) . '/app/social_studio/social_studio_publisher.php') ?: '';
+$pageSource = file_get_contents(dirname(__DIR__) . '/social-studio.php') ?: '';
+$publishActionSource = file_get_contents(dirname(__DIR__) . '/app/actions/social_studio_publish.php') ?: '';
 social_publish_assert(str_contains($publisherSource, "'/media_publish'"), 'Instagram publishing must finalize the media container.');
 social_publish_assert(str_contains($publisherSource, "'/photos'"), 'Facebook publishing must use the Page photos endpoint.');
 social_publish_assert(str_contains($publisherSource, 'meta_instagram_post_id'), 'Instagram post IDs must be persisted for retry safety.');
 social_publish_assert(str_contains($publisherSource, 'meta_facebook_post_id'), 'Facebook post IDs must be persisted for retry safety.');
+social_publish_assert(str_contains($pageSource, '>Post now</button>'), 'Stage 3 review cards must expose an immediate Post now action.');
+social_publish_assert(str_contains($pageSource, 'name="approve_first" value="1"'), 'Immediate publishing must explicitly request approval before Meta delivery.');
+social_publish_assert(str_contains($publishActionSource, "social_studio_update_status(\$draftId, 'approved'"), 'Immediate publishing must approve the reviewed draft before claiming it for Meta delivery.');
+social_publish_assert(str_contains($publishActionSource, 'Generate a finished image before posting this draft.'), 'Immediate publishing must fail safely when the finished image is missing.');
 
 $workflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/social-studio-publisher.yml') ?: '';
 social_publish_assert(str_contains($workflow, '*/5 * * * *'), 'The publishing worker must run every five minutes.');

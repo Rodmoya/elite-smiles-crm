@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/auth.php';
+require_once dirname(__DIR__) . '/social_studio/social_studio_service.php';
 require_once dirname(__DIR__) . '/social_studio/social_studio_publisher.php';
 
 require_auth();
@@ -25,7 +26,12 @@ if ($mode === 'schedule') {
     }
     $result = social_studio_schedule_draft($draftId, $scheduledAt);
 } else {
-    $result = social_studio_publish_draft($draftId);
+    $approveFirst = (string)post('approve_first', '') === '1';
+    if ($approveFirst && !social_studio_update_status($draftId, 'approved', (int)(auth_user_id() ?: 0))) {
+        $result = ['ok' => false, 'message' => 'Generate a finished image before posting this draft.'];
+    } else {
+        $result = social_studio_publish_draft($draftId);
+    }
 }
 
 flash_set(!empty($result['ok']) ? 'success' : 'error', (string)($result['message'] ?? 'Meta publishing failed.'));

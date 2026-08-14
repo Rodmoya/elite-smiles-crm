@@ -294,7 +294,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
                 <?php if ($selectedBrief): ?><div class="mx-auto mb-4 max-w-[620px] rounded-xl border border-violet-200 bg-violet-50 p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-violet-950">CMO interpretation</p><div class="flex gap-2"><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">Original</span><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">Brand Book v<?= e((string)($selected['brand_book_version'] ?? 1)) ?></span></div></div><dl class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4"><div><dt class="text-violet-600">Focus</dt><dd class="mt-1 font-semibold text-violet-950"><?= e(social_studio_focus_label((string)($selectedBrief['focus'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Purpose</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e(str_replace('_', ' ', (string)($selectedBrief['purpose'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Audience</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['audience'] ?? 'Any')) ?></dd></div><div><dt class="text-violet-600">Text</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['text_position'] ?? 'Recommended')) ?></dd></div></dl><?php if (trim((string)($selected['reference_reason'] ?? '')) !== ''): ?><p class="mt-3 border-t border-violet-200 pt-3 text-xs leading-5 text-violet-900"><strong>Brand Library choice:</strong> <?= e((string)$selected['reference_reason']) ?></p><?php endif; ?></div><?php endif; ?>
                 <article class="mx-auto max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header class="flex items-center gap-3 border-b border-slate-100 px-4 py-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span class="ml-auto font-bold tracking-[0.2em]">···</span></header>
-                    <?php if ($selectedImageUrl !== ''): ?><img class="social-preview-image" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>"><?php else: ?><div class="grid aspect-[4/5] place-items-center bg-slate-100 p-8 text-center text-sm text-slate-500">Generate the clean photo to assemble this post.</div><?php endif; ?>
+                    <?php if ($selectedImageUrl !== ''): ?><img class="social-preview-image" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>" data-social-raster-source data-draft-id="<?= e((string)$selected['id']) ?>"><?php else: ?><div class="grid aspect-[4/5] place-items-center bg-slate-100 p-8 text-center text-sm text-slate-500">Generate the clean photo to assemble this post.</div><?php endif; ?>
                     <div class="border-t border-slate-100 px-4 py-3"><div class="mb-3 flex text-2xl"><span>♡　◯　➤</span><span class="ml-auto">⌑</span></div><p class="whitespace-pre-line text-sm leading-6 text-slate-700"><strong class="text-slate-950">elitesmilesutah</strong> <?= e((string)$selected['caption']) ?></p><p class="mt-3 text-xs leading-5 text-blue-700"><?= e((string)$selected['hashtags']) ?></p></div>
                 </article>
                 <?php if ($selectedGuardrails): ?><div class="mx-auto mt-4 max-w-[620px] rounded-xl border <?= ($selectedGuardrails['status'] ?? '') === 'pass' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' ?> p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-slate-900">Quality guardrails</p><span class="rounded-full bg-white px-2 py-1 text-xs font-semibold"><?= e((string)($selectedGuardrails['passed'] ?? 0)) ?>/<?= e((string)($selectedGuardrails['total'] ?? 0)) ?> passed</span></div><ul class="mt-3 grid gap-2 sm:grid-cols-2"><?php foreach ((array)($selectedGuardrails['checks'] ?? []) as $check): ?><li class="flex gap-2 text-xs leading-5 <?= !empty($check['pass']) ? 'text-emerald-800' : 'text-amber-900' ?>"><span aria-hidden="true"><?= !empty($check['pass']) ? '✓' : '!' ?></span><span><?= e((string)($check['label'] ?? 'Quality check')) ?></span></li><?php endforeach; ?></ul><?php if (trim((string)($selectedGuardrails['visual_notes'] ?? '')) !== ''): ?><p class="mt-3 text-xs leading-5 text-slate-700"><?= e((string)$selectedGuardrails['visual_notes']) ?></p><?php endif; ?></div><?php endif; ?>
@@ -523,6 +523,71 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         actionLoader.setAttribute('aria-hidden', 'false');
         document.body.setAttribute('aria-busy', 'true');
     };
+    const rasterJobs = new Map();
+    const prepareMetaJpeg = (draftId, form) => {
+        draftId = String(draftId || '').trim();
+        if (!draftId) return Promise.reject(new Error('No social draft was selected.'));
+        if (rasterJobs.has(draftId)) return rasterJobs.get(draftId);
+        const job = (async () => {
+            const matchingImage = [...document.querySelectorAll('img[src*="social_studio_image.php"]')].find(image => {
+                try { return new URL(image.currentSrc || image.src, window.location.href).searchParams.get('draft_id') === draftId; }
+                catch (error) { return false; }
+            });
+            const image = matchingImage || new Image();
+            if (!matchingImage) image.src = `<?= e(base_url('app/actions/social_studio_image.php')) ?>?draft_id=${encodeURIComponent(draftId)}&variant=branded`;
+            if (!image.complete || image.naturalWidth === 0) {
+                await new Promise((resolve, reject) => {
+                    image.addEventListener('load', resolve, {once:true});
+                    image.addEventListener('error', () => reject(new Error('The finished post image could not be loaded.')), {once:true});
+                });
+            }
+            if (typeof image.decode === 'function') await image.decode();
+            const width = image.naturalWidth;
+            const height = image.naturalHeight;
+            if (width < 600 || height < 600) throw new Error('The finished post image is too small for Meta.');
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('This browser could not prepare the post image.');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, width, height);
+            context.drawImage(image, 0, 0, width, height);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            if (!(blob instanceof Blob) || blob.size === 0) throw new Error('The finished JPEG could not be created.');
+            const csrf = form?.querySelector('[name="_csrf_token"]') || document.querySelector('[name="_csrf_token"]');
+            if (!csrf?.value) throw new Error('Your session token is missing. Reload the page and try again.');
+            const body = new FormData();
+            body.append('_csrf_token', csrf.value);
+            body.append('draft_id', draftId);
+            body.append('image', blob, `elite-smiles-post-${draftId}.jpg`);
+            const response = await fetch('<?= e(base_url('app/actions/social_studio_rasterize.php')) ?>', {method:'POST', body, credentials:'same-origin'});
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.message || 'The post could not be prepared for Meta.');
+            return true;
+        })();
+        rasterJobs.set(draftId, job);
+        job.catch(() => rasterJobs.delete(draftId));
+        return job;
+    };
+    document.addEventListener('submit', event => {
+        const form = event.target instanceof HTMLFormElement ? event.target : null;
+        if (!form || !form.action.includes('/app/actions/social_studio_publish.php') || form.dataset.socialRasterReady === '1') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+        const draftId = form.querySelector('[name="draft_id"]')?.value || '';
+        if (submitter) submitter.disabled = true;
+        prepareMetaJpeg(draftId, form).then(() => {
+            form.dataset.socialRasterReady = '1';
+            if (submitter) submitter.disabled = false;
+            form.requestSubmit(submitter || undefined);
+        }).catch(error => {
+            if (submitter) submitter.disabled = false;
+            const message = error instanceof Error ? error.message : 'The post could not be prepared for Meta.';
+            if (typeof window.crmConfirm === 'function') window.crmConfirm(message, {title:'Post not ready', confirmLabel:'Close', tone:'danger'});
+        });
+    }, true);
     document.querySelectorAll('[data-social-action-form]').forEach(form => form.addEventListener('submit', () => {
         form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; });
         showActionLoader(form.dataset.socialLoadingMessage || 'Working…');
@@ -542,11 +607,18 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         [replaceFrom, replaceTo].forEach(input => { if (input) input.disabled = rewriting; });
     });
 
-    const submitSchedule = (card, day) => {
+    const submitSchedule = async (card, day) => {
         const time = card?.querySelector('[data-schedule-time]')?.value || '10:30';
         const scheduled = new Date(`${day}T${time}:00`);
         if (!Number.isFinite(scheduled.getTime()) || scheduled.getTime() < Date.now() + 60000) {
-            window.alert('Choose a future day and time.');
+            if (typeof window.crmConfirm === 'function') window.crmConfirm('Choose a future day and time.', {title:'Schedule not ready', confirmLabel:'Close', tone:'danger'});
+            return;
+        }
+        try {
+            await prepareMetaJpeg(card?.dataset.draftId || '', scheduleForm);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'The post could not be prepared for Meta.';
+            if (typeof window.crmConfirm === 'function') window.crmConfirm(message, {title:'Post not ready', confirmLabel:'Close', tone:'danger'});
             return;
         }
         scheduleForm.elements.draft_id.value = card.dataset.draftId || '';
@@ -624,7 +696,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         if (!referenceInput.value) { event.preventDefault(); selectedLabel.textContent = 'Choose a Ready template first'; return; }
         if ((replaceFrom?.value.trim() === '') !== (replaceTo?.value.trim() === '')) {
             event.preventDefault();
-            window.alert('Enter both the current approved text and its replacement.');
+            if (typeof window.crmConfirm === 'function') window.crmConfirm('Enter both the current approved text and its replacement.', {title:'Complete both fields', confirmLabel:'Close', tone:'danger'});
             (replaceFrom?.value.trim() === '' ? replaceFrom : replaceTo)?.focus();
             return;
         }

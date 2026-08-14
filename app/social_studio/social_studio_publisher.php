@@ -342,7 +342,12 @@ if (!function_exists('social_studio_publish_draft')) {
         try {
             social_studio_meta_prepare_image($path);
         } catch (Throwable $e) {
-            return ['ok' => false, 'message' => $e->getMessage()];
+            $message = mb_substr(trim($e->getMessage()), 0, 1000);
+            db_execute('UPDATE social_studio_drafts SET status="publish_failed", publish_error=:publish_error, last_publish_attempt_at=NOW(), publish_attempts=publish_attempts+1 WHERE id=:id LIMIT 1', [
+                'id' => $draftId,
+                'publish_error' => $message,
+            ]);
+            return ['ok' => false, 'message' => $message];
         }
 
         $claimed = db_query(

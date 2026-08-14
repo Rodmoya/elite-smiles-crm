@@ -35,6 +35,7 @@ $publisherSource = file_get_contents(dirname(__DIR__) . '/app/social_studio/soci
 $pageSource = file_get_contents(dirname(__DIR__) . '/social-studio.php') ?: '';
 $publishActionSource = file_get_contents(dirname(__DIR__) . '/app/actions/social_studio_publish.php') ?: '';
 $mediaActionSource = file_get_contents(dirname(__DIR__) . '/app/api/social_studio_media.php') ?: '';
+$rasterActionSource = file_get_contents(dirname(__DIR__) . '/app/actions/social_studio_rasterize.php') ?: '';
 $serviceSource = file_get_contents(dirname(__DIR__) . '/app/social_studio/social_studio_service.php') ?: '';
 social_publish_assert(str_contains($publisherSource, "'/media_publish'"), 'Instagram publishing must finalize the media container.');
 social_publish_assert(str_contains($publisherSource, "'/photos'"), 'Facebook publishing must use the Page photos endpoint.');
@@ -55,6 +56,12 @@ social_publish_assert(str_contains($publishActionSource, "social_studio_update_s
 social_publish_assert(str_contains($publishActionSource, 'Generate a finished image before posting this draft.'), 'Immediate publishing must fail safely when the finished image is missing.');
 social_publish_assert(str_contains($publisherSource, 'function social_studio_meta_prepare_image'), 'Publishing must prepare a Meta-compatible raster image before delivery.');
 social_publish_assert(str_contains($publisherSource, "setImageFormat('jpeg')"), 'Exact SVG overlays must be rasterized to JPEG without removing their approved design.');
+social_publish_assert(str_contains($pageSource, 'const prepareMetaJpeg = (draftId, form)'), 'The browser must prepare the exact rendered overlay as a JPEG before publishing.');
+social_publish_assert(str_contains($pageSource, "form.action.includes('/app/actions/social_studio_publish.php')"), 'Every immediate and scheduled publish form must wait for JPEG preparation.');
+social_publish_assert(str_contains($rasterActionSource, "(\$size['mime'] ?? '') !== 'image/jpeg'"), 'The raster upload endpoint must reject non-JPEG media.');
+social_publish_assert(str_contains($rasterActionSource, "is_uploaded_file(\$temporaryPath)"), 'The raster endpoint must only accept authenticated HTTP uploads.');
+social_publish_assert(str_contains($rasterActionSource, "\$sourcePath . '.meta.jpg'"), 'The browser-rendered JPEG must use the publisher cache path.');
+social_publish_assert(str_contains($publisherSource, 'SET status="publish_failed", publish_error=:publish_error'), 'Media preparation failures must stay visible and retryable in the review queue.');
 social_publish_assert(str_contains($mediaActionSource, "filename=\"elite-smiles-post-"), 'The public Meta endpoint must identify the finished media as a JPEG file.');
 social_publish_assert(str_contains($serviceSource, '"review", "draft", "publish_failed"'), 'Failed immediate posts must remain visible in the review queue for recovery.');
 social_publish_assert(str_contains($publishActionSource, "!empty(\$result['ok']) ? 'published' : 'create'"), 'Failed immediate posts must return to Create and review instead of an empty Published screen.');

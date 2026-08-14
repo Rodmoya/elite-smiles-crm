@@ -1552,20 +1552,20 @@ if (!function_exists('social_studio_refine_image_for_draft')) {
             'border_radius' => 0, 'align' => 'left', 'uppercase' => false,
         ];
         $elements = [
-            $text($copy['eyebrow'], 7.5, 8.5, 39, 4, 'montserrat', 1.85, 650, 1, .11, '#8a6b43'),
-            $text($copy['headline'], 7.5, 14.0, 41, 15, 'bodoni', 7.0, 400, .88, -.025),
+            $text($copy['eyebrow'], 7.5, 8.5, 39, 4, 'montserrat', 2.0, 700, 1, .09, '#8a6b43'),
+            $text($copy['headline'], 7.5, 14.0, 41, 15, 'bodoni', 7.2, 400, .88, -.025),
             $line(7.5, 30.0, 11.0),
-            $text($copy['subhead'], 7.5, 33.0, 37, 8, 'helvetica', 2.5, 500, 1.22),
+            $text($copy['subhead'], 7.5, 33.0, 38, 8, 'helvetica', 2.75, 550, 1.2),
         ];
         foreach ($copy['benefits'] as $index => $benefit) {
             $y = 44.5 + ($index * 8.2);
             $elements[] = $line(7.5, $y + 1.5, 2.4);
-            $elements[] = $text($benefit, 11.3, $y, 34, 5, 'montserrat', 1.82, 650, 1.15, .045);
+            $elements[] = $text($benefit, 11.3, $y, 35, 5, 'montserrat', 2.1, 700, 1.12, .025);
         }
-        $elements[] = $text('BOOK YOUR', 7.5, 70.0, 32, 3.5, 'montserrat', 1.55, 650, 1, .1, '#8a6b43');
+        $elements[] = $text('BOOK YOUR', 7.5, 70.0, 32, 3.5, 'montserrat', 1.75, 700, 1, .08, '#8a6b43');
         $elements[] = $text("COMPLIMENTARY\nCONSULTATION", 7.5, 74.0, 39, 9, 'montserrat', 3.25, 750, 1.02, .005);
         $elements[] = $line(7.5, 85.0, 13.5);
-        $elements[] = $text('DRAPER, UTAH', 7.5, 88.0, 30, 4, 'montserrat', 1.72, 700, 1, .09, '#8a6b43');
+        $elements[] = $text('DRAPER, UTAH', 7.5, 88.0, 30, 4, 'montserrat', 1.85, 700, 1, .08, '#8a6b43');
 
         $template = social_studio_normalize_overlay_template([
             'version' => 1, 'aspect_ratio' => '4:5', 'canvas_background' => 'transparent',

@@ -51,7 +51,8 @@ foreach ((array)($editorialTemplate['elements'] ?? []) as $element) {
     if ((string)($element['type'] ?? '') === 'text') $textByValue[(string)($element['text'] ?? '')] = $element;
 }
 social_refinement_assert((float)($textByValue['NATURAL SMILE DESIGN']['font_size'] ?? 0) >= 1.8, 'Editorial eyebrow must remain readable at Instagram review scale.');
-social_refinement_assert((float)($textByValue['REFINE SHAPE & SYMMETRY']['font_size'] ?? 0) >= 1.8, 'Editorial benefit copy must remain readable at Instagram review scale.');
+social_refinement_assert((float)($textByValue['REFINE SHAPE & SYMMETRY']['font_size'] ?? 0) >= 2.1, 'Editorial benefit copy must remain readable at Instagram review scale.');
+social_refinement_assert((int)($textByValue['REFINE SHAPE & SYMMETRY']['font_weight'] ?? 0) >= 700, 'Editorial benefit copy must carry enough visual weight.');
 social_refinement_assert((float)($textByValue["COMPLIMENTARY\nCONSULTATION"]['font_size'] ?? 0) >= 3.2, 'Editorial CTA must have clear visual weight.');
 social_refinement_assert((float)($textByValue['DRAPER, UTAH']['font_size'] ?? 0) >= 1.7, 'Editorial location must remain readable.');
 social_refinement_assert(!isset($textByValue['EXPERTS NEAR YOU.']), 'Canonical layout must not include a tiny redundant footer line.');

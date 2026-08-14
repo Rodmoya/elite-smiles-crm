@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/social_studio/social_studio_publisher.php';
 
-require_auth();
+require_marketing_access();
 require_csrf();
 
 $weekStart = social_studio_week_start(trim((string)post('week_start', '')));

@@ -7,7 +7,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/social_studio/social_studio_service.php';
 
-require_auth();
+require_marketing_access();
 social_studio_ensure_schema();
 
 $draftId = (int)get('draft_id', 0);

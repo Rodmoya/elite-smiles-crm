@@ -4,7 +4,7 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/social_studio/social_studio_service.php';
-require_auth();
+require_marketing_access();
 require_csrf();
 social_studio_ensure_schema();
 $posts = json_decode((string)post('posts_json', '[]'), true);

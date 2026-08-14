@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/social_studio/social_studio_service.php';
 
-require_auth();
+require_marketing_access();
 social_studio_ensure_schema();
 $baseId = (int)get('base_id', 0);
 $base = $baseId > 0 ? db_one('SELECT id, source_image_url, local_image_key FROM social_studio_base_creatives WHERE id = :id AND status = "active" LIMIT 1', ['id' => $baseId]) : null;

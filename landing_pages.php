@@ -444,11 +444,11 @@ body { font-family: system-ui, -apple-system, sans-serif; }
                                 Preview ↗
                             </a>
                             <div class="mt-1 grid w-full grid-cols-5 gap-1 border-t border-black/10 pt-2 text-[10px] text-gray-600" aria-label="Last 30 days performance">
-                                <span title="Page views"><strong class="block text-gray-900"><?= $pageViews ?></strong>views</span>
-                                <span title="CTA actions"><strong class="block text-gray-900"><?= $pageActions ?></strong>CTA</span>
-                                <span title="Leads"><strong class="block text-gray-900"><?= $pageLeads ?></strong>leads</span>
-                                <span title="Consultations booked"><strong class="block text-gray-900"><?= $pageBooked ?></strong>booked</span>
-                                <span title="Visitor-to-lead conversion"><strong class="block text-gray-900"><?= number_format($pageConversion, 1) ?>%</strong>CVR</span>
+                                <span title="Page views"><strong class="block text-gray-900"><?= htmlentities((string) $pageViews, ENT_QUOTES, 'UTF-8') ?></strong>views</span>
+                                <span title="CTA actions"><strong class="block text-gray-900"><?= htmlentities((string) $pageActions, ENT_QUOTES, 'UTF-8') ?></strong>CTA</span>
+                                <span title="Leads"><strong class="block text-gray-900"><?= htmlentities((string) $pageLeads, ENT_QUOTES, 'UTF-8') ?></strong>leads</span>
+                                <span title="Consultations booked"><strong class="block text-gray-900"><?= htmlentities((string) $pageBooked, ENT_QUOTES, 'UTF-8') ?></strong>booked</span>
+                                <span title="Visitor-to-lead conversion"><strong class="block text-gray-900"><?= htmlentities(number_format($pageConversion, 1), ENT_QUOTES, 'UTF-8') ?>%</strong>CVR</span>
                             </div>
                         </div>
                         <?php else: ?>

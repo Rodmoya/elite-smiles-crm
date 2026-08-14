@@ -1552,21 +1552,20 @@ if (!function_exists('social_studio_refine_image_for_draft')) {
             'border_radius' => 0, 'align' => 'left', 'uppercase' => false,
         ];
         $elements = [
-            $text($copy['eyebrow'], 7.5, 9.0, 38, 3.5, 'montserrat', 1.35, 600, 1, .16, '#8a6b43'),
-            $text($copy['headline'], 7.5, 14.0, 40, 14, 'bodoni', 6.0, 400, .88, -.025),
-            $line(7.5, 28.5, 9.5),
-            $text($copy['subhead'], 7.5, 32.0, 35, 8, 'helvetica', 2.0, 500, 1.25),
+            $text($copy['eyebrow'], 7.5, 8.5, 39, 4, 'montserrat', 1.85, 650, 1, .11, '#8a6b43'),
+            $text($copy['headline'], 7.5, 14.0, 41, 15, 'bodoni', 7.0, 400, .88, -.025),
+            $line(7.5, 30.0, 11.0),
+            $text($copy['subhead'], 7.5, 33.0, 37, 8, 'helvetica', 2.5, 500, 1.22),
         ];
         foreach ($copy['benefits'] as $index => $benefit) {
-            $y = 45.0 + ($index * 8.0);
-            $elements[] = $line(7.5, $y + 1.3, 2.2);
-            $elements[] = $text($benefit, 11.0, $y, 31, 4.5, 'montserrat', 1.42, 600, 1.18, .08);
+            $y = 44.5 + ($index * 8.2);
+            $elements[] = $line(7.5, $y + 1.5, 2.4);
+            $elements[] = $text($benefit, 11.3, $y, 34, 5, 'montserrat', 1.82, 650, 1.15, .045);
         }
-        $elements[] = $text('BOOK YOUR', 7.5, 70.5, 30, 3, 'montserrat', 1.18, 600, 1, .14, '#8a6b43');
-        $elements[] = $text("COMPLIMENTARY\nCONSULTATION", 7.5, 74.0, 36, 8, 'montserrat', 2.65, 700, 1.02, .015);
-        $elements[] = $line(7.5, 84.0, 12.0);
-        $elements[] = $text('DRAPER, UTAH', 7.5, 87.0, 28, 3.5, 'montserrat', 1.35, 650, 1, .12, '#8a6b43');
-        $elements[] = $text('EXPERTS NEAR YOU.', 7.5, 90.5, 28, 3, 'montserrat', 1.02, 500, 1, .11);
+        $elements[] = $text('BOOK YOUR', 7.5, 70.0, 32, 3.5, 'montserrat', 1.55, 650, 1, .1, '#8a6b43');
+        $elements[] = $text("COMPLIMENTARY\nCONSULTATION", 7.5, 74.0, 39, 9, 'montserrat', 3.25, 750, 1.02, .005);
+        $elements[] = $line(7.5, 85.0, 13.5);
+        $elements[] = $text('DRAPER, UTAH', 7.5, 88.0, 30, 4, 'montserrat', 1.72, 700, 1, .09, '#8a6b43');
 
         $template = social_studio_normalize_overlay_template([
             'version' => 1, 'aspect_ratio' => '4:5', 'canvas_background' => 'transparent',

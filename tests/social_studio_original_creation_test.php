@@ -78,5 +78,15 @@ social_original_assert(
     str_contains($pageSource, 'max-h-[92dvh] overflow-y-auto') && str_contains($pageSource, 'lg:overflow-hidden'),
     'The post preview must scroll as one surface on smaller viewports.'
 );
+social_original_assert(
+    str_contains($pageSource, 'data-social-review-list')
+    && preg_match('/data-social-review-list[^>]*(?:max-h-|overflow-y-auto)/', $pageSource) !== 1,
+    'Review queue must use the document scroll instead of trapping the wheel in a nested desktop scroller.'
+);
+social_original_assert(
+    str_contains($pageSource, "templateCarousel?.addEventListener('wheel'")
+    && str_contains($pageSource, "window.scrollBy({top:event.deltaY"),
+    'Vertical wheel input over the horizontal template carousel must continue scrolling the page.'
+);
 
 echo "Social Studio original creation tests passed.\n";

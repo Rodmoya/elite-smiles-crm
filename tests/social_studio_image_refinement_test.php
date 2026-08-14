@@ -46,5 +46,14 @@ $editorialTemplate = social_studio_editorial_overlay_template($draft + ['creatio
 social_refinement_assert(social_studio_overlay_template_fits($editorialTemplate), 'Canonical editorial overlay must fit the 4:5 canvas.');
 $displayBlocks = array_filter((array)($editorialTemplate['elements'] ?? []), static fn(array $element): bool => (string)($element['type'] ?? '') === 'text' && (float)($element['font_size'] ?? 0) >= 5);
 social_refinement_assert(count($displayBlocks) === 1, 'Canonical editorial overlay must have one dominant display headline.');
+$textByValue = [];
+foreach ((array)($editorialTemplate['elements'] ?? []) as $element) {
+    if ((string)($element['type'] ?? '') === 'text') $textByValue[(string)($element['text'] ?? '')] = $element;
+}
+social_refinement_assert((float)($textByValue['NATURAL SMILE DESIGN']['font_size'] ?? 0) >= 1.8, 'Editorial eyebrow must remain readable at Instagram review scale.');
+social_refinement_assert((float)($textByValue['REFINE SHAPE & SYMMETRY']['font_size'] ?? 0) >= 1.8, 'Editorial benefit copy must remain readable at Instagram review scale.');
+social_refinement_assert((float)($textByValue["COMPLIMENTARY\nCONSULTATION"]['font_size'] ?? 0) >= 3.2, 'Editorial CTA must have clear visual weight.');
+social_refinement_assert((float)($textByValue['DRAPER, UTAH']['font_size'] ?? 0) >= 1.7, 'Editorial location must remain readable.');
+social_refinement_assert(!isset($textByValue['EXPERTS NEAR YOU.']), 'Canonical layout must not include a tiny redundant footer line.');
 
 echo "Social Studio image refinement tests passed.\n";

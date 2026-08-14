@@ -39,5 +39,12 @@ social_refinement_assert(str_contains($page, 'data-social-refine-form'), 'The re
 social_refinement_assert(str_contains($page, 'Revision history'), 'The preview must expose saved revision history.');
 social_refinement_assert(str_contains($action, 'social_studio_refine_image_for_draft'), 'The refinement action must use the dedicated service workflow.');
 social_refinement_assert(str_contains($service, '$referenceImage = $revisionReference'), 'Refinements must send the current clean image back to the image model.');
+social_refinement_assert(str_contains($service, 'visible pores, fine expression lines, slight natural asymmetry'), 'Image prompts must explicitly prevent beauty-filter AI portraits.');
+social_refinement_assert(str_contains($service, 'subtle translucency'), 'Image prompts must require natural dental translucency.');
+social_refinement_assert(str_contains($page, 'Polish typography &amp; layout'), 'Original drafts must expose deterministic editorial layout polish.');
+$editorialTemplate = social_studio_editorial_overlay_template($draft + ['creation_mode' => 'original']);
+social_refinement_assert(social_studio_overlay_template_fits($editorialTemplate), 'Canonical editorial overlay must fit the 4:5 canvas.');
+$displayBlocks = array_filter((array)($editorialTemplate['elements'] ?? []), static fn(array $element): bool => (string)($element['type'] ?? '') === 'text' && (float)($element['font_size'] ?? 0) >= 5);
+social_refinement_assert(count($displayBlocks) === 1, 'Canonical editorial overlay must have one dominant display headline.');
 
 echo "Social Studio image refinement tests passed.\n";

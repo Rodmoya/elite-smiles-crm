@@ -110,6 +110,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         .social-mode-button[aria-pressed="true"] { border-color:#0f172a; background:#0f172a; color:#fff; }
         .social-preview-image { aspect-ratio:4/5; width:100%; object-fit:contain; background:#f1f5f9; }
         .social-scrollbar { scrollbar-width:thin; scrollbar-color:#94a3b8 transparent; }
+        body.social-studio-page { overflow-x:hidden; overflow-y:auto; overscroll-behavior-y:auto; }
         .social-workspace-tab[aria-current="page"] { background:#0f172a; border-color:#0f172a; color:#fff; }
         .social-calendar-day-today { border-color:#0f172a; box-shadow:0 0 0 1px #0f172a; }
         .social-calendar-card { transition:transform .2s ease, box-shadow .2s ease; }
@@ -122,7 +123,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         @media (min-width:1280px) { .social-production-grid { grid-template-columns:300px minmax(420px,1fr) 360px; } }
     </style>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+<body class="social-studio-page min-h-screen bg-slate-50 text-slate-900 antialiased">
 <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
 
 <main class="px-4 py-5 sm:px-6 lg:pl-80 lg:pr-8 lg:py-6">
@@ -313,7 +314,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
 
         <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="queue-title">
             <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 3 · Review</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
-            <div class="social-scrollbar mt-4 max-h-[740px] space-y-3 overflow-y-auto pr-1">
+            <div class="mt-4 space-y-3" data-social-review-list>
                 <?php if ($drafts === []): ?><div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">No drafts waiting.</div><?php endif; ?>
                 <?php foreach ($drafts as $draft): ?>
                     <?php $status=(string)($draft['status'] ?? 'review'); $imageUrl=social_studio_image_url($draft); $canPublish=in_array($status, ['approved','scheduled','publish_failed'], true); ?>
@@ -456,6 +457,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
     const cards = [...document.querySelectorAll('[data-social-reference]')];
     const search = document.getElementById('social-template-search');
     const group = document.getElementById('social-template-group');
+    const templateCarousel = document.getElementById('social-template-carousel');
     const empty = document.getElementById('social-template-empty');
     const copyMode = document.querySelector('input[name="copy_mode"]');
     const replaceFrom = document.getElementById('social-replace-from');
@@ -559,6 +561,11 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
     };
     search?.addEventListener('input', filterTemplates);
     group?.addEventListener('change', filterTemplates);
+    templateCarousel?.addEventListener('wheel', event => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+        event.preventDefault();
+        window.scrollBy({top:event.deltaY, left:0, behavior:'auto'});
+    }, {passive:false});
 
     document.getElementById('social-generate-form')?.addEventListener('submit', event => {
         if (!referenceInput.value) { event.preventDefault(); selectedLabel.textContent = 'Choose a Ready template first'; return; }

@@ -81,5 +81,7 @@ organic_assert(str_contains($eventSource, 'landing_page_events'), 'The first-par
 $adminSource = file_get_contents($root . '/landing_pages.php') ?: '';
 organic_assert(str_contains($adminSource, '$pageConversion'), 'The organic-page workspace must report visitor-to-lead conversion.');
 organic_assert(str_contains($adminSource, 'Publish organic page set'), 'The workspace must expose the canonical publishing action.');
+organic_assert(str_contains($adminSource, 'ON DUPLICATE KEY UPDATE'), 'Publishing must create missing canonical rows and reconcile existing rows.');
+organic_assert(str_contains($adminSource, "confirmLabel: 'Publish pages'"), 'The publishing confirmation must use an accurate action label.');
 
 echo "Organic landing page tests passed.\n";

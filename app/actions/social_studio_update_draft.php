@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/core/db.php';
 
-require_auth();
+require_marketing_access();
 require_csrf();
 
 $draftId = (int)post('draft_id', 0);

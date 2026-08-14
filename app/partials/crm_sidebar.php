@@ -18,7 +18,7 @@ $assistantCurrentUrl = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUE
 $assistantAuthToken = function_exists('auth_issue_assistant_api_token')
     ? auth_issue_assistant_api_token((int)($user['id'] ?? 0))
     : '';
-$crmCanUseMarketing = function_exists('auth_has_role') ? auth_has_role('admin', 'marketing_manager', 'staff') : true;
+$crmCanUseMarketing = function_exists('auth_can_use_marketing') ? auth_can_use_marketing() : true;
 $crmHasPatientMailings = is_file(dirname(__DIR__, 2) . '/patient-mailings.php');
 
 $crmNavItems = [
@@ -86,7 +86,7 @@ $crmNavItems = array_values(array_filter($crmNavItems, static fn(array $item): b
 
             <div class="crm-sidebar-title px-5 py-5">
                 <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">CRM</p>
-                <h1 class="mt-2 text-xl font-semibold tracking-tight text-slate-900"><?= e((string)$pageTitle) ?></h1>
+                <p class="mt-2 text-xl font-semibold tracking-tight text-slate-900"><?= e((string)$pageTitle) ?></p>
             </div>
 
             <nav class="flex-1 space-y-1 px-3" aria-label="CRM navigation">

@@ -461,6 +461,20 @@ if (!function_exists('auth_can_manage_leads')) {
     }
 }
 
+if (!function_exists('auth_can_use_marketing')) {
+    function auth_can_use_marketing(): bool
+    {
+        return auth_has_role('admin', 'marketing_manager', 'staff');
+    }
+}
+
+if (!function_exists('require_marketing_access')) {
+    function require_marketing_access(): void
+    {
+        require_role('admin', 'marketing_manager', 'staff');
+    }
+}
+
 if (!function_exists('require_lead_write_access')) {
     function require_lead_write_access(): void
     {

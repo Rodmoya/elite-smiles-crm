@@ -7,7 +7,7 @@ require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/social_studio/social_studio_service.php';
 
-require_auth();
+require_marketing_access();
 social_studio_ensure_schema();
 
 if (is_post() && post('action') === 'logout') {

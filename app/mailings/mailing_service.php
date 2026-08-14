@@ -58,7 +58,10 @@ if (!function_exists('mailing_ensure_schema')) {
             KEY idx_mailing_campaigns_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        if (!db_one('SHOW COLUMNS FROM mailing_campaigns LIKE :column_name', ['column_name' => 'image_storage_key'])) {
+        // MariaDB does not accept a bound parameter in SHOW COLUMNS ... LIKE.
+        // The previous prepared statement made the entire module appear unavailable
+        // after the tables were created successfully.
+        if (!db_one("SHOW COLUMNS FROM mailing_campaigns LIKE 'image_storage_key'")) {
             db_query('ALTER TABLE mailing_campaigns ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url');
         }
 
@@ -305,7 +308,7 @@ if (!function_exists('mailing_import_contacts_from_text')) {
 }
 
 if (!function_exists('mailing_dashboard_data')) {
-    function mailing_dashboard_data(): array
+    function mailing_dashboard_data(int $selectedCampaignId = 0): array
     {
         mailing_ensure_schema();
         $counts = [
@@ -314,10 +317,43 @@ if (!function_exists('mailing_dashboard_data')) {
             'drafts' => (int)(db_value("SELECT COUNT(*) FROM mailing_campaigns WHERE status IN ('draft', 'review')") ?? 0),
             'sent' => (int)(db_value("SELECT COUNT(*) FROM mailing_campaigns WHERE status = 'sent'") ?? 0),
         ];
-        $campaigns = db_all('SELECT * FROM mailing_campaigns ORDER BY created_at DESC, id DESC LIMIT 20');
+        $campaigns = db_all(
+            "SELECT c.*,
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id) AS recipient_count,
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.status = 'sent') AS delivered_count,
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.status = 'failed') AS failed_count,
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.opened_at IS NOT NULL) AS opened_count,
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.clicked_at IS NOT NULL) AS clicked_count
+             FROM mailing_campaigns c
+             ORDER BY c.created_at DESC, c.id DESC
+             LIMIT 20"
+        );
         $contacts = db_all('SELECT * FROM mailing_contacts ORDER BY updated_at DESC, id DESC LIMIT 12');
-        $selected = $campaigns[0] ?? null;
+        $selected = null;
+        if ($selectedCampaignId > 0) {
+            foreach ($campaigns as $campaign) {
+                if ((int)$campaign['id'] === $selectedCampaignId) {
+                    $selected = $campaign;
+                    break;
+                }
+            }
+        }
+        $selected ??= $campaigns[0] ?? null;
         return ['counts' => $counts, 'campaigns' => $campaigns, 'contacts' => $contacts, 'selected' => $selected];
+    }
+}
+
+if (!function_exists('mailing_system_health')) {
+    function mailing_system_health(bool $databaseReady = true): array
+    {
+        return [
+            'database' => $databaseReady,
+            'sender' => elite_smtp_is_configured(),
+            'copy_ai' => elite_openai_is_configured(),
+            'image_ai' => function_exists('social_studio_generate_image_binary')
+                && defined('GOOGLE_GEMINI_API_KEY')
+                && trim((string)GOOGLE_GEMINI_API_KEY) !== '',
+        ];
     }
 }
 
@@ -470,6 +506,56 @@ if (!function_exists('mailing_update_status')) {
     }
 }
 
+if (!function_exists('mailing_update_campaign')) {
+    function mailing_update_campaign(int $campaignId, array $input): array
+    {
+        $campaign = mailing_campaign($campaignId);
+        if (!$campaign) {
+            return ['ok' => false, 'message' => 'Campaign not found.'];
+        }
+        if (in_array((string)$campaign['status'], ['sending', 'sent'], true)) {
+            return ['ok' => false, 'message' => 'Sent campaigns are locked to preserve the delivery record.'];
+        }
+
+        $title = trim((string)($input['title'] ?? ''));
+        $subject = trim((string)($input['subject'] ?? ''));
+        $previewText = trim((string)($input['preview_text'] ?? ''));
+        $heroTitle = trim((string)($input['hero_title'] ?? ''));
+        $bodyHtml = mailing_sanitize_body_html((string)($input['body_html'] ?? ''));
+        $bodyText = trim((string)($input['body_text'] ?? strip_tags($bodyHtml)));
+        $ctaLabel = trim((string)($input['cta_label'] ?? ''));
+        $ctaUrl = trim((string)($input['cta_url'] ?? ''));
+
+        if ($title === '' || $subject === '' || $heroTitle === '' || $bodyHtml === '' || $ctaLabel === '') {
+            return ['ok' => false, 'message' => 'Title, subject, email headline, message, and button label are required.'];
+        }
+        if (!preg_match('#^https://#i', $ctaUrl)) {
+            return ['ok' => false, 'message' => 'The button destination must be a secure https:// URL.'];
+        }
+
+        db_query(
+            "UPDATE mailing_campaigns
+             SET title = :title, subject = :subject, preview_text = :preview_text,
+                 hero_title = :hero_title, body_html = :body_html, body_text = :body_text,
+                 cta_label = :cta_label, cta_url = :cta_url,
+                 status = 'review', approved_at = NULL, updated_at = NOW()
+             WHERE id = :id LIMIT 1",
+            [
+                'id' => $campaignId,
+                'title' => $title,
+                'subject' => $subject,
+                'preview_text' => $previewText,
+                'hero_title' => $heroTitle,
+                'body_html' => $bodyHtml,
+                'body_text' => $bodyText,
+                'cta_label' => $ctaLabel,
+                'cta_url' => $ctaUrl,
+            ]
+        );
+        return ['ok' => true, 'message' => 'Campaign saved and returned to review.'];
+    }
+}
+
 if (!function_exists('mailing_send_test')) {
     function mailing_send_test(int $campaignId, string $to): array
     {
@@ -494,11 +580,15 @@ if (!function_exists('mailing_send_campaign')) {
         if (!$campaign) {
             return ['ok' => false, 'message' => 'Campaign not found.'];
         }
-        if (!in_array((string)$campaign['status'], ['approved', 'scheduled', 'review'], true)) {
-            return ['ok' => false, 'message' => 'Campaign must be approved or in review before sending.'];
+        if (!in_array((string)$campaign['status'], ['approved', 'scheduled', 'sending'], true)) {
+            return ['ok' => false, 'message' => 'Approve the campaign before sending it.'];
         }
         if (!elite_smtp_is_configured()) {
             return ['ok' => false, 'message' => 'SMTP is not configured. Configure a real sender before sending patient mailings.'];
+        }
+        $subscribedCount = (int)(db_value("SELECT COUNT(*) FROM mailing_contacts WHERE opt_status = 'subscribed'") ?? 0);
+        if ($subscribedCount === 0) {
+            return ['ok' => false, 'message' => 'Import at least one subscribed contact before sending.'];
         }
 
         db_execute("UPDATE mailing_campaigns SET status = 'sending', updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $campaignId]);
@@ -508,7 +598,6 @@ if (!function_exists('mailing_send_campaign')) {
              LEFT JOIN mailing_recipients r
                ON r.contact_id = c.id
               AND r.campaign_id = :campaign_id
-              AND r.status IN ('sent', 'unsubscribed')
              WHERE c.opt_status = 'subscribed'
                AND r.id IS NULL
              ORDER BY c.id ASC
@@ -553,11 +642,25 @@ if (!function_exists('mailing_send_campaign')) {
             }
         }
 
-        db_execute(
-            "UPDATE mailing_campaigns SET status = 'sent', sent_at = NOW(), updated_at = NOW() WHERE id = :id LIMIT 1",
-            ['id' => $campaignId]
+        $remaining = (int)(db_value(
+            "SELECT COUNT(*)
+             FROM mailing_contacts c
+             LEFT JOIN mailing_recipients r
+               ON r.contact_id = c.id AND r.campaign_id = :campaign_id
+             WHERE c.opt_status = 'subscribed' AND r.id IS NULL",
+            ['campaign_id' => $campaignId]
+        ) ?? 0);
+        $finished = $remaining === 0;
+        db_query(
+            "UPDATE mailing_campaigns
+             SET status = :status, sent_at = IF(:finished = 1, NOW(), sent_at), updated_at = NOW()
+             WHERE id = :id LIMIT 1",
+            ['id' => $campaignId, 'status' => $finished ? 'sent' : 'sending', 'finished' => $finished ? 1 : 0]
         );
-        return ['ok' => true, 'message' => "Sent {$sent} email(s). Failed {$failed}.", 'sent' => $sent, 'failed' => $failed];
+        $message = $finished
+            ? "Delivery complete: {$sent} sent in this batch, {$failed} failed."
+            : "Batch complete: {$sent} sent, {$failed} failed, {$remaining} still queued. Continue sending to process the next batch.";
+        return ['ok' => true, 'message' => $message, 'sent' => $sent, 'failed' => $failed, 'remaining' => $remaining, 'finished' => $finished];
     }
 }
 

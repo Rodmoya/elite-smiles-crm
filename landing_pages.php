@@ -17,12 +17,7 @@ require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/landing_pages/bootstrap.php';
 
-require_auth();
-
-if (!auth_has_role('admin')) {
-    http_response_code(403);
-    exit('Access denied.');
-}
+require_marketing_access();
 
 // ── Config ────────────────────────────────────────────────────────────────────
 $procedures = [

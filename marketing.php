@@ -8,7 +8,7 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/leads/lead_meta.php';
 require_once __DIR__ . '/app/leads/lead_service.php';
 
-require_auth();
+require_marketing_access();
 
 if (is_post() && post('action') === 'logout') {
     require_csrf();

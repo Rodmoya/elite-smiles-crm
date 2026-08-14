@@ -15,6 +15,7 @@ require_once __DIR__ . '/app/config/config.php';
 require_once __DIR__ . '/app/core/helpers.php';
 require_once __DIR__ . '/app/core/db.php';
 require_once __DIR__ . '/app/core/auth.php';
+require_once __DIR__ . '/app/landing_pages/bootstrap.php';
 
 require_auth();
 
@@ -45,6 +46,15 @@ $cities = [
 
 $angles = ['' => 'Organic page'];
 
+$landingRegistry = landing_pages_registry();
+$canonicalPageDefinitions = [];
+foreach (($landingRegistry['map'] ?? []) as $canonicalSlug => $definition) {
+    if (!is_array($definition) || empty($definition['is_active']) || !empty($definition['angle'])) {
+        continue;
+    }
+    $canonicalPageDefinitions[(string) $canonicalSlug] = $definition;
+}
+
 // ── AJAX / POST handlers ───────────────────────────────────────────────────────
 if (is_post()) {
     $action = (string) post('action');
@@ -65,14 +75,33 @@ if (is_post()) {
         }
 
         if ($action === 'publish_organic_set') {
-            db_execute("UPDATE landing_pages SET is_active = 0, updated_at = NOW() WHERE angle <> '' AND angle IS NOT NULL");
-            db_execute(
-                "UPDATE landing_pages SET is_active = 1, updated_at = NOW()
-                 WHERE (angle = '' OR angle IS NULL)
-                   AND procedure_type IN ('veneers','implants','all_on_x','smile_makeover','lip_repositioning')
-                   AND city IN ('draper','lehi','south-jordan','highland','alpine','park-city','farmington','cedar-hills')"
-            );
-            echo json_encode(['ok' => true, 'message' => 'Published 40 canonical organic pages and retired historical angle aliases.']);
+            db_begin();
+            db_query('UPDATE landing_pages SET is_active = 0, updated_at = NOW() WHERE is_active <> 0');
+            foreach ($canonicalPageDefinitions as $canonicalSlug => $definition) {
+                db_query(
+                    "INSERT INTO landing_pages
+                        (slug, procedure_type, city, angle, layout_variant, question_set, traffic_source_default, is_active)
+                     VALUES
+                        (:slug, :procedure_type, :city, '', 'organic', :question_set, 'organic', 1)
+                     ON DUPLICATE KEY UPDATE
+                        procedure_type = VALUES(procedure_type),
+                        city = VALUES(city),
+                        angle = '',
+                        layout_variant = 'organic',
+                        question_set = VALUES(question_set),
+                        traffic_source_default = 'organic',
+                        is_active = 1,
+                        updated_at = NOW()",
+                    [
+                        'slug' => $canonicalSlug,
+                        'procedure_type' => (string) ($definition['procedure'] ?? ''),
+                        'city' => (string) ($definition['city'] ?? ''),
+                        'question_set' => (string) ($definition['question_set'] ?? 'organic-consultation.php'),
+                    ]
+                );
+            }
+            db_commit();
+            echo json_encode(['ok' => true, 'message' => 'Published exactly ' . count($canonicalPageDefinitions) . ' canonical organic pages and retired all legacy variants.']);
             exit;
         }
 
@@ -80,7 +109,11 @@ if (is_post()) {
         if ($action === 'bulk_procedure') {
             $proc   = (string) post('procedure');
             $status = (int) post('status');
-            db_execute("UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE procedure_type = :p AND (angle = '' OR angle IS NULL)", ['s' => $status, 'p' => $proc]);
+            foreach ($canonicalPageDefinitions as $canonicalSlug => $definition) {
+                if ((string) ($definition['procedure'] ?? '') === $proc) {
+                    db_execute('UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE slug = :slug', ['s' => $status, 'slug' => $canonicalSlug]);
+                }
+            }
             echo json_encode(['ok' => true]);
             exit;
         }
@@ -89,7 +122,11 @@ if (is_post()) {
         if ($action === 'bulk_city') {
             $city   = (string) post('city');
             $status = (int) post('status');
-            db_execute("UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE city = :c AND (angle = '' OR angle IS NULL)", ['s' => $status, 'c' => $city]);
+            foreach ($canonicalPageDefinitions as $canonicalSlug => $definition) {
+                if ((string) ($definition['city'] ?? '') === $city) {
+                    db_execute('UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE slug = :slug', ['s' => $status, 'slug' => $canonicalSlug]);
+                }
+            }
             echo json_encode(['ok' => true]);
             exit;
         }
@@ -150,13 +187,20 @@ if (is_post()) {
         throw new RuntimeException('Unknown action.');
 
     } catch (Throwable $e) {
+        if (db()->inTransaction()) {
+            db_rollBack();
+        }
         echo json_encode(['ok' => false, 'message' => $e->getMessage()]);
         exit;
     }
 }
 
 // ── Load all pages into a matrix ──────────────────────────────────────────────
-$allPages = db_all("SELECT id, slug, procedure_type, city, angle, is_active, hero_title, hero_image, updated_at FROM landing_pages WHERE angle = '' OR angle IS NULL ORDER BY procedure_type, city");
+$allPages = db_all("SELECT id, slug, procedure_type, city, angle, is_active, hero_title, hero_image, updated_at FROM landing_pages ORDER BY procedure_type, city");
+$allPages = array_values(array_filter(
+    $allPages,
+    static fn(array $page): bool => isset($canonicalPageDefinitions[(string) ($page['slug'] ?? '')])
+));
 
 // Index: $matrix[procedure][city][angle] = page row
 $matrix = [];
@@ -633,7 +677,10 @@ async function bulkProcedure(proc, status) {
 }
 
 async function publishOrganicSet(button) {
-    if (!(await window.crmConfirm('Publish all 40 canonical organic pages and deactivate the historical angle versions?'))) return;
+    if (!(await window.crmConfirm(
+        'Publish all 40 canonical organic pages and deactivate the historical angle versions?',
+        { title: 'Publish organic page set?', confirmLabel: 'Publish pages' }
+    ))) return;
     button.disabled = true;
     const data = await api({ action: 'publish_organic_set' });
     if (data.ok) {

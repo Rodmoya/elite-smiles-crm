@@ -15,7 +15,8 @@ if ($configured === '' || !hash_equals($configured, $provided)) {
 
 try {
     $limit = max(1, min(25, (int)($_GET['limit'] ?? 10)));
-    json_response(social_studio_publish_due($limit));
+    $result = social_studio_publish_due($limit);
+    json_response($result, !empty($result['ok']) ? 200 : 500);
 } catch (Throwable $e) {
     esm_log('social_studio', 'Social Studio publishing cron failed.', ['error' => $e->getMessage()]);
     json_response(['ok' => false, 'message' => 'Social Studio publishing run failed.'], 500);

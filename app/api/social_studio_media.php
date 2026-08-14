@@ -27,14 +27,21 @@ if ($path === '' || !is_file($path)) { // nosemgrep: php.lang.security.injection
     http_response_code(404);
     exit('Media not found.');
 }
-$mime = function_exists('mime_content_type') ? (string)(mime_content_type($path) ?: '') : ''; // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
-if (!in_array($mime, ['image/jpeg', 'image/png'], true)) {
+try {
+    $servedPath = social_studio_meta_prepare_image($path);
+} catch (Throwable $e) {
     http_response_code(415);
-    exit('Meta publishing requires a JPEG or PNG image.');
+    exit('Meta-ready image could not be prepared.');
+}
+$mime = function_exists('mime_content_type') ? (string)(mime_content_type($servedPath) ?: '') : ''; // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+if ($mime !== 'image/jpeg') {
+    http_response_code(415);
+    exit('Meta publishing requires a JPEG image.');
 }
 
 header('Content-Type: ' . $mime);
-header('Content-Length: ' . (string)filesize($path)); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+header('Content-Disposition: inline; filename="elite-smiles-post-' . $draftId . '.jpg"');
+header('Content-Length: ' . (string)filesize($servedPath)); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
 header('Cache-Control: public, max-age=3600, immutable');
 header('X-Content-Type-Options: nosniff');
-readfile($path); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+readfile($servedPath); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename

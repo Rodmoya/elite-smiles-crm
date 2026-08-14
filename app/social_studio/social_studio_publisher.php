@@ -32,6 +32,86 @@ if (!function_exists('social_studio_public_media_url')) {
     }
 }
 
+if (!function_exists('social_studio_meta_prepare_image')) {
+    /**
+     * Return a Meta-compatible JPEG path. Exact-overlay drafts are stored as SVG
+     * for browser fidelity, but Instagram's publishing API only accepts raster media.
+     */
+    function social_studio_meta_prepare_image(string $sourcePath): string
+    {
+        if ($sourcePath === '' || !is_file($sourcePath)) {
+            throw new RuntimeException('The approved branded image is missing.');
+        }
+
+        $mime = function_exists('mime_content_type') ? (string)(@mime_content_type($sourcePath) ?: '') : '';
+        if ($mime === 'image/jpeg') {
+            return $sourcePath;
+        }
+        if (!in_array($mime, ['image/png', 'image/webp', 'image/svg+xml', 'text/plain'], true)) {
+            throw new RuntimeException('The finished post is not a supported image format for Meta.');
+        }
+
+        $targetPath = $sourcePath . '.meta.jpg';
+        if (is_file($targetPath) && filemtime($targetPath) >= filemtime($sourcePath) && filesize($targetPath) > 0) {
+            return $targetPath;
+        }
+
+        if (in_array($mime, ['image/svg+xml', 'text/plain'], true)) {
+            if (!class_exists('Imagick')) {
+                throw new RuntimeException('The server image renderer is unavailable for this finished post.');
+            }
+            try {
+                $image = new Imagick();
+                $image->setResolution(144, 144);
+                $image->readImage($sourcePath);
+                $image->setIteratorIndex(0);
+                $image->setImageBackgroundColor('white');
+                $flattened = $image->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+                $flattened->setImageFormat('jpeg');
+                $flattened->setImageCompression(Imagick::COMPRESSION_JPEG);
+                $flattened->setImageCompressionQuality(90);
+                $flattened->stripImage();
+                $ok = $flattened->writeImage($targetPath);
+                $flattened->clear();
+                $image->clear();
+                if (!$ok) {
+                    throw new RuntimeException('JPEG output could not be saved.');
+                }
+            } catch (Throwable $e) {
+                @unlink($targetPath);
+                throw new RuntimeException('The finished overlay could not be converted for Meta: ' . $e->getMessage());
+            }
+        } else {
+            if (!function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+                throw new RuntimeException('The server image renderer is unavailable for this finished post.');
+            }
+            $bytes = @file_get_contents($sourcePath);
+            $source = is_string($bytes) ? @imagecreatefromstring($bytes) : false;
+            if (!$source) {
+                throw new RuntimeException('The finished post image could not be decoded for Meta.');
+            }
+            $width = imagesx($source);
+            $height = imagesy($source);
+            $canvas = imagecreatetruecolor($width, $height);
+            $white = imagecolorallocate($canvas, 255, 255, 255);
+            imagefilledrectangle($canvas, 0, 0, $width, $height, $white);
+            imagecopy($canvas, $source, 0, 0, 0, 0, $width, $height);
+            $ok = imagejpeg($canvas, $targetPath, 90);
+            imagedestroy($canvas);
+            imagedestroy($source);
+            if (!$ok) {
+                @unlink($targetPath);
+                throw new RuntimeException('The finished post could not be converted to JPEG for Meta.');
+            }
+        }
+
+        if (!is_file($targetPath) || filesize($targetPath) <= 0) {
+            throw new RuntimeException('The Meta-ready JPEG was not created.');
+        }
+        return $targetPath;
+    }
+}
+
 if (!function_exists('social_studio_meta_caption')) {
     function social_studio_meta_caption(array $draft): string
     {
@@ -258,6 +338,11 @@ if (!function_exists('social_studio_publish_draft')) {
         $path = social_studio_safe_storage_path($storageKey);
         if ($path === '' || !is_file($path)) {
             return ['ok' => false, 'message' => 'The approved branded image is missing.'];
+        }
+        try {
+            social_studio_meta_prepare_image($path);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
         }
 
         $claimed = db_query(

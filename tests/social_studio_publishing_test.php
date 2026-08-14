@@ -34,6 +34,8 @@ social_publish_assert(
 $publisherSource = file_get_contents(dirname(__DIR__) . '/app/social_studio/social_studio_publisher.php') ?: '';
 $pageSource = file_get_contents(dirname(__DIR__) . '/social-studio.php') ?: '';
 $publishActionSource = file_get_contents(dirname(__DIR__) . '/app/actions/social_studio_publish.php') ?: '';
+$mediaActionSource = file_get_contents(dirname(__DIR__) . '/app/api/social_studio_media.php') ?: '';
+$serviceSource = file_get_contents(dirname(__DIR__) . '/app/social_studio/social_studio_service.php') ?: '';
 social_publish_assert(str_contains($publisherSource, "'/media_publish'"), 'Instagram publishing must finalize the media container.');
 social_publish_assert(str_contains($publisherSource, "'/photos'"), 'Facebook publishing must use the Page photos endpoint.');
 social_publish_assert(str_contains($publisherSource, 'meta_instagram_post_id'), 'Instagram post IDs must be persisted for retry safety.');
@@ -51,6 +53,17 @@ social_publish_assert(str_contains($pageSource, "document.querySelectorAll('[dat
 social_publish_assert(str_contains($pageSource, 'if (toast) window.setTimeout(dismissToast, 5000);'), 'The centered result toast must dismiss automatically after five seconds.');
 social_publish_assert(str_contains($publishActionSource, "social_studio_update_status(\$draftId, 'approved'"), 'Immediate publishing must approve the reviewed draft before claiming it for Meta delivery.');
 social_publish_assert(str_contains($publishActionSource, 'Generate a finished image before posting this draft.'), 'Immediate publishing must fail safely when the finished image is missing.');
+social_publish_assert(str_contains($publisherSource, 'function social_studio_meta_prepare_image'), 'Publishing must prepare a Meta-compatible raster image before delivery.');
+social_publish_assert(str_contains($publisherSource, "setImageFormat('jpeg')"), 'Exact SVG overlays must be rasterized to JPEG without removing their approved design.');
+social_publish_assert(str_contains($mediaActionSource, "filename=\"elite-smiles-post-"), 'The public Meta endpoint must identify the finished media as a JPEG file.');
+social_publish_assert(str_contains($serviceSource, '"review", "draft", "publish_failed"'), 'Failed immediate posts must remain visible in the review queue for recovery.');
+social_publish_assert(str_contains($publishActionSource, "!empty(\$result['ok']) ? 'published' : 'create'"), 'Failed immediate posts must return to Create and review instead of an empty Published screen.');
+
+$jpegFixture = tempnam(sys_get_temp_dir(), 'social-meta-jpeg-');
+social_publish_assert(is_string($jpegFixture), 'A JPEG fixture path must be available.');
+file_put_contents($jpegFixture, base64_decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==', true));
+social_publish_assert(social_studio_meta_prepare_image($jpegFixture) === $jpegFixture, 'Existing JPEG posts must pass through without unnecessary conversion.');
+@unlink($jpegFixture);
 
 $workflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/social-studio-publisher.yml') ?: '';
 social_publish_assert(str_contains($workflow, '*/5 * * * *'), 'The publishing worker must run every five minutes.');

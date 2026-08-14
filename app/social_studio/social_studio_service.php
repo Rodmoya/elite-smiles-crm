@@ -1127,7 +1127,7 @@ if (!function_exists('social_studio_dashboard_data')) {
 
         return [
             'counts' => $counts,
-            'drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft") ORDER BY FIELD(status, "review", "draft"), id DESC LIMIT 24'),
+            'drafts' => db_all('SELECT * FROM social_studio_drafts WHERE status IN ("review", "draft", "publish_failed") ORDER BY FIELD(status, "review", "draft", "publish_failed"), id DESC LIMIT 24'),
             'selected' => $selected,
             'schedule' => db_all('SELECT * FROM social_studio_drafts WHERE scheduled_at IS NOT NULL AND status IN ("approved", "scheduled", "publish_failed") ORDER BY scheduled_at ASC LIMIT 8'),
             'approved_unscheduled' => db_all('SELECT * FROM social_studio_drafts WHERE status="approved" AND scheduled_at IS NULL ORDER BY COALESCE(approved_at, created_at) ASC, id ASC LIMIT 50'),
@@ -2002,6 +2002,7 @@ if (!function_exists('social_studio_update_status')) {
             $path = social_studio_safe_storage_path((string)($draft[$key] ?? ''));
             if ($path !== '' && is_file($path)) {
                 @unlink($path);
+                @unlink($path . '.meta.jpg');
             }
         }
         return db_query('DELETE FROM social_studio_drafts WHERE id = :id', ['id' => $draftId])->rowCount() > 0;
@@ -2016,6 +2017,7 @@ if (!function_exists('social_studio_update_status')) {
                 $path = social_studio_safe_storage_path((string)($draft[$key] ?? ''));
                 if ($path !== '' && is_file($path)) {
                     @unlink($path);
+                    @unlink($path . '.meta.jpg');
                 }
             }
         }

@@ -39,5 +39,6 @@ if ($mode === 'schedule') {
     $week = trim((string)post('week', ''));
     redirect(base_url('social-studio.php?view=calendar' . ($week !== '' ? '&week=' . rawurlencode($week) : '') . '&draft=' . $draftId));
 }
-redirect(base_url('social-studio.php?view=published&draft=' . $draftId));
+$targetView = !empty($result['ok']) ? 'published' : 'create';
+redirect(base_url('social-studio.php?view=' . $targetView . '&draft=' . $draftId));
 

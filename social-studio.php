@@ -119,7 +119,9 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         .social-schedule-card[draggable="true"]:active { cursor:grabbing; }
         .social-schedule-card.is-dragging { opacity:.45; transform:scale(.98); }
         .social-calendar-dropzone.is-dragover { border-color:#059669; background:#ecfdf5; box-shadow:0 0 0 3px rgba(5,150,105,.15); }
-        @media (prefers-reduced-motion:reduce) { .social-calendar-card { transition:none; } .social-calendar-card:hover { transform:none; } }
+        .social-action-toast { animation:social-toast-in .22s ease-out both; }
+        @keyframes social-toast-in { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @media (prefers-reduced-motion:reduce) { .social-calendar-card { transition:none; } .social-calendar-card:hover { transform:none; } .social-action-toast { animation:none; } }
         @media (min-width:1280px) { .social-production-grid { grid-template-columns:300px minmax(420px,1fr) 360px; } }
     </style>
 </head>
@@ -147,8 +149,6 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         <a class="social-workspace-tab flex min-h-12 items-center justify-between rounded-xl border border-transparent px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2" href="<?= e(base_url('social-studio.php?view=brand-book')) ?>" aria-current="<?= $activeView === 'brand-book' ? 'page' : 'false' ?>"><span>Brand Book</span><span class="rounded-full bg-violet-50 px-2 py-1 text-xs text-violet-700">v<?= e((string)($brandBook['version'] ?? 1)) ?></span></a>
     </nav>
 
-    <?php if ($successMessage !== ''): ?><div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><?= e((string)$successMessage) ?></div><?php endif; ?>
-    <?php if ($errorMessage !== ''): ?><div role="alert" class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><?= e((string)$errorMessage) ?></div><?php endif; ?>
     <?php if ($autoGenerateIds !== []): ?><div id="social-generation-progress" role="status" aria-live="polite" class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Preparing image generation…</div><?php endif; ?>
 
     <?php if ($activeView === 'create'): ?>
@@ -313,7 +313,7 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         </section>
 
         <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="queue-title">
-            <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 3 · Review</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" onsubmit="return confirm('Clear every social draft? This cannot be undone.');"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
+            <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Stage 3 · Review</p><h2 id="queue-title" class="mt-1 text-lg font-semibold text-slate-950">Review queue</h2></div><form method="POST" action="<?= e(base_url('app/actions/social_studio_clear.php')) ?>" data-social-action-form data-social-confirm="Clear every social draft? This cannot be undone." data-social-loading-message="Clearing the review queue…"><?= csrf_input() ?><button class="min-h-11 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700" type="submit">Clear</button></form></div>
             <div class="mt-4 space-y-3" data-social-review-list>
                 <?php if ($drafts === []): ?><div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">No drafts waiting.</div><?php endif; ?>
                 <?php foreach ($drafts as $draft): ?>
@@ -326,12 +326,12 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
                             <?php if (in_array($status, ['review','draft'], true)): ?>
                                 <form method="POST" action="<?= e(base_url('app/actions/social_studio_status.php')) ?>"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="status" value="approved"><button class="min-h-11 w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" type="submit" <?= $imageUrl === '' ? 'disabled' : '' ?>>Approve &amp; schedule</button></form>
                             <?php elseif ($canPublish): ?>
-                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" onsubmit="return confirm('Publish this approved post now to Elite Smiles on Facebook and Instagram?');"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="now"><button class="min-h-11 w-full rounded-lg bg-emerald-600 text-xs font-semibold text-white" type="submit"><?= $status === 'publish_failed' ? 'Retry publish' : 'Publish now' ?></button></form>
+                                <form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" data-social-action-form data-social-confirm="Publish this approved post now to Elite Smiles on Facebook and Instagram?" data-social-loading-message="Publishing to Facebook and Instagram…"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="now"><button class="min-h-11 w-full rounded-lg bg-emerald-600 text-xs font-semibold text-white" type="submit"><?= $status === 'publish_failed' ? 'Retry publish' : 'Publish now' ?></button></form>
                             <?php else: ?>
                                 <button class="min-h-11 rounded-lg border border-slate-200 text-xs font-semibold text-slate-500" type="button" disabled><?= e(social_studio_status_labels()[$status] ?? $status) ?></button>
                             <?php endif; ?>
-                            <form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" onsubmit="return confirm('Delete this draft?');"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-rose-200 text-xs font-semibold text-rose-700" type="submit">Delete</button></form>
-                            <?php if (in_array($status, ['review','draft'], true)): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="col-span-2" onsubmit="return confirm('Post this draft now to Elite Smiles on Facebook and Instagram?');"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="now"><input type="hidden" name="approve_first" value="1"><button class="min-h-11 w-full rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" type="submit" <?= $imageUrl === '' ? 'disabled' : '' ?>>Post now</button></form><?php endif; ?>
+                            <form method="POST" action="<?= e(base_url('app/actions/social_studio_delete.php')) ?>" data-social-action-form data-social-confirm="Delete this draft?" data-social-loading-message="Deleting draft…"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><button class="min-h-11 w-full rounded-lg border border-rose-200 text-xs font-semibold text-rose-700" type="submit">Delete</button></form>
+                            <?php if (in_array($status, ['review','draft'], true)): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="col-span-2" data-social-action-form data-social-confirm="Post this draft now to Elite Smiles on Facebook and Instagram?" data-social-loading-message="Publishing to Facebook and Instagram…"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="now"><input type="hidden" name="approve_first" value="1"><button class="min-h-11 w-full rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" type="submit" <?= $imageUrl === '' ? 'disabled' : '' ?>>Post now</button></form><?php endif; ?>
                         </div>
                         <?php if ($canPublish): ?><form method="POST" action="<?= e(base_url('app/actions/social_studio_publish.php')) ?>" class="mt-2 grid grid-cols-[1fr_auto] gap-2"><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$draft['id']) ?>"><input type="hidden" name="mode" value="schedule"><label class="sr-only" for="schedule-<?= e((string)$draft['id']) ?>">Schedule publishing time</label><input id="schedule-<?= e((string)$draft['id']) ?>" name="scheduled_at" type="datetime-local" value="<?= e(!empty($draft['scheduled_at']) ? date('Y-m-d\TH:i', strtotime((string)$draft['scheduled_at'])) : $defaultScheduleLocal) ?>" min="<?= e(date('Y-m-d\TH:i', time()+60)) ?>" class="min-h-11 min-w-0 rounded-lg border border-slate-300 px-2 text-xs"><button class="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold" type="submit">Schedule</button></form><?php endif; ?>
                     </article>
@@ -444,6 +444,34 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
     <div id="social-schedule-announcement" class="sr-only" role="status" aria-live="polite"></div>
 </main>
 
+<?php if ($successMessage !== '' || $errorMessage !== ''): ?>
+    <?php $toastIsError = $errorMessage !== ''; $toastMessage = $toastIsError ? $errorMessage : $successMessage; ?>
+    <div id="social-toast" class="pointer-events-none fixed inset-0 z-[110] grid place-items-center px-4" role="<?= $toastIsError ? 'alert' : 'status' ?>" aria-live="<?= $toastIsError ? 'assertive' : 'polite' ?>" aria-atomic="true">
+        <div class="social-action-toast pointer-events-auto flex w-[min(90vw,420px)] items-start gap-3 rounded-2xl border <?= $toastIsError ? 'border-rose-200 bg-rose-50 text-rose-950' : 'border-emerald-200 bg-white text-slate-950' ?> p-5 shadow-2xl">
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full <?= $toastIsError ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700' ?>" aria-hidden="true">
+                <?php if ($toastIsError): ?>
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.7 2.4 17.4A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.6L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>
+                <?php else: ?>
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.25"><path d="m5 12 4 4L19 6"/></svg>
+                <?php endif; ?>
+            </span>
+            <div class="min-w-0 flex-1">
+                <p class="font-semibold"><?= $toastIsError ? 'Action needs attention' : 'Action completed' ?></p>
+                <p class="mt-1 text-sm leading-5 <?= $toastIsError ? 'text-rose-800' : 'text-slate-600' ?>"><?= e((string)$toastMessage) ?></p>
+            </div>
+            <button type="button" data-social-toast-close class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xl text-slate-500 transition hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-slate-900" aria-label="Dismiss message">×</button>
+        </div>
+    </div>
+<?php endif; ?>
+
+<div id="social-action-loader" class="fixed inset-0 z-[100] hidden place-items-center bg-slate-950/55 px-4 backdrop-blur-sm" role="status" aria-live="assertive" aria-atomic="true" aria-hidden="true">
+    <div class="w-[min(88vw,340px)] rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <svg class="mx-auto h-11 w-11 animate-spin text-emerald-600" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path class="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path></svg>
+        <p id="social-action-loader-title" class="mt-4 text-base font-semibold text-slate-950">Working…</p>
+        <p class="mt-1 text-sm text-slate-500">Keep this page open.</p>
+    </div>
+</div>
+
 <dialog id="social-post-modal" class="w-[min(94vw,1180px)] rounded-2xl border-0 bg-transparent p-0 shadow-2xl backdrop:bg-slate-950/60">
     <div class="grid max-h-[92dvh] overflow-y-auto rounded-2xl bg-white lg:grid-cols-[minmax(0,1.2fr)_minmax(340px,.8fr)] lg:overflow-hidden"><div class="grid min-h-[420px] place-items-center bg-slate-950"><img id="social-modal-image" class="max-h-[88vh] w-full object-contain" alt=""></div><div class="flex min-h-0 flex-col"><header class="flex items-center gap-3 border-b border-slate-100 p-4"><img class="h-9 w-9 rounded-full" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span id="social-modal-status" class="ml-auto rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold"></span><button type="button" data-social-close class="grid h-11 w-11 place-items-center rounded-full text-2xl" aria-label="Close preview">×</button></header><form method="POST" action="<?= e(base_url('app/actions/social_studio_update_draft.php')) ?>" class="flex min-h-0 flex-1 flex-col"><?= csrf_input() ?><input id="social-modal-draft-id" type="hidden" name="draft_id" value=""><div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5"><label class="block text-sm font-semibold text-slate-800">Caption<textarea id="social-modal-caption" name="caption" rows="10" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm leading-6"></textarea></label><label class="block text-sm font-semibold text-slate-800">Hashtags<textarea id="social-modal-hashtags" name="hashtags" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm leading-6"></textarea></label></div><footer class="grid grid-cols-2 gap-2 border-t border-slate-100 p-4"><button type="button" data-social-close class="min-h-11 rounded-xl border border-slate-300 text-sm font-semibold">Close</button><button type="submit" class="min-h-11 rounded-xl bg-slate-950 text-sm font-semibold text-white">Save copy</button></footer></form></div></div>
 </dialog>
@@ -474,7 +502,36 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
     const scheduleAnnouncement = document.getElementById('social-schedule-announcement');
     const scheduleCards = [...document.querySelectorAll('[data-schedule-card]')];
     const calendarDays = [...document.querySelectorAll('[data-calendar-day]')];
+    const actionLoader = document.getElementById('social-action-loader');
+    const actionLoaderTitle = document.getElementById('social-action-loader-title');
+    const toast = document.getElementById('social-toast');
     let draggedScheduleCard = null;
+    const dismissToast = () => {
+        if (!toast) return;
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity .18s ease';
+        window.setTimeout(() => toast.remove(), 200);
+    };
+    document.querySelector('[data-social-toast-close]')?.addEventListener('click', dismissToast);
+    if (toast) window.setTimeout(dismissToast, 5000);
+
+    const showActionLoader = message => {
+        if (!actionLoader) return;
+        if (actionLoaderTitle) actionLoaderTitle.textContent = message || 'Working…';
+        actionLoader.classList.remove('hidden');
+        actionLoader.classList.add('grid');
+        actionLoader.setAttribute('aria-hidden', 'false');
+        document.body.setAttribute('aria-busy', 'true');
+    };
+    document.querySelectorAll('[data-social-action-form]').forEach(form => form.addEventListener('submit', event => {
+        const confirmation = form.dataset.socialConfirm || '';
+        if (confirmation && !window.confirm(confirmation)) {
+            event.preventDefault();
+            return;
+        }
+        form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; });
+        showActionLoader(form.dataset.socialLoadingMessage || 'Working…');
+    }));
     const setCreationMode = mode => {
         modeButtons.forEach(button => button.setAttribute('aria-pressed', button.dataset.socialMode === mode ? 'true' : 'false'));
         modePanels.forEach(panel => { panel.hidden = panel.dataset.socialModePanel !== mode && panel.dataset.socialModeOnly !== mode; });

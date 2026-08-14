@@ -40,6 +40,13 @@ social_publish_assert(str_contains($publisherSource, 'meta_instagram_post_id'), 
 social_publish_assert(str_contains($publisherSource, 'meta_facebook_post_id'), 'Facebook post IDs must be persisted for retry safety.');
 social_publish_assert(str_contains($pageSource, '>Post now</button>'), 'Stage 3 review cards must expose an immediate Post now action.');
 social_publish_assert(str_contains($pageSource, 'name="approve_first" value="1"'), 'Immediate publishing must explicitly request approval before Meta delivery.');
+social_publish_assert(str_contains($pageSource, 'id="social-action-loader"'), 'Immediate publish and delete actions must show a centered blocking loader.');
+social_publish_assert(str_contains($pageSource, 'data-social-loading-message="Publishing to Facebook and Instagram…"'), 'Immediate publishing must explain what is happening while Meta delivery is in progress.');
+social_publish_assert(str_contains($pageSource, 'data-social-loading-message="Deleting draft…"'), 'Draft deletion must explain what is happening while the request is in progress.');
+social_publish_assert(str_contains($pageSource, 'id="social-toast"'), 'Social Studio flash results must render as a centered toast.');
+social_publish_assert(str_contains($pageSource, 'aria-live="<?= $toastIsError ? \'assertive\' : \'polite\' ?>"'), 'The centered result toast must announce success and failure accessibly.');
+social_publish_assert(str_contains($pageSource, "document.querySelectorAll('[data-social-action-form]')"), 'Action forms must share double-submit prevention and loader behavior.');
+social_publish_assert(str_contains($pageSource, 'if (toast) window.setTimeout(dismissToast, 5000);'), 'The centered result toast must dismiss automatically after five seconds.');
 social_publish_assert(str_contains($publishActionSource, "social_studio_update_status(\$draftId, 'approved'"), 'Immediate publishing must approve the reviewed draft before claiming it for Meta delivery.');
 social_publish_assert(str_contains($publishActionSource, 'Generate a finished image before posting this draft.'), 'Immediate publishing must fail safely when the finished image is missing.');
 

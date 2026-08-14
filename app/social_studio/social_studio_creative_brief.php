@@ -209,6 +209,8 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             ['key' => 'image_text', 'label' => 'Clean image contains no text or logo', 'pass' => $visualReviewed && !empty($visual['no_text_or_logo'])],
             ['key' => 'focus', 'label' => 'Primary subject is sharp', 'pass' => $visualReviewed && !empty($visual['sharp_focus'])],
             ['key' => 'anatomy', 'label' => 'Face and dental anatomy are credible', 'pass' => $visualReviewed && !empty($visual['credible_anatomy'])],
+            ['key' => 'realism', 'label' => 'Portrait looks naturally photographed, not AI-generated', 'pass' => $visualReviewed && !empty($visual['realistic_appearance'])],
+            ['key' => 'dental_realism', 'label' => 'Teeth look bright, individual, and naturally translucent', 'pass' => $visualReviewed && !empty($visual['natural_dental_aesthetics'])],
             ['key' => 'framing', 'label' => 'Eyes and smile framing pass when applicable', 'pass' => $visualReviewed && !empty($visual['framing_pass'])],
         ];
         $passed = count(array_filter($checks, static fn(array $check): bool => !empty($check['pass'])));
@@ -228,13 +230,15 @@ if (!function_exists('social_studio_creative_brief_schema')) {
                     'no_text_or_logo' => ['type' => 'boolean'],
                     'sharp_focus' => ['type' => 'boolean'],
                     'credible_anatomy' => ['type' => 'boolean'],
+                    'realistic_appearance' => ['type' => 'boolean'],
+                    'natural_dental_aesthetics' => ['type' => 'boolean'],
                     'framing_pass' => ['type' => 'boolean'],
                     'notes' => ['type' => 'string'],
                 ],
-                'required' => ['no_text_or_logo', 'sharp_focus', 'credible_anatomy', 'framing_pass', 'notes'],
+                'required' => ['no_text_or_logo', 'sharp_focus', 'credible_anatomy', 'realistic_appearance', 'natural_dental_aesthetics', 'framing_pass', 'notes'],
             ];
             $mime = (string)(@mime_content_type($rawPath) ?: 'image/png');
-            $response = elite_openai_json_response('You are a strict visual QA reviewer for Elite Smiles social imagery. Check the clean generated image only. For a human portrait, framing_pass is true when both eyes themselves are completely visible and sharp and the full smile is visible. Count the two visible eyes carefully. Editorial cropping of hair, the top of the head, ears, shoulders, or torso is acceptable and must not cause a framing failure. For a non-human clinical/3D visual, pass when the focal anatomy is complete and unobstructed. Fail readable words, logos, watermarks, blur, an actually hidden or cut-off eye, a cut-off smile, distorted teeth, or implausible anatomy. Enforce the active Brand Book: ' . social_studio_brand_book_prompt(), 'Review this generated asset against the Elite Smiles image guardrails.', $schema, 'social_studio_visual_guardrails', 'data:' . $mime . ';base64,' . base64_encode($bytes));
+            $response = elite_openai_json_response('You are a strict visual QA reviewer for Elite Smiles social imagery. Check the clean generated image only. For a human portrait, realistic_appearance is true only when skin retains pores, fine expression lines, slight facial asymmetry, realistic eyes and hair, and an unforced photographic expression; fail plastic skin, beauty-filter smoothing, synthetic symmetry, uncanny eyes, or an obvious AI/stock-render appearance. natural_dental_aesthetics is true only when teeth have credible individual shape, subtle translucency and restrained natural tonal variation; fail opaque, perfectly uniform, oversized, over-whitened, duplicated, or synthetic-looking teeth. framing_pass is true when both eyes themselves are completely visible and sharp and the full smile is visible. Count the two visible eyes carefully. Editorial cropping of hair, ears, shoulders, or torso is acceptable, but an incomplete forehead/head crop that makes the portrait feel accidental should fail. For a non-human clinical/3D visual, realistic_appearance and natural_dental_aesthetics pass when the visual is intentionally clinical and anatomically credible. Fail readable words, logos, watermarks, blur, a hidden or cut-off eye, a cut-off smile, distorted teeth, or implausible anatomy. Enforce the active Brand Book: ' . social_studio_brand_book_prompt(), 'Review this generated asset against the Elite Smiles image guardrails.', $schema, 'social_studio_visual_guardrails', 'data:' . $mime . ';base64,' . base64_encode($bytes));
             if (!empty($response['ok']) && is_array($response['data'] ?? null)) $visual = $response['data'];
         }
         $guardrails = social_studio_draft_guardrails($draft, $visual);

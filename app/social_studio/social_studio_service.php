@@ -1360,7 +1360,7 @@ if (!function_exists('social_studio_image_revision_prompt')) {
         return $baseImagePrompt
             . "\n\nITERATIVE IMAGE REVISION\n"
             . "Edit the supplied current clean photograph; do not create or alter any text layer. Preserve its overall subject, visual identity, premium editorial treatment, aspect ratio, and intentional negative space unless the instruction explicitly requires a composition change. Apply only this requested change: {$instruction}\n"
-            . "The approved overlay copy, typography, font sizes, colors, positions, CTA, caption, and hashtags are locked and will be reapplied by the CRM after this edit. Do not render words, letters, logos, badges, watermarks, borders, or graphic overlays into the photograph. Keep both eyes visible whenever the face is shown, the smile and teeth tack-sharp, skin and anatomy realistic, and the result compliant with the active Elite Smiles Brand Book."
+            . "The approved overlay copy, typography, font sizes, colors, positions, CTA, caption, and hashtags are locked and will be reapplied by the CRM after this edit. Do not render words, letters, logos, badges, watermarks, borders, or graphic overlays into the photograph. Keep both eyes visible whenever the face is shown. Preserve visible pores, fine expression lines, slight facial asymmetry, realistic eyes and hair, and an unforced expression. Teeth must remain bright but individually shaped, subtly translucent, naturally varied, and anatomically credible—never opaque, uniform, oversized, over-whitened, or artificially perfect. The result must comply with the active Elite Smiles Brand Book."
             . "\n\n" . social_studio_brand_book_prompt();
     }
 }
@@ -1492,7 +1492,7 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
 
         $visualGuardrailFailed = false;
         foreach ((array)($guardrails['checks'] ?? []) as $check) {
-            if (in_array((string)($check['key'] ?? ''), ['image_text', 'focus', 'anatomy', 'framing'], true) && empty($check['pass'])) {
+            if (in_array((string)($check['key'] ?? ''), ['image_text', 'focus', 'anatomy', 'realism', 'dental_realism', 'framing'], true) && empty($check['pass'])) {
                 $visualGuardrailFailed = true;
                 break;
             }
@@ -1511,6 +1511,96 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
 }
 
 if (!function_exists('social_studio_refine_image_for_draft')) {
+    function social_studio_editorial_overlay_template(array $draft): array
+    {
+        $focus = (string)($draft['content_focus'] ?? 'veneers');
+        $copy = match ($focus) {
+            'implants' => [
+                'eyebrow' => 'RESTORE WITH CONFIDENCE', 'headline' => 'DENTAL\nIMPLANTS',
+                'subhead' => 'Thoughtful planning. Natural function.',
+                'benefits' => ['PRESERVE BONE', 'RESTORE COMFORT', 'DESIGNED TO LAST'],
+            ],
+            'lip_repositioning' => [
+                'eyebrow' => 'BALANCED SMILE DESIGN', 'headline' => 'LIP\nREPOSITIONING',
+                'subhead' => 'Reveal more of your smile—not your gums.',
+                'benefits' => ['REFINE YOUR SMILE LINE', 'PERSONALIZED PLANNING', 'NATURAL-LOOKING BALANCE'],
+            ],
+            'smile_makeover' => [
+                'eyebrow' => 'DESIGNED AROUND YOU', 'headline' => 'SMILE\nMAKEOVER',
+                'subhead' => 'Every detail works together.',
+                'benefits' => ['PERSONALIZED DESIGN', 'BALANCED PROPORTIONS', 'NATURAL-LOOKING RESULTS'],
+            ],
+            default => [
+                'eyebrow' => 'NATURAL SMILE DESIGN', 'headline' => 'VENEERS',
+                'subhead' => 'Confidence starts with thoughtful details.',
+                'benefits' => ['REFINE SHAPE & SYMMETRY', 'CONCEAL CHIPS & GAPS', 'DESIGNED TO LOOK NATURAL'],
+            ],
+        };
+        $text = static fn(string $value, float $x, float $y, float $width, float $height, string $family, float $size, int $weight, float $lineHeight = 1.08, float $spacing = 0.0, string $color = '#20252d'): array => [
+            'type' => 'text', 'text' => $value, 'x' => $x, 'y' => $y, 'width' => $width, 'height' => $height,
+            'font_role' => in_array($family, ['bodoni', 'didot', 'playfair', 'garamond', 'georgia'], true) ? 'serif' : 'sans',
+            'font_family' => $family, 'font_style' => 'normal', 'font_size' => $size, 'font_weight' => $weight,
+            'line_height' => $lineHeight, 'letter_spacing' => $spacing, 'color' => $color,
+            'background_color' => 'transparent', 'border_color' => 'transparent', 'border_width' => 0,
+            'border_radius' => 0, 'align' => 'left', 'uppercase' => false,
+        ];
+        $line = static fn(float $x, float $y, float $width): array => [
+            'type' => 'line', 'text' => '', 'x' => $x, 'y' => $y, 'width' => $width, 'height' => .12,
+            'font_role' => 'sans', 'font_family' => 'helvetica', 'font_style' => 'normal', 'font_size' => 1,
+            'font_weight' => 400, 'line_height' => 1, 'letter_spacing' => 0, 'color' => 'transparent',
+            'background_color' => '#a8895c', 'border_color' => 'transparent', 'border_width' => 0,
+            'border_radius' => 0, 'align' => 'left', 'uppercase' => false,
+        ];
+        $elements = [
+            $text($copy['eyebrow'], 7.5, 9.0, 38, 3.5, 'montserrat', 1.35, 600, 1, .16, '#8a6b43'),
+            $text($copy['headline'], 7.5, 14.0, 40, 14, 'bodoni', 6.0, 400, .88, -.025),
+            $line(7.5, 28.5, 9.5),
+            $text($copy['subhead'], 7.5, 32.0, 35, 8, 'helvetica', 2.0, 500, 1.25),
+        ];
+        foreach ($copy['benefits'] as $index => $benefit) {
+            $y = 45.0 + ($index * 8.0);
+            $elements[] = $line(7.5, $y + 1.3, 2.2);
+            $elements[] = $text($benefit, 11.0, $y, 31, 4.5, 'montserrat', 1.42, 600, 1.18, .08);
+        }
+        $elements[] = $text('BOOK YOUR', 7.5, 70.5, 30, 3, 'montserrat', 1.18, 600, 1, .14, '#8a6b43');
+        $elements[] = $text("COMPLIMENTARY\nCONSULTATION", 7.5, 74.0, 36, 8, 'montserrat', 2.65, 700, 1.02, .015);
+        $elements[] = $line(7.5, 84.0, 12.0);
+        $elements[] = $text('DRAPER, UTAH', 7.5, 87.0, 28, 3.5, 'montserrat', 1.35, 650, 1, .12, '#8a6b43');
+        $elements[] = $text('EXPERTS NEAR YOU.', 7.5, 90.5, 28, 3, 'montserrat', 1.02, 500, 1, .11);
+
+        $template = social_studio_normalize_overlay_template([
+            'version' => 1, 'aspect_ratio' => '4:5', 'canvas_background' => 'transparent',
+            'image_fit' => 'cover', 'elements' => $elements,
+        ]);
+        $brief = json_decode((string)($draft['creative_brief_json'] ?? ''), true);
+        $position = is_array($brief) ? (string)($brief['text_position'] ?? 'left') : (string)($draft['text_position'] ?? 'left');
+        return social_studio_position_overlay_template($template, $position === 'right' ? 'right' : 'left');
+    }
+
+    function social_studio_polish_original_design(int $draftId): array
+    {
+        social_studio_ensure_schema();
+        $draft = db_one('SELECT * FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
+        if (!$draft) return ['ok' => false, 'message' => 'Social draft not found.'];
+        if ((string)($draft['creation_mode'] ?? '') !== 'original') return ['ok' => false, 'message' => 'Design polish is available for original drafts.'];
+        if (!in_array((string)($draft['status'] ?? ''), ['draft', 'review'], true)) return ['ok' => false, 'message' => 'Only drafts in review can be polished.'];
+        $rawPath = social_studio_safe_storage_path((string)($draft['image_storage_key'] ?? ''));
+        if (!$rawPath || !is_file($rawPath)) return ['ok' => false, 'message' => 'Generate the clean photograph before polishing the design.'];
+
+        $template = social_studio_editorial_overlay_template($draft);
+        if ($template === [] || !social_studio_overlay_template_fits($template)) return ['ok' => false, 'message' => 'The editorial layout did not pass geometry checks.'];
+        $brandedKey = 'drafts/' . $draftId . '/branded-polished-' . date('Ymd-His') . '.svg';
+        $brandedPath = social_studio_safe_storage_path($brandedKey);
+        if (!$brandedPath || !social_studio_create_branded_image($rawPath, $brandedPath, $template)) return ['ok' => false, 'message' => 'The polished design could not be rendered.'];
+        db_execute('UPDATE social_studio_drafts SET overlay_template_json=:template, branded_image_storage_key=:branded, overlay_spec=:spec, updated_at=NOW() WHERE id=:id LIMIT 1', [
+            'id' => $draftId,
+            'template' => social_studio_encode_overlay_template($template),
+            'branded' => $brandedKey,
+            'spec' => 'Elite Smiles canonical editorial portrait layout: disciplined left grid, restrained hierarchy, one accent rule system, compact benefits, complimentary-consultation CTA, and Draper footer.',
+        ]);
+        return ['ok' => true, 'message' => 'Editorial layout polished.'];
+    }
+
     function social_studio_refine_image_for_draft(int $draftId, string $instruction, int $userId = 0): array
     {
         social_studio_ensure_schema();
@@ -1644,7 +1734,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
             $template = json_decode((string)($draft['overlay_template_json'] ?? ''), true);
             $ratio = is_array($template) && (string)($template['aspect_ratio'] ?? '') === '1:1' ? 'square 1:1' : 'vertical 4:5';
             $subjectInstruction = is_array($template) ? social_studio_overlay_subject_instruction($template) : '';
-            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. {$subjectInstruction} Both eyes must be completely visible and tack-sharp, with brilliant bright-white cosmetically perfect teeth and credible anatomy. Preserve the locked palette, lighting, negative space, and camera angle. Reconstruct the cleared text zone as a seamless softly detailed continuation of the surrounding background with natural light and depth; never create a hard-edged rectangle, flat color panel, card, or visible boundary. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, soft focus on the subject, haze, extreme close-up, or cut-off face.";
+            return $basePrompt . "\n\nFinal output safeguards: {$ratio} Instagram composition. Create ONLY the clean photographic layer behind the saved CRM overlay. {$subjectInstruction} Both eyes must be completely visible and tack-sharp. The person must read as authentic editorial photography: visible pores, fine expression lines, slight natural asymmetry, realistic hair and eyes, and an unforced expression. Teeth must be bright and healthy but individually shaped, subtly translucent, and naturally varied in tone—never opaque, uniform, oversized, over-whitened, or artificially perfect. Preserve the locked palette, lighting, negative space, and camera angle. Reconstruct the cleared text zone as a seamless softly detailed continuation of the surrounding background with natural light and depth; never create a hard-edged rectangle, flat color panel, card, or visible boundary. Do not render any words from the source. No text, logo, watermark, typography, icons, graphic lines, beauty-filter skin, plastic texture, synthetic symmetry, soft focus on the subject, haze, extreme close-up, or cut-off face.";
         }
 
         if (elite_openai_is_configured()) {
@@ -1667,7 +1757,7 @@ if (!function_exists('social_studio_refine_image_prompt')) {
             }
         }
 
-        return trim($basePrompt . "\n\nCreate a premium dental social media image for: {$title}. Focus: {$focus}. Match the Elite Smiles editorial line: clean bright natural-looking smile, real human moment, soft daylight, warm neutral whites, restrained charcoal and champagne-gold accents, one clear subject, close human framing, generous breathing room, realistic dental anatomy, premium but approachable. No readable text, no logo, no watermark, no typography, no added branding, loud gradients, neon colors, exaggerated whitening, split-screen collage, or clutter.");
+        return trim($basePrompt . "\n\nCreate a premium dental social media image for: {$title}. Focus: {$focus}. Match the Elite Smiles editorial line: authentic editorial photography, visible skin texture and pores, fine expression lines, slight facial asymmetry, natural eyes and hair, an unforced real-human expression, soft daylight, warm neutral whites, restrained charcoal and champagne-gold accents, one clear subject, close human framing, and generous breathing room. Teeth must be bright and healthy with individual shape, subtle translucency, natural tonal variation, and credible anatomy. No readable text, logo, watermark, typography, added branding, beauty-filter skin, plastic texture, synthetic symmetry, opaque or uniform teeth, exaggerated whitening, loud gradients, neon colors, split-screen collage, or clutter.");
     }
 }
 

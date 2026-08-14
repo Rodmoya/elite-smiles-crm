@@ -44,7 +44,7 @@ $draft = [
     'cta' => 'Schedule a complimentary consultation.',
     'overlay_template_json' => social_studio_encode_overlay_template($template),
 ];
-$visualPass = ['no_text_or_logo' => true, 'sharp_focus' => true, 'credible_anatomy' => true, 'framing_pass' => true, 'notes' => 'Pass'];
+$visualPass = ['no_text_or_logo' => true, 'sharp_focus' => true, 'credible_anatomy' => true, 'realistic_appearance' => true, 'natural_dental_aesthetics' => true, 'framing_pass' => true, 'notes' => 'Pass'];
 $guardrails = social_studio_draft_guardrails($draft, $visualPass);
 social_original_assert((string)$guardrails['status'] === 'pass', 'A compliant original draft should pass guardrails.');
 social_original_assert(social_studio_overlay_text_fits($template['elements'][0]), 'Short overlay copy should fit its approved text box.');

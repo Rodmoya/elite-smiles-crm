@@ -32,7 +32,7 @@ if (!function_exists('social_studio_brand_book_default')) {
             ],
             'photography' => [
                 'lighting' => 'Soft natural daylight with warm neutral whites and premium editorial polish',
-                'portrait' => 'One confident adult, realistic skin texture, tack-sharp eyes, bright polished white teeth with credible anatomy',
+                'portrait' => 'One confident adult photographed as a real person: visible pores, fine expression lines, slight facial asymmetry, tack-sharp eyes, and an unforced expression. Teeth are bright and healthy with individual shape, subtle translucency, natural tonal variation, and credible anatomy—never opaque, uniform, oversized, or artificially perfect.',
                 'clinical' => 'Complete, accurate 3D anatomy with one clear teaching focal point',
                 'background' => 'Warm Draper lifestyle or refined clinical setting with clean negative space',
                 'never' => ['Generic dental stock imagery', 'Soft focus or motion blur', 'Cut-off eye or smile', 'Distorted or extra teeth', 'Gray or yellow teeth', 'Neon colors', 'Loud gradients', 'Clutter', 'Artificial plastic skin', 'Words, logos, watermarks, badges, or icons'],

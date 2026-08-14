@@ -151,9 +151,292 @@ if (!function_exists('landing_pages_registry')) {
             'doctor_authority' => lp_require_array($root . '/content/shared/doctor-authority.php'),
             'reviews' => lp_require_array($root . '/content/shared/reviews.php'),
             'location_modules' => lp_require_array($root . '/content/shared/location-modules.php'),
+            'organic_treatments' => lp_require_array($root . '/content/organic/treatments.php'),
+            'organic_cities' => lp_require_array($root . '/content/organic/cities.php'),
         ];
 
         return $registry;
+    }
+}
+
+if (!function_exists('lp_organic_base_slug')) {
+    function lp_organic_base_slug(string $procedureKey, string $cityKey): string
+    {
+        $procedureSlug = str_replace('_', '-', trim($procedureKey));
+        $cityKey = trim($cityKey);
+
+        return ($procedureSlug !== '' && $cityKey !== '')
+            ? $procedureSlug . '-' . $cityKey . '-v1'
+            : '';
+    }
+}
+
+if (!function_exists('lp_organic_tokens')) {
+    function lp_organic_tokens(array $treatment, array $city): array
+    {
+        $cityLabel = (string) ($city['label'] ?? $city['city_label'] ?? 'Draper');
+        $procedureLabel = (string) ($treatment['label'] ?? 'Dental treatment');
+
+        return [
+            '{city_label}' => $cityLabel,
+            '{CITY_LABEL}' => strtoupper($cityLabel),
+            '{city_label_upper}' => strtoupper($cityLabel),
+            '{procedure_label}' => $procedureLabel,
+            '{procedure_label_lower}' => strtolower($procedureLabel),
+            '{location_phrase}' => (string) ($city['location_phrase'] ?? ('near ' . $cityLabel . ', Utah')),
+        ];
+    }
+}
+
+if (!function_exists('lp_organic_replace')) {
+    function lp_organic_replace(string $value, array $tokens): string
+    {
+        return trim(strtr($value, $tokens));
+    }
+}
+
+if (!function_exists('lp_organic_head')) {
+    function lp_organic_head(array $ctx, array $treatment, array $organicCity): array
+    {
+        $procedureKey = (string) ($ctx['procedure_key'] ?? '');
+        $cityKey = (string) ($ctx['city_key'] ?? '');
+        $cityLabel = (string) ($organicCity['label'] ?? $ctx['cityLabel'] ?? 'Draper');
+        $label = (string) ($treatment['label'] ?? $ctx['procedureLabel'] ?? 'Dental Treatment');
+        $shortLabel = (string) ($treatment['short_label'] ?? $label);
+        $canonicalSlug = lp_organic_base_slug($procedureKey, $cityKey);
+        $canonical = $canonicalSlug !== '' ? lp_resolve_form_action($canonicalSlug) : lp_resolve_form_action((string) ($ctx['slug'] ?? ''));
+        $description = sprintf(
+            'Learn about %s near %s, Utah, compare candidacy and treatment options, plan your drive to Elite Smiles in Draper, and request a complimentary consultation with Dr. Walter Meden.',
+            strtolower($label),
+            $cityLabel
+        );
+
+        $faqItems = [];
+        foreach (($treatment['faq'] ?? []) as $item) {
+            if (!is_array($item) || empty($item['question']) || empty($item['answer'])) {
+                continue;
+            }
+            $faqItems[] = [
+                '@type' => 'Question',
+                'name' => (string) $item['question'],
+                'acceptedAnswer' => [
+                    '@type' => 'Answer',
+                    'text' => (string) $item['answer'],
+                ],
+            ];
+        }
+
+        $schema = [
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'Dentist',
+                '@id' => 'https://elitesmilesutah.com/#dentist',
+                'name' => 'Elite Smiles by Walter Meden DDS',
+                'url' => 'https://elitesmilesutah.com/',
+                'telephone' => '+1-801-571-2222',
+                'image' => lp_media_url((string) ($treatment['hero_image'] ?? '')),
+                'address' => [
+                    '@type' => 'PostalAddress',
+                    'streetAddress' => '11762 South State Street, Suite 300',
+                    'addressLocality' => 'Draper',
+                    'addressRegion' => 'UT',
+                    'postalCode' => '84020',
+                    'addressCountry' => 'US',
+                ],
+                'areaServed' => [
+                    '@type' => 'City',
+                    'name' => $cityLabel . ', Utah',
+                ],
+            ],
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'Service',
+                'name' => $label,
+                'serviceType' => $label,
+                'provider' => ['@id' => 'https://elitesmilesutah.com/#dentist'],
+                'areaServed' => ['@type' => 'City', 'name' => $cityLabel . ', Utah'],
+                'url' => $canonical,
+            ],
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'BreadcrumbList',
+                'itemListElement' => [
+                    ['@type' => 'ListItem', 'position' => 1, 'name' => 'Elite Smiles', 'item' => 'https://elitesmilesutah.com/'],
+                    ['@type' => 'ListItem', 'position' => 2, 'name' => $shortLabel, 'item' => $canonical],
+                    ['@type' => 'ListItem', 'position' => 3, 'name' => $cityLabel, 'item' => $canonical],
+                ],
+            ],
+        ];
+        if ($faqItems !== []) {
+            $schema[] = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => $faqItems];
+        }
+
+        $locationPhrase = (string) ($organicCity['location_phrase'] ?? ('near ' . $cityLabel . ', Utah'));
+
+        return [
+            'title' => $shortLabel . ' ' . $locationPhrase . ' | Elite Smiles',
+            'description' => $description,
+            'canonical' => $canonical,
+            'image' => lp_media_url((string) ($treatment['hero_image'] ?? '')),
+            'robots' => 'index,follow,max-image-preview:large',
+            'schema' => $schema,
+        ];
+    }
+}
+
+if (!function_exists('landing_pages_build_organic_view')) {
+    function landing_pages_build_organic_view(array $ctx, array $runtime = []): array
+    {
+        $registry = is_array($ctx['registry'] ?? null) ? $ctx['registry'] : landing_pages_registry();
+        $procedureKey = (string) ($ctx['procedure_key'] ?? '');
+        $cityKey = (string) ($ctx['city_key'] ?? '');
+        $treatment = is_array($registry['organic_treatments'][$procedureKey] ?? null) ? $registry['organic_treatments'][$procedureKey] : [];
+        $organicCity = is_array($registry['organic_cities'][$cityKey] ?? null) ? $registry['organic_cities'][$cityKey] : [];
+
+        if ($treatment === [] || $organicCity === []) {
+            return [];
+        }
+
+        $tokens = lp_organic_tokens($treatment, $organicCity);
+        $label = (string) ($treatment['label'] ?? $ctx['procedureLabel'] ?? 'Dental treatment');
+        $shortLabel = (string) ($treatment['short_label'] ?? $label);
+        $cityLabel = (string) ($organicCity['label'] ?? $ctx['cityLabel'] ?? 'Draper');
+        $pageRow = is_array($ctx['pageRow'] ?? null) ? $ctx['pageRow'] : [];
+        $cta = trim((string) ($pageRow['primary_cta_text'] ?? '')) ?: 'Request My Complimentary Consultation';
+        $heroTitle = trim((string) ($pageRow['hero_title'] ?? '')) ?: lp_organic_replace((string) ($treatment['hero_title'] ?? ''), $tokens);
+        $heroBody = trim((string) ($pageRow['hero_subtitle'] ?? '')) ?: lp_organic_replace((string) ($treatment['hero_body'] ?? ''), $tokens);
+        $heroImage = trim((string) ($runtime['heroImageUrl'] ?? ''));
+        if ($heroImage === '') {
+            $heroImage = trim((string) ($pageRow['hero_image'] ?? ''));
+        }
+        if ($heroImage === '') {
+            $heroImage = (string) ($treatment['hero_image'] ?? '');
+        }
+        $address = '11762 South State Street, Suite 300, Draper, UT 84020';
+        $directionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode($cityLabel . ', Utah')
+            . '&destination=' . rawurlencode($address) . '&travelmode=driving';
+        $mapEmbedUrl = 'https://www.google.com/maps?q=' . rawurlencode($address) . '&output=embed';
+
+        $authorityKey = match ($procedureKey) {
+            'implants', 'all_on_x' => 'implants_dr_meden',
+            'veneers' => 'dr_meden_master',
+            default => 'dr_meden_cosmetic',
+        };
+        $authority = is_array($registry['doctor_authority'][$authorityKey] ?? null) ? $registry['doctor_authority'][$authorityKey] : [];
+        $reviewsKey = match ($procedureKey) {
+            'implants', 'all_on_x' => 'implants_google_proof',
+            'veneers' => 'elite_smiles_master',
+            default => 'elite_smiles_experience',
+        };
+        $reviews = is_array($registry['reviews'][$reviewsKey] ?? null) ? $registry['reviews'][$reviewsKey] : [];
+
+        $longform = [];
+        foreach (($treatment['sections'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $longform[] = [
+                'eyebrow' => lp_organic_replace((string) ($item['eyebrow'] ?? ''), $tokens),
+                'title' => lp_organic_replace((string) ($item['title'] ?? ''), $tokens),
+                'body' => lp_organic_replace((string) ($item['body'] ?? ''), $tokens),
+            ];
+        }
+
+        $faq = [];
+        foreach (($treatment['faq'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $faq[] = [
+                'question' => lp_organic_replace((string) ($item['question'] ?? ''), $tokens),
+                'answer' => lp_organic_replace((string) ($item['answer'] ?? ''), $tokens),
+            ];
+        }
+
+        $sections = [
+            'hero' => [
+                'hero_eyebrow' => $shortLabel . ' • Serving ' . $cityLabel,
+                'hero_title' => $heroTitle,
+                'hero_body' => $heroBody,
+                'mobile_title' => $heroTitle,
+                'mobile_body' => 'Understand your options, candidacy, visit, and next step before making a treatment decision.',
+                'support_line' => 'Complimentary consultation with Dr. Walter Meden DDS at Elite Smiles in Draper.',
+                'image_url' => lp_media_url($heroImage),
+                'image_alt' => (string) ($treatment['image_alt'] ?? $label . ' at Elite Smiles'),
+                'button_text' => $cta,
+                'form_label' => 'Complimentary ' . $shortLabel . ' Consultation',
+                'badges' => ['Complimentary private consultation', 'Doctor-led treatment planning', 'Financing options may be available'],
+            ],
+            'local_intro' => [
+                'eyebrow' => strtoupper($cityLabel) . ' PATIENT GUIDE',
+                'title' => $shortLabel . ' Options for Patients From ' . $cityLabel,
+                'body' => lp_organic_replace((string) ($organicCity['intro'] ?? ''), $tokens),
+                'classes' => 'bg-[#faf8f5]',
+                'track' => 'local_intro',
+                'show_cta' => false,
+            ],
+            'longform' => ['enabled' => true, 'items' => $longform, 'track' => 'organic_treatment_guide', 'show_ctas' => false],
+            'offer' => [
+                'enabled' => true,
+                'value_label' => trim((string) ($pageRow['offer_badge'] ?? '')) ?: 'COMPLIMENTARY PRIVATE CONSULTATION',
+                'title' => trim((string) ($pageRow['offer_title'] ?? '')) ?: (string) ($treatment['consultation_title'] ?? 'What your consultation includes'),
+                'body' => trim((string) ($pageRow['offer_description'] ?? '')) ?: 'The purpose of the first visit is to understand your goals, identify the factors that affect candidacy, and explain reasonable next steps without promising a treatment before evaluation.',
+                'items' => is_array($treatment['consultation_items'] ?? null) ? $treatment['consultation_items'] : [],
+                'button_text' => $cta,
+            ],
+            'authority' => [
+                'enabled' => $authority !== [],
+                'eyebrow' => (string) ($authority['eyebrow'] ?? 'WHY ELITE SMILES'),
+                'title' => (string) ($authority['title'] ?? 'Doctor-led planning with Dr. Walter Meden'),
+                'body' => (string) ($authority['body'] ?? ''),
+                'items' => is_array($authority['items'] ?? null) ? $authority['items'] : [],
+                'show_cta' => false,
+            ],
+            'location_convenience' => [
+                'enabled' => true,
+                'variant' => $cityKey === 'draper' ? 'convenience' : 'visit_planning',
+                'city_label' => $cityLabel,
+                'travel_frame' => lp_organic_replace((string) ($organicCity['route'] ?? ''), $tokens),
+                'convenience_note' => lp_organic_replace((string) ($organicCity['intro'] ?? ''), $tokens),
+                'visit_planning_note' => 'Travel estimates vary by starting point, departure time, weather, and current traffic. Open Google Maps for a live route before leaving.',
+                'address' => $address,
+                'map_embed_url' => $mapEmbedUrl,
+                'show_map' => true,
+                'travel_time' => (string) ($organicCity['travel_time'] ?? ''),
+                'distance' => (string) ($organicCity['distance'] ?? ''),
+                'directions_url' => $directionsUrl,
+                'nearby' => is_array($organicCity['nearby'] ?? null) ? $organicCity['nearby'] : [],
+            ],
+            'reviews' => [
+                'enabled' => $reviews !== [],
+                'eyebrow' => (string) ($reviews['eyebrow'] ?? 'PATIENT REVIEWS'),
+                'title' => 'What Patients Say About the Elite Smiles Experience',
+                'body' => 'Patient experiences vary. These reviews describe communication and care at Elite Smiles; individual treatment results cannot be guaranteed.',
+                'items' => is_array($reviews['items'] ?? null) ? $reviews['items'] : [],
+                'show_cta' => false,
+            ],
+            'faq' => [
+                'enabled' => $faq !== [],
+                'title' => $shortLabel . ' Questions Patients Often Ask',
+                'body' => 'These answers are general education and do not replace an examination or individualized diagnosis.',
+                'items' => $faq,
+                'show_cta' => false,
+            ],
+            'final_cta' => [
+                'enabled' => true,
+                'final_cta_title' => 'Ready to Discuss ' . $shortLabel . '?',
+                'final_cta_body' => 'Request a complimentary consultation at Elite Smiles in Draper and receive a recommendation based on your goals and clinical needs.',
+                'button_text' => $cta,
+            ],
+        ];
+
+        return [
+            'sections' => $sections,
+            'section_order' => ['hero', 'local_intro', 'longform', 'offer', 'authority', 'location_convenience', 'reviews', 'faq', 'final_cta'],
+            'header_cta_text' => $cta,
+            'head' => lp_organic_head($ctx, $treatment, $organicCity),
+            'canonical_slug' => lp_organic_base_slug($procedureKey, $cityKey),
+        ];
     }
 }
 

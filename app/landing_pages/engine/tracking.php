@@ -92,6 +92,18 @@ function trackEvent(name, payload) {
             fbq('trackCustom', name, payload || {});
         }
     }
+    const firstParty = window.eliteLandingTracking;
+    const allowed = ['page_view','header_cta_click','cta_click','directions_click','wizard_start','form_submit_click','form_submit_attempt'];
+    if (firstParty && allowed.includes(name) && payload && payload.landing_page) {
+        const body = new FormData();
+        body.append('_csrf_token', firstParty.csrf || '');
+        body.append('event_name', name);
+        body.append('slug', payload.landing_page);
+        body.append('source', payload.source || '');
+        body.append('medium', payload.medium || '');
+        body.append('referrer', document.referrer || '');
+        fetch(firstParty.endpoint, { method: 'POST', body, credentials: 'same-origin', keepalive: true }).catch(function () {});
+    }
 }
         <?php
     }

@@ -18,6 +18,7 @@ $authorityItems = $authorityItems
 if (!is_array($authorityItems)) {
     $authorityItems = [];
 }
+$showSectionCta = (bool) ($sectionData['show_cta'] ?? true);
 ?>
 
 <section class="bg-white" data-track-section="authority">
@@ -52,7 +53,7 @@ if (!is_array($authorityItems)) {
                 </div>
             <?php endif; ?>
 
-            <?php if (!empty($primaryCtaText)): ?>
+            <?php if ($showSectionCta && !empty($primaryCtaText)): ?>
                 <div class="mt-6">
                     <button
                         type="button"

@@ -12,6 +12,12 @@ $heroTitle = $heroTitle
 $heroMobileTitle = (string) ($sectionData['mobile_title'] ?? 'Natural-Looking Veneers in Draper');
 $heroMobileBody = (string) ($sectionData['mobile_body'] ?? 'Designed to look refined, healthy, and believable - not fake.');
 $heroSupportLine = (string) ($sectionData['support_line'] ?? 'Free private consultation with Dr. Walter Meden DDS. 0% financing may be available for qualified patients.');
+$heroFormLabel = (string) ($sectionData['form_label'] ?? ('Complimentary ' . ($procedureLabel ?? 'Dental') . ' Consultation'));
+$heroBadges = is_array($sectionData['badges'] ?? null) ? $sectionData['badges'] : [
+    'Complimentary private consultation',
+    'Dr. Meden review',
+    'Financing options may be available',
+];
 
 $heroBody = $heroBody
     ?? ($sectionData['body'] ?? $sectionData['hero_body'] ?? '');
@@ -54,12 +60,14 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
             <?php endif; ?>
 
             <?php if (!empty($heroTitle)): ?>
-                <h1 class="mt-4 hidden font-site-serif text-5xl font-semibold leading-tight text-eliteInk sm:block lg:text-6xl">
-                    <?= e((string) $heroTitle) ?>
-                </h1>
-                <h1 class="mt-4 max-w-[21rem] font-site-serif text-[clamp(1.85rem,7.2vw,2.25rem)] font-semibold leading-[1.08] text-eliteInk [overflow-wrap:anywhere] sm:hidden">
-                    <?= e($heroMobileTitle) ?>
-                </h1>
+                <?php if ($heroMobileTitle === (string) $heroTitle): ?>
+                    <h1 class="mt-4 max-w-[21rem] font-site-serif text-[clamp(1.85rem,7.2vw,2.25rem)] font-semibold leading-[1.08] text-eliteInk [overflow-wrap:anywhere] sm:max-w-none sm:text-5xl lg:text-6xl">
+                        <?= e((string) $heroTitle) ?>
+                    </h1>
+                <?php else: ?>
+                    <h1 class="mt-4 hidden font-site-serif text-5xl font-semibold leading-tight text-eliteInk sm:block lg:text-6xl"><?= e((string) $heroTitle) ?></h1>
+                    <h1 class="mt-4 max-w-[21rem] font-site-serif text-[clamp(1.85rem,7.2vw,2.25rem)] font-semibold leading-[1.08] text-eliteInk [overflow-wrap:anywhere] sm:hidden"><?= e($heroMobileTitle) ?></h1>
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php if (!empty($heroBody)): ?>
@@ -96,7 +104,7 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
                         <input type="hidden" name="<?= e($quickField) ?>" value="<?= e((string) ($quickStandardForm[$quickField] ?? '')) ?>">
                     <?php endforeach; ?>
 
-                    <div class="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Free Veneers Consultation Request</div>
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500"><?= e($heroFormLabel) ?></div>
                     <div class="mt-3 grid gap-3 sm:grid-cols-2">
                         <label class="block text-sm font-medium text-slate-700">
                             <span class="mb-1.5 block">First name</span>
@@ -147,9 +155,9 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
             <?php endif; ?>
 
             <div class="mt-5 grid max-w-[21.5rem] gap-2 text-sm text-eliteBody sm:max-w-none sm:grid-cols-3">
-                <div class="rounded-full border border-eliteBorder bg-[#fbfaf8] px-3 py-2 text-center font-medium">Free private consult</div>
-                <div class="rounded-full border border-eliteBorder bg-[#fbfaf8] px-3 py-2 text-center font-medium">Dr. Meden review</div>
-                <div class="rounded-full border border-eliteBorder bg-[#fbfaf8] px-3 py-2 text-center font-medium">0% options may be available</div>
+                <?php foreach ($heroBadges as $badge): ?>
+                    <div class="rounded-full border border-eliteBorder bg-[#fbfaf8] px-3 py-2 text-center font-medium"><?= e((string) $badge) ?></div>
+                <?php endforeach; ?>
             </div>
 
             <?php if (!$miniLandingGate && !$submittedDetailsView): ?>

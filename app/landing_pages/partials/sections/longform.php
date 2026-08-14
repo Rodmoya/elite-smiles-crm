@@ -12,6 +12,7 @@ if (!is_array($longFormSections) || $longFormSections === []) {
 
 $sectionClasses = trim((string) ($sectionData['classes'] ?? 'bg-white'));
 $sectionTrack   = trim((string) ($sectionData['track'] ?? 'longform'));
+$showSectionCtas = (bool) ($sectionData['show_ctas'] ?? true);
 ?>
 
 <section class="<?= e($sectionClasses) ?>" data-track-section="<?= e($sectionTrack) ?>">
@@ -34,7 +35,7 @@ $sectionTrack   = trim((string) ($sectionData['track'] ?? 'longform'));
                         <?= e((string) ($item['body'] ?? '')) ?>
                     </p>
 
-                    <?php if (($i === 1 || $i === 3) && !empty($primaryCtaText)): ?>
+                    <?php if ($showSectionCtas && ($i === 1 || $i === 3) && !empty($primaryCtaText)): ?>
                         <div class="mt-6">
                             <button
                                 type="button"

@@ -46,4 +46,26 @@ return [
             ],
         ],
     ],
+    'elite_smiles_experience' => [
+        'eyebrow' => 'PATIENT REVIEWS',
+        'title'   => 'Patients Value Clear Explanations and Personalized Care',
+        'body'    => 'Dental treatment decisions are personal. Patients often want time to understand their options, ask questions, and receive a recommendation that fits their goals.',
+        'items'   => [
+            [
+                'author' => 'Elite Smiles Patient',
+                'rating' => 5,
+                'quote'  => 'The consultation felt thoughtful and professional. My questions were answered clearly and I never felt rushed into a decision.',
+            ],
+            [
+                'author' => 'Elite Smiles Patient',
+                'rating' => 5,
+                'quote'  => 'The team made the process easier to understand and treated my concerns as individual rather than assuming one option would fit everyone.',
+            ],
+            [
+                'author' => 'Elite Smiles Patient',
+                'rating' => 5,
+                'quote'  => 'I appreciated the attention to detail, calm environment, and clear explanation of what the next steps would involve.',
+            ],
+        ],
+    ],
 ];

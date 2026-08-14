@@ -50,15 +50,39 @@ if (request_method() === 'GET') {
     }
 }
 
-$pageRow = db_one(
-    'SELECT * FROM landing_pages WHERE slug = :slug AND is_active = 1 LIMIT 1',
-    ['slug' => $slug]
-);
-
 $registry = landing_pages_registry();
 $mapEntry = $registry['map'][$slug] ?? null;
 
-if (!$pageRow && !$mapEntry) {
+// Organic pages consolidate the old marketing-angle variants into one authoritative URL.
+// Keep query parameters so campaign attribution survives the permanent redirect.
+if (request_method() === 'GET' && is_array($mapEntry) && trim((string) ($mapEntry['angle'] ?? '')) !== '') {
+    $baseSlug = lp_organic_base_slug(
+        (string) ($mapEntry['procedure'] ?? $mapEntry['procedure_type'] ?? ''),
+        (string) ($mapEntry['city'] ?? '')
+    );
+    if ($baseSlug !== '' && isset($registry['map'][$baseSlug])) {
+        $params = $_GET;
+        unset($params['slug']);
+        $target = rtrim(APP_URL, '/') . '/l/' . rawurlencode($baseSlug);
+        if ($params !== []) {
+            $target .= '?' . http_build_query($params);
+        }
+        header('Location: ' . $target, true, 301);
+        exit;
+    }
+}
+
+$pageRow = db_one(
+    'SELECT * FROM landing_pages WHERE slug = :slug LIMIT 1',
+    ['slug' => $slug]
+);
+
+if ($pageRow) {
+    if ((int) ($pageRow['is_active'] ?? 0) !== 1) {
+        http_response_code(404);
+        exit('Landing page not found.');
+    }
+} elseif (!is_array($mapEntry) || empty($mapEntry['is_active'])) {
     http_response_code(404);
     exit('Landing page not found.');
 }

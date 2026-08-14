@@ -84,5 +84,7 @@ organic_assert(str_contains($adminSource, '$pageConversion'), 'The organic-page 
 organic_assert(str_contains($adminSource, 'Publish organic page set'), 'The workspace must expose the canonical publishing action.');
 organic_assert(str_contains($adminSource, 'ON DUPLICATE KEY UPDATE'), 'Publishing must create missing canonical rows and reconcile existing rows.');
 organic_assert(str_contains($adminSource, "confirmLabel: 'Publish pages'"), 'The publishing confirmation must use an accurate action label.');
+organic_assert(str_contains($adminSource, 'md:grid-cols-2 2xl:grid-cols-3'), 'The organic workspace must use responsive city cards.');
+organic_assert(!str_contains($adminSource, '<table'), 'The single-page-per-city workspace must not regress to a sparse matrix table.');
 
 echo "Organic landing page tests passed.\n";

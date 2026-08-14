@@ -298,8 +298,10 @@ tailwind.config = {
 </script>
 <style>
 body { font-family: system-ui, -apple-system, sans-serif; }
-.cell-active   { background: #d1fae5; border-color: #6ee7b7; }
-.cell-inactive { background: #f3f4f6; border-color: #e5e7eb; }
+.cell-active   { border-color: #d8e8df; }
+.cell-inactive { border-color: #e5e7eb; background: #fafafa; }
+.cell-active .status-toggle { background: #ecfdf5; color: #047857; }
+.cell-inactive .status-toggle { background: #f3f4f6; color: #6b7280; }
 .dot-active    { background: #10b981; }
 .dot-inactive  { background: #d1d5db; }
 .panel-open    { transform: translateX(0); }
@@ -310,211 +312,136 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 <?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
 <div class="lg:pl-72">
 
-<!-- ── HEADER ── -->
-<header class="sticky top-0 z-40 border-b border-eliteBorder bg-white shadow-sm">
-    <div class="mx-auto flex max-w-screen-xl items-center justify-between px-4 py-3">
-        <div class="flex items-center gap-4">
-            <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="h-8 w-auto">
-            <div>
-                <div class="text-sm font-semibold text-gray-700">Organic Landing Pages</div>
-                <div class="text-xs text-gray-500">One authoritative treatment page per city</div>
-            </div>
+<header class="border-b border-eliteBorder bg-white">
+    <div class="mx-auto flex max-w-screen-2xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-eliteRose">Local SEO workspace</p>
+            <h1 class="mt-1 text-2xl font-bold tracking-tight text-eliteInk sm:text-3xl">Organic Landing Pages</h1>
+            <p class="mt-1 max-w-2xl text-sm text-gray-500">Manage one authoritative treatment page for each target city and follow its path from visit to consultation.</p>
         </div>
-        <div class="flex items-center gap-6">
-            <!-- Stats -->
-            <div class="hidden items-center gap-6 sm:flex">
-                <div class="text-center">
-                    <div class="text-lg font-bold text-eliteInk"><?= $stats['active'] ?></div>
-                    <div class="text-xs text-gray-500">Live pages</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-lg font-bold text-eliteInk"><?= $stats['total'] ?></div>
-                    <div class="text-xs text-gray-500">Total pages</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-lg font-bold text-eliteRose"><?= $leadsThisMonth ?></div>
-                    <div class="text-xs text-gray-500">Leads this month</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-lg font-bold text-blue-700"><?= $views30d ?></div>
-                    <div class="text-xs text-gray-500">Views (30 days)</div>
-                </div>
-            </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <button onclick="publishOrganicSet(this)"
+                class="min-h-[44px] rounded-xl bg-eliteRose px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-eliteRoseDark">
+                Publish canonical set
+            </button>
             <a href="<?= e(base_url('dashboard.php')) ?>"
-                class="rounded-full border border-eliteBorder bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                ← Dashboard
+                class="inline-flex min-h-[44px] items-center rounded-xl border border-eliteBorder bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                Dashboard
             </a>
         </div>
     </div>
 </header>
 
-<!-- ── PROCEDURE TABS ── -->
-<div class="border-b border-eliteBorder bg-white">
-    <div class="mx-auto max-w-screen-xl px-4">
-        <div class="flex gap-1 overflow-x-auto">
+<main class="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
+    <section aria-label="Landing page performance" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-2xl border border-eliteBorder bg-white p-4 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Pages live</p>
+            <div class="mt-2 flex items-end gap-2"><strong class="text-3xl text-eliteInk"><?= $stats['active'] ?></strong><span class="pb-1 text-sm text-gray-400">of <?= $stats['total'] ?></span></div>
+        </div>
+        <div class="rounded-2xl border border-eliteBorder bg-white p-4 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Views</p>
+            <div class="mt-2 flex items-end gap-2"><strong class="text-3xl text-eliteInk"><?= $views30d ?></strong><span class="pb-1 text-sm text-gray-400">last 30 days</span></div>
+        </div>
+        <div class="rounded-2xl border border-eliteBorder bg-white p-4 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Leads</p>
+            <div class="mt-2 flex items-end gap-2"><strong class="text-3xl text-eliteRose"><?= $leadsThisMonth ?></strong><span class="pb-1 text-sm text-gray-400">this month</span></div>
+        </div>
+        <div class="rounded-2xl border border-eliteBorder bg-white p-4 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Publishing model</p>
+            <p class="mt-2 text-sm font-semibold leading-5 text-eliteInk">One canonical page per treatment and city</p>
+        </div>
+    </section>
+
+    <nav aria-label="Treatments" class="mt-6 overflow-x-auto rounded-2xl border border-eliteBorder bg-white p-1.5 shadow-sm">
+        <div class="flex min-w-max gap-1">
             <?php foreach ($procedures as $procKey => $procLabel): ?>
             <?php
-                $procPages  = $matrix[$procKey] ?? [];
+                $procPages = $matrix[$procKey] ?? [];
                 $procActive = 0;
-                $procTotal  = 0;
+                $procTotal = 0;
                 foreach ($procPages as $cityPages) {
-                    foreach ($cityPages as $p) {
+                    foreach ($cityPages as $procedurePage) {
                         $procTotal++;
-                        if ((int)($p['is_active'] ?? 0) === 1) $procActive++;
+                        if ((int) ($procedurePage['is_active'] ?? 0) === 1) $procActive++;
                     }
                 }
             ?>
             <a href="?proc=<?= e($procKey) ?>"
-                class="flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition
-                    <?= $activeProcedure === $procKey
-                        ? 'border-eliteRose text-eliteRose'
-                        : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
+                class="flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition
+                    <?= $activeProcedure === $procKey ? 'bg-[#121b32] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-eliteInk' ?>">
                 <?= e($procLabel) ?>
-                <span class="rounded-full px-2 py-0.5 text-xs font-semibold
-                    <?= $activeProcedure === $procKey ? 'bg-eliteRose text-white' : 'bg-gray-100 text-gray-600' ?>">
-                    <?= $procActive ?>/<?= $procTotal ?>
-                </span>
+                <span class="rounded-full px-2 py-0.5 text-xs <?= $activeProcedure === $procKey ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500' ?>"><?= $procActive ?>/<?= $procTotal ?></span>
             </a>
             <?php endforeach; ?>
         </div>
-    </div>
-</div>
+    </nav>
 
-<!-- ── BULK ACTIONS BAR ── -->
-<div class="border-b border-eliteBorder bg-eliteStone px-4 py-2">
-    <div class="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3">
-        <button onclick="publishOrganicSet(this)"
-            class="min-h-[44px] rounded-full bg-eliteRose px-4 py-2 text-xs font-semibold text-white hover:bg-eliteRoseDark">
-            Publish organic page set
-        </button>
-        <span class="text-gray-300">|</span>
-        <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Bulk actions for <?= e($procedures[$activeProcedure]) ?>:</span>
-        <button onclick="bulkProcedure('<?= e($activeProcedure) ?>', 1)"
-            class="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
-            Activate all
-        </button>
-        <button onclick="bulkProcedure('<?= e($activeProcedure) ?>', 0)"
-            class="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
-            Deactivate all
-        </button>
-        <span class="text-gray-300">|</span>
+    <section class="mt-6 rounded-2xl border border-eliteBorder bg-white p-5 shadow-sm">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">Selected treatment</p>
+                <h2 class="mt-1 text-xl font-bold text-eliteInk"><?= e($procedures[$activeProcedure]) ?> by city</h2>
+                <p class="mt-1 text-sm text-gray-500">Legacy campaign URLs redirect to these pages, preventing duplicate pages from competing in Google.</p>
+            </div>
+            <details class="group rounded-xl border border-eliteBorder bg-gray-50 px-4 py-3">
+                <summary class="cursor-pointer list-none text-sm font-semibold text-gray-700">Bulk publishing controls</summary>
+                <div class="mt-3 flex flex-wrap gap-2 border-t border-eliteBorder pt-3">
+                    <button onclick="bulkProcedure('<?= e($activeProcedure) ?>', 1)" class="min-h-[40px] rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Activate all 8</button>
+                    <button onclick="bulkProcedure('<?= e($activeProcedure) ?>', 0)" class="min-h-[40px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">Deactivate all 8</button>
+                </div>
+            </details>
+        </div>
+    </section>
+
+    <section aria-label="<?= e($procedures[$activeProcedure]) ?> city pages" class="mt-4 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         <?php foreach ($cities as $cityKey => $cityLabel): ?>
-        <button onclick="bulkCity('<?= e($cityKey) ?>', 1, this)"
-            class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 border border-blue-200">
-            + <?= e($cityLabel) ?>
-        </button>
+        <?php
+            $page = $matrix[$activeProcedure][$cityKey][''] ?? null;
+            $isActive = $page ? (int) ($page['is_active'] ?? 0) === 1 : false;
+            $pageId = $page ? (int) $page['id'] : 0;
+            $pageSlug = $page ? (string) ($page['slug'] ?? '') : '';
+            $pageMetrics = $performance[$pageSlug] ?? [];
+            $pageViews = (int) ($pageMetrics['views'] ?? 0);
+            $pageActions = (int) ($pageMetrics['actions'] ?? 0);
+            $pageLeads = (int) ($pageMetrics['leads'] ?? 0);
+            $pageBooked = (int) ($pageMetrics['booked'] ?? 0);
+            $pageConversion = $pageViews > 0 ? round(($pageLeads / $pageViews) * 100, 1) : 0.0;
+        ?>
+        <?php if ($page): ?>
+        <article id="cell-<?= $pageId ?>" class="cell-<?= $isActive ? 'active' : 'inactive' ?> rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">Utah city page</p>
+                    <h3 class="mt-1 text-xl font-bold text-eliteInk"><?= e($cityLabel) ?></h3>
+                    <p class="mt-1 truncate font-mono text-[11px] text-gray-400" title="<?= e($pageSlug) ?>"><?= e($pageSlug) ?></p>
+                </div>
+                <button onclick="togglePage(<?= $pageId ?>, this)" class="status-toggle flex min-h-[40px] shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold" title="Toggle page visibility">
+                    <span class="dot h-2.5 w-2.5 rounded-full <?= $isActive ? 'dot-active' : 'dot-inactive' ?>"></span>
+                    <span class="status-label"><?= $isActive ? 'Live' : 'Off' ?></span>
+                </button>
+            </div>
+
+            <div class="mt-5 grid grid-cols-5 gap-2 rounded-xl bg-gray-50 p-3 text-center" aria-label="Last 30 days performance">
+                <span class="text-[10px] text-gray-500"><strong class="block text-base text-eliteInk"><?= htmlentities((string) $pageViews, ENT_QUOTES, 'UTF-8') ?></strong>Views</span>
+                <span class="text-[10px] text-gray-500"><strong class="block text-base text-eliteInk"><?= htmlentities((string) $pageActions, ENT_QUOTES, 'UTF-8') ?></strong>CTA</span>
+                <span class="text-[10px] text-gray-500"><strong class="block text-base text-eliteInk"><?= htmlentities((string) $pageLeads, ENT_QUOTES, 'UTF-8') ?></strong>Leads</span>
+                <span class="text-[10px] text-gray-500"><strong class="block text-base text-eliteInk"><?= htmlentities((string) $pageBooked, ENT_QUOTES, 'UTF-8') ?></strong>Booked</span>
+                <span class="text-[10px] text-gray-500"><strong class="block text-base text-eliteInk"><?= htmlentities(number_format($pageConversion, 1), ENT_QUOTES, 'UTF-8') ?>%</strong>CVR</span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+                <button onclick="openPanel(<?= $pageId ?>)" class="min-h-[44px] rounded-xl border border-eliteBorder bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Edit page</button>
+                <a href="<?= e(rtrim((string) APP_URL, '/') . '/l/' . rawurlencode($pageSlug)) ?>" target="_blank" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-[#121b32] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1c2948]">Preview page ↗</a>
+            </div>
+        </article>
+        <?php else: ?>
+        <article class="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-400">
+            <?= e($cityLabel) ?> page record is missing. Use “Publish canonical set” to restore it.
+        </article>
+        <?php endif; ?>
         <?php endforeach; ?>
-    </div>
-</div>
-
-<!-- ── MATRIX GRID ── -->
-<div class="mx-auto max-w-screen-xl px-4 py-6">
-    <div class="mb-5 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm leading-6 text-blue-950">
-        <strong>Organic publishing model:</strong> education, candidacy, process, financing, and transformation content are consolidated into each city page. Historical angle URLs redirect here so they do not compete in Google Search.
-    </div>
-    <div class="overflow-x-auto rounded-2xl border border-eliteBorder bg-white shadow-sm">
-        <table class="w-full min-w-[560px] border-collapse text-sm">
-            <!-- Column headers (angles) -->
-            <thead>
-                <tr class="border-b border-eliteBorder bg-eliteStone">
-                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 w-32">City</th>
-                    <?php foreach ($angles as $angleKey => $angleLabel): ?>
-                    <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        <div><?= e($angleLabel) ?></div>
-                        <div class="mt-1 flex justify-center gap-1">
-                            <button onclick="bulkAngle('<?= e($activeProcedure) ?>', '<?= e($angleKey) ?>', 1)"
-                                class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100">on</button>
-                            <button onclick="bulkAngle('<?= e($activeProcedure) ?>', '<?= e($angleKey) ?>', 0)"
-                                class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200">off</button>
-                        </div>
-                    </th>
-                    <?php endforeach; ?>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($cities as $cityKey => $cityLabel): ?>
-                <tr class="border-b border-eliteBorder hover:bg-gray-50/50">
-                    <!-- City label + bulk toggle -->
-                    <td class="px-4 py-3">
-                        <div class="font-medium text-eliteInk"><?= e($cityLabel) ?></div>
-                        <div class="mt-1 flex gap-1">
-                            <button onclick="bulkCity('<?= e($cityKey) ?>', 1, this)"
-                                class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100">all on</button>
-                            <button onclick="bulkCity('<?= e($cityKey) ?>', 0, this)"
-                                class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200">all off</button>
-                        </div>
-                    </td>
-
-                    <!-- Angle cells -->
-                    <?php foreach ($angles as $angleKey => $angleLabel): ?>
-                    <?php
-                        $page     = $matrix[$activeProcedure][$cityKey][$angleKey] ?? null;
-                        $isActive = $page ? (int)($page['is_active'] ?? 0) === 1 : false;
-                        $pageId   = $page ? (int)$page['id'] : 0;
-                        $pageSlug = $page ? (string) ($page['slug'] ?? '') : '';
-                        $pageMetrics = $performance[$pageSlug] ?? [];
-                        $pageViews = (int) ($pageMetrics['views'] ?? 0);
-                        $pageActions = (int) ($pageMetrics['actions'] ?? 0);
-                        $pageLeads = (int) ($pageMetrics['leads'] ?? 0);
-                        $pageBooked = (int) ($pageMetrics['booked'] ?? 0);
-                        $pageConversion = $pageViews > 0 ? round(($pageLeads / $pageViews) * 100, 1) : 0.0;
-                    ?>
-                    <td class="px-3 py-3 text-center">
-                        <?php if ($page): ?>
-                        <div class="group relative inline-flex flex-col items-center gap-1.5 rounded-xl border p-2 transition cursor-pointer
-                            <?= $isActive ? 'cell-active' : 'cell-inactive' ?>"
-                            style="min-width: 120px;"
-                            id="cell-<?= $pageId ?>">
-
-                            <!-- Status dot + toggle -->
-                            <button onclick="togglePage(<?= $pageId ?>, this)"
-                                class="flex min-h-[44px] items-center gap-1.5 px-2 text-xs font-medium"
-                                title="Click to toggle">
-                                <span class="h-2.5 w-2.5 rounded-full dot flex-shrink-0 <?= $isActive ? 'dot-active' : 'dot-inactive' ?>"></span>
-                                <span class="status-label"><?= $isActive ? 'Live' : 'Off' ?></span>
-                            </button>
-
-                            <!-- Edit button -->
-                            <button onclick="openPanel(<?= $pageId ?>)"
-                                class="min-h-[44px] rounded-lg bg-white/80 px-3 py-2 text-[11px] font-medium text-gray-600 hover:bg-white border border-gray-200 transition">
-                                Edit
-                            </button>
-
-                            <!-- Preview link -->
-                            <a href="<?= e(rtrim((string) APP_URL, '/') . '/l/' . rawurlencode((string)($page['slug'] ?? ''))) ?>"
-                                target="_blank"
-                                class="text-[10px] text-blue-600 hover:underline truncate max-w-[110px]"
-                                title="<?= e((string)($page['slug'] ?? '')) ?>">
-                                Preview ↗
-                            </a>
-                            <div class="mt-1 grid w-full grid-cols-5 gap-1 border-t border-black/10 pt-2 text-[10px] text-gray-600" aria-label="Last 30 days performance">
-                                <span title="Page views"><strong class="block text-gray-900"><?= htmlentities((string) $pageViews, ENT_QUOTES, 'UTF-8') ?></strong>views</span>
-                                <span title="CTA actions"><strong class="block text-gray-900"><?= htmlentities((string) $pageActions, ENT_QUOTES, 'UTF-8') ?></strong>CTA</span>
-                                <span title="Leads"><strong class="block text-gray-900"><?= htmlentities((string) $pageLeads, ENT_QUOTES, 'UTF-8') ?></strong>leads</span>
-                                <span title="Consultations booked"><strong class="block text-gray-900"><?= htmlentities((string) $pageBooked, ENT_QUOTES, 'UTF-8') ?></strong>booked</span>
-                                <span title="Visitor-to-lead conversion"><strong class="block text-gray-900"><?= htmlentities(number_format($pageConversion, 1), ENT_QUOTES, 'UTF-8') ?>%</strong>CVR</span>
-                            </div>
-                        </div>
-                        <?php else: ?>
-                        <div class="inline-flex items-center justify-center rounded-xl border border-dashed border-gray-200 p-3 text-xs text-gray-300" style="min-width:120px; min-height: 72px;">
-                            No page
-                        </div>
-                        <?php endif; ?>
-                    </td>
-                    <?php endforeach; ?>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Legend -->
-    <div class="mt-4 flex items-center gap-6 text-xs text-gray-500">
-        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full dot-active inline-block"></span> Live — visible to visitors</span>
-        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full dot-inactive inline-block"></span> Off — not visible</span>
-        <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded border border-dashed border-gray-300"></span> No page record</span>
-    </div>
-</div>
+    </section>
+</main>
 
 </div>
 

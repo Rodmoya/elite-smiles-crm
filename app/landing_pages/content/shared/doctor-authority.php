@@ -29,4 +29,17 @@ return [
             'Approach centered on clear recommendations rather than pressure',
         ],
     ],
+    'dr_meden_cosmetic' => [
+        'eyebrow' => 'WHY ELITE SMILES',
+        'title'   => 'Treatment Planning Should Begin With the Whole Smile',
+        'body'    => 'Cosmetic treatment should account for oral health, function, facial proportions, and what the patient wants to change. Dr. Walter Meden, DDS, earned his dental degree from New York University, completed a post-doctoral residency at New York Hospital, completed a surgical internship at Mt. Sinai Medical Center, pursued advanced aesthetic training through LVI, and brings more than 20 years of experience to patient consultations at Elite Smiles.',
+        'items'   => [
+            'Dental degree from New York University',
+            'Post-doctoral residency at New York Hospital',
+            'Surgical internship at Mt. Sinai Medical Center',
+            'Advanced aesthetic training through LVI',
+            'More than 20 years of clinical experience',
+            'Individual recommendations based on health, function, and appearance',
+        ],
+    ],
 ];

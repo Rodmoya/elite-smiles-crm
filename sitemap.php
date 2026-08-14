@@ -67,9 +67,11 @@ $addUrl = static function (string $slug, string $procedure = '', ?string $update
  */
 try {
     $pages = db_all(
-        'SELECT slug, procedure_type, updated_at
+        'SELECT slug, procedure_type, angle, updated_at
          FROM landing_pages
          WHERE is_active = 1
+           AND (angle = \'\' OR angle IS NULL)
+           AND slug REGEXP \'-(draper|lehi|south-jordan|highland|alpine|park-city|farmington|cedar-hills)-v1$\'
          ORDER BY procedure_type, slug'
     );
 
@@ -101,8 +103,9 @@ if (is_file($landingMapFile)) {
 
             $isActive  = (bool) ($row['is_active'] ?? false);
             $procedure = (string) ($row['procedure'] ?? $row['procedure_type'] ?? '');
+            $angle = trim((string) ($row['angle'] ?? ''));
 
-            if ($isActive) {
+            if ($isActive && $angle === '') {
                 $addUrl((string) $slug, $procedure, null);
             }
         }

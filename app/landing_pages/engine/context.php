@@ -155,9 +155,14 @@ if (!function_exists('lp_build_context')) {
         }
 
         $quizSteps = lp_question_set_steps($registry, $questionSetFile);
+        if ($quizSteps === []) {
+            $questionSetFile = 'organic-consultation.php';
+            $quizSteps = lp_question_set_steps($registry, $questionSetFile);
+        }
         $procedureLabel = (string) ($procedure['label'] ?? ucwords(str_replace('_', ' ', $procedureKey)));
         $cityLabel = (string) ($city['city_label'] ?? $city['label'] ?? '');
-        $formAction = lp_resolve_form_action($slug);
+        $organicBaseSlug = lp_organic_base_slug($procedureKey, $cityKey);
+        $formAction = lp_resolve_form_action($organicBaseSlug !== '' ? $organicBaseSlug : $slug);
         $standardForm = lp_empty_standard_form($procedureLabel, $quizSteps);
         $voucherForm = lp_default_voucher_form();
 
@@ -182,7 +187,7 @@ if (!function_exists('lp_build_context')) {
         $submittedLeadId = (string) ($runtime['submittedLeadId'] ?? lp_context_query_value('lead_id', 'submitted_lead_id'));
         $detailsMode = lp_context_query_value('details', 'show_details') === '1';
         $submittedDetailsView = lp_context_query_value('submitted') === '1';
-        $miniLandingGate = $slug === 'veneers-draper-v1' && !$detailsMode;
+        $miniLandingGate = false;
         $attribution = [
             'source' => $querySource,
             'source_medium' => $queryMedium,
@@ -278,20 +283,20 @@ if (!function_exists('lp_build_context')) {
         $ctx['cityKey'] = $cityKey;
         $ctx['angleKey'] = $angleKey;
 
-        if ($procedureKey === 'veneers') {
-            $landingView = landing_pages_build_veneers_view($ctx, $runtime);
-
+        $landingView = landing_pages_build_organic_view($ctx, $runtime);
+        if ($landingView !== []) {
             $ctx['landingView'] = $landingView;
             $ctx['sections'] = $landingView['sections'] ?? [];
             $ctx['section_order'] = $landingView['section_order'] ?? $ctx['section_order'];
             $ctx['headerCtaText'] = $landingView['header_cta_text'] ?? $ctx['primaryCtaText'];
-        } elseif ($procedureKey === 'implants') {
-            $landingView = landing_pages_build_implants_view($ctx, $runtime);
-
-            $ctx['landingView'] = $landingView;
-            $ctx['sections'] = $landingView['sections'] ?? [];
-            $ctx['section_order'] = $landingView['section_order'] ?? $ctx['section_order'];
-            $ctx['headerCtaText'] = $landingView['header_cta_text'] ?? $ctx['primaryCtaText'];
+            $ctx['primaryCtaText'] = $ctx['headerCtaText'];
+            $ctx['templateFile'] = dirname(__DIR__) . '/templates/organic-master-base.php';
+            if (!empty($landingView['head']) && is_array($landingView['head'])) {
+                $ctx['head'] = $landingView['head'];
+                $ctx['metaTitle'] = (string) ($landingView['head']['title'] ?? '');
+                $ctx['metaDesc'] = (string) ($landingView['head']['description'] ?? '');
+                $ctx['canonicalUrl'] = (string) ($landingView['head']['canonical'] ?? '');
+            }
         }
 
         $ctx['modal'] = [

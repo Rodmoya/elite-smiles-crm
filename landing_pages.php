@@ -5,8 +5,8 @@ declare(strict_types=1);
  * Elite Smiles CRM
  * File: landing_pages.php
  *
- * Professional landing pages admin panel.
- * Matrix view: procedure tabs x city rows x angle columns.
+ * Organic local SEO landing pages admin panel.
+ * Matrix view: one authoritative page per procedure and city.
  * Slide-out detail panel for editing individual pages.
  * Bulk activate/deactivate by procedure or city.
  */
@@ -43,13 +43,7 @@ $cities = [
     'cedar-hills'  => 'Cedar Hills',
 ];
 
-$angles = [
-    ''                    => 'Base',
-    'premium_trust'       => 'Premium Trust',
-    'financing'           => 'Financing',
-    'transformation'      => 'Transformation',
-    'education_comparison'=> 'Education',
-];
+$angles = ['' => 'Organic page'];
 
 // ── AJAX / POST handlers ───────────────────────────────────────────────────────
 if (is_post()) {
@@ -70,11 +64,23 @@ if (is_post()) {
             exit;
         }
 
+        if ($action === 'publish_organic_set') {
+            db_execute("UPDATE landing_pages SET is_active = 0, updated_at = NOW() WHERE angle <> '' AND angle IS NOT NULL");
+            db_execute(
+                "UPDATE landing_pages SET is_active = 1, updated_at = NOW()
+                 WHERE (angle = '' OR angle IS NULL)
+                   AND procedure_type IN ('veneers','implants','all_on_x','smile_makeover','lip_repositioning')
+                   AND city IN ('draper','lehi','south-jordan','highland','alpine','park-city','farmington','cedar-hills')"
+            );
+            echo json_encode(['ok' => true, 'message' => 'Published 40 canonical organic pages and retired historical angle aliases.']);
+            exit;
+        }
+
         // Bulk activate/deactivate by procedure
         if ($action === 'bulk_procedure') {
             $proc   = (string) post('procedure');
             $status = (int) post('status');
-            db_execute('UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE procedure_type = :p', ['s' => $status, 'p' => $proc]);
+            db_execute("UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE procedure_type = :p AND (angle = '' OR angle IS NULL)", ['s' => $status, 'p' => $proc]);
             echo json_encode(['ok' => true]);
             exit;
         }
@@ -83,7 +89,7 @@ if (is_post()) {
         if ($action === 'bulk_city') {
             $city   = (string) post('city');
             $status = (int) post('status');
-            db_execute('UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE city = :c', ['s' => $status, 'c' => $city]);
+            db_execute("UPDATE landing_pages SET is_active = :s, updated_at = NOW() WHERE city = :c AND (angle = '' OR angle IS NULL)", ['s' => $status, 'c' => $city]);
             echo json_encode(['ok' => true]);
             exit;
         }
@@ -150,7 +156,7 @@ if (is_post()) {
 }
 
 // ── Load all pages into a matrix ──────────────────────────────────────────────
-$allPages = db_all('SELECT id, slug, procedure_type, city, angle, is_active, hero_title, hero_image, updated_at FROM landing_pages ORDER BY procedure_type, city, angle');
+$allPages = db_all("SELECT id, slug, procedure_type, city, angle, is_active, hero_title, hero_image, updated_at FROM landing_pages WHERE angle = '' OR angle IS NULL ORDER BY procedure_type, city");
 
 // Index: $matrix[procedure][city][angle] = page row
 $matrix = [];
@@ -165,9 +171,51 @@ foreach ($allPages as $page) {
     if ((int)$page['is_active'] === 1) $stats['active']++;
 }
 
+// Thirty-day organic funnel performance, keyed by canonical landing-page slug.
+$performance = [];
+$views30d = 0;
+try {
+    $eventRows = db_all(
+        "SELECT landing_page,
+                SUM(event_name = 'page_view') AS page_views,
+                SUM(event_name IN ('header_cta_click','cta_click','directions_click','wizard_start','form_submit_click','form_submit_attempt')) AS cta_actions
+         FROM landing_page_events
+         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+         GROUP BY landing_page"
+    );
+    foreach ($eventRows as $eventRow) {
+        $slug = (string) ($eventRow['landing_page'] ?? '');
+        $performance[$slug]['views'] = (int) ($eventRow['page_views'] ?? 0);
+        $performance[$slug]['actions'] = (int) ($eventRow['cta_actions'] ?? 0);
+        $views30d += (int) ($eventRow['page_views'] ?? 0);
+    }
+} catch (Throwable $e) {
+    // The event table is created lazily on the first tracked visit after deployment.
+}
+
+try {
+    $leadRows = db_all(
+        "SELECT landing_page,
+                COUNT(*) AS leads,
+                SUM(status IN ('consultation_booked','consult_completed','treatment_accepted','treatment_completed')
+                    OR consultation_date IS NOT NULL) AS booked
+         FROM leads
+         WHERE landing_page <> ''
+           AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+         GROUP BY landing_page"
+    );
+    foreach ($leadRows as $leadRow) {
+        $slug = (string) ($leadRow['landing_page'] ?? '');
+        $performance[$slug]['leads'] = (int) ($leadRow['leads'] ?? 0);
+        $performance[$slug]['booked'] = (int) ($leadRow['booked'] ?? 0);
+    }
+} catch (Throwable $e) {
+    // Older installations may not yet have consultation_date; page management remains available.
+}
+
 // Count leads this month
 $leadsThisMonth = (int) db_value(
-    "SELECT COUNT(*) FROM leads WHERE created_at >= DATE_FORMAT(NOW(),'%Y-%m-01')"
+    "SELECT COUNT(*) FROM leads WHERE landing_page <> '' AND created_at >= DATE_FORMAT(NOW(),'%Y-%m-01')"
 ) ?: 0;
 
 $user      = auth_user();
@@ -176,6 +224,9 @@ $logoUrl   = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $csrfToken = csrf_token();
 $activeProcedure = trim((string) ($_GET['proc'] ?? 'veneers'));
 if (!isset($procedures[$activeProcedure])) $activeProcedure = 'veneers';
+$currentPage = 'landing_pages';
+$pageTitle = 'Organic Landing Pages';
+$logoutAction = base_url('landing_pages.php');
 
 ?>
 <!DOCTYPE html>
@@ -183,7 +234,7 @@ if (!isset($procedures[$activeProcedure])) $activeProcedure = 'veneers';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Landing Pages — Elite Smiles CRM</title>
+<title>Organic Landing Pages — Elite Smiles CRM</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -212,13 +263,18 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 </style>
 </head>
 <body class="bg-gray-50 text-eliteInk antialiased">
+<?php require __DIR__ . '/app/partials/crm_sidebar.php'; ?>
+<div class="lg:pl-72">
 
 <!-- ── HEADER ── -->
 <header class="sticky top-0 z-40 border-b border-eliteBorder bg-white shadow-sm">
     <div class="mx-auto flex max-w-screen-xl items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
             <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="h-8 w-auto">
-            <span class="text-sm font-semibold text-gray-700">Landing Pages</span>
+            <div>
+                <div class="text-sm font-semibold text-gray-700">Organic Landing Pages</div>
+                <div class="text-xs text-gray-500">One authoritative treatment page per city</div>
+            </div>
         </div>
         <div class="flex items-center gap-6">
             <!-- Stats -->
@@ -234,6 +290,10 @@ body { font-family: system-ui, -apple-system, sans-serif; }
                 <div class="text-center">
                     <div class="text-lg font-bold text-eliteRose"><?= $leadsThisMonth ?></div>
                     <div class="text-xs text-gray-500">Leads this month</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-lg font-bold text-blue-700"><?= $views30d ?></div>
+                    <div class="text-xs text-gray-500">Views (30 days)</div>
                 </div>
             </div>
             <a href="<?= e(base_url('dashboard.php')) ?>"
@@ -279,6 +339,11 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 <!-- ── BULK ACTIONS BAR ── -->
 <div class="border-b border-eliteBorder bg-eliteStone px-4 py-2">
     <div class="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3">
+        <button onclick="publishOrganicSet(this)"
+            class="min-h-[44px] rounded-full bg-eliteRose px-4 py-2 text-xs font-semibold text-white hover:bg-eliteRoseDark">
+            Publish organic page set
+        </button>
+        <span class="text-gray-300">|</span>
         <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Bulk actions for <?= e($procedures[$activeProcedure]) ?>:</span>
         <button onclick="bulkProcedure('<?= e($activeProcedure) ?>', 1)"
             class="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
@@ -300,8 +365,11 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 
 <!-- ── MATRIX GRID ── -->
 <div class="mx-auto max-w-screen-xl px-4 py-6">
+    <div class="mb-5 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm leading-6 text-blue-950">
+        <strong>Organic publishing model:</strong> education, candidacy, process, financing, and transformation content are consolidated into each city page. Historical angle URLs redirect here so they do not compete in Google Search.
+    </div>
     <div class="overflow-x-auto rounded-2xl border border-eliteBorder bg-white shadow-sm">
-        <table class="w-full min-w-[900px] border-collapse text-sm">
+        <table class="w-full min-w-[560px] border-collapse text-sm">
             <!-- Column headers (angles) -->
             <thead>
                 <tr class="border-b border-eliteBorder bg-eliteStone">
@@ -339,6 +407,13 @@ body { font-family: system-ui, -apple-system, sans-serif; }
                         $page     = $matrix[$activeProcedure][$cityKey][$angleKey] ?? null;
                         $isActive = $page ? (int)($page['is_active'] ?? 0) === 1 : false;
                         $pageId   = $page ? (int)$page['id'] : 0;
+                        $pageSlug = $page ? (string) ($page['slug'] ?? '') : '';
+                        $pageMetrics = $performance[$pageSlug] ?? [];
+                        $pageViews = (int) ($pageMetrics['views'] ?? 0);
+                        $pageActions = (int) ($pageMetrics['actions'] ?? 0);
+                        $pageLeads = (int) ($pageMetrics['leads'] ?? 0);
+                        $pageBooked = (int) ($pageMetrics['booked'] ?? 0);
+                        $pageConversion = $pageViews > 0 ? round(($pageLeads / $pageViews) * 100, 1) : 0.0;
                     ?>
                     <td class="px-3 py-3 text-center">
                         <?php if ($page): ?>
@@ -349,7 +424,7 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 
                             <!-- Status dot + toggle -->
                             <button onclick="togglePage(<?= $pageId ?>, this)"
-                                class="flex items-center gap-1.5 text-xs font-medium"
+                                class="flex min-h-[44px] items-center gap-1.5 px-2 text-xs font-medium"
                                 title="Click to toggle">
                                 <span class="h-2.5 w-2.5 rounded-full dot flex-shrink-0 <?= $isActive ? 'dot-active' : 'dot-inactive' ?>"></span>
                                 <span class="status-label"><?= $isActive ? 'Live' : 'Off' ?></span>
@@ -357,17 +432,24 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 
                             <!-- Edit button -->
                             <button onclick="openPanel(<?= $pageId ?>)"
-                                class="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-white border border-gray-200 transition">
+                                class="min-h-[44px] rounded-lg bg-white/80 px-3 py-2 text-[11px] font-medium text-gray-600 hover:bg-white border border-gray-200 transition">
                                 Edit
                             </button>
 
                             <!-- Preview link -->
-                            <a href="<?= e(base_url('landing.php?slug=' . urlencode((string)($page['slug'] ?? '')))) ?>"
+                            <a href="<?= e(rtrim((string) APP_URL, '/') . '/l/' . rawurlencode((string)($page['slug'] ?? ''))) ?>"
                                 target="_blank"
                                 class="text-[10px] text-blue-600 hover:underline truncate max-w-[110px]"
                                 title="<?= e((string)($page['slug'] ?? '')) ?>">
                                 Preview ↗
                             </a>
+                            <div class="mt-1 grid w-full grid-cols-5 gap-1 border-t border-black/10 pt-2 text-[10px] text-gray-600" aria-label="Last 30 days performance">
+                                <span title="Page views"><strong class="block text-gray-900"><?= $pageViews ?></strong>views</span>
+                                <span title="CTA actions"><strong class="block text-gray-900"><?= $pageActions ?></strong>CTA</span>
+                                <span title="Leads"><strong class="block text-gray-900"><?= $pageLeads ?></strong>leads</span>
+                                <span title="Consultations booked"><strong class="block text-gray-900"><?= $pageBooked ?></strong>booked</span>
+                                <span title="Visitor-to-lead conversion"><strong class="block text-gray-900"><?= number_format($pageConversion, 1) ?>%</strong>CVR</span>
+                            </div>
                         </div>
                         <?php else: ?>
                         <div class="inline-flex items-center justify-center rounded-xl border border-dashed border-gray-200 p-3 text-xs text-gray-300" style="min-width:120px; min-height: 72px;">
@@ -388,6 +470,8 @@ body { font-family: system-ui, -apple-system, sans-serif; }
         <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full dot-inactive inline-block"></span> Off — not visible</span>
         <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded border border-dashed border-gray-300"></span> No page record</span>
     </div>
+</div>
+
 </div>
 
 <!-- ── SLIDE-OUT DETAIL PANEL ── -->
@@ -488,24 +572,40 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 </div>
 
 <!-- ── JAVASCRIPT ── -->
+<div id="pageToast" role="status" aria-live="polite" class="pointer-events-none fixed left-1/2 top-1/2 z-[100] hidden max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-eliteBorder bg-white px-5 py-4 text-center text-sm font-semibold text-eliteInk shadow-2xl"></div>
 <script>
 const CSRF = '<?= e($csrfToken) ?>';
 const BASE = '<?= e(base_url('landing_pages.php')) ?>';
-const LANDING_BASE = '<?= e(base_url('landing.php')) ?>';
+const LANDING_BASE = '<?= e(rtrim((string) APP_URL, '/') . '/l/') ?>';
 
 async function api(payload) {
-    const fd = new FormData();
-    fd.append('_csrf_token', CSRF);
-    for (const [k, v] of Object.entries(payload)) fd.append(k, v);
-    const res = await fetch(BASE, { method: 'POST', body: fd });
-    return res.json();
+    try {
+        const fd = new FormData();
+        fd.append('_csrf_token', CSRF);
+        for (const [k, v] of Object.entries(payload)) fd.append(k, v);
+        const res = await fetch(BASE, { method: 'POST', body: fd, headers: { Accept: 'application/json' } });
+        const data = await res.json().catch(() => ({ ok: false, message: 'The server returned an unreadable response.' }));
+        if (!res.ok && data.ok !== false) return { ok: false, message: 'The request failed. Please try again.' };
+        return data;
+    } catch (error) {
+        return { ok: false, message: 'Unable to reach the server. Check your connection and try again.' };
+    }
+}
+
+function pageToast(message, isError = false) {
+    const toast = document.getElementById('pageToast');
+    toast.textContent = message || (isError ? 'The request failed.' : 'Done.');
+    toast.classList.remove('hidden', 'border-red-200', 'text-red-800', 'border-emerald-200', 'text-emerald-800');
+    toast.classList.add(isError ? 'border-red-200' : 'border-emerald-200', isError ? 'text-red-800' : 'text-emerald-800');
+    window.clearTimeout(pageToast.timer);
+    pageToast.timer = window.setTimeout(() => toast.classList.add('hidden'), 4200);
 }
 
 // Toggle single page
 async function togglePage(id, btn) {
     btn.disabled = true;
     const data = await api({ action: 'toggle', id });
-    if (!data.ok) { alert(data.message); btn.disabled = false; return; }
+    if (!data.ok) { pageToast(data.message, true); btn.disabled = false; return; }
 
     const cell   = document.getElementById('cell-' + id);
     const dot    = btn.querySelector('.dot');
@@ -529,7 +629,20 @@ async function bulkProcedure(proc, status) {
     if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all pages for this procedure?'))) return;
     const data = await api({ action: 'bulk_procedure', procedure: proc, status });
     if (data.ok) location.reload();
-    else alert(data.message);
+    else pageToast(data.message, true);
+}
+
+async function publishOrganicSet(button) {
+    if (!(await window.crmConfirm('Publish all 40 canonical organic pages and deactivate the historical angle versions?'))) return;
+    button.disabled = true;
+    const data = await api({ action: 'publish_organic_set' });
+    if (data.ok) {
+        pageToast(data.message || 'Organic page set published.');
+        window.setTimeout(() => location.reload(), 900);
+        return;
+    }
+    button.disabled = false;
+    pageToast(data.message, true);
 }
 
 // Bulk city
@@ -537,7 +650,7 @@ async function bulkCity(city, status) {
     if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all pages for this city?'))) return;
     const data = await api({ action: 'bulk_city', city, status });
     if (data.ok) location.reload();
-    else alert(data.message);
+    else pageToast(data.message, true);
 }
 
 // Bulk angle
@@ -545,7 +658,7 @@ async function bulkAngle(proc, angle, status) {
     if (!(await window.crmConfirm((status ? 'Activate' : 'Deactivate') + ' all ' + (angle || 'base') + ' pages?'))) return;
     const data = await api({ action: 'bulk_angle', procedure: proc, angle, status });
     if (data.ok) location.reload();
-    else alert(data.message);
+    else pageToast(data.message, true);
 }
 
 // Open slide-out panel
@@ -558,7 +671,7 @@ async function openPanel(id) {
     document.getElementById('panelMessage').classList.add('hidden');
 
     const data = await api({ action: 'load', id });
-    if (!data.ok) { alert(data.message); closePanel(); return; }
+    if (!data.ok) { pageToast(data.message, true); closePanel(); return; }
 
     const p = data.page;
     document.getElementById('panelId').value             = p.id;
@@ -573,7 +686,7 @@ async function openPanel(id) {
     document.getElementById('panelOfferBadge').value     = p.offer_badge   || '';
     document.getElementById('panelOfferTitle').value     = p.offer_title   || '';
     document.getElementById('panelOfferDesc').value      = p.offer_description || '';
-    document.getElementById('panelPreviewLink').href     = LANDING_BASE + '?slug=' + encodeURIComponent(p.slug);
+    document.getElementById('panelPreviewLink').href     = LANDING_BASE + encodeURIComponent(p.slug);
 
     document.getElementById('panelLoading').classList.add('hidden');
     document.getElementById('panelContent').classList.remove('hidden');

@@ -11,6 +11,10 @@ $visitPlanningNote = trim((string) ($sectionData['visit_planning_note'] ?? ''));
 $address = trim((string) ($sectionData['address'] ?? ''));
 $mapEmbedUrl = trim((string) ($sectionData['map_embed_url'] ?? ''));
 $showMap = (bool) ($sectionData['show_map'] ?? false);
+$travelTime = trim((string) ($sectionData['travel_time'] ?? ''));
+$distance = trim((string) ($sectionData['distance'] ?? ''));
+$directionsUrl = trim((string) ($sectionData['directions_url'] ?? ''));
+$nearbyAreas = is_array($sectionData['nearby'] ?? null) ? $sectionData['nearby'] : [];
 
 if ($cityLabel === '' && $travelFrame === '' && $convenienceNote === '' && $visitPlanningNote === '') {
     return;
@@ -46,6 +50,24 @@ if ($variant === 'travel_for_quality') {
                 <p class="mt-4 text-base leading-7 text-eliteBody sm:text-lg sm:leading-8">
                     <?= e($travelFrame) ?>
                 </p>
+            <?php endif; ?>
+
+            <?php if ($travelTime !== '' || $distance !== ''): ?>
+                <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                    <?php if ($travelTime !== ''): ?>
+                        <div class="rounded-[1.25rem] border border-eliteBorder bg-white px-5 py-4">
+                            <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Typical drive</div>
+                            <div class="mt-2 text-lg font-semibold text-eliteInk"><?= e($travelTime) ?></div>
+                        </div>
+                    <?php endif; ?>
+                    <?php if ($distance !== ''): ?>
+                        <div class="rounded-[1.25rem] border border-eliteBorder bg-white px-5 py-4">
+                            <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Approximate distance</div>
+                            <div class="mt-2 text-lg font-semibold text-eliteInk"><?= e($distance) ?></div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <p class="mt-3 text-xs leading-5 text-slate-500">Travel estimates are general planning ranges, not live traffic guarantees.</p>
             <?php endif; ?>
 
             <div class="mt-6 grid gap-4 md:grid-cols-2">
@@ -91,6 +113,25 @@ if ($variant === 'travel_for_quality') {
                         allowfullscreen
                         title="Map to Elite Smiles"
                     ></iframe>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($nearbyAreas !== []): ?>
+                <div class="mt-5 text-sm leading-6 text-slate-600">
+                    <span class="font-semibold text-eliteInk">Nearby communities and route areas:</span>
+                    <?= e(implode(', ', array_map('strval', $nearbyAreas))) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($directionsUrl !== ''): ?>
+                <div class="mt-6">
+                    <a
+                        href="<?= e($directionsUrl) ?>"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-track="directions_click"
+                        class="inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-eliteRose bg-white px-6 py-3 text-center text-sm font-semibold text-eliteRose transition hover:bg-eliteRose hover:text-white sm:w-auto"
+                    >Check Current Traffic in Google Maps</a>
                 </div>
             <?php endif; ?>
 

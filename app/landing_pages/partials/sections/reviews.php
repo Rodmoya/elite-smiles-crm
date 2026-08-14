@@ -18,6 +18,7 @@ $reviewItems = $reviewItems
 if (!is_array($reviewItems) || $reviewItems === []) {
     return;
 }
+$showSectionCta = (bool) ($sectionData['show_cta'] ?? true);
 ?>
 
 <section class="bg-white" data-track-section="reviews">
@@ -70,7 +71,7 @@ if (!is_array($reviewItems) || $reviewItems === []) {
                 <?php endforeach; ?>
             </div>
 
-            <?php if (!empty($primaryCtaText)): ?>
+            <?php if ($showSectionCta && !empty($primaryCtaText)): ?>
                 <div class="mt-6">
                     <button
                         type="button"

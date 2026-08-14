@@ -14,6 +14,7 @@ $textBody = $textBody
 
 $textClasses = trim((string) ($sectionData['classes'] ?? 'bg-white'));
 $textTrack   = trim((string) ($sectionData['track'] ?? 'text_block'));
+$showSectionCta = (bool) ($sectionData['show_cta'] ?? true);
 
 if ($textTitle === '' && $textBody === '') {
     return;
@@ -41,7 +42,7 @@ if ($textTitle === '' && $textBody === '') {
                 </p>
             <?php endif; ?>
 
-            <?php if (!empty($primaryCtaText)): ?>
+            <?php if ($showSectionCta && !empty($primaryCtaText)): ?>
                 <div class="mt-6">
                     <button
                         type="button"

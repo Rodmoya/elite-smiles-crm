@@ -47,6 +47,26 @@ CREATE TABLE IF NOT EXISTS `landing_pages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
+-- first-party landing page events
+-- Stores anonymous funnel events for organic-page reporting.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `landing_page_events` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `landing_page`   VARCHAR(255)     NOT NULL,
+  `procedure_type` VARCHAR(100)     NOT NULL DEFAULT '',
+  `city`           VARCHAR(100)     NOT NULL DEFAULT '',
+  `event_name`     VARCHAR(64)      NOT NULL,
+  `session_hash`   CHAR(64)         NOT NULL,
+  `referrer_host`  VARCHAR(190)     NOT NULL DEFAULT '',
+  `source`         VARCHAR(100)     NOT NULL DEFAULT '',
+  `medium`         VARCHAR(100)     NOT NULL DEFAULT '',
+  `created_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_landing_event_page_date` (`landing_page`, `created_at`),
+  KEY `idx_landing_event_name_date` (`event_name`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
 -- leads table (if not already created)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `leads` (
@@ -424,15 +444,15 @@ INSERT IGNORE INTO `landing_pages` (`slug`, `procedure_type`, `city`, `angle`, `
 ('lip-repositioning-cedar-hills-transformation-v1','lip_repositioning','cedar-hills','transformation','general', 0),
 ('lip-repositioning-cedar-hills-education-comparison-v1','lip_repositioning','cedar-hills','education_comparison','general', 0);
 
--- Activate the first veneers Draper pages as a starting point
-UPDATE `landing_pages` SET `is_active` = 1
-WHERE `slug` IN (
-  'veneers-draper-v1',
-  'veneers-draper-premium-trust-v1',
-  'veneers-draper-financing-v1',
-  'veneers-draper-transformation-v1',
-  'veneers-draper-education-comparison-v1'
-);
+-- Organic publishing model: one canonical page per treatment/city.
+-- Historical angle records remain available as redirect aliases but are not active.
+UPDATE `landing_pages` SET `is_active` = 0;
+UPDATE `landing_pages`
+SET `is_active` = 1
+WHERE (`angle` = '' OR `angle` IS NULL)
+  AND `procedure_type` IN ('veneers','implants','all_on_x','smile_makeover','lip_repositioning')
+  AND `city` IN ('draper','lehi','south-jordan','highland','alpine','park-city','farmington','cedar-hills')
+  AND `slug` REGEXP '-(draper|lehi|south-jordan|highland|alpine|park-city|farmington|cedar-hills)-v1$';
 
 -- ------------------------------------------------------------
 -- Patient Experience foundation tables

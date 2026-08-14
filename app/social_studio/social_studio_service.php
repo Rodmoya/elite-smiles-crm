@@ -61,6 +61,9 @@ if (!function_exists('social_studio_ensure_schema')) {
             image_storage_key VARCHAR(255) NULL,
             branded_image_storage_key VARCHAR(255) NULL,
             image_generated_at DATETIME NULL,
+            image_revision_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            last_image_revision_instruction TEXT NULL,
+            image_revision_history_json LONGTEXT NULL,
             generation_status VARCHAR(24) NOT NULL DEFAULT 'pending',
             generation_error TEXT NULL,
             scheduled_at DATETIME NULL,
@@ -117,6 +120,9 @@ if (!function_exists('social_studio_ensure_schema')) {
             'image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN image_storage_key VARCHAR(255) NULL AFTER image_url",
             'branded_image_storage_key' => "ALTER TABLE social_studio_drafts ADD COLUMN branded_image_storage_key VARCHAR(255) NULL AFTER image_storage_key",
             'image_generated_at' => "ALTER TABLE social_studio_drafts ADD COLUMN image_generated_at DATETIME NULL AFTER branded_image_storage_key",
+            'image_revision_count' => "ALTER TABLE social_studio_drafts ADD COLUMN image_revision_count SMALLINT UNSIGNED NOT NULL DEFAULT 0 AFTER image_generated_at",
+            'last_image_revision_instruction' => "ALTER TABLE social_studio_drafts ADD COLUMN last_image_revision_instruction TEXT NULL AFTER image_revision_count",
+            'image_revision_history_json' => "ALTER TABLE social_studio_drafts ADD COLUMN image_revision_history_json LONGTEXT NULL AFTER last_image_revision_instruction",
             'base_reference_key' => "ALTER TABLE social_studio_drafts ADD COLUMN base_reference_key VARCHAR(180) NULL AFTER image_prompt",
             'base_post_prompt' => "ALTER TABLE social_studio_drafts ADD COLUMN base_post_prompt TEXT NULL AFTER base_reference_key",
             'overlay_spec' => "ALTER TABLE social_studio_drafts ADD COLUMN overlay_spec TEXT NULL AFTER base_post_prompt",
@@ -1343,8 +1349,24 @@ if (!function_exists('social_studio_match_template_canvas')) {
     }
 }
 
+if (!function_exists('social_studio_image_revision_prompt')) {
+    function social_studio_image_revision_prompt(array $draft, string $instruction, string $baseImagePrompt = ''): string
+    {
+        $instruction = trim(preg_replace('/\s+/', ' ', $instruction) ?? $instruction);
+        $baseImagePrompt = trim($baseImagePrompt);
+        if ($baseImagePrompt === '') {
+            $baseImagePrompt = social_studio_refine_image_prompt($draft);
+        }
+        return $baseImagePrompt
+            . "\n\nITERATIVE IMAGE REVISION\n"
+            . "Edit the supplied current clean photograph; do not create or alter any text layer. Preserve its overall subject, visual identity, premium editorial treatment, aspect ratio, and intentional negative space unless the instruction explicitly requires a composition change. Apply only this requested change: {$instruction}\n"
+            . "The approved overlay copy, typography, font sizes, colors, positions, CTA, caption, and hashtags are locked and will be reapplied by the CRM after this edit. Do not render words, letters, logos, badges, watermarks, borders, or graphic overlays into the photograph. Keep both eyes visible whenever the face is shown, the smile and teeth tack-sharp, skin and anatomy realistic, and the result compliant with the active Elite Smiles Brand Book."
+            . "\n\n" . social_studio_brand_book_prompt();
+    }
+}
+
 if (!function_exists('social_studio_generate_image_for_draft')) {
-    function social_studio_generate_image_for_draft(int $draftId, int $qualityAttempt = 1): array
+    function social_studio_generate_image_for_draft(int $draftId, int $qualityAttempt = 1, string $revisionInstruction = '', array $revisionReference = []): array
     {
         social_studio_ensure_schema();
         $draft = db_one('SELECT * FROM social_studio_drafts WHERE id = :id LIMIT 1', ['id' => $draftId]);
@@ -1380,10 +1402,16 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
                 }
             }
         }
-        $directTemplateEdit = social_studio_should_direct_edit_template($draft, $referencePath);
-        $prompt = $directTemplateEdit
+        $revisionInstruction = trim($revisionInstruction);
+        if ($revisionInstruction !== '' && is_string($revisionReference['bytes'] ?? null) && $revisionReference['bytes'] !== '') {
+            $referenceImage = $revisionReference;
+        }
+        $directTemplateEdit = $revisionInstruction === '' && social_studio_should_direct_edit_template($draft, $referencePath);
+        $prompt = $revisionInstruction !== ''
+            ? social_studio_image_revision_prompt($draft, $revisionInstruction)
+            : ($directTemplateEdit
             ? social_studio_direct_template_edit_prompt($draft, $sourceOverlayTemplate)
-            : social_studio_refine_image_prompt($draft);
+            : social_studio_refine_image_prompt($draft));
         $templateSquare = is_array($overlayTemplate) && (string)($overlayTemplate['aspect_ratio'] ?? '') === '1:1';
         if ($directTemplateEdit) {
             $edit = elite_gemini_generate_image_edit([$referencePath], $prompt);
@@ -1475,10 +1503,75 @@ if (!function_exists('social_studio_generate_image_for_draft')) {
             if (is_file($rawPath)) @unlink($rawPath);
             if ($brandedPath && is_file($brandedPath)) @unlink($brandedPath);
             esm_log('social_studio', 'Retrying original image after guardrail review.', ['draft_id' => $draftId, 'attempt' => $qualityAttempt]);
-            return social_studio_generate_image_for_draft($draftId, $qualityAttempt + 1);
+            return social_studio_generate_image_for_draft($draftId, $qualityAttempt + 1, $revisionInstruction, $revisionReference);
         }
 
         return ['ok' => true, 'message' => 'Image generated.', 'image_storage_key' => $rawKey, 'branded_image_storage_key' => $brandedKey];
+    }
+}
+
+if (!function_exists('social_studio_refine_image_for_draft')) {
+    function social_studio_refine_image_for_draft(int $draftId, string $instruction, int $userId = 0): array
+    {
+        social_studio_ensure_schema();
+        $instruction = trim(preg_replace('/\s+/', ' ', $instruction) ?? $instruction);
+        $length = function_exists('mb_strlen') ? mb_strlen($instruction) : strlen($instruction);
+        if ($length < 3 || $length > 500) {
+            return ['ok' => false, 'message' => 'Describe the image change in 3 to 500 characters.'];
+        }
+
+        $draft = db_one('SELECT * FROM social_studio_drafts WHERE id=:id LIMIT 1', ['id' => $draftId]);
+        if (!$draft) {
+            return ['ok' => false, 'message' => 'Social draft not found.'];
+        }
+        if (!in_array((string)($draft['status'] ?? ''), ['draft', 'review'], true)) {
+            return ['ok' => false, 'message' => 'Only drafts in review can be refined. Move approved content back to review first.'];
+        }
+        $previousRawKey = trim((string)($draft['image_storage_key'] ?? ''));
+        $previousBrandedKey = trim((string)($draft['branded_image_storage_key'] ?? ''));
+        $previousRawPath = social_studio_safe_storage_path($previousRawKey);
+        if ($previousRawKey === '' || !$previousRawPath || !is_file($previousRawPath)) {
+            return ['ok' => false, 'message' => 'Generate the first image before asking for a refinement.'];
+        }
+        $previousBytes = @file_get_contents($previousRawPath);
+        if (!is_string($previousBytes) || $previousBytes === '') {
+            return ['ok' => false, 'message' => 'The current clean image could not be read.'];
+        }
+        $reference = [
+            'bytes' => $previousBytes,
+            'mime_type' => (string)(@mime_content_type($previousRawPath) ?: 'image/png'),
+        ];
+        $result = social_studio_generate_image_for_draft($draftId, 1, $instruction, $reference);
+        if (empty($result['ok'])) {
+            return $result;
+        }
+
+        $history = json_decode((string)($draft['image_revision_history_json'] ?? ''), true);
+        $history = is_array($history) ? $history : [];
+        $history[] = [
+            'revision' => count($history) + 1,
+            'instruction' => $instruction,
+            'previous_image_storage_key' => $previousRawKey,
+            'previous_branded_image_storage_key' => $previousBrandedKey,
+            'image_storage_key' => (string)($result['image_storage_key'] ?? ''),
+            'branded_image_storage_key' => (string)($result['branded_image_storage_key'] ?? ''),
+            'created_by' => $userId > 0 ? $userId : null,
+            'created_at' => date('c'),
+        ];
+        if (count($history) > 25) {
+            $history = array_slice($history, -25);
+        }
+        db_execute(
+            'UPDATE social_studio_drafts SET image_revision_count=image_revision_count+1, last_image_revision_instruction=:instruction, image_revision_history_json=:history WHERE id=:id LIMIT 1',
+            [
+                'id' => $draftId,
+                'instruction' => $instruction,
+                'history' => json_encode($history, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]
+        );
+
+        $result['message'] = 'Image refined. The approved overlay and post copy were preserved.';
+        return $result;
     }
 }
 

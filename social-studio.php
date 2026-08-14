@@ -67,6 +67,8 @@ $selectedGuardrails = $selected ? json_decode((string)($selected['guardrail_json
 $selectedGuardrails = is_array($selectedGuardrails) ? $selectedGuardrails : null;
 $selectedBrief = $selected ? json_decode((string)($selected['creative_brief_json'] ?? ''), true) : null;
 $selectedBrief = is_array($selectedBrief) ? $selectedBrief : null;
+$selectedImageRevisions = $selected ? json_decode((string)($selected['image_revision_history_json'] ?? ''), true) : null;
+$selectedImageRevisions = is_array($selectedImageRevisions) ? array_reverse($selectedImageRevisions) : [];
 $defaultScheduleLocal = date('Y-m-d\TH:i', strtotime(social_studio_next_slot(0)));
 $calendarNow = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
 $calendarDefaultSlot = null;
@@ -295,6 +297,14 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
                     <div class="border-t border-slate-100 px-4 py-3"><div class="mb-3 flex text-2xl"><span>♡　◯　➤</span><span class="ml-auto">⌑</span></div><p class="whitespace-pre-line text-sm leading-6 text-slate-700"><strong class="text-slate-950">elitesmilesutah</strong> <?= e((string)$selected['caption']) ?></p><p class="mt-3 text-xs leading-5 text-blue-700"><?= e((string)$selected['hashtags']) ?></p></div>
                 </article>
                 <?php if ($selectedGuardrails): ?><div class="mx-auto mt-4 max-w-[620px] rounded-xl border <?= ($selectedGuardrails['status'] ?? '') === 'pass' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' ?> p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-slate-900">Quality guardrails</p><span class="rounded-full bg-white px-2 py-1 text-xs font-semibold"><?= e((string)($selectedGuardrails['passed'] ?? 0)) ?>/<?= e((string)($selectedGuardrails['total'] ?? 0)) ?> passed</span></div><ul class="mt-3 grid gap-2 sm:grid-cols-2"><?php foreach ((array)($selectedGuardrails['checks'] ?? []) as $check): ?><li class="flex gap-2 text-xs leading-5 <?= !empty($check['pass']) ? 'text-emerald-800' : 'text-amber-900' ?>"><span aria-hidden="true"><?= !empty($check['pass']) ? '✓' : '!' ?></span><span><?= e((string)($check['label'] ?? 'Quality check')) ?></span></li><?php endforeach; ?></ul><?php if (trim((string)($selectedGuardrails['visual_notes'] ?? '')) !== ''): ?><p class="mt-3 text-xs leading-5 text-slate-700"><?= e((string)$selectedGuardrails['visual_notes']) ?></p><?php endif; ?></div><?php endif; ?>
+                <?php if ($selectedImageUrl !== '' && in_array((string)($selected['status'] ?? ''), ['draft', 'review'], true)): ?>
+                    <section class="mx-auto mt-4 max-w-[620px] rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-labelledby="refine-image-title">
+                        <div class="flex items-start gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-950 text-white" aria-hidden="true"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></span><div><h3 id="refine-image-title" class="text-sm font-semibold text-slate-950">Refine this image</h3><p class="mt-1 text-xs leading-5 text-slate-600">Describe the visual change naturally. The approved overlay, fonts, CTA, caption, hashtags, and Brand Book rules stay locked.</p></div></div>
+                        <div class="mt-3 flex flex-wrap gap-2" aria-label="Suggested refinements"><button type="button" class="min-h-9 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:border-slate-400" data-refine-suggestion="Make the person look more natural and less AI-generated.">More realistic</button><button type="button" class="min-h-9 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:border-slate-400" data-refine-suggestion="Move the camera closer to the smile while keeping both eyes visible and in sharp focus.">Closer to smile</button><button type="button" class="min-h-9 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:border-slate-400" data-refine-suggestion="Use warmer natural daylight with a softer, premium background.">Warmer light</button></div>
+                        <form method="POST" action="<?= e(base_url('app/actions/social_studio_refine_image.php')) ?>" class="mt-3" data-social-refine-form><?= csrf_input() ?><input type="hidden" name="draft_id" value="<?= e((string)$selected['id']) ?>"><label class="sr-only" for="social-refine-instruction">Image refinement instruction</label><div class="flex items-end gap-2 rounded-2xl border border-slate-300 bg-white p-2 shadow-sm focus-within:border-slate-500 focus-within:ring-2 focus-within:ring-slate-200"><textarea id="social-refine-instruction" name="instruction" rows="2" minlength="3" maxlength="500" required class="min-h-12 min-w-0 flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm leading-5 text-slate-900 outline-none placeholder:text-slate-400" placeholder="Example: Make her look more real and move the camera closer to her smile."></textarea><button type="submit" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60" aria-label="Refine image"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 7-7 7 7M12 5v14"/></svg></button></div><p class="mt-2 text-[11px] leading-4 text-slate-500">The clean photo is edited first, then the exact approved overlay is reapplied automatically.</p></form>
+                        <?php if ($selectedImageRevisions !== []): ?><details class="mt-3 border-t border-slate-200 pt-3"><summary class="cursor-pointer text-xs font-semibold text-slate-700">Revision history (<?= e((string)count($selectedImageRevisions)) ?>)</summary><ol class="mt-3 space-y-2"><?php foreach ($selectedImageRevisions as $revision): ?><li class="rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-600"><span class="font-semibold text-slate-900">Version <?= e((string)($revision['revision'] ?? '')) ?>:</span> <?= e((string)($revision['instruction'] ?? '')) ?><span class="mt-1 block text-[10px] text-slate-400"><?= e(!empty($revision['created_at']) ? date('M j, Y g:i A', strtotime((string)$revision['created_at'])) : '') ?></span></li><?php endforeach; ?></ol></details><?php endif; ?>
+                    </section>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="grid min-h-[560px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div><p class="text-base font-semibold text-slate-800">No draft selected</p><p class="mt-2 text-sm text-slate-500">Create a remix or original post to begin the review.</p></div></div>
             <?php endif; ?>
@@ -569,6 +579,26 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
         }
         originalButton.disabled = true;
         originalButton.textContent = 'CMO is building the brief…';
+    });
+
+    const refineForm = document.querySelector('[data-social-refine-form]');
+    const refineInput = document.getElementById('social-refine-instruction');
+    document.querySelectorAll('[data-refine-suggestion]').forEach(button => button.addEventListener('click', () => {
+        if (!refineInput) return;
+        refineInput.value = button.dataset.refineSuggestion || '';
+        refineInput.focus();
+    }));
+    refineForm?.addEventListener('submit', event => {
+        if (!refineInput?.value.trim()) {
+            event.preventDefault();
+            refineInput?.focus();
+            return;
+        }
+        const button = refineForm.querySelector('button[type="submit"]');
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-label', 'Refining image');
+        }
     });
 
     const modal = document.getElementById('social-post-modal');

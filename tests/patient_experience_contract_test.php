@@ -38,6 +38,7 @@ try {
     contract_expect(str_contains($patientExperienceMarkup, 'patient_experience_contract_qr_data_url($walkInIntakeUrl)'), 'Walk-in intake QR is not generated locally.');
     contract_expect(str_contains($kioskMarkup, 'kioskToken ? beginSession : beginDirectSession'), 'Walk-in QR does not start a new intake automatically.');
     contract_expect(str_contains($kioskMarkup, 'grid-template-columns: repeat(3, minmax(0, 1fr))'), 'Patient intake does not use the compact three-column desktop form layout.');
+    contract_expect(str_contains($kioskMarkup, "'radio', 'yes_no'") && str_contains($kioskMarkup, 'form-choice-grid') && str_contains($kioskMarkup, '--choice-columns:'), 'Radio and yes/no choices must span the form and use responsive option columns.');
     contract_expect(str_contains($kioskMarkup, "const isConsent = category === 'consent'"), 'Patient forms do not switch into a dedicated consent-document mode.');
     contract_expect(str_contains($kioskMarkup, 'consent-letterhead') && str_contains($kioskMarkup, 'Elite Smiles by Walter Meden, DDS'), 'Consent documents are missing the branded legal letterhead.');
     contract_expect(str_contains($kioskMarkup, "'Step ' + phaseNumber + ' of 3"), 'Patient forms do not communicate the Intake, Consents, and Review phases.');

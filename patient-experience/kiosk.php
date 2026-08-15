@@ -32,32 +32,48 @@ $setupHintUrl = base_url('patient-experience.php');
         .kiosk-option { min-height: 54px; border-radius: 18px; border: 1px solid rgb(203 213 225); background: white; padding: 14px 16px; font-size: 17px; font-weight: 700; color: rgb(15 23 42); }
         .signature-canvas { touch-action: none; width: 100%; height: 48vh; min-height: 340px; border-radius: 28px; background: #fff; }
         .field-wrapper.hidden { display: none; }
+        @media (max-width: 767px) {
+            body { background: #fff !important; }
+            main { display: block !important; min-height: 100vh; padding: 0 !important; }
+            main > section { max-width: none !important; min-height: 100vh; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+            main > section > div { min-height: 100vh !important; }
+            main > section header { padding: 14px 20px !important; }
+            main > section header img { width: 132px !important; padding: 6px !important; }
+            main > section header #progress-label { display: none; }
+            #kiosk-app { padding: 24px 20px 40px !important; background: #fff !important; }
+            #kiosk-state { min-height: auto !important; }
+            .kiosk-input { min-height: 50px; border-radius: 12px; padding: 11px 13px; font-size: 16px; }
+            .kiosk-option { min-height: 50px; border-radius: 12px; padding: 12px 14px; font-size: 16px; }
+            .signature-canvas { min-height: 260px; height: 42vh; border-radius: 16px; }
+        }
     </style>
 </head>
-<body class="min-h-screen bg-[#060606] text-white antialiased">
-    <main class="flex min-h-screen items-center justify-center px-6 py-8">
-        <section class="w-full max-w-6xl overflow-hidden rounded-[3rem] border border-amber-200/25 bg-white shadow-2xl">
-            <div class="grid min-h-[760px] lg:grid-cols-[0.82fr_1.18fr]">
-                <aside class="flex flex-col justify-between bg-[#0d0d0d] p-8 lg:p-12">
-                    <div>
-                        <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="w-64 max-w-full rounded-2xl bg-white p-4">
-                        <p class="mt-8 text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">Private Check-In</p>
-                        <div class="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
-                            <div id="progress-bar" class="h-full rounded-full bg-amber-300 transition-all duration-300" style="width: 0%"></div>
+<body class="min-h-screen bg-slate-100 text-slate-950 antialiased">
+    <main class="flex min-h-screen items-start justify-center px-4 py-6 sm:px-6 sm:py-10">
+        <section class="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-amber-400 bg-white shadow-xl">
+            <div class="min-h-[760px]">
+                <header class="flex flex-col gap-5 border-b border-slate-200 bg-white p-6 sm:flex-row sm:items-center sm:justify-between lg:px-10">
+                    <div class="flex items-center gap-4">
+                        <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="w-48 max-w-full bg-white p-2">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Patient Intake</p>
+                            <p class="mt-1 text-sm text-slate-500">Secure forms and signatures</p>
                         </div>
-                        <p id="progress-label" class="mt-3 text-sm text-slate-300">Waiting for front desk</p>
                     </div>
-                    <div class="rounded-[2rem] border border-white/10 bg-white/5 p-6 text-sm leading-7 text-slate-200">
-                        This kiosk is for secure check-in only. It does not show patient lists, CRM navigation, or private records while idle.
+                    <div class="w-full sm:w-64">
+                        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div id="progress-bar" class="h-full rounded-full bg-amber-500 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <p id="progress-label" class="mt-2 text-right text-xs font-semibold text-slate-500">Ready for intake QR</p>
                     </div>
-                </aside>
+                </header>
 
-                <section id="kiosk-app" class="bg-gradient-to-br from-white via-stone-50 to-amber-50 p-8 text-slate-950 lg:p-12">
+                <section id="kiosk-app" class="bg-white p-8 text-slate-950 lg:p-12">
                     <div id="kiosk-state" class="flex min-h-[680px] flex-col items-center justify-center text-center">
                         <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl font-semibold text-amber-800">ES</div>
-                        <h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Welcome to Elite Smiles.</h1>
-                        <p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Please see our front desk to begin your check-in.</p>
-                        <div class="mt-10 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">Waiting for front desk</div>
+                        <h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Patient intake forms</h1>
+                        <p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Scan the secure patient QR created in Patient Experience to open the forms.</p>
+                        <div class="mt-10 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">Ready for intake QR</div>
                     </div>
                 </section>
             </div>
@@ -167,7 +183,7 @@ $setupHintUrl = base_url('patient-experience.php');
 
             function setProgress(percent, label) {
                 progressBar.style.width = String(Math.max(0, Math.min(100, Number(percent || 0)))) + '%';
-                progressLabel.textContent = label || 'Waiting for front desk';
+                progressLabel.textContent = label || 'Ready for intake QR';
             }
 
             function button(label, className) {
@@ -247,16 +263,16 @@ $setupHintUrl = base_url('patient-experience.php');
                 autoBeginTriggered = false;
                 window.sessionStorage.removeItem('patient_experience_kiosk_token');
                 window.sessionStorage.removeItem('patient_experience_session_id');
-                setProgress(0, 'Waiting for front desk');
+                setProgress(0, 'Ready for intake QR');
                 app.className = 'flex min-h-[680px] flex-col items-center justify-center text-center';
                 const deviceLabel = currentDevice && currentDevice.label ? escapeHtml(currentDevice.label) : 'This iPad';
                 const locationLabel = currentDevice && currentDevice.location_label ? '<p class="mt-2 text-sm uppercase tracking-[0.2em] text-slate-400">' + escapeHtml(currentDevice.location_label) + '</p>' : '';
                 app.innerHTML = '<div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl font-semibold text-amber-800">ES</div>'
-                    + '<h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Welcome to Elite Smiles.</h1>'
-                    + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Please see our front desk to begin your check-in.</p>'
+                    + '<h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Patient intake forms</h1>'
+                    + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Scan the secure patient QR created in Patient Experience to open the forms.</p>'
                     + locationLabel
                     + '<div class="mt-4 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">' + deviceLabel + ' installed</div>'
-                    + '<div class="mt-10 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">Waiting for front desk</div>';
+                    + '<div class="mt-10 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">Ready for intake QR</div>';
             }
 
             function renderSetupRequired(message) {
@@ -312,7 +328,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 app.className = 'flex min-h-[680px] flex-col items-center justify-center text-center';
                 app.innerHTML = '<p class="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Complete</p>'
                     + '<h1 class="mt-5 text-4xl font-semibold tracking-tight lg:text-6xl">Thank you.</h1>'
-                    + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Your check-in has been submitted. Please return the iPad to the front desk.</p>';
+                    + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Your forms and signatures were saved securely. The office can review and print your completed packet.</p>';
                 window.setTimeout(renderIdle, 6500);
             }
 
@@ -511,11 +527,19 @@ $setupHintUrl = base_url('patient-experience.php');
                 const fields = Array.isArray(step.fields) ? step.fields : [];
                 const answers = form.answers || {};
                 const review = form.review || null;
+                const stepKeys = Array.isArray(form.steps) ? form.steps : [];
+                const currentStepKey = String(form.current_step || step.current_step || '');
+                const currentStepIndex = Math.max(0, stepKeys.indexOf(currentStepKey));
+                const formNumber = Math.min(stepKeys.length || 1, currentStepIndex + 1);
                 setProgress(session.percent_complete || 5, 'Step: ' + String(step.title || 'Check-in'));
                 app.className = 'min-h-[680px]';
                 let html = '<div class="mx-auto max-w-3xl">'
-                    + '<p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-700">Elite Smiles check-in</p>'
-                    + '<h1 class="mt-3 text-3xl font-semibold tracking-tight lg:text-5xl">' + escapeHtml(step.title || 'Check-in') + '</h1>';
+                    + '<div class="flex items-center justify-between gap-4">'
+                    + '<p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Patient forms</p>'
+                    + '<p class="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Form ' + formNumber + ' of ' + (stepKeys.length || 1) + '</p>'
+                    + '</div>'
+                    + '<h1 class="mt-3 text-3xl font-semibold tracking-tight lg:text-5xl">' + escapeHtml(step.title || 'Patient form') + '</h1>'
+                    + '<p class="mt-3 text-base leading-7 text-slate-500">Fill in this form, sign when requested, then save to continue. Your progress is saved securely.</p>';
                 if (review && Array.isArray(review.sections)) {
                     html += renderReviewSummary(review);
                 }
@@ -525,8 +549,8 @@ $setupHintUrl = base_url('patient-experience.php');
                 });
                 html += '<div id="form-error" class="hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-base font-semibold text-red-700"></div>'
                     + '<div class="flex flex-wrap gap-4 pt-4">'
-                    + '<button type="submit" class="min-h-14 flex-1 rounded-2xl bg-slate-950 px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-slate-950/20">Save and Continue</button>'
-                    + '<button type="button" class="cancel-checkin min-h-14 rounded-2xl border border-slate-300 bg-white px-8 py-4 text-lg font-semibold text-slate-700">Cancel</button>'
+                    + '<button type="submit" class="min-h-14 flex-1 rounded-2xl bg-slate-950 px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-slate-950/20">' + (currentStepKey === 'final_review' ? 'Submit Signed Forms' : 'Save & Next Form') + '</button>'
+                    + '<button type="button" class="cancel-checkin min-h-14 rounded-2xl border border-slate-300 bg-white px-8 py-4 text-lg font-semibold text-slate-700">Finish Later</button>'
                     + '</div></form></div>';
                 app.innerHTML = html;
                 const formElement = app.querySelector('#kiosk-form');
@@ -597,16 +621,15 @@ $setupHintUrl = base_url('patient-experience.php');
                 signatureTargetName = '';
             }
 
-            signatureCanvas.addEventListener('pointerdown', function (event) {
+            function signatureStart(event) {
                 event.preventDefault();
-                signatureCanvas.setPointerCapture(event.pointerId);
                 const point = canvasPoint(event);
                 signatureCtx.beginPath();
                 signatureCtx.moveTo(point.x, point.y);
                 signatureDrawing = true;
-            });
+            }
 
-            signatureCanvas.addEventListener('pointermove', function (event) {
+            function signatureMove(event) {
                 if (!signatureDrawing) {
                     return;
                 }
@@ -615,13 +638,40 @@ $setupHintUrl = base_url('patient-experience.php');
                 signatureCtx.lineTo(point.x, point.y);
                 signatureCtx.stroke();
                 signatureHasInk = true;
-            });
+            }
 
-            ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (eventName) {
-                signatureCanvas.addEventListener(eventName, function () {
-                    signatureDrawing = false;
+            function signatureEnd() {
+                signatureDrawing = false;
+            }
+
+            if (window.PointerEvent) {
+                signatureCanvas.addEventListener('pointerdown', function (event) {
+                    signatureCanvas.setPointerCapture(event.pointerId);
+                    signatureStart(event);
                 });
-            });
+                signatureCanvas.addEventListener('pointermove', signatureMove);
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (eventName) {
+                    signatureCanvas.addEventListener(eventName, signatureEnd);
+                });
+            } else {
+                signatureCanvas.addEventListener('mousedown', signatureStart);
+                signatureCanvas.addEventListener('mousemove', signatureMove);
+                ['mouseup', 'mouseleave'].forEach(function (eventName) {
+                    signatureCanvas.addEventListener(eventName, signatureEnd);
+                });
+                signatureCanvas.addEventListener('touchstart', function (event) {
+                    if (!event.touches.length) return;
+                    signatureStart(event.touches[0]);
+                }, { passive: false });
+                signatureCanvas.addEventListener('touchmove', function (event) {
+                    if (!event.touches.length) return;
+                    event.preventDefault();
+                    signatureMove(event.touches[0]);
+                }, { passive: false });
+                ['touchend', 'touchcancel'].forEach(function (eventName) {
+                    signatureCanvas.addEventListener(eventName, signatureEnd, { passive: false });
+                });
+            }
 
             document.getElementById('signature-clear').addEventListener('click', function () {
                 clearSignatureCanvas(true);
@@ -678,7 +728,7 @@ $setupHintUrl = base_url('patient-experience.php');
 
             async function beginDirectSession() {
                 polling = false;
-                const data = await post('direct_begin', { patient_name: 'Test Patient' });
+                const data = await post('direct_begin', { patient_name: 'Walk-in Patient' });
                 if (data.ok) {
                     data.session = data.session || {};
                     data.session.kiosk_token = data.kiosk_token || '';
@@ -782,7 +832,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 navigator.serviceWorker.register(serviceWorkerUrl).catch(function () {});
             }
             if (directMode) {
-                window.setTimeout(kioskToken ? beginSession : renderIdle, 60);
+                window.setTimeout(kioskToken ? beginSession : beginDirectSession, 60);
             } else {
                 poll();
                 window.setInterval(poll, 3000);

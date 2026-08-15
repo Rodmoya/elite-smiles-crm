@@ -42,7 +42,7 @@ if ($action === 'begin') {
 if ($action === 'direct_begin') {
     $patientName = trim((string)($payload['patient_name'] ?? ''));
     if ($patientName === '') {
-        $patientName = 'Test Patient';
+        $patientName = 'Walk-in Patient';
     }
     $session = patient_experience_start_placeholder_session(null, $patientName, null, null);
     if (!empty($session['error'])) {

@@ -19,7 +19,7 @@ if (is_post() && post('action') === 'logout') {
 
 patient_experience_ensure_schema();
 
-$currentPage = strtolower(trim((string)get('tab', 'contracts'))) === 'contracts' ? 'patient_contracts' : 'patient_experience';
+$currentPage = strtolower(trim((string)get('tab', 'patients'))) === 'contracts' ? 'patient_contracts' : 'patient_experience';
 $pageTitle = 'Patient Experience';
 $logoutAction = base_url('patient-experience.php');
 $successMessage = flash_get('success') ?? '';
@@ -79,36 +79,6 @@ if (is_post() && post('action') === 'create_kiosk_device') {
     $setupToken = patient_experience_issue_setup_token($deviceId, auth_user_id());
     flash_set('success', 'iPad setup link created.');
     redirect(base_url('patient-experience.php?setup_device_id=' . $deviceId . '&setup_token=' . rawurlencode($setupToken)));
-}
-
-if (is_post() && post('action') === 'start_test_intake') {
-    require_csrf();
-    $patientName = trim((string)post('test_patient_name', ''));
-    if ($patientName === '') {
-        $patientName = 'Test Patient';
-    }
-    $session = patient_experience_start_placeholder_session(null, $patientName, auth_user_id(), null);
-    if (!empty($session['error'])) {
-        flash_set('error', (string)$session['error']);
-    } else {
-        flash_set('success', 'Direct test session created.');
-    }
-    redirect(base_url('patient-experience.php?direct_test_token=' . rawurlencode((string)($session['token'] ?? '')) . '&direct_test_patient_name=' . rawurlencode($patientName)));
-}
-
-if (is_post() && post('action') === 'start_direct_test_intake') {
-    require_csrf();
-    $patientName = trim((string)post('test_patient_name', ''));
-    if ($patientName === '') {
-        $patientName = 'Test Patient';
-    }
-    $session = patient_experience_start_placeholder_session(null, $patientName, auth_user_id(), null);
-    if (!empty($session['error'])) {
-        flash_set('error', (string)$session['error']);
-        redirect(base_url('patient-experience.php'));
-    }
-    flash_set('success', 'Direct forms QR created.');
-    redirect(base_url('patient-experience.php?direct_test_token=' . rawurlencode((string)($session['token'] ?? '')) . '&direct_test_patient_name=' . rawurlencode($patientName)));
 }
 
 if (is_post() && post('action') === 'send_secure_consent_link') {
@@ -243,20 +213,31 @@ $secureConsentPatientName = trim((string)get('secure_consent_patient_name', ''))
 $secureConsentPhone = trim((string)get('secure_consent_phone', ''));
 $secureConsentEmail = trim((string)get('secure_consent_email', ''));
 $secureConsentUrl = $secureConsentToken !== ''
-    ? base_url('patient-experience/kiosk/?direct=1&kiosk_token=' . rawurlencode($secureConsentToken))
+    ? base_url('patient-experience/kiosk/?direct=1&auto_begin=1&kiosk_token=' . rawurlencode($secureConsentToken))
     : '';
-$secureConsentQrUrl = $secureConsentUrl !== ''
-    ? 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=' . rawurlencode($secureConsentUrl)
-    : '';
+$secureConsentQrUrl = $secureConsentUrl !== '' ? patient_experience_contract_qr_data_url($secureConsentUrl) : '';
+$walkInIntakeUrl = base_url('patient-experience/kiosk/?direct=1&auto_begin=1&walk_in=1');
+$walkInIntakeQrUrl = patient_experience_contract_qr_data_url($walkInIntakeUrl);
 $contractDefinitions = patient_experience_contract_definitions();
 $contractPatients = patient_experience_contract_patient_options();
 $contracts = patient_experience_contract_list(100);
 $selectedContractId = (int)get('contract_id', '0');
 $selectedContract = $selectedContractId > 0 ? patient_experience_contract_by_id($selectedContractId) : null;
 $contractShareUrl = (string)(flash_get('contract_share_url') ?? '');
-$activeTab = strtolower(trim((string)get('tab', 'contracts')));
+$activeTab = strtolower(trim((string)get('tab', 'patients')));
 if (!in_array($activeTab, ['setup', 'patients', 'contracts'], true)) {
-    $activeTab = 'contracts';
+    $activeTab = 'patients';
+}
+
+if (is_post() && post('action') === 'continue_intake') {
+    require_csrf();
+    $sessionId = (int)post('session_id', '0');
+    $resume = $sessionId > 0 ? patient_experience_resume_session($sessionId, auth_user_id()) : ['ok' => false];
+    if (empty($resume['ok'])) {
+        flash_set('error', (string)($resume['message'] ?? 'Could not open those patient forms.'));
+        redirect(base_url('patient-experience.php?tab=patients'));
+    }
+    redirect(base_url('patient-experience/kiosk/?direct=1&auto_begin=1&kiosk_token=' . rawurlencode((string)$resume['token'])));
 }
 if ($selectedReview) {
     $activeTab = 'patients';
@@ -309,15 +290,15 @@ $pageHeading = match ($activeTab) {
                     <p class="mt-3 text-sm leading-6 text-slate-600"><?= e($pageHeading[1]) ?></p>
                 </div>
                 <?php if ($activeTab === 'patients'): ?>
-                    <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Send intake link</button>
+                    <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">New Patient Forms</button>
                 <?php endif; ?>
             </div>
         </section>
 
         <div class="mb-6 max-w-3xl rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-print">
             <div class="grid grid-cols-3 gap-1.5">
-                <a href="<?= e($tabUrl('contracts')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'contracts' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Contracts</a>
                 <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Intake & Patients</a>
+                <a href="<?= e($tabUrl('contracts')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'contracts' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Contracts</a>
                 <a href="<?= e($tabUrl('setup')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'setup' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Kiosk Setup</a>
             </div>
         </div>
@@ -329,13 +310,24 @@ $pageHeading = match ($activeTab) {
                     <div role="dialog" aria-modal="true" aria-labelledby="intake-modal-title" class="relative mx-auto my-8 w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl sm:p-7">
                         <div class="flex items-start justify-between gap-4">
                             <div>
-                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Manual intake</p>
-                                <h2 id="intake-modal-title" class="mt-2 text-2xl font-semibold text-slate-900">Send intake link</h2>
-                                <p class="mt-2 text-sm text-slate-600">Send by text, email, or create a secure link to copy.</p>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient intake</p>
+                                <h2 id="intake-modal-title" class="mt-2 text-2xl font-semibold text-slate-900">Open patient forms</h2>
+                                <p class="mt-2 text-sm text-slate-600">Create one secure form session, then send its link or let the patient scan its QR code.</p>
                             </div>
                             <button type="button" data-intake-modal-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-xl text-slate-600 hover:bg-slate-100" aria-label="Close">×</button>
                         </div>
-                    <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="mt-5 space-y-4">
+                        <div class="mt-5 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[136px_1fr] sm:items-center">
+                            <?php if ($walkInIntakeQrUrl !== ''): ?>
+                                <img src="<?= e($walkInIntakeQrUrl) ?>" alt="Walk-in patient intake QR code" class="mx-auto h-32 w-32 rounded-xl border border-slate-200 bg-white p-2">
+                            <?php endif; ?>
+                            <div>
+                                <p class="font-semibold text-slate-950">Walk-in patient</p>
+                                <p class="mt-1 text-sm leading-6 text-slate-600">Scan this permanent QR on the iPad or phone. The patient enters their information first, then completes and signs every form.</p>
+                                <a href="<?= e($walkInIntakeUrl) ?>" target="_blank" class="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Open Walk-in Forms</a>
+                            </div>
+                        </div>
+                        <div class="my-5 flex items-center gap-3"><div class="h-px flex-1 bg-slate-200"></div><span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Send to a known patient</span><div class="h-px flex-1 bg-slate-200"></div></div>
+                    <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="space-y-4">
                             <?= csrf_input() ?>
                             <input type="hidden" name="action" value="send_secure_consent_link">
                             <div>
@@ -352,7 +344,7 @@ $pageHeading = match ($activeTab) {
                                     <input id="secure-email" name="secure_email" value="<?= e($secureConsentEmail) ?>" type="email" class="min-h-12 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="patient@email.com">
                                 </div>
                             </div>
-                            <button class="min-h-12 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800" type="submit">Create and send link</button>
+                            <button class="min-h-12 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800" type="submit">Create Patient Forms</button>
                     </form>
                         <?php if ($secureConsentUrl !== ''): ?>
                             <div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
@@ -366,18 +358,26 @@ $pageHeading = match ($activeTab) {
                     </div>
                 </div>
 
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="flex items-center justify-between gap-4">
+                <div class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient records</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-900">Intake and consent list</h2>
+                            <h2 class="mt-2 text-xl font-semibold text-slate-900">Patient forms</h2>
+                            <p class="mt-1 text-sm text-slate-500">Open, continue, review, or print each patient's saved forms.</p>
                         </div>
-                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"><?= e((string)count($recentSessions)) ?> records</span>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <label class="relative block min-w-0 sm:w-80">
+                                <span class="sr-only">Search patients</span>
+                                <input id="patient-form-search" type="search" class="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-10 text-sm outline-none focus:border-slate-500" placeholder="Search patient or record number">
+                                <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true">⌕</span>
+                            </label>
+                            <span class="self-start rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 sm:self-auto"><?= e((string)count($recentSessions)) ?> records</span>
+                        </div>
                     </div>
 
-                    <div class="mt-5 grid gap-4 md:grid-cols-2">
+                    <div id="patient-form-list" class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
                         <?php if (!$recentSessions): ?>
-                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 md:col-span-2">No patient intake records yet.</div>
+                            <div class="bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No patient intake records yet.</div>
                         <?php else: ?>
                             <?php foreach ($recentSessions as $session): ?>
                                 <?php
@@ -390,24 +390,43 @@ $pageHeading = match ($activeTab) {
                                 $signedPacket = patient_experience_signed_packet_for_session($sessionId);
                                 $signatureCount = (int)($signedPacket['signature_count'] ?? 0);
                                 $isSigned = $signedPacket && $signatureCount > 0;
+                                $progressPercent = max(0, min(100, (int)($session['progress_percent'] ?? 0)));
+                                $searchValue = strtolower($patientName . ' ' . $formatPatientNumber($sessionId) . ' ' . $statusLabel);
                                 ?>
-                                <div class="flex min-h-40 flex-col justify-between gap-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                    <div class="min-w-0">
+                                <article data-patient-form-row data-search-value="<?= e($searchValue) ?>" class="border-b border-slate-200 bg-white p-4 last:border-b-0 hover:bg-slate-50 sm:p-5">
+                                    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                                        <div class="min-w-0 xl:w-1/3">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <p class="font-semibold text-slate-900"><?= e($patientName) ?></p>
                                             <span class="rounded-full border px-2.5 py-1 text-[11px] font-semibold <?= e($statusTone) ?>"><?= e($statusLabel) ?></span>
-                                            <span class="rounded-full border px-2.5 py-1 text-[11px] font-semibold <?= $isSigned ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500' ?>"><?= $isSigned ? e($signatureCount . ' signed') : 'Not signed' ?></span>
                                         </div>
-                                        <p class="mt-1 text-sm text-slate-500"><?= e($formatPatientNumber($sessionId)) ?> · <?= e(format_datetime((string)($session['created_at'] ?? ''))) ?></p>
-                                    </div>
-                                    <div class="flex shrink-0 gap-2">
-                                        <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Open</a>
+                                            <p class="mt-1 text-sm text-slate-500"><?= e($formatPatientNumber($sessionId)) ?> · Updated <?= e(format_datetime((string)($session['updated_at'] ?? $session['created_at'] ?? ''))) ?></p>
+                                        </div>
+                                        <div class="min-w-0 flex-1 xl:max-w-sm">
+                                            <div class="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+                                                <span><?= $isSigned ? e($signatureCount . ' forms signed') : 'Forms in progress' ?></span>
+                                                <span><?= e((string)$progressPercent) ?>%</span>
+                                            </div>
+                                            <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full <?= $status === 'completed' ? 'bg-emerald-500' : 'bg-slate-900' ?>" style="width: <?= e((string)$progressPercent) ?>%"></div></div>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+                                            <?php if (!$reviewIsComplete && $status !== 'completed'): ?>
+                                                <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" target="_blank">
+                                                    <?= csrf_input() ?>
+                                                    <input type="hidden" name="action" value="continue_intake">
+                                                    <input type="hidden" name="session_id" value="<?= e((string)$sessionId) ?>">
+                                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Open Forms</button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">View Chart</a>
                                         <?php if ($isSigned): ?>
-                                            <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId, 'print' => 1])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Print</a>
+                                                <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId, 'print' => 1])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Print</a>
                                         <?php endif; ?>
+                                        </div>
                                     </div>
-                                </div>
+                                </article>
                             <?php endforeach; ?>
+                            <div id="patient-form-empty-search" class="hidden bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No patient forms match that search.</div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -475,6 +494,14 @@ $pageHeading = match ($activeTab) {
                     <div class="space-y-2 text-sm">
                         <div class="flex gap-2 no-print">
                             <a href="<?= e($tabUrl('patients')) ?>" class="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-100">Close</a>
+                            <?php if (!$reviewIsComplete): ?>
+                                <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" target="_blank">
+                                    <?= csrf_input() ?>
+                                    <input type="hidden" name="action" value="continue_intake">
+                                    <input type="hidden" name="session_id" value="<?= e((string)$review['session']['id']) ?>">
+                                    <button type="submit" class="min-h-11 rounded-xl bg-slate-900 px-4 py-2.5 font-semibold text-white hover:bg-slate-800">Open Forms</button>
+                                </form>
+                            <?php endif; ?>
                             <?php if ($hasSignedPacket): ?>
                                 <button type="button" onclick="window.print()" class="min-h-11 rounded-xl bg-slate-900 px-4 py-2.5 font-semibold text-white hover:bg-slate-800">Print consent</button>
                             <?php endif; ?>
@@ -669,6 +696,22 @@ $pageHeading = match ($activeTab) {
             intakeModal.classList.add('flex');
             document.body.classList.add('overflow-hidden');
         }
+        const patientFormSearch = document.getElementById('patient-form-search');
+        const patientFormRows = Array.from(document.querySelectorAll('[data-patient-form-row]'));
+        const patientFormEmptySearch = document.getElementById('patient-form-empty-search');
+        patientFormSearch?.addEventListener('input', function () {
+            const query = String(patientFormSearch.value || '').trim().toLowerCase();
+            let visibleCount = 0;
+            patientFormRows.forEach(function (row) {
+                const matches = query === '' || String(row.getAttribute('data-search-value') || '').includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visibleCount += 1;
+            });
+            patientFormEmptySearch?.classList.toggle('hidden', visibleCount !== 0);
+        });
+        document.querySelectorAll('input[name="test_patient_name"]').forEach(function (input) {
+            input.closest('form')?.remove();
+        });
         <?php if ($selectedReview && !empty($selectedReview['signed_packet']) && get('print') === '1'): ?>
         window.addEventListener('load', function () {
             window.print();

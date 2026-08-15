@@ -1268,6 +1268,52 @@ if (!function_exists('patient_experience_start_placeholder_session')) {
     }
 }
 
+if (!function_exists('patient_experience_resume_session')) {
+    function patient_experience_resume_session(int $sessionId, ?int $userId = null): array
+    {
+        patient_experience_ensure_schema();
+        $session = patient_experience_session_by_id($sessionId);
+        if (!$session) {
+            return ['ok' => false, 'message' => 'Could not find that patient form session.'];
+        }
+        if ((string)($session['status'] ?? '') === 'completed') {
+            return ['ok' => false, 'message' => 'This patient packet is already complete.'];
+        }
+
+        $token = patient_experience_token(32);
+        $expiresAt = date('Y-m-d H:i:s', time() + 7200);
+        $currentStep = trim((string)($session['current_step_key'] ?? ''));
+        if ($currentStep === '' || in_array($currentStep, ['expired', 'cancelled', 'complete'], true)) {
+            $currentStep = 'welcome';
+        }
+
+        db_execute(
+            "UPDATE patient_experience_checkin_sessions
+             SET session_token_hash = :token_hash,
+                 status = :status,
+                 current_step_key = :current_step,
+                 expires_at = :expires_at,
+                 expired_at = NULL,
+                 cancelled_at = NULL,
+                 updated_at = NOW()
+             WHERE id = :id",
+            [
+                'id' => $sessionId,
+                'token_hash' => patient_experience_token_hash($token),
+                'status' => 'in_progress',
+                'current_step' => $currentStep,
+                'expires_at' => $expiresAt,
+            ]
+        );
+        patient_experience_audit('session_resumed_by_staff', [
+            'current_step' => $currentStep,
+            'expires_at' => $expiresAt,
+        ], $sessionId, (int)($session['lead_id'] ?? 0) ?: null, $userId);
+
+        return ['ok' => true, 'token' => $token, 'expires_at' => $expiresAt];
+    }
+}
+
 if (!function_exists('patient_experience_expire_stale_sessions')) {
     function patient_experience_expire_stale_sessions(?int $userId = null): int
     {
@@ -1355,7 +1401,7 @@ if (!function_exists('patient_experience_begin_session')) {
             db_execute(
                 "UPDATE patient_experience_checkin_sessions
                  SET status = 'in_progress',
-                     current_step_key = 'welcome',
+                     current_step_key = 'patient_information',
                      progress_percent = 1,
                      device_user_agent = :ua,
                      device_ip = :ip,
@@ -1800,6 +1846,19 @@ if (!function_exists('patient_experience_save_step')) {
         }
 
         patient_experience_clear_hidden_answers_for_section((int)$session['id'], $steps[$stepKey], $visibleFieldKeys);
+
+        if ($stepKey === 'patient_information') {
+            $firstName = trim((string)($answers['patient_first_name'] ?? patient_experience_answer_value($savedAnswers, 'patient_first_name')));
+            $lastName = trim((string)($answers['patient_last_name'] ?? patient_experience_answer_value($savedAnswers, 'patient_last_name')));
+            $patientName = trim($firstName . ' ' . $lastName);
+            if ($patientName !== '') {
+                db_execute(
+                    'UPDATE patient_experience_checkin_sessions SET patient_name = :patient_name, updated_at = NOW() WHERE id = :id',
+                    ['patient_name' => $patientName, 'id' => (int)$session['id']]
+                );
+                $session['patient_name'] = $patientName;
+            }
+        }
 
         $updatedAnswers = patient_experience_answers_for_session((int)$session['id']);
         $stepKeys = patient_experience_step_keys($updatedAnswers);

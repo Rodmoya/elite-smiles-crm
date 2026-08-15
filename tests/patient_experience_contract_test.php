@@ -44,7 +44,30 @@ try {
     contract_expect(str_contains($kioskMarkup, "'Step ' + phaseNumber + ' of 3"), 'Patient forms do not communicate the Intake, Consents, and Review phases.');
     contract_expect(str_contains($kioskMarkup, "input.closest('.form-signature-panel')"), 'Captured signatures are not connected to their visible consent preview.');
     $packetDefinition = patient_experience_packet_definition();
-    contract_expect((int)($packetDefinition['version'] ?? 0) === 3, 'The initialed consent packet was not versioned.');
+    contract_expect((int)($packetDefinition['version'] ?? 0) === 4, 'The protected-SSN consent packet was not versioned.');
+    $patientInformation = null;
+    foreach ((array)($packetDefinition['sections'] ?? []) as $packetSection) {
+        if ((string)($packetSection['section_key'] ?? '') === 'patient_information') $patientInformation = $packetSection;
+    }
+    $ssnField = null;
+    foreach ((array)($patientInformation['fields'] ?? []) as $field) {
+        if ((string)($field['key'] ?? '') === 'patient_ssn') $ssnField = $field;
+    }
+    contract_expect(is_array($ssnField) && (string)($ssnField['type'] ?? '') === 'ssn' && !empty($ssnField['sensitive']), 'Patient information is missing the protected Social Security number field.');
+    $protectedSsn = patient_experience_encrypt_sensitive_value('123-45-6789');
+    contract_expect(!str_contains(json_encode($protectedSsn) ?: '', '123-45-6789'), 'Sensitive intake values must not be stored as plaintext.');
+    contract_expect(patient_experience_decrypt_sensitive_value($protectedSsn) === '123-45-6789', 'Sensitive intake encryption does not round-trip safely.');
+    contract_expect(patient_experience_sensitive_answer_label($ssnField, '123-45-6789') === '•••-••-6789', 'SSN review and print output must reveal only the last four digits.');
+    contract_expect(str_contains($kioskMarkup, 'data-ssn-input="1"') && str_contains($kioskMarkup, 'type="password" inputmode="numeric"'), 'The SSN control must be masked and use a numeric keyboard.');
+    $consentKeys = [];
+    foreach ((array)($packetDefinition['sections'] ?? []) as $packetSection) {
+        if ((string)($packetSection['category'] ?? '') === 'consent') $consentKeys[] = (string)($packetSection['section_key'] ?? '');
+    }
+    contract_expect($consentKeys === ['information_authorization', 'consent_to_proceed', 'hipaa_acknowledgement', 'office_insurance_policy', 'photo_image_consent'], 'The digital consent packet must match the five consent documents in the supplied source packet.');
+    contract_expect(!in_array('no_recording_policy', $consentKeys, true), 'The source packet does not include a separate no-recording consent.');
+    $insuranceChildren = patient_experience_field_children(['key' => 'primary_insurance', 'type' => 'insurance', 'label' => 'Primary insurance']);
+    $subscriberSsn = array_values(array_filter($insuranceChildren, static fn(array $field): bool => (string)($field['key'] ?? '') === 'primary_insurance_subscriber_ssn'));
+    contract_expect(count($subscriberSsn) === 1 && !empty($subscriberSsn[0]['sensitive']), 'Insurance subscriber SSNs must use the protected field path.');
     foreach ((array)($packetDefinition['sections'] ?? []) as $packetSection) {
         if ((string)($packetSection['category'] ?? '') !== 'consent') continue;
         $fieldTypes = array_map(static fn(array $field): string => (string)($field['type'] ?? ''), (array)($packetSection['fields'] ?? []));

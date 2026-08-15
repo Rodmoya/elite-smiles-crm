@@ -578,6 +578,7 @@ if (!function_exists('patient_experience_field_children')) {
                 ['key' => $key . '_member_id', 'type' => 'text', 'label' => 'Member ID', 'required' => !empty($field['required'])],
                 ['key' => $key . '_group_number', 'type' => 'text', 'label' => 'Group number'],
                 ['key' => $key . '_subscriber_dob', 'type' => 'dob', 'label' => 'Subscriber date of birth'],
+                ['key' => $key . '_subscriber_ssn', 'type' => 'ssn', 'label' => 'Subscriber Social Security number', 'sensitive' => true],
             ];
         }
         return [];
@@ -1480,10 +1481,14 @@ if (!function_exists('patient_experience_answers_for_session')) {
         $answers = [];
         foreach ($rows as $row) {
             $decoded = json_decode((string)($row['answer_json'] ?? ''), true);
+            $isSensitive = (int)($row['is_sensitive'] ?? 0) === 1;
+            if ($isSensitive) {
+                $decoded = patient_experience_decrypt_sensitive_value($decoded);
+            }
             $answers[(string)$row['field_key']] = [
                 'value' => $decoded,
                 'label' => (string)($row['answer_label'] ?? ''),
-                'is_sensitive' => (int)($row['is_sensitive'] ?? 0) === 1,
+                'is_sensitive' => $isSensitive,
             ];
         }
         return $answers;
@@ -1591,6 +1596,21 @@ if (!function_exists('patient_experience_signed_packet_snapshot')) {
         $answers = patient_experience_answers_for_session($sessionId);
         $signatures = patient_experience_signature_snapshot_rows($sessionId);
         $review = patient_experience_patient_review_payload($session, $answers);
+        $snapshotAnswers = $answers;
+        foreach ((array)($definition['sections'] ?? []) as $section) {
+            foreach ((array)($section['fields'] ?? []) as $field) {
+                $sensitiveFields = array_merge([$field], patient_experience_field_children($field));
+                foreach ($sensitiveFields as $sensitiveField) {
+                    $fieldKey = (string)($sensitiveField['key'] ?? '');
+                    if ($fieldKey === '' || empty($sensitiveField['sensitive']) || !isset($snapshotAnswers[$fieldKey])) {
+                        continue;
+                    }
+                    $masked = patient_experience_sensitive_answer_label($sensitiveField, patient_experience_answer_value($answers, $fieldKey));
+                    $snapshotAnswers[$fieldKey]['value'] = $masked;
+                    $snapshotAnswers[$fieldKey]['label'] = $masked;
+                }
+            }
+        }
         return [
             'packet' => [
                 'key' => (string)($definition['packet_key'] ?? patient_experience_active_packet_key()),
@@ -1607,7 +1627,7 @@ if (!function_exists('patient_experience_signed_packet_snapshot')) {
                 'current_step_key' => (string)($session['current_step_key'] ?? ''),
                 'progress_percent' => (int)($session['progress_percent'] ?? 0),
             ],
-            'answers' => $answers,
+            'answers' => $snapshotAnswers,
             'signatures' => $signatures,
             'review' => $review,
             'signed_at' => date('c'),
@@ -1697,6 +1717,9 @@ if (!function_exists('patient_experience_validate_field_value')) {
         if ($type === 'phone' && strlen(preg_replace('/\D+/', '', $text) ?? '') < 10) {
             return 'Please enter a valid phone number.';
         }
+        if ($type === 'ssn' && !preg_match('/^\d{9}$/', preg_replace('/\D+/', '', $text) ?? '')) {
+            return 'Please enter a valid nine-digit Social Security number.';
+        }
         if ($type === 'zip' && !preg_match('/^\d{5}(?:-\d{4})?$/', $text)) {
             return 'Please enter a valid ZIP code.';
         }
@@ -1758,14 +1781,20 @@ if (!function_exists('patient_experience_patient_review_payload')) {
                     foreach ($children as $child) {
                         $value = patient_experience_answer_value($answers, (string)$child['key']);
                         if (!patient_experience_empty_answer($value)) {
-                            $rows[] = ['label' => (string)$child['label'], 'value' => patient_experience_answer_label($value)];
+                            $rows[] = [
+                                'label' => (string)$child['label'],
+                                'value' => !empty($child['sensitive']) ? patient_experience_sensitive_answer_label($child, $value) : patient_experience_answer_label($value),
+                            ];
                         }
                     }
                     continue;
                 }
                 $value = patient_experience_answer_value($answers, (string)($field['key'] ?? ''));
                 if (!patient_experience_empty_answer($value)) {
-                    $rows[] = ['label' => (string)($field['label'] ?? $field['key']), 'value' => patient_experience_answer_label($value)];
+                    $rows[] = [
+                        'label' => (string)($field['label'] ?? $field['key']),
+                        'value' => !empty($field['sensitive']) ? patient_experience_sensitive_answer_label($field, $value) : patient_experience_answer_label($value),
+                    ];
                 }
             }
             $items[] = ['title' => (string)$section['title'], 'rows' => $rows];
@@ -2214,6 +2243,64 @@ if (!function_exists('patient_experience_answer_label')) {
     }
 }
 
+if (!function_exists('patient_experience_sensitive_answer_label')) {
+    function patient_experience_sensitive_answer_label(array $field, mixed $value): string
+    {
+        $digits = preg_replace('/\D+/', '', trim((string)$value)) ?? '';
+        if ((string)($field['type'] ?? '') === 'ssn' && $digits !== '') {
+            return '•••-••-' . substr(str_pad($digits, 4, '0', STR_PAD_LEFT), -4);
+        }
+        return $value === null || $value === '' ? '' : 'Protected value';
+    }
+}
+
+if (!function_exists('patient_experience_encrypt_sensitive_value')) {
+    function patient_experience_encrypt_sensitive_value(mixed $value): array
+    {
+        if (!function_exists('openssl_encrypt')) {
+            throw new RuntimeException('Sensitive-field encryption is unavailable.');
+        }
+        $plaintext = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($plaintext)) {
+            throw new RuntimeException('Sensitive-field encryption could not encode the value.');
+        }
+        $key = hash('sha256', (string)APP_KEY, true);
+        $iv = random_bytes(12);
+        $tag = '';
+        $ciphertext = openssl_encrypt($plaintext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+        if (!is_string($ciphertext) || $ciphertext === '' || strlen($tag) !== 16) {
+            throw new RuntimeException('Sensitive-field encryption failed.');
+        }
+        return [
+            '_protected' => 1,
+            'version' => 1,
+            'cipher' => 'aes-256-gcm',
+            'payload' => base64_encode($iv . $tag . $ciphertext),
+        ];
+    }
+}
+
+if (!function_exists('patient_experience_decrypt_sensitive_value')) {
+    function patient_experience_decrypt_sensitive_value(mixed $envelope): mixed
+    {
+        if (!is_array($envelope) || (int)($envelope['_protected'] ?? 0) !== 1) {
+            return $envelope;
+        }
+        $binary = base64_decode((string)($envelope['payload'] ?? ''), true);
+        if (!is_string($binary) || strlen($binary) <= 28 || !function_exists('openssl_decrypt')) {
+            return null;
+        }
+        $iv = substr($binary, 0, 12);
+        $tag = substr($binary, 12, 16);
+        $ciphertext = substr($binary, 28);
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', hash('sha256', (string)APP_KEY, true), OPENSSL_RAW_DATA, $iv, $tag);
+        if (!is_string($plaintext)) {
+            return null;
+        }
+        return json_decode($plaintext, true);
+    }
+}
+
 if (!function_exists('patient_experience_upsert_answer')) {
     function patient_experience_upsert_answer(int $sessionId, array $section, array $field, mixed $value): void
     {
@@ -2222,15 +2309,17 @@ if (!function_exists('patient_experience_upsert_answer')) {
             'SELECT id FROM patient_experience_packet_answers WHERE checkin_session_id = :session_id AND field_key = :field_key LIMIT 1',
             ['session_id' => $sessionId, 'field_key' => $fieldKey]
         );
-        $payload = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $isSensitive = !empty($field['sensitive']);
+        $payloadValue = $isSensitive ? patient_experience_encrypt_sensitive_value($value) : $value;
+        $payload = json_encode($payloadValue, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $params = [
             'session_id' => $sessionId,
             'packet_section_id' => (int)$section['id'],
             'template_version_id' => (int)$section['template_version_id'],
             'field_key' => $fieldKey,
             'answer_json' => $payload,
-            'answer_label' => patient_experience_answer_label($value),
-            'is_sensitive' => !empty($field['sensitive']) ? 1 : 0,
+            'answer_label' => $isSensitive ? patient_experience_sensitive_answer_label($field, $value) : patient_experience_answer_label($value),
+            'is_sensitive' => $isSensitive ? 1 : 0,
         ];
 
         if ($existing) {

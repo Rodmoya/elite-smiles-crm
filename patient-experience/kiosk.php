@@ -293,7 +293,8 @@ $setupHintUrl = base_url('patient-experience.php');
                         { key: field.key + '_subscriber_name', type: 'text', label: 'Subscriber Name', required: field.required },
                         { key: field.key + '_member_id', type: 'text', label: 'Member ID', required: field.required },
                         { key: field.key + '_group_number', type: 'text', label: 'Group Number' },
-                        { key: field.key + '_subscriber_dob', type: 'dob', label: 'Subscriber DOB' }
+                        { key: field.key + '_subscriber_dob', type: 'dob', label: 'Subscriber DOB' },
+                        { key: field.key + '_subscriber_ssn', type: 'ssn', label: 'Subscriber Social Security number', sensitive: true }
                     ];
                 }
                 return [];
@@ -477,6 +478,9 @@ $setupHintUrl = base_url('patient-experience.php');
                     const body = Array.isArray(value) ? value.join('\n') : (value || '');
                     return wrapperStart + '<div><label class="kiosk-label" for="' + key + '">' + label + '</label><textarea id="' + key + '" name="' + key + '" rows="4" class="kiosk-input min-h-32 resize-none"' + required + '>' + escapeHtml(body) + '</textarea></div>' + wrapperEnd;
                 }
+                if (type === 'ssn') {
+                    return wrapperStart + '<div><label class="kiosk-label" for="' + key + '">' + label + '</label><input id="' + key + '" name="' + key + '" type="password" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="•••-••-••••" value="' + escapeHtml(value || '') + '" class="kiosk-input" data-ssn-input="1"' + required + '><p class="mt-1 text-[10px] leading-4 text-slate-500">Encrypted and stored as protected information.</p></div>' + wrapperEnd;
+                }
                 if (type === 'emergency_contact' || type === 'insurance') {
                     let html = wrapperStart + '<div class="form-subsection"><p class="kiosk-label">' + label + '</p><div class="form-subsection-grid">';
                     fieldChildren(field).forEach(function (child) {
@@ -619,6 +623,12 @@ $setupHintUrl = base_url('patient-experience.php');
                 });
                 formElement.addEventListener('change', function () { refreshConditionalFields(formElement); });
                 formElement.addEventListener('input', function () { refreshConditionalFields(formElement); });
+                formElement.querySelectorAll('[data-ssn-input="1"]').forEach(function (input) {
+                    input.addEventListener('input', function () {
+                        const digits = String(input.value || '').replace(/\D/g, '').slice(0, 9);
+                        input.value = digits.length > 5 ? digits.slice(0, 3) + '-' + digits.slice(3, 5) + '-' + digits.slice(5) : (digits.length > 3 ? digits.slice(0, 3) + '-' + digits.slice(3) : digits);
+                    });
+                });
                 refreshConditionalFields(formElement);
                 app.querySelector('.cancel-checkin').addEventListener('click', cancelSession);
                 app.querySelectorAll('.open-signature').forEach(function (item) {

@@ -97,7 +97,31 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
             #agreement-document .agreement-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
             .no-print { display:none !important; }
         }
-        @media (max-width:700px) { .agreement-payment-notice { white-space:normal; } }
+        @media screen and (max-width:700px) {
+            body { background:#f1f5f9; }
+            .agreement-page { min-height:0; aspect-ratio:auto; overflow:visible; border-radius:18px; }
+            .agreement-page .digital-letterhead { padding:20px 16px; }
+            .agreement-page .digital-letterhead img { width:132px; }
+            .agreement-page .paper-body,
+            .agreement-page.preprinted .paper-body { padding:24px 20px 30px; font-size:15px; line-height:1.45; }
+            .agreement-original-copy > p,
+            .agreement-legal-copy > p { margin-bottom:14px; }
+            .agreement-payment-notice { margin-bottom:20px; padding:10px; white-space:normal; font-size:12px; line-height:1.35; }
+            .agreement-treatment-list { margin-bottom:22px; padding-left:24px; }
+            .agreement-treatment-list li { margin-bottom:7px; line-height:1.35; }
+            .agreement-legal-copy { font-size:15px; line-height:1.45; }
+            .agreement-closing-block { margin-top:28px; margin-bottom:0; }
+            .agreement-signature-original { grid-template-columns:1fr; gap:18px; margin:20px 0 24px; }
+            .agreement-signature-primary { display:block; }
+            .agreement-signature-primary > span:first-child { display:block; margin-bottom:8px; }
+            .agreement-signature-primary .agreement-signature-rule { min-height:54px; width:100%; }
+            .agreement-signature-primary .agreement-signature-rule img { max-height:50px; }
+            .agreement-signature-patient { display:block; margin-top:5px; font-size:13px; }
+            .agreement-signature-field { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:end; gap:10px; }
+            .agreement-signature-field .agreement-signature-rule { min-height:30px; }
+            .agreement-cancellation-bottom { font-size:13px; line-height:1.45; }
+            .agreement-page .digital-footer { position:static; padding:14px 16px; font-size:9px; line-height:1.45; }
+        }
         @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
     </style>
 </head>

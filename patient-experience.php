@@ -406,6 +406,16 @@ $pageHeading = match ($activeTab) {
                                 $isSigned = $signedPacket && $signatureCount > 0;
                                 $progressPercent = max(0, min(100, (int)($session['progress_percent'] ?? 0)));
                                 $searchValue = strtolower($patientName . ' ' . $formatPatientNumber($sessionId) . ' ' . $statusLabel);
+                                $patientContract = null;
+                                $sessionLeadId = (int)($session['lead_id'] ?? 0);
+                                foreach ($contracts as $contractRow) {
+                                    $sameLead = $sessionLeadId > 0 && (int)($contractRow['lead_id'] ?? 0) === $sessionLeadId;
+                                    $sameName = strcasecmp(trim((string)($contractRow['patient_name'] ?? '')), $patientName) === 0;
+                                    if ($sameLead || $sameName) {
+                                        $patientContract = $contractRow;
+                                        break;
+                                    }
+                                }
                                 ?>
                                 <article data-patient-form-row data-search-value="<?= e($searchValue) ?>" class="border-b border-slate-200 bg-white p-4 last:border-b-0 hover:bg-slate-50 sm:p-5">
                                     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -434,7 +444,12 @@ $pageHeading = match ($activeTab) {
                                             <?php endif; ?>
                                             <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">View Chart</a>
                                         <?php if ($isSigned): ?>
-                                                <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId, 'print' => 1])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Print</a>
+                                                <a href="<?= e(base_url('patient-experience-print.php?session_id=' . $sessionId)) ?>" target="_blank" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Print Forms</a>
+                                        <?php endif; ?>
+                                        <?php if ($patientContract): ?>
+                                            <a href="<?= e($tabUrl('contracts', ['contract_id' => (int)$patientContract['id']])) ?>" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Print Contract</a>
+                                        <?php else: ?>
+                                            <a href="<?= e($tabUrl('contracts')) ?>" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Create Contract</a>
                                         <?php endif; ?>
                                         </div>
                                     </div>

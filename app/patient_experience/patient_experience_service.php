@@ -1597,6 +1597,7 @@ if (!function_exists('patient_experience_signed_packet_snapshot')) {
                 'version' => (int)($definition['version'] ?? 1),
                 'title' => (string)($definition['title'] ?? 'Patient Packet'),
             ],
+            'definition' => $definition,
             'session' => [
                 'id' => $sessionId,
                 'patient_name' => (string)($session['patient_name'] ?? ''),

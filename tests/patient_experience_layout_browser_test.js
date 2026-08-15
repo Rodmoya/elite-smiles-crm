@@ -6,10 +6,11 @@ const outputDir = process.env.PATIENT_EXPERIENCE_ARTIFACT_DIR || 'tests/artifact
 const intakeFields = [
   ['patient_first_name', 'text', 'First name'], ['patient_middle_initial', 'text', 'Middle initial'],
   ['patient_last_name', 'text', 'Last name'], ['patient_dob', 'dob', 'Date of birth'],
+  ['patient_ssn', 'ssn', 'Social Security number'],
   ['patient_phone', 'phone', 'Phone'], ['patient_alt_phone', 'phone', 'Alternate phone'],
   ['patient_email', 'email', 'Email'], ['patient_address', 'text', 'Street address'],
   ['patient_city', 'text', 'City'], ['patient_state', 'text', 'State'], ['patient_zip', 'text', 'ZIP code'],
-].map(([key, type, label]) => ({ key, type, label, required: !key.includes('middle') && !key.includes('alt') }));
+].map(([key, type, label]) => ({ key, type, label, required: !key.includes('middle') && !key.includes('alt') && !key.includes('ssn') }));
 intakeFields.push({ key: 'patient_sex', type: 'radio', label: 'Sex', options: ['Female', 'Male', 'Other', 'Prefer not to answer'] });
 
 const consentFields = [

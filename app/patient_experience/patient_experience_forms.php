@@ -4,10 +4,9 @@ declare(strict_types=1);
 /**
  * Elite Smiles patient intake and consent packet.
  *
- * Version 3 digitizes the practice's current paper forms and gives each legal
- * consent its own patient initials and signature. Social Security numbers are deliberately
- * not collected in the kiosk flow; insurance member and subscriber IDs are
- * sufficient for the digital intake record.
+ * Version 4 digitizes the practice's current paper forms, gives each legal
+ * consent its own patient initials and signature, and protects collected Social
+ * Security numbers with encrypted storage and masked review output.
  */
 
 if (!function_exists('patient_experience_packet_definition')) {
@@ -15,7 +14,7 @@ if (!function_exists('patient_experience_packet_definition')) {
     {
         return [
             'packet_key' => 'elite_smiles_patient_intake',
-            'version' => 3,
+            'version' => 4,
             'title' => 'Elite Smiles Patient Forms',
             'description' => 'Patient information, health history, practice policies, and individual digital consents.',
             'sections' => [
@@ -54,6 +53,8 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ['key' => 'patient_middle_initial', 'type' => 'text', 'label' => 'Middle initial'],
                         ['key' => 'patient_last_name', 'type' => 'text', 'label' => 'Last name', 'required' => true],
                         ['key' => 'patient_dob', 'type' => 'dob', 'label' => 'Date of birth', 'required' => true],
+                        ['key' => 'patient_age', 'type' => 'text', 'label' => 'Age'],
+                        ['key' => 'patient_ssn', 'type' => 'ssn', 'label' => 'Social Security number', 'sensitive' => true],
                         ['key' => 'patient_phone', 'type' => 'phone', 'label' => 'Phone', 'required' => true],
                         ['key' => 'patient_alt_phone', 'type' => 'phone', 'label' => 'Alternate phone'],
                         ['key' => 'patient_email', 'type' => 'email', 'label' => 'Email', 'required' => true],
@@ -73,6 +74,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                             'label' => 'Marital status',
                             'options' => ['Single', 'Married', 'Partnered', 'Separated', 'Divorced', 'Widowed', 'Minor'],
                         ],
+                        ['key' => 'patient_partnered_years', 'type' => 'text', 'label' => 'Partnered for how many years?', 'visible_if' => ['field' => 'patient_marital_status', 'value' => 'Partnered']],
                         ['key' => 'patient_employer_school', 'type' => 'text', 'label' => 'Employer or school'],
                         ['key' => 'patient_occupation', 'type' => 'text', 'label' => 'Occupation'],
                         ['key' => 'patient_employer_address', 'type' => 'text', 'label' => 'Employer or school address'],
@@ -96,6 +98,8 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ['key' => 'primary_responsible_address', 'type' => 'text', 'label' => 'Responsible person address, if different'],
                         ['key' => 'primary_responsible_employer', 'type' => 'text', 'label' => 'Responsible person employer'],
                         ['key' => 'primary_responsible_occupation', 'type' => 'text', 'label' => 'Responsible person occupation'],
+                        ['key' => 'primary_responsible_business_address', 'type' => 'text', 'label' => 'Responsible person business address'],
+                        ['key' => 'primary_responsible_business_phone', 'type' => 'phone', 'label' => 'Responsible person business phone'],
                         ['key' => 'primary_contract_number', 'type' => 'text', 'label' => 'Contract number'],
                         ['key' => 'primary_dependents', 'type' => 'textarea', 'label' => 'Other dependents covered by this plan'],
                         ['key' => 'insurance_divider', 'type' => 'divider', 'label' => 'Additional insurance'],
@@ -105,6 +109,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ['key' => 'additional_subscriber_phone', 'type' => 'phone', 'label' => 'Additional subscriber phone'],
                         ['key' => 'additional_subscriber_address', 'type' => 'text', 'label' => 'Additional subscriber address, if different'],
                         ['key' => 'additional_subscriber_employer', 'type' => 'text', 'label' => 'Additional subscriber employer'],
+                        ['key' => 'additional_subscriber_business_phone', 'type' => 'phone', 'label' => 'Additional subscriber business phone'],
                         ['key' => 'additional_contract_number', 'type' => 'text', 'label' => 'Additional contract number'],
                         ['key' => 'additional_dependents', 'type' => 'textarea', 'label' => 'Other dependents covered by the additional plan'],
                     ],
@@ -346,6 +351,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                     'category' => 'consent',
                     'fields' => [
                         ['key' => 'photo_heading', 'type' => 'heading', 'label' => 'Consent for Photo and Image Use'],
+                        ['key' => 'photo_intro_text', 'type' => 'paragraph', 'label' => 'I, the undersigned, hereby authorize the office of Dr. Walter Meden to use the image categories selected below in a book of case samples, or for marketing or advertising purposes.'],
                         [
                             'key' => 'photo_permission',
                             'type' => 'radio',
@@ -366,43 +372,13 @@ if (!function_exists('patient_experience_packet_definition')) {
                         [
                             'key' => 'photo_release_text',
                             'type' => 'paragraph',
-                            'label' => 'If I authorize use, I permit the office of Dr. Walter Meden to use only the image categories I selected above in a book of case samples or for marketing or advertising. I authorize release of those selected photographic or digital images and acknowledge receiving access to the office privacy practices. I understand that declining marketing use will not affect my treatment.',
+                            'label' => 'By signing this authorization I waive any claims of breach of privacy pertaining to the release of any photographic or digital images as checked above. I acknowledge that I have received a copy of the privacy policies of this office. Declining marketing use will not affect my treatment.',
                         ],
                         ['key' => 'photo_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
                         ['key' => 'photo_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
                         ['key' => 'photo_initials', 'type' => 'digital_initials', 'label' => 'Initials: I confirm the image-use choice above', 'required' => true],
                         ['key' => 'photo_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'My signature confirms the photo and image choice above.', 'required' => true],
                         ['key' => 'photo_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient or parent', 'required' => true],
-                    ],
-                ],
-                [
-                    'section_key' => 'no_recording_policy',
-                    'template_key' => 'elite_smiles_no_recording_policy',
-                    'title' => 'No Video or Audio Recording',
-                    'description' => 'Privacy and safety policy for recording in the practice.',
-                    'category' => 'consent',
-                    'fields' => [
-                        ['key' => 'recording_heading', 'type' => 'heading', 'label' => 'No Video or Audio Recording Policy'],
-                        [
-                            'key' => 'recording_privacy_text',
-                            'type' => 'paragraph',
-                            'label' => 'To protect the privacy and confidentiality of patients, visitors, and team members, audio recording, video recording, livestreaming, and photography are not permitted in consultation, treatment, sterilization, laboratory, or other clinical areas unless Elite Smiles provides prior written authorization.',
-                        ],
-                        [
-                            'key' => 'recording_devices_text',
-                            'type' => 'paragraph',
-                            'label' => 'Phones, smart glasses, cameras, tablets, and other recording-capable devices must remain put away during care unless a team member authorizes their use for clinical communication, translation, accessibility, or another approved purpose. A patient who needs recording or device use as an accommodation should notify the team before the appointment whenever possible.',
-                        ],
-                        [
-                            'key' => 'recording_response_text',
-                            'type' => 'paragraph',
-                            'label' => 'If unauthorized recording occurs, a team member will ask that it stop. When clinically safe, care may be paused or rescheduled until the recording has stopped. This policy does not prevent legally required recording or limit rights provided by applicable law.',
-                        ],
-                        ['key' => 'recording_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
-                        ['key' => 'recording_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
-                        ['key' => 'recording_initials', 'type' => 'digital_initials', 'label' => 'Initials: I have reviewed this recording policy', 'required' => true],
-                        ['key' => 'recording_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'I have read, understand, and agree to follow the no video or audio recording policy.', 'required' => true],
-                        ['key' => 'recording_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient, parent, or legal guardian', 'required' => true],
                     ],
                 ],
                 [

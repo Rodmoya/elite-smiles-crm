@@ -189,10 +189,21 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         const canvas=document.getElementById('signature-canvas'); if(!canvas)return;
         const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(canvas.clientWidth*ratio);canvas.height=Math.round(canvas.clientHeight*ratio);
         const ctx=canvas.getContext('2d');ctx.lineWidth=2.5*ratio;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#0f172a';ctx.imageSmoothingEnabled=true;let drawing=false;let hasInk=false;
-        const point=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*(canvas.width/r.width),y:(e.clientY-r.top)*(canvas.height/r.height)}};
-        canvas.addEventListener('pointerdown',e=>{drawing=true;const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y);canvas.setPointerCapture(e.pointerId)});
-        canvas.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke();hasInk=true});
-        canvas.addEventListener('pointerup',()=>drawing=false);canvas.addEventListener('pointercancel',()=>drawing=false);
+        const point=(clientX,clientY)=>{const r=canvas.getBoundingClientRect();return{x:(clientX-r.left)*(canvas.width/r.width),y:(clientY-r.top)*(canvas.height/r.height)}};
+        const beginStroke=(clientX,clientY)=>{drawing=true;const p=point(clientX,clientY);ctx.beginPath();ctx.moveTo(p.x,p.y)};
+        const continueStroke=(clientX,clientY)=>{if(!drawing)return;const p=point(clientX,clientY);ctx.lineTo(p.x,p.y);ctx.stroke();hasInk=true};
+        const endStroke=()=>{drawing=false};
+        if('PointerEvent' in window){
+            canvas.addEventListener('pointerdown',e=>{e.preventDefault();beginStroke(e.clientX,e.clientY);canvas.setPointerCapture(e.pointerId)});
+            canvas.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();continueStroke(e.clientX,e.clientY)});
+            canvas.addEventListener('pointerup',endStroke);canvas.addEventListener('pointercancel',endStroke);
+        }else{
+            canvas.addEventListener('mousedown',e=>{e.preventDefault();beginStroke(e.clientX,e.clientY)});
+            window.addEventListener('mousemove',e=>{if(drawing)continueStroke(e.clientX,e.clientY)});window.addEventListener('mouseup',endStroke);
+            canvas.addEventListener('touchstart',e=>{e.preventDefault();const touch=e.changedTouches[0];if(touch)beginStroke(touch.clientX,touch.clientY)},{passive:false});
+            canvas.addEventListener('touchmove',e=>{e.preventDefault();const touch=e.changedTouches[0];if(touch)continueStroke(touch.clientX,touch.clientY)},{passive:false});
+            canvas.addEventListener('touchend',endStroke,{passive:false});canvas.addEventListener('touchcancel',endStroke,{passive:false});
+        }
         document.getElementById('clear-signature').addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasInk=false});
         document.getElementById('signature-form').addEventListener('submit',e=>{if(!hasInk){e.preventDefault();alert('Please draw your signature before submitting.');return;}document.getElementById('signature-data').value=canvas.toDataURL('image/png');});
     })();

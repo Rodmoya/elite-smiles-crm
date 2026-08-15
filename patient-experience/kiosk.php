@@ -25,13 +25,42 @@ $setupHintUrl = base_url('patient-experience.php');
     <link rel="manifest" href="<?= e($manifestUrl) ?>">
     <link rel="apple-touch-icon" href="<?= e($logoUrl) ?>">
     <style>
-        :root { color-scheme: light; }
-        .kiosk-input { min-height: 54px; width: 100%; border-radius: 18px; border: 1px solid rgb(203 213 225); padding: 12px 16px; font-size: 18px; outline: none; }
-        .kiosk-input:focus { border-color: rgb(217 119 6); box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18); }
-        .kiosk-label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgb(71 85 105); }
-        .kiosk-option { min-height: 54px; border-radius: 18px; border: 1px solid rgb(203 213 225); background: white; padding: 14px 16px; font-size: 17px; font-weight: 700; color: rgb(15 23 42); }
-        .signature-canvas { touch-action: none; width: 100%; height: 48vh; min-height: 340px; border-radius: 28px; background: #fff; }
+        :root { color-scheme: light; --form-ink: #111827; --form-muted: #64748b; --form-line: #94a3b8; --form-focus: #b45309; }
+        .kiosk-input { min-height: 42px; width: 100%; border-radius: 5px; border: 1px solid var(--form-line); background: #fff; padding: 7px 10px; font-size: 15px; color: var(--form-ink); outline: none; }
+        .kiosk-input:focus { border-color: var(--form-focus); box-shadow: 0 0 0 3px rgba(180, 83, 9, .14); }
+        .kiosk-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #475569; }
+        .kiosk-option { min-height: 40px; border-radius: 5px; border: 1px solid var(--form-line); background: white; padding: 7px 10px; font-size: 14px; font-weight: 650; color: var(--form-ink); }
+        .kiosk-option:has(input:checked) { border-color: var(--form-ink); box-shadow: inset 4px 0 0 var(--form-ink); background: #f8fafc; }
+        .signature-canvas { touch-action: none; width: 100%; height: 48vh; min-height: 340px; border-radius: 8px; background: #fff; }
         .field-wrapper.hidden { display: none; }
+        .kiosk-form-document { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; border: 1px solid #cbd5e1; border-top: 4px solid var(--form-ink); border-radius: 7px; background: #fff; padding: 16px; box-shadow: 0 8px 24px rgba(15, 23, 42, .06); }
+        .field-wrapper.form-wide, .form-actions, #form-error { grid-column: 1 / -1; }
+        .field-wrapper.form-span-2 { grid-column: span 2; }
+        .form-section-heading { margin: 3px 0 0; border-left: 4px solid var(--form-ink); background: #e5e7eb; padding: 6px 9px; font-size: 14px; font-weight: 800; color: var(--form-ink); }
+        .form-legal-copy { margin: 0; border: 1px solid #cbd5e1; background: #f8fafc; padding: 14px 16px; font-size: 15px; line-height: 1.65; color: #334155; }
+        .form-divider { height: 1px; margin: 4px 0; background: #94a3b8; }
+        .form-subsection { border: 1px solid #cbd5e1; background: #f8fafc; padding: 12px; }
+        .form-subsection-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; }
+        .form-signature-panel { border: 1px solid #94a3b8; background: #f8fafc; padding: 16px; }
+        .form-signature-preview { min-height: 92px; border-bottom: 1px solid #334155; background: #fff; padding: 10px; color: #64748b; }
+        .form-acknowledgement { display: flex; cursor: pointer; align-items: flex-start; gap: 12px; border: 1px solid #94a3b8; background: #f8fafc; padding: 14px; font-size: 16px; font-weight: 700; line-height: 1.5; color: var(--form-ink); }
+        .form-document-title { margin-top: 5px; font-size: 26px; font-weight: 700; letter-spacing: -.025em; color: var(--form-ink); }
+        .form-document-instruction { margin-top: 4px; max-width: 52rem; font-size: 13px; line-height: 1.5; color: var(--form-muted); }
+        .form-actions { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 4px; }
+        .consent-document { display:block; border:1px solid #cbd5e1; border-top:3px solid #111827; background:#fff; padding:24px 30px 22px; box-shadow:0 10px 30px rgba(15,23,42,.07); }
+        .consent-letterhead { display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid #111827; padding-bottom:14px; margin-bottom:20px; }
+        .consent-letterhead img { width:170px; height:auto; }
+        .consent-office { text-align:right; font-size:10px; line-height:1.45; color:#475569; }
+        .consent-document .field-wrapper { margin-top:13px; }
+        .consent-document .form-section-heading { border:0; background:transparent; padding:0 0 6px; font-family:Georgia, 'Times New Roman', serif; font-size:20px; text-align:center; }
+        .consent-document .form-legal-copy { border:0; background:transparent; padding:0; font-family:Georgia, 'Times New Roman', serif; font-size:14px; line-height:1.55; color:#1f2937; }
+        .consent-document .form-acknowledgement { border:1px solid #94a3b8; background:#f8fafc; padding:11px 12px; font-family:Georgia, 'Times New Roman', serif; font-size:14px; font-weight:600; }
+        .consent-document .form-initials { display:grid; grid-template-columns:minmax(0,1fr) 110px; align-items:end; gap:16px; border-top:1px solid #cbd5e1; padding-top:12px; }
+        .consent-document .form-initials .kiosk-input { min-height:38px; text-align:center; font-family:Georgia, 'Times New Roman', serif; font-size:18px; text-transform:uppercase; }
+        .consent-document .form-signature-panel { margin-top:4px; border:0; border-top:1px solid #111827; background:#fff; padding:16px 0 0; }
+        .consent-document .form-signature-preview { min-height:68px; }
+        .consent-document .form-actions { margin-top:20px; border-top:1px solid #cbd5e1; padding-top:16px; }
+        .consent-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 20px; margin:0 0 14px; font-family:Georgia, 'Times New Roman', serif; font-size:12px; color:#475569; }
         @media (max-width: 767px) {
             body { background: #fff !important; }
             main { display: block !important; min-height: 100vh; padding: 0 !important; }
@@ -42,9 +71,20 @@ $setupHintUrl = base_url('patient-experience.php');
             main > section header #progress-label { display: none; }
             #kiosk-app { padding: 24px 20px 40px !important; background: #fff !important; }
             #kiosk-state { min-height: auto !important; }
-            .kiosk-input { min-height: 50px; border-radius: 12px; padding: 11px 13px; font-size: 16px; }
-            .kiosk-option { min-height: 50px; border-radius: 12px; padding: 12px 14px; font-size: 16px; }
-            .signature-canvas { min-height: 260px; height: 42vh; border-radius: 16px; }
+            .kiosk-input { min-height: 48px; border-radius: 5px; padding: 10px 11px; font-size: 16px; }
+            .kiosk-option { min-height: 48px; border-radius: 5px; padding: 11px 12px; font-size: 15px; }
+            .signature-canvas { min-height: 260px; height: 42vh; border-radius: 6px; }
+            .kiosk-form-document { grid-template-columns: 1fr; gap: 11px; margin-right: -8px; margin-left: -8px; padding: 14px 12px; }
+            .field-wrapper.form-wide, .field-wrapper.form-span-2, .form-actions, #form-error { grid-column: 1; }
+            .form-subsection-grid { grid-template-columns: 1fr; }
+            .form-document-title { font-size: 25px; }
+            .form-actions { position: sticky; bottom: 0; z-index: 5; margin: 4px -12px -16px; border-top: 1px solid #cbd5e1; background: rgba(255,255,255,.97); padding: 12px; }
+            .consent-document { margin-right:-8px; margin-left:-8px; padding:18px 16px; }
+            .consent-letterhead { align-items:flex-start; gap:12px; margin-bottom:16px; }
+            .consent-letterhead img { width:128px; }
+            .consent-office { font-size:9px; }
+            .consent-document .form-actions { position:sticky; bottom:0; margin:18px -16px -18px; background:rgba(255,255,255,.97); padding:12px 16px; }
+            .consent-document .form-initials { grid-template-columns:minmax(0,1fr) 82px; }
         }
     </style>
 </head>
@@ -52,9 +92,9 @@ $setupHintUrl = base_url('patient-experience.php');
     <main class="flex min-h-screen items-start justify-center px-4 py-6 sm:px-6 sm:py-10">
         <section class="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-amber-400 bg-white shadow-xl">
             <div class="min-h-[760px]">
-                <header class="flex flex-col gap-5 border-b border-slate-200 bg-white p-6 sm:flex-row sm:items-center sm:justify-between lg:px-10">
+                <header class="flex flex-col gap-3 border-b border-slate-200 bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-7">
                     <div class="flex items-center gap-4">
-                        <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="w-48 max-w-full bg-white p-2">
+                        <img src="<?= e($logoUrl) ?>" alt="Elite Smiles" class="w-36 max-w-full bg-white p-1">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Patient Intake</p>
                             <p class="mt-1 text-sm text-slate-500">Secure forms and signatures</p>
@@ -68,7 +108,7 @@ $setupHintUrl = base_url('patient-experience.php');
                     </div>
                 </header>
 
-                <section id="kiosk-app" class="bg-white p-8 text-slate-950 lg:p-12">
+                <section id="kiosk-app" class="bg-white p-6 text-slate-950 lg:p-8">
                     <div id="kiosk-state" class="flex min-h-[680px] flex-col items-center justify-center text-center">
                         <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl font-semibold text-amber-800">ES</div>
                         <h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Patient intake forms</h1>
@@ -369,38 +409,40 @@ $setupHintUrl = base_url('patient-experience.php');
                 return options && typeof options === 'object' ? options : {};
             }
 
-            function renderField(field, value, answers) {
+            function renderField(field, value, answers, documentMode) {
                 const key = escapeHtml(field.key || '');
                 const label = escapeHtml(field.label || '');
                 const type = String(field.type || 'text');
                 const required = field.required ? ' required' : '';
                 const isVisible = fieldVisible(field, answersStateMap(answers));
-                const wrapperStart = '<div class="field-wrapper' + (isVisible ? '' : ' hidden') + '" data-visible-if="' + escapeHtml(JSON.stringify(field.visible_if || null)) + '">';
+                const wideTypes = ['heading', 'paragraph', 'text_block', 'divider', 'signature_capture', 'digital_signature', 'acknowledgement_checkbox', 'checkbox_ack', 'checkbox_group', 'multi_select', 'textarea', 'medication_list', 'allergy_list', 'emergency_contact', 'insurance'];
+                const spanTwo = !wideTypes.includes(type) && (type === 'email' || /(?:address|employer_school|referral_source)$/.test(String(field.key || '')));
+                const wrapperStart = '<div class="field-wrapper' + (wideTypes.includes(type) ? ' form-wide' : '') + (spanTwo ? ' form-span-2' : '') + (type === 'digital_initials' ? ' form-initials' : '') + (isVisible ? '' : ' hidden') + '" data-visible-if="' + escapeHtml(JSON.stringify(field.visible_if || null)) + '">';
                 const wrapperEnd = '</div>';
 
                 if (type === 'heading') {
-                    return wrapperStart + '<h2 class="text-2xl font-semibold tracking-tight text-slate-950">' + label + '</h2>' + wrapperEnd;
+                    return wrapperStart + '<h2 class="form-section-heading">' + label + '</h2>' + wrapperEnd;
                 }
                 if (type === 'paragraph' || type === 'text_block') {
-                    return wrapperStart + '<div class="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-lg leading-8 text-slate-800">' + escapeHtml(field.body || field.label || '') + '</div>' + wrapperEnd;
+                    return wrapperStart + '<div class="form-legal-copy">' + escapeHtml(field.body || field.label || '') + '</div>' + wrapperEnd;
                 }
                 if (type === 'divider') {
-                    return wrapperStart + '<div class="h-px bg-slate-200"></div>' + wrapperEnd;
+                    return wrapperStart + '<div class="form-divider"></div>' + wrapperEnd;
                 }
                 if (type === 'signature_capture' || type === 'digital_signature') {
-                    return wrapperStart + '<div class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-6">'
+                    return wrapperStart + '<div class="form-signature-panel">'
                         + '<p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Signature</p>'
                         + '<input type="hidden" name="' + key + '" value="' + escapeHtml(value || '') + '" data-signature-input="1"' + required + '>'
-                        + '<div class="mt-4 rounded-2xl bg-slate-50 p-4">'
-                        + '<div class="signature-preview min-h-24 rounded-xl border border-slate-200 bg-white p-3 text-slate-500">' + (value ? '<img src="' + escapeHtml(value) + '" alt="Captured signature" class="max-h-28">' : 'No signature captured yet.') + '</div>'
-                        + '<button type="button" data-target="' + key + '" data-label="' + label + '" class="open-signature mt-4 min-h-14 w-full rounded-2xl bg-slate-950 px-6 py-4 text-lg font-semibold text-white">Capture Signature</button>'
+                        + '<div class="mt-3">'
+                        + '<div class="signature-preview form-signature-preview">' + (value ? '<img src="' + escapeHtml(value) + '" alt="Captured signature" class="max-h-20">' : 'Signature will appear here.') + '</div>'
+                        + '<button type="button" data-target="' + key + '" data-label="' + label + '" class="open-signature mt-3 min-h-12 w-full rounded-md bg-slate-950 px-5 py-3 text-base font-semibold text-white">Capture Signature</button>'
                         + '</div></div>' + wrapperEnd;
                 }
                 if (type === 'digital_initials') {
-                    return wrapperStart + '<div><label class="kiosk-label" for="' + key + '">' + label + '</label><input id="' + key + '" name="' + key + '" type="text" maxlength="8" value="' + escapeHtml(value || '') + '" class="kiosk-input"' + required + '></div>' + wrapperEnd;
+                    return wrapperStart + '<label class="text-sm font-semibold leading-5 text-slate-800" for="' + key + '">' + label + '</label><input id="' + key + '" name="' + key + '" type="text" maxlength="8" autocomplete="off" value="' + escapeHtml(value || '') + '" class="kiosk-input" aria-label="Initials"' + required + '>' + wrapperEnd;
                 }
                 if (type === 'acknowledgement_checkbox' || type === 'checkbox_ack') {
-                    return wrapperStart + '<label class="flex cursor-pointer items-start gap-4 rounded-[2rem] border border-slate-200 bg-white p-5 text-xl font-semibold text-slate-900"><input class="mt-1 h-7 w-7 rounded border-slate-300 text-amber-600" type="checkbox" name="' + key + '" value="1"' + (value ? ' checked' : '') + required + '><span>' + label + '</span></label>' + wrapperEnd;
+                    return wrapperStart + '<label class="form-acknowledgement"><input class="mt-1 h-6 w-6 shrink-0 rounded-none border-slate-400 text-slate-950" type="checkbox" name="' + key + '" value="1"' + (value ? ' checked' : '') + required + '><span>' + label + '</span></label>' + wrapperEnd;
                 }
                 if (type === 'checkbox_group' || type === 'multi_select') {
                     let html = wrapperStart + '<fieldset><legend class="kiosk-label">' + label + '</legend><div class="grid gap-3 sm:grid-cols-2">';
@@ -433,9 +475,9 @@ $setupHintUrl = base_url('patient-experience.php');
                     return wrapperStart + '<div><label class="kiosk-label" for="' + key + '">' + label + '</label><textarea id="' + key + '" name="' + key + '" rows="4" class="kiosk-input min-h-32 resize-none"' + required + '>' + escapeHtml(body) + '</textarea></div>' + wrapperEnd;
                 }
                 if (type === 'emergency_contact' || type === 'insurance') {
-                    let html = wrapperStart + '<div class="rounded-[2rem] border border-slate-200 bg-white p-5"><p class="kiosk-label">' + label + '</p><div class="grid gap-4">';
+                    let html = wrapperStart + '<div class="form-subsection"><p class="kiosk-label">' + label + '</p><div class="form-subsection-grid">';
                     fieldChildren(field).forEach(function (child) {
-                        html += renderField(child, answerValue(answers, child.key), answers);
+                        html += renderField(child, answerValue(answers, child.key), answers, documentMode);
                     });
                     return html + '</div></div>' + wrapperEnd;
                 }
@@ -531,26 +573,37 @@ $setupHintUrl = base_url('patient-experience.php');
                 const currentStepKey = String(form.current_step || step.current_step || '');
                 const currentStepIndex = Math.max(0, stepKeys.indexOf(currentStepKey));
                 const formNumber = Math.min(stepKeys.length || 1, currentStepIndex + 1);
-                setProgress(session.percent_complete || 5, 'Step: ' + String(step.title || 'Check-in'));
+                const category = String(step.category || 'intake');
+                const isConsent = category === 'consent';
+                const isReview = category === 'review';
+                const phaseNumber = isReview ? 3 : (isConsent ? 2 : 1);
+                const phaseLabel = isReview ? 'Review' : (isConsent ? 'Consents' : 'Patient intake');
+                const patientName = String(session.display_name || 'Patient');
+                const today = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
+                setProgress(session.percent_complete || 5, 'Step ' + phaseNumber + ' of 3 · ' + phaseLabel);
                 app.className = 'min-h-[680px]';
-                let html = '<div class="mx-auto max-w-3xl">'
+                let html = '<div class="mx-auto max-w-4xl">'
                     + '<div class="flex items-center justify-between gap-4">'
-                    + '<p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Patient forms</p>'
-                    + '<p class="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Form ' + formNumber + ' of ' + (stepKeys.length || 1) + '</p>'
+                    + '<p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Step ' + phaseNumber + ' of 3 · ' + phaseLabel + '</p>'
+                    + '<p class="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Document ' + formNumber + ' of ' + (stepKeys.length || 1) + '</p>'
                     + '</div>'
-                    + '<h1 class="mt-3 text-3xl font-semibold tracking-tight lg:text-5xl">' + escapeHtml(step.title || 'Patient form') + '</h1>'
-                    + '<p class="mt-3 text-base leading-7 text-slate-500">Fill in this form, sign when requested, then save to continue. Your progress is saved securely.</p>';
+                    + '<h1 class="form-document-title">' + escapeHtml(step.title || 'Patient form') + '</h1>'
+                    + '<p class="form-document-instruction">' + (isConsent ? 'Read this consent carefully, enter your initials, and sign the document. A secure copy is saved with your patient record.' : 'Complete each field as it appears on your records. Your answers save securely as you continue.') + '</p>';
                 if (review && Array.isArray(review.sections)) {
                     html += renderReviewSummary(review);
                 }
-                html += '<form id="kiosk-form" class="mt-8 space-y-6">';
+                html += '<form id="kiosk-form" class="' + (isConsent ? 'consent-document' : 'kiosk-form-document') + ' mt-4">';
+                if (isConsent) {
+                    html += '<div class="consent-letterhead"><img src="<?= e($logoUrl) ?>" alt="Elite Smiles"><div class="consent-office"><strong>Elite Smiles by Walter Meden, DDS</strong><br>11762 South State Street, Suite 300<br>Draper, Utah 84020</div></div>'
+                        + '<div class="consent-meta"><span><strong>Patient:</strong> ' + escapeHtml(patientName) + '</span><span><strong>Date:</strong> ' + escapeHtml(today) + '</span></div>';
+                }
                 fields.forEach(function (field) {
-                    html += renderField(field, answerValue(answers, field.key), answers);
+                    html += renderField(field, answerValue(answers, field.key), answers, isConsent ? 'consent' : 'intake');
                 });
                 html += '<div id="form-error" class="hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-base font-semibold text-red-700"></div>'
-                    + '<div class="flex flex-wrap gap-4 pt-4">'
-                    + '<button type="submit" class="min-h-14 flex-1 rounded-2xl bg-slate-950 px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-slate-950/20">' + (currentStepKey === 'final_review' ? 'Submit Signed Forms' : 'Save & Next Form') + '</button>'
-                    + '<button type="button" class="cancel-checkin min-h-14 rounded-2xl border border-slate-300 bg-white px-8 py-4 text-lg font-semibold text-slate-700">Finish Later</button>'
+                    + '<div class="form-actions">'
+                    + '<button type="submit" class="min-h-12 flex-1 rounded-md bg-slate-950 px-7 py-3 text-base font-semibold text-white">' + (currentStepKey === 'final_review' ? 'Submit Signed Forms' : 'Save & Next Form') + '</button>'
+                    + '<button type="button" class="cancel-checkin min-h-12 rounded-md border border-slate-400 bg-white px-7 py-3 text-base font-semibold text-slate-700">Finish Later</button>'
                     + '</div></form></div>';
                 app.innerHTML = html;
                 const formElement = app.querySelector('#kiosk-form');
@@ -686,7 +739,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 const input = app.querySelector('input[name="' + CSS.escape(signatureTargetName) + '"]');
                 if (input) {
                     input.value = dataUrl;
-                    const wrapper = input.closest('.rounded-\\[2rem\\]');
+                    const wrapper = input.closest('.form-signature-panel');
                     const preview = wrapper ? wrapper.querySelector('.signature-preview') : null;
                     if (preview) {
                         preview.innerHTML = '<img src="' + dataUrl + '" alt="Captured signature" class="max-h-28">';

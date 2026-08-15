@@ -19,6 +19,7 @@ $result = mailing_update_campaign($campaignId, [
     'body_text' => post('body_text', ''),
     'cta_label' => post('cta_label', ''),
     'cta_url' => post('cta_url', ''),
+    'audience_filter' => post('audience_filter', 'all_subscribed'),
 ]);
 
 flash_set(!empty($result['ok']) ? 'success' : 'error', (string)($result['message'] ?? 'Campaign update complete.'));

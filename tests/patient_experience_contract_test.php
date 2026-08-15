@@ -37,6 +37,19 @@ try {
     contract_expect(str_contains($patientExperienceMarkup, 'walk_in=1') && str_contains($patientExperienceMarkup, 'walkInIntakeQrUrl'), 'Permanent walk-in intake QR is missing.');
     contract_expect(str_contains($patientExperienceMarkup, 'patient_experience_contract_qr_data_url($walkInIntakeUrl)'), 'Walk-in intake QR is not generated locally.');
     contract_expect(str_contains($kioskMarkup, 'kioskToken ? beginSession : beginDirectSession'), 'Walk-in QR does not start a new intake automatically.');
+    contract_expect(str_contains($kioskMarkup, 'grid-template-columns: repeat(3, minmax(0, 1fr))'), 'Patient intake does not use the compact three-column desktop form layout.');
+    contract_expect(str_contains($kioskMarkup, "const isConsent = category === 'consent'"), 'Patient forms do not switch into a dedicated consent-document mode.');
+    contract_expect(str_contains($kioskMarkup, 'consent-letterhead') && str_contains($kioskMarkup, 'Elite Smiles by Walter Meden, DDS'), 'Consent documents are missing the branded legal letterhead.');
+    contract_expect(str_contains($kioskMarkup, "'Step ' + phaseNumber + ' of 3"), 'Patient forms do not communicate the Intake, Consents, and Review phases.');
+    contract_expect(str_contains($kioskMarkup, "input.closest('.form-signature-panel')"), 'Captured signatures are not connected to their visible consent preview.');
+    $packetDefinition = patient_experience_packet_definition();
+    contract_expect((int)($packetDefinition['version'] ?? 0) === 3, 'The initialed consent packet was not versioned.');
+    foreach ((array)($packetDefinition['sections'] ?? []) as $packetSection) {
+        if ((string)($packetSection['category'] ?? '') !== 'consent') continue;
+        $fieldTypes = array_map(static fn(array $field): string => (string)($field['type'] ?? ''), (array)($packetSection['fields'] ?? []));
+        contract_expect(in_array('digital_initials', $fieldTypes, true), 'Consent is missing required initials: ' . (string)($packetSection['section_key'] ?? 'unknown'));
+        contract_expect(in_array('digital_signature', $fieldTypes, true), 'Consent is missing its individual signature: ' . (string)($packetSection['section_key'] ?? 'unknown'));
+    }
     contract_expect(str_contains($kioskMarkup, "patient_name: 'Walk-in Patient'") && !str_contains($kioskMarkup, "patient_name: 'Test Patient'"), 'Walk-in kiosk still uses a test patient identity.');
     contract_expect(str_contains($kioskApiMarkup, "\$patientName = 'Walk-in Patient';") && !str_contains($kioskApiMarkup, "\$patientName = 'Test Patient';"), 'Walk-in API still creates test patients.');
     contract_expect(str_contains($patientExperienceMarkup, 'auto_begin=1'), 'Patient-specific intake QR does not open forms immediately.');

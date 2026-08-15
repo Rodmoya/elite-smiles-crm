@@ -4,8 +4,8 @@ declare(strict_types=1);
 /**
  * Elite Smiles patient intake and consent packet.
  *
- * Version 2 digitizes the practice's current paper forms and gives each legal
- * consent its own patient signature. Social Security numbers are deliberately
+ * Version 3 digitizes the practice's current paper forms and gives each legal
+ * consent its own patient initials and signature. Social Security numbers are deliberately
  * not collected in the kiosk flow; insurance member and subscriber IDs are
  * sufficient for the digital intake record.
  */
@@ -15,7 +15,7 @@ if (!function_exists('patient_experience_packet_definition')) {
     {
         return [
             'packet_key' => 'elite_smiles_patient_intake',
-            'version' => 2,
+            'version' => 3,
             'title' => 'Elite Smiles Patient Forms',
             'description' => 'Patient information, health history, practice policies, and individual digital consents.',
             'sections' => [
@@ -205,6 +205,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ['key' => 'authorization_payment_text', 'type' => 'paragraph', 'label' => 'Payment is due in full at the time of treatment unless prior arrangements have been approved.'],
                         ['key' => 'authorization_signer_name', 'type' => 'text', 'label' => 'Printed name of patient, parent, guardian, or personal representative', 'required' => true],
                         ['key' => 'authorization_relationship', 'type' => 'text', 'label' => 'Relationship to patient', 'required' => true],
+                        ['key' => 'authorization_initials', 'type' => 'digital_initials', 'label' => 'Initials: I have reviewed this authorization', 'required' => true],
                         ['key' => 'authorization_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'I have read, understand, and authorize the terms above.', 'required' => true],
                         ['key' => 'authorization_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient, parent, guardian, or personal representative', 'required' => true],
                     ],
@@ -249,6 +250,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ],
                         ['key' => 'proceed_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
                         ['key' => 'proceed_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
+                        ['key' => 'proceed_initials', 'type' => 'digital_initials', 'label' => 'Initials: I have reviewed this consent', 'required' => true],
                         ['key' => 'proceed_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'I have read and consent to the treatment terms above.', 'required' => true],
                         ['key' => 'proceed_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient or legal guardian', 'required' => true],
                     ],
@@ -289,6 +291,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ['key' => 'release_duration', 'type' => 'paragraph', 'label' => 'Any additional release authorization remains effective until I terminate it in writing.'],
                         ['key' => 'hipaa_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
                         ['key' => 'hipaa_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
+                        ['key' => 'hipaa_initials', 'type' => 'digital_initials', 'label' => 'Initials: I acknowledge these privacy practices', 'required' => true],
                         ['key' => 'hipaa_acknowledgement_checkbox', 'type' => 'acknowledgement_checkbox', 'label' => 'I acknowledge the privacy practices and release preference above.', 'required' => true],
                         ['key' => 'hipaa_signature', 'type' => 'digital_signature', 'label' => 'Patient or legal representative signature', 'required' => true],
                     ],
@@ -367,6 +370,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ],
                         ['key' => 'photo_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
                         ['key' => 'photo_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
+                        ['key' => 'photo_initials', 'type' => 'digital_initials', 'label' => 'Initials: I confirm the image-use choice above', 'required' => true],
                         ['key' => 'photo_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'My signature confirms the photo and image choice above.', 'required' => true],
                         ['key' => 'photo_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient or parent', 'required' => true],
                     ],
@@ -396,6 +400,7 @@ if (!function_exists('patient_experience_packet_definition')) {
                         ],
                         ['key' => 'recording_patient_name', 'type' => 'text', 'label' => 'Patient name', 'required' => true],
                         ['key' => 'recording_signer_relationship', 'type' => 'text', 'label' => 'Signer relationship to patient', 'required' => true],
+                        ['key' => 'recording_initials', 'type' => 'digital_initials', 'label' => 'Initials: I have reviewed this recording policy', 'required' => true],
                         ['key' => 'recording_acknowledgement', 'type' => 'acknowledgement_checkbox', 'label' => 'I have read, understand, and agree to follow the no video or audio recording policy.', 'required' => true],
                         ['key' => 'recording_signature', 'type' => 'digital_signature', 'label' => 'Signature of patient, parent, or legal guardian', 'required' => true],
                     ],

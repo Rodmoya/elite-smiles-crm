@@ -73,6 +73,9 @@ if (!function_exists('mailing_ensure_schema')) {
             status VARCHAR(40) NOT NULL DEFAULT 'queued',
             tracking_token VARCHAR(120) NOT NULL DEFAULT '',
             provider_response TEXT NULL,
+            attempt_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            last_attempt_at DATETIME NULL,
+            next_retry_at DATETIME NULL,
             sent_at DATETIME NULL,
             opened_at DATETIME NULL,
             clicked_at DATETIME NULL,
@@ -80,8 +83,23 @@ if (!function_exists('mailing_ensure_schema')) {
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY uq_mailing_recipient (campaign_id, contact_id),
             KEY idx_mailing_recipient_token (tracking_token),
-            KEY idx_mailing_recipient_status (status)
+            KEY idx_mailing_recipient_status (status),
+            KEY idx_mailing_recipient_retry (status, next_retry_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $recipientColumns = [
+            'attempt_count' => "ALTER TABLE mailing_recipients ADD COLUMN attempt_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER provider_response",
+            'last_attempt_at' => "ALTER TABLE mailing_recipients ADD COLUMN last_attempt_at DATETIME NULL AFTER attempt_count",
+            'next_retry_at' => "ALTER TABLE mailing_recipients ADD COLUMN next_retry_at DATETIME NULL AFTER last_attempt_at",
+        ];
+        foreach ($recipientColumns as $column => $alterSql) {
+            if (!db_one("SHOW COLUMNS FROM mailing_recipients LIKE '" . $column . "'")) {
+                db_query($alterSql);
+            }
+        }
+        if (!db_one("SHOW INDEX FROM mailing_recipients WHERE Key_name = 'idx_mailing_recipient_retry'")) {
+            db_query('ALTER TABLE mailing_recipients ADD KEY idx_mailing_recipient_retry (status, next_retry_at)');
+        }
 
         db_query("CREATE TABLE IF NOT EXISTS mailing_events (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -110,6 +128,55 @@ if (!function_exists('mailing_status_labels')) {
             'sent' => 'Sent',
             'paused' => 'Paused',
         ];
+    }
+}
+
+if (!function_exists('mailing_audience_options')) {
+    function mailing_audience_options(): array
+    {
+        return [
+            'all_subscribed' => 'All subscribed contacts',
+            'language_en' => 'English-speaking contacts',
+            'language_es' => 'Spanish-speaking contacts',
+            'source_dentrix' => 'Dentrix patients',
+            'source_manual' => 'Manual lists',
+            'engaged_180' => 'Engaged in the last 180 days',
+        ];
+    }
+}
+
+if (!function_exists('mailing_normalize_audience')) {
+    function mailing_normalize_audience(string $audience): string
+    {
+        if ($audience === 'system_test') {
+            return $audience;
+        }
+        return isset(mailing_audience_options()[$audience]) ? $audience : 'all_subscribed';
+    }
+}
+
+if (!function_exists('mailing_audience_condition')) {
+    function mailing_audience_condition(string $audience, string $alias = 'c'): string
+    {
+        $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'c';
+        return match (mailing_normalize_audience($audience)) {
+            'language_en' => "{$prefix}.language = 'en'",
+            'language_es' => "{$prefix}.language = 'es'",
+            'source_dentrix' => "{$prefix}.source = 'dentrix_import'",
+            'source_manual' => "{$prefix}.source IN ('manual', 'manual_import')",
+            'engaged_180' => "{$prefix}.last_engaged_at >= DATE_SUB(NOW(), INTERVAL 180 DAY)",
+            'system_test' => "{$prefix}.source = 'system_test'",
+            default => '1 = 1',
+        };
+    }
+}
+
+if (!function_exists('mailing_audience_count')) {
+    function mailing_audience_count(string $audience): int
+    {
+        mailing_ensure_schema();
+        $condition = mailing_audience_condition($audience);
+        return (int)(db_value("SELECT COUNT(*) FROM mailing_contacts c WHERE c.opt_status = 'subscribed' AND {$condition}") ?? 0);
     }
 }
 
@@ -323,7 +390,8 @@ if (!function_exists('mailing_dashboard_data')) {
                     (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.status = 'sent') AS delivered_count,
                     (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.status = 'failed') AS failed_count,
                     (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.opened_at IS NOT NULL) AS opened_count,
-                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.clicked_at IS NOT NULL) AS clicked_count
+                    (SELECT COUNT(*) FROM mailing_recipients r WHERE r.campaign_id = c.id AND r.clicked_at IS NOT NULL) AS clicked_count,
+                    (SELECT COUNT(*) FROM leads l WHERE l.campaign = CONCAT('mailing_', c.id)) AS lead_count
              FROM mailing_campaigns c
              ORDER BY c.created_at DESC, c.id DESC
              LIMIT 20"
@@ -364,7 +432,7 @@ if (!function_exists('mailing_default_template_html')) {
         $preview = e((string)($campaign['preview_text'] ?? ''));
         $bodyHtml = (string)($campaign['body_html'] ?? '');
         $ctaLabel = e((string)($campaign['cta_label'] ?? 'Schedule a Consultation'));
-        $ctaUrl = trim((string)($campaign['cta_url'] ?? ''));
+        $ctaUrl = mailing_campaign_destination($campaign);
         $trackedCta = $trackingToken !== '' && $ctaUrl !== '' ? mailing_click_url($trackingToken, $ctaUrl) : $ctaUrl;
         $unsubscribe = $contactId > 0 ? mailing_unsubscribe_url($contactId) : base_url('app/api/mailing_unsubscribe.php');
         $imageUrl = mailing_campaign_image_url($campaign);
@@ -385,6 +453,24 @@ if (!function_exists('mailing_default_template_html')) {
             . ($trackedCta !== '' ? '<tr><td style="padding:8px 34px 34px;"><a href="' . e($trackedCta) . '" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:12px;padding:14px 22px;font-weight:700;">' . $ctaLabel . '</a></td></tr>' : '')
             . '<tr><td style="border-top:1px solid #eee4d6;padding:20px 34px 28px;font-size:12px;line-height:1.6;color:#6b7280;">Elite Smiles by Walter Meden DDS<br>11762 South State, Suite 300, Draper, UT 84020<br><a href="' . e($unsubscribe) . '" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from Elite Smiles news and offers.</td></tr>'
             . '</table></td></tr></table>' . $openPixel . '</body></html>';
+    }
+}
+
+if (!function_exists('mailing_campaign_destination')) {
+    function mailing_campaign_destination(array $campaign): string
+    {
+        $url = trim((string)($campaign['cta_url'] ?? ''));
+        $campaignId = (int)($campaign['id'] ?? 0);
+        if ($url === '' || $campaignId <= 0 || !preg_match('#^https://#i', $url)) {
+            return $url;
+        }
+        $separator = str_contains($url, '?') ? '&' : '?';
+        return $url . $separator . http_build_query([
+            'utm_source' => 'patient_mailings',
+            'utm_medium' => 'email',
+            'utm_campaign' => 'mailing_' . $campaignId,
+            'mailing_campaign_id' => $campaignId,
+        ]);
     }
 }
 
@@ -414,8 +500,23 @@ if (!function_exists('mailing_sanitize_body_html')) {
     }
 }
 
+if (!function_exists('mailing_plain_text_to_html')) {
+    function mailing_plain_text_to_html(string $text): string
+    {
+        $blocks = preg_split('/\R{2,}/', trim($text)) ?: [];
+        $html = [];
+        foreach ($blocks as $block) {
+            $value = nl2br(e(trim((string)$block)), false);
+            if ($value !== '') {
+                $html[] = '<p>' . $value . '</p>';
+            }
+        }
+        return implode('', $html);
+    }
+}
+
 if (!function_exists('mailing_generate_campaign')) {
-    function mailing_generate_campaign(string $goal, string $instruction, int $createdBy = 0): int
+    function mailing_generate_campaign(string $goal, string $instruction, int $createdBy = 0, string $audience = 'all_subscribed'): int
     {
         mailing_ensure_schema();
         $goal = trim($goal) !== '' ? trim($goal) : 'education';
@@ -460,12 +561,13 @@ if (!function_exists('mailing_generate_campaign')) {
 
         return db_insert(
             "INSERT INTO mailing_campaigns
-                (title, status, goal, subject, preview_text, hero_title, body_html, body_text, cta_label, cta_url, image_prompt, ai_instruction, created_by, created_at)
+                (title, status, audience_filter, goal, subject, preview_text, hero_title, body_html, body_text, cta_label, cta_url, image_prompt, ai_instruction, created_by, created_at)
              VALUES
-                (:title, 'review', :goal, :subject, :preview_text, :hero_title, :body_html, :body_text, :cta_label, :cta_url, :image_prompt, :ai_instruction, :created_by, NOW())",
+                (:title, 'review', :audience_filter, :goal, :subject, :preview_text, :hero_title, :body_html, :body_text, :cta_label, :cta_url, :image_prompt, :ai_instruction, :created_by, NOW())",
             [
                 'title' => trim((string)$data['title']),
                 'goal' => $goal,
+                'audience_filter' => mailing_normalize_audience($audience),
                 'subject' => trim((string)$data['subject']),
                 'preview_text' => trim((string)$data['preview_text']),
                 'hero_title' => trim((string)$data['hero_title']),
@@ -521,10 +623,16 @@ if (!function_exists('mailing_update_campaign')) {
         $subject = trim((string)($input['subject'] ?? ''));
         $previewText = trim((string)($input['preview_text'] ?? ''));
         $heroTitle = trim((string)($input['hero_title'] ?? ''));
-        $bodyHtml = mailing_sanitize_body_html((string)($input['body_html'] ?? ''));
-        $bodyText = trim((string)($input['body_text'] ?? strip_tags($bodyHtml)));
+        $bodyText = trim((string)($input['body_text'] ?? ''));
+        $bodyHtml = $bodyText !== ''
+            ? mailing_plain_text_to_html($bodyText)
+            : mailing_sanitize_body_html((string)($input['body_html'] ?? ''));
+        if ($bodyText === '') {
+            $bodyText = trim(strip_tags($bodyHtml));
+        }
         $ctaLabel = trim((string)($input['cta_label'] ?? ''));
         $ctaUrl = trim((string)($input['cta_url'] ?? ''));
+        $audience = mailing_normalize_audience((string)($input['audience_filter'] ?? $campaign['audience_filter'] ?? 'all_subscribed'));
 
         if ($title === '' || $subject === '' || $heroTitle === '' || $bodyHtml === '' || $ctaLabel === '') {
             return ['ok' => false, 'message' => 'Title, subject, email headline, message, and button label are required.'];
@@ -537,7 +645,7 @@ if (!function_exists('mailing_update_campaign')) {
             "UPDATE mailing_campaigns
              SET title = :title, subject = :subject, preview_text = :preview_text,
                  hero_title = :hero_title, body_html = :body_html, body_text = :body_text,
-                 cta_label = :cta_label, cta_url = :cta_url,
+                 cta_label = :cta_label, cta_url = :cta_url, audience_filter = :audience_filter,
                  status = 'review', approved_at = NULL, updated_at = NOW()
              WHERE id = :id LIMIT 1",
             [
@@ -550,6 +658,7 @@ if (!function_exists('mailing_update_campaign')) {
                 'body_text' => $bodyText,
                 'cta_label' => $ctaLabel,
                 'cta_url' => $ctaUrl,
+                'audience_filter' => $audience,
             ]
         );
         return ['ok' => true, 'message' => 'Campaign saved and returned to review.'];
@@ -586,20 +695,26 @@ if (!function_exists('mailing_send_campaign')) {
         if (!elite_smtp_is_configured()) {
             return ['ok' => false, 'message' => 'SMTP is not configured. Configure a real sender before sending patient mailings.'];
         }
-        $subscribedCount = (int)(db_value("SELECT COUNT(*) FROM mailing_contacts WHERE opt_status = 'subscribed'") ?? 0);
+        $audience = mailing_normalize_audience((string)($campaign['audience_filter'] ?? 'all_subscribed'));
+        $audienceCondition = mailing_audience_condition($audience);
+        $subscribedCount = mailing_audience_count($audience);
         if ($subscribedCount === 0) {
             return ['ok' => false, 'message' => 'Import at least one subscribed contact before sending.'];
         }
 
         db_execute("UPDATE mailing_campaigns SET status = 'sending', updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $campaignId]);
         $contacts = db_all(
-            "SELECT c.*
+            "SELECT c.*, r.id AS recipient_id, COALESCE(r.attempt_count, 0) AS prior_attempt_count
              FROM mailing_contacts c
              LEFT JOIN mailing_recipients r
                ON r.contact_id = c.id
               AND r.campaign_id = :campaign_id
              WHERE c.opt_status = 'subscribed'
-               AND r.id IS NULL
+               AND {$audienceCondition}
+               AND (
+                    r.id IS NULL
+                    OR (r.status = 'failed' AND r.attempt_count < 3 AND (r.next_retry_at IS NULL OR r.next_retry_at <= NOW()))
+               )
              ORDER BY c.id ASC
              LIMIT " . max(1, min(200, $limit)),
             ['campaign_id' => $campaignId]
@@ -611,13 +726,18 @@ if (!function_exists('mailing_send_campaign')) {
             $email = trim((string)$contact['email']);
             $token = mailing_tracking_token($campaignId, $contactId);
             $recipientId = db_insert(
-                "INSERT INTO mailing_recipients (campaign_id, contact_id, email, status, tracking_token, created_at)
-                 VALUES (:campaign_id, :contact_id, :email, 'queued', :tracking_token, NOW())
-                 ON DUPLICATE KEY UPDATE tracking_token = VALUES(tracking_token), status = 'queued'",
+                "INSERT INTO mailing_recipients
+                    (campaign_id, contact_id, email, status, tracking_token, attempt_count, last_attempt_at, next_retry_at, created_at)
+                 VALUES
+                    (:campaign_id, :contact_id, :email, 'queued', :tracking_token, 1, NOW(), NULL, NOW())
+                 ON DUPLICATE KEY UPDATE
+                    tracking_token = VALUES(tracking_token), status = 'queued',
+                    attempt_count = attempt_count + 1, last_attempt_at = NOW(), next_retry_at = NULL",
                 ['campaign_id' => $campaignId, 'contact_id' => $contactId, 'email' => $email, 'tracking_token' => $token]
             );
-            $existing = db_one('SELECT id FROM mailing_recipients WHERE campaign_id = :campaign_id AND contact_id = :contact_id LIMIT 1', ['campaign_id' => $campaignId, 'contact_id' => $contactId]);
+            $existing = db_one('SELECT id, attempt_count FROM mailing_recipients WHERE campaign_id = :campaign_id AND contact_id = :contact_id LIMIT 1', ['campaign_id' => $campaignId, 'contact_id' => $contactId]);
             $recipientId = (int)($existing['id'] ?? $recipientId);
+            $attemptCount = max(1, (int)($existing['attempt_count'] ?? 1));
             $html = mailing_default_template_html($campaign, $token, $contactId);
             $unsubscribeUrl = mailing_unsubscribe_url($contactId);
             $headers = [
@@ -628,17 +748,19 @@ if (!function_exists('mailing_send_campaign')) {
             if (!empty($result['ok'])) {
                 $sent++;
                 db_execute(
-                    "UPDATE mailing_recipients SET status = 'sent', sent_at = NOW(), provider_response = :response WHERE id = :id LIMIT 1",
+                    "UPDATE mailing_recipients SET status = 'sent', sent_at = NOW(), next_retry_at = NULL, provider_response = :response WHERE id = :id LIMIT 1",
                     ['id' => $recipientId, 'response' => json_encode($result, JSON_UNESCAPED_SLASHES)]
                 );
                 mailing_log_event($campaignId, $contactId, $recipientId, 'sent', ['email' => $email]);
             } else {
                 $failed++;
+                $retryDelayMinutes = min(240, 15 * (2 ** max(0, $attemptCount - 1)));
+                $nextRetryAt = date('Y-m-d H:i:s', time() + ($retryDelayMinutes * 60));
                 db_execute(
-                    "UPDATE mailing_recipients SET status = 'failed', provider_response = :response WHERE id = :id LIMIT 1",
-                    ['id' => $recipientId, 'response' => json_encode($result, JSON_UNESCAPED_SLASHES)]
+                    "UPDATE mailing_recipients SET status = 'failed', next_retry_at = :next_retry_at, provider_response = :response WHERE id = :id LIMIT 1",
+                    ['id' => $recipientId, 'next_retry_at' => $nextRetryAt, 'response' => json_encode($result, JSON_UNESCAPED_SLASHES)]
                 );
-                mailing_log_event($campaignId, $contactId, $recipientId, 'failed', ['email' => $email, 'message' => $result['message'] ?? 'Failed']);
+                mailing_log_event($campaignId, $contactId, $recipientId, 'failed', ['email' => $email, 'attempt' => $attemptCount, 'next_retry_at' => $nextRetryAt, 'message' => $result['message'] ?? 'Failed']);
             }
         }
 
@@ -647,7 +769,9 @@ if (!function_exists('mailing_send_campaign')) {
              FROM mailing_contacts c
              LEFT JOIN mailing_recipients r
                ON r.contact_id = c.id AND r.campaign_id = :campaign_id
-             WHERE c.opt_status = 'subscribed' AND r.id IS NULL",
+             WHERE c.opt_status = 'subscribed'
+               AND {$audienceCondition}
+               AND (r.id IS NULL OR (r.status = 'failed' AND r.attempt_count < 3))",
             ['campaign_id' => $campaignId]
         ) ?? 0);
         $finished = $remaining === 0;
@@ -661,6 +785,53 @@ if (!function_exists('mailing_send_campaign')) {
             ? "Delivery complete: {$sent} sent in this batch, {$failed} failed."
             : "Batch complete: {$sent} sent, {$failed} failed, {$remaining} still queued. Continue sending to process the next batch.";
         return ['ok' => true, 'message' => $message, 'sent' => $sent, 'failed' => $failed, 'remaining' => $remaining, 'finished' => $finished];
+    }
+}
+
+if (!function_exists('mailing_schedule_campaign')) {
+    function mailing_schedule_campaign(int $campaignId, string $scheduledAt): array
+    {
+        $campaign = mailing_campaign($campaignId);
+        if (!$campaign) {
+            return ['ok' => false, 'message' => 'Campaign not found.'];
+        }
+        if (!in_array((string)$campaign['status'], ['approved', 'scheduled'], true)) {
+            return ['ok' => false, 'message' => 'Approve the campaign before scheduling it.'];
+        }
+        try {
+            $date = new DateTimeImmutable($scheduledAt, new DateTimeZone(APP_TIMEZONE));
+        } catch (Throwable $e) {
+            return ['ok' => false, 'message' => 'Choose a valid delivery date and time.'];
+        }
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        if ($date <= $now->modify('+2 minutes')) {
+            return ['ok' => false, 'message' => 'Scheduled delivery must be at least two minutes in the future.'];
+        }
+        db_query(
+            "UPDATE mailing_campaigns SET status = 'scheduled', scheduled_at = :scheduled_at, updated_at = NOW() WHERE id = :id LIMIT 1",
+            ['id' => $campaignId, 'scheduled_at' => $date->format('Y-m-d H:i:s')]
+        );
+        return ['ok' => true, 'message' => 'Campaign scheduled for ' . $date->format('M j, Y \a\t g:i A') . '.'];
+    }
+}
+
+if (!function_exists('mailing_send_due')) {
+    function mailing_send_due(int $campaignLimit = 3, int $batchSize = 100): array
+    {
+        mailing_ensure_schema();
+        $campaigns = db_all(
+            "SELECT id
+             FROM mailing_campaigns
+             WHERE (status = 'scheduled' AND scheduled_at <= NOW()) OR status = 'sending'
+             ORDER BY COALESCE(scheduled_at, updated_at) ASC
+             LIMIT " . max(1, min(10, $campaignLimit))
+        );
+        $results = [];
+        foreach ($campaigns as $campaign) {
+            $campaignId = (int)$campaign['id'];
+            $results[$campaignId] = mailing_send_campaign($campaignId, $batchSize);
+        }
+        return ['ok' => true, 'processed' => count($results), 'results' => $results];
     }
 }
 

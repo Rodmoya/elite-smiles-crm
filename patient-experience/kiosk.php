@@ -47,6 +47,7 @@ $setupHintUrl = base_url('patient-experience.php');
         .form-document-title { margin-top: 5px; font-size: 26px; font-weight: 700; letter-spacing: -.025em; color: var(--form-ink); }
         .form-document-instruction { margin-top: 4px; max-width: 52rem; font-size: 13px; line-height: 1.5; color: var(--form-muted); }
         .form-actions { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 4px; }
+        .form-choice-grid { display:grid; grid-template-columns:repeat(var(--choice-columns, 2), minmax(0, 1fr)); gap:8px; }
         .consent-document { display:block; border:1px solid #cbd5e1; border-top:3px solid #111827; background:#fff; padding:24px 30px 22px; box-shadow:0 10px 30px rgba(15,23,42,.07); }
         .consent-letterhead { display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid #111827; padding-bottom:14px; margin-bottom:20px; }
         .consent-letterhead img { width:170px; height:auto; }
@@ -77,6 +78,7 @@ $setupHintUrl = base_url('patient-experience.php');
             .kiosk-form-document { grid-template-columns: 1fr; gap: 11px; margin-right: -8px; margin-left: -8px; padding: 14px 12px; }
             .field-wrapper.form-wide, .field-wrapper.form-span-2, .form-actions, #form-error { grid-column: 1; }
             .form-subsection-grid { grid-template-columns: 1fr; }
+            .form-choice-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
             .form-document-title { font-size: 25px; }
             .form-actions { position: sticky; bottom: 0; z-index: 5; margin: 4px -12px -16px; border-top: 1px solid #cbd5e1; background: rgba(255,255,255,.97); padding: 12px; }
             .consent-document { margin-right:-8px; margin-left:-8px; padding:18px 16px; }
@@ -415,7 +417,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 const type = String(field.type || 'text');
                 const required = field.required ? ' required' : '';
                 const isVisible = fieldVisible(field, answersStateMap(answers));
-                const wideTypes = ['heading', 'paragraph', 'text_block', 'divider', 'signature_capture', 'digital_signature', 'acknowledgement_checkbox', 'checkbox_ack', 'checkbox_group', 'multi_select', 'textarea', 'medication_list', 'allergy_list', 'emergency_contact', 'insurance'];
+                const wideTypes = ['heading', 'paragraph', 'text_block', 'divider', 'signature_capture', 'digital_signature', 'acknowledgement_checkbox', 'checkbox_ack', 'checkbox_group', 'multi_select', 'radio', 'yes_no', 'textarea', 'medication_list', 'allergy_list', 'emergency_contact', 'insurance'];
                 const spanTwo = !wideTypes.includes(type) && (type === 'email' || /(?:address|employer_school|referral_source)$/.test(String(field.key || '')));
                 const wrapperStart = '<div class="field-wrapper' + (wideTypes.includes(type) ? ' form-wide' : '') + (spanTwo ? ' form-span-2' : '') + (type === 'digital_initials' ? ' form-initials' : '') + (isVisible ? '' : ' hidden') + '" data-visible-if="' + escapeHtml(JSON.stringify(field.visible_if || null)) + '">';
                 const wrapperEnd = '</div>';
@@ -454,10 +456,11 @@ $setupHintUrl = base_url('patient-experience.php');
                     return html + '</div></fieldset>' + wrapperEnd;
                 }
                 if (type === 'yes_no' || type === 'radio') {
-                    let html = wrapperStart + '<fieldset><legend class="kiosk-label">' + label + '</legend><div class="grid gap-3 sm:grid-cols-3">';
                     const options = normalizedOptions(field.options || { yes: 'Yes', no: 'No' });
+                    const desktopColumns = Math.min(4, Math.max(2, Object.keys(options).length));
+                    let html = wrapperStart + '<fieldset><legend class="kiosk-label">' + label + '</legend><div class="form-choice-grid" style="--choice-columns:' + desktopColumns + '">';
                     Object.keys(options).forEach(function (optionKey) {
-                        html += '<label class="kiosk-option flex cursor-pointer items-center gap-3"><input class="h-6 w-6" type="radio" name="' + key + '" value="' + escapeHtml(optionKey) + '"' + (String(value || '') === optionKey ? ' checked' : '') + required + '><span>' + escapeHtml(options[optionKey]) + '</span></label>';
+                        html += '<label class="kiosk-option flex cursor-pointer items-center gap-2"><input class="h-5 w-5 shrink-0" type="radio" name="' + key + '" value="' + escapeHtml(optionKey) + '"' + (String(value || '') === optionKey ? ' checked' : '') + required + '><span class="leading-5">' + escapeHtml(options[optionKey]) + '</span></label>';
                     });
                     return html + '</div></fieldset>' + wrapperEnd;
                 }

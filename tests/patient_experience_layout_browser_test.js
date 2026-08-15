@@ -10,6 +10,7 @@ const intakeFields = [
   ['patient_email', 'email', 'Email'], ['patient_address', 'text', 'Street address'],
   ['patient_city', 'text', 'City'], ['patient_state', 'text', 'State'], ['patient_zip', 'text', 'ZIP code'],
 ].map(([key, type, label]) => ({ key, type, label, required: !key.includes('middle') && !key.includes('alt') }));
+intakeFields.push({ key: 'patient_sex', type: 'radio', label: 'Sex', options: ['Female', 'Male', 'Other', 'Prefer not to answer'] });
 
 const consentFields = [
   { key: 'proceed_heading', type: 'heading', label: 'Consent to Proceed' },

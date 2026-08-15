@@ -17,7 +17,8 @@ $generateAction = file_get_contents($root . '/app/actions/mailing_generate.php')
 $scheduleAction = file_get_contents($root . '/app/actions/mailing_schedule.php') ?: '';
 $cronApi = file_get_contents($root . '/app/api/mailing_send_cron.php') ?: '';
 $e2eApi = file_get_contents($root . '/app/api/mailing_e2e_test.php') ?: '';
-$workflow = file_get_contents($root . '/.github/workflows/mailing-campaigns.yml') ?: '';
+$cronCli = file_get_contents($root . '/bin/mailing-campaign-cron.php') ?: '';
+$e2eCli = file_get_contents($root . '/bin/mailing-campaign-e2e.php') ?: '';
 $auth = file_get_contents($root . '/app/core/auth.php') ?: '';
 $sidebar = file_get_contents($root . '/app/partials/crm_sidebar.php') ?: '';
 $htaccess = file_get_contents($root . '/.htaccess') ?: '';
@@ -51,8 +52,9 @@ mailing_assert(str_contains($service, 'function mailing_schedule_campaign') && s
 mailing_assert(str_contains($generateAction, 'mailing_generate_image_for_campaign'), 'One creation action must run OpenAI copy and Nano Banana image generation.');
 mailing_assert(str_contains($scheduleAction, 'mailing_schedule_campaign'), 'The schedule action must use the validated scheduling service.');
 mailing_assert(str_contains($cronApi, 'mailing_send_due(3, 100)'), 'The authenticated publisher must process due campaigns in bounded batches.');
-mailing_assert(str_contains($workflow, '*/5 * * * *'), 'The backup campaign publisher must run every five minutes.');
-mailing_assert(str_contains($e2eApi, "'system_test'") && str_contains($e2eApi, 'mailing_generate_image_for_campaign'), 'The controlled production test must be isolated from patient audiences and validate image generation.');
+mailing_assert(str_contains($cronCli, "PHP_SAPI !== 'cli'") && str_contains($cronCli, 'mailing_send_due(3, $batchSize)'), 'The production publisher must have a local CLI worker that bypasses hosting bot challenges.');
+mailing_assert(str_contains($service, 'function mailing_run_controlled_e2e_test') && str_contains($service, "'system_test'") && str_contains($service, 'mailing_generate_image_for_campaign'), 'The controlled production test must be isolated from patient audiences and validate image generation.');
+mailing_assert(str_contains($e2eApi, 'mailing_run_controlled_e2e_test()') && str_contains($e2eCli, 'mailing_run_controlled_e2e_test()'), 'HTTP and CLI validation must use the same controlled end-to-end service.');
 mailing_assert(
     str_contains($auth, 'function require_marketing_access') && str_contains($sidebar, 'auth_can_use_marketing()'),
     'Marketing visibility and server authorization must share one role policy.'

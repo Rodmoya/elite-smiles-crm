@@ -358,6 +358,20 @@ $pageHeading = match ($activeTab) {
                     </div>
                 </div>
 
+                <div class="mb-6 grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[160px_1fr] sm:items-center sm:p-6 lg:grid-cols-[160px_1fr_auto]">
+                    <?php if ($walkInIntakeQrUrl !== ''): ?>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                            <img src="<?= e($walkInIntakeQrUrl) ?>" alt="Scan to start walk-in patient forms" class="mx-auto h-32 w-32">
+                        </div>
+                    <?php endif; ?>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Walk-in intake</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Scan to start patient forms</h2>
+                        <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">No patient record is required. Scanning creates a secure intake, opens Patient Information immediately, and saves the completed forms and signatures to the new patient chart.</p>
+                    </div>
+                    <a href="<?= e($walkInIntakeUrl) ?>" target="_blank" class="inline-flex min-h-12 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 sm:col-span-2 lg:col-span-1">Open Forms on This Device</a>
+                </div>
+
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>

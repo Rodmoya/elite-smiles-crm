@@ -704,6 +704,38 @@ if (!function_exists('patient_experience_contract_prepare_delivery')) {
     }
 }
 
+if (!function_exists('patient_experience_contract_qr_data_url')) {
+    function patient_experience_contract_qr_data_url(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') return '';
+
+        $previousErrorReporting = error_reporting();
+        error_reporting($previousErrorReporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+        try {
+            if (!class_exists(\chillerlan\QRCode\QRCode::class)) {
+                $autoload = defined('ROOT_PATH') ? ROOT_PATH . '/vendor/autoload.php' : dirname(__DIR__, 2) . '/vendor/autoload.php';
+                if (is_file($autoload)) require_once $autoload;
+            }
+            if (!class_exists(\chillerlan\QRCode\QRCode::class)) return '';
+            return (new \chillerlan\QRCode\QRCode())->render($url);
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) esm_log('patient_experience_contract', 'Local contract QR generation failed.', ['error' => $e->getMessage()]);
+            return '';
+        } finally {
+            error_reporting($previousErrorReporting);
+        }
+    }
+}
+
+if (!function_exists('patient_experience_contract_latest_signature')) {
+    function patient_experience_contract_latest_signature(int $contractId): ?array
+    {
+        if ($contractId <= 0) return null;
+        return db_one('SELECT * FROM patient_experience_contract_signatures WHERE contract_id=:contract_id ORDER BY signed_at DESC, id DESC LIMIT 1', ['contract_id' => $contractId]);
+    }
+}
+
 if (!function_exists('patient_experience_contract_from_token')) {
     function patient_experience_contract_from_token(string $token, bool $markViewed = true): ?array
     {

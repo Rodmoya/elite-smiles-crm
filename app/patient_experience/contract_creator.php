@@ -15,6 +15,8 @@ $treatmentKey = (string)($contract['treatment_key'] ?? 'veneers');
 $status = (string)($contract['status'] ?? 'draft');
 $isEditable = !$contract || $status === 'draft';
 $shareUrl = (string)($contractShareUrl ?? '');
+$signature = $contract ? patient_experience_contract_latest_signature((int)($contract['id'] ?? 0)) : null;
+$signingQrDataUrl = $shareUrl !== '' ? patient_experience_contract_qr_data_url($shareUrl) : '';
 $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.', '');
 $originalTerms = patient_experience_contract_original_terms();
 $sedationBody = preg_replace('/^Optional\s*-?\s*/i', '', (string)$originalTerms['sedation']) ?? (string)$originalTerms['sedation'];
@@ -209,7 +211,10 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                     <button type="button" data-preview-mode="digital" class="min-h-10 rounded-lg bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm">Digital branded</button>
                     <button type="button" data-preview-mode="preprinted" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-slate-600">Preprinted paper</button>
                 </div>
-                <button type="button" data-print-contract class="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200">Print preview</button>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" data-print-contract class="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200"><?= $signature ? 'Print signed copy' : 'Print preview' ?></button>
+                    <button type="button" data-open-digital-sign <?= !$contract || $status === 'signed' ? 'disabled' : '' ?> class="min-h-11 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-300" title="<?= !$contract ? 'Save the contract draft before requesting a signature.' : ($status === 'signed' ? 'This agreement is already signed.' : 'Email, text, or show a QR code for signing.') ?>"><?= $status === 'signed' ? 'Signed' : 'Digital Sign' ?></button>
+                </div>
             </div>
 
             <article id="contract-preview" class="contract-page contract-transition relative mx-auto w-full max-w-[850px] overflow-hidden border border-slate-300 bg-white shadow-xl">
@@ -234,8 +239,8 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                     </div>
                     <div class="contract-closing-block">
                         <div class="contract-signature contract-signature-original">
-                            <div class="contract-signature-primary"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0"></span><span id="preview-signature-patient" class="contract-signature-patient">Patient name</span></div>
-                            <div class="flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"></span></div>
+                            <div class="contract-signature-primary"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature" class="max-h-[.42in] max-w-full object-contain object-left-bottom"><?php endif; ?></span><span id="preview-signature-patient" class="contract-signature-patient">Patient name</span></div>
+                            <div class="flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
                         </div>
                         <div class="contract-cancellation-bottom">
                             <p class="mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
@@ -246,18 +251,6 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                 <footer class="contract-digital-footer absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white px-[7%] py-3 text-center text-[10px] leading-4 text-slate-500">Elite Smiles by Dr. Walter Meden · 11762 South State, Suite 300, Draper, UT 84020<br>Confidential Patient Document · <span><?= e((string)($contract['contract_number'] ?? 'Draft')) ?></span></footer>
             </article>
 
-            <?php if ($contract && $status === 'draft'): ?>
-                <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <?= csrf_input() ?><input type="hidden" name="action" value="send_contract"><input type="hidden" name="contract_id" value="<?= e((string)$contract['id']) ?>">
-                    <h3 class="font-semibold text-slate-900">Send secure signing link</h3>
-                    <p class="mt-1 text-sm text-slate-600">Sending creates an immutable version of this agreement.</p>
-                    <div class="mt-4 flex flex-wrap gap-3">
-                        <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 px-3 text-sm"><input type="checkbox" name="channels[]" value="sms" <?= trim((string)$contract['patient_phone']) !== '' ? 'checked' : 'disabled' ?>> Text</label>
-                        <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 px-3 text-sm"><input type="checkbox" name="channels[]" value="email" <?= trim((string)$contract['patient_email']) !== '' ? 'checked' : 'disabled' ?>> Email</label>
-                    </div>
-                    <button type="submit" class="mt-4 min-h-12 w-full rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200">Create and send signing link</button>
-                </form>
-            <?php endif; ?>
         </div>
     </div>
 
@@ -274,6 +267,45 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         </div>
     </div>
 </section>
+
+<?php if ($contract && $status !== 'signed'): ?>
+<div id="digital-sign-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" aria-hidden="true">
+    <div class="w-full max-w-2xl rounded-[2rem] bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="digital-sign-title">
+        <div class="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+            <div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Secure signature</p><h2 id="digital-sign-title" class="mt-1 text-2xl font-semibold text-slate-950">Send or scan to sign</h2><p class="mt-2 text-sm leading-6 text-slate-600">The patient signs the exact version shown in the preview. Once sent, that version is locked.</p></div>
+            <button type="button" data-close-digital-sign class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl text-slate-500 hover:bg-slate-100" aria-label="Close digital signing">&times;</button>
+        </div>
+        <div class="p-5 sm:p-6">
+            <?php if ($shareUrl !== ''): ?>
+                <div class="grid gap-6 sm:grid-cols-[190px_1fr] sm:items-center">
+                    <div class="mx-auto flex h-[190px] w-[190px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <?php if ($signingQrDataUrl !== ''): ?><img src="<?= e($signingQrDataUrl) ?>" alt="QR code for the secure treatment agreement" class="h-full w-full"><?php else: ?><p class="text-center text-sm text-slate-500">QR unavailable. Use the secure link.</p><?php endif; ?>
+                    </div>
+                    <div>
+                        <span class="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Signing link ready</span>
+                        <h3 class="mt-3 text-lg font-semibold text-slate-950">Scan with a phone or iPad</h3>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">The signature box accepts a finger, mouse, Apple Pencil, or another stylus.</p>
+                        <label for="contract-share-url" class="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">Secure link</label>
+                        <input id="contract-share-url" value="<?= e($shareUrl) ?>" readonly class="mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-700">
+                        <div class="mt-3 flex flex-wrap gap-2"><button type="button" data-copy-contract-link class="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100">Copy link</button><a href="<?= e($shareUrl) ?>" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">Open signing page</a></div>
+                    </div>
+                </div>
+            <?php else: ?>
+                <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>">
+                    <?= csrf_input() ?><input type="hidden" name="action" value="send_contract"><input type="hidden" name="contract_id" value="<?= e((string)$contract['id']) ?>">
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="cursor-pointer rounded-2xl border border-slate-300 p-4 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><span class="flex items-center gap-3"><input type="checkbox" name="channels[]" value="email" <?= filter_var((string)$contract['patient_email'], FILTER_VALIDATE_EMAIL) ? 'checked' : 'disabled' ?> class="h-5 w-5"><strong class="text-sm text-slate-900">Email</strong></span><span class="mt-2 block break-all text-xs leading-5 text-slate-500"><?= e((string)($contract['patient_email'] ?: 'No email on file')) ?></span></label>
+                        <label class="cursor-pointer rounded-2xl border border-slate-300 p-4 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><span class="flex items-center gap-3"><input type="checkbox" name="channels[]" value="sms" <?= trim((string)$contract['patient_phone']) !== '' ? '' : 'disabled' ?> class="h-5 w-5"><strong class="text-sm text-slate-900">Text</strong></span><span class="mt-2 block text-xs leading-5 text-slate-500"><?= e((string)($contract['patient_phone'] ?: 'No phone on file')) ?></span></label>
+                        <div class="rounded-2xl border border-blue-600 bg-blue-50 p-4"><span class="flex items-center gap-3"><span class="flex h-5 w-5 items-center justify-center rounded border border-blue-600 bg-blue-600 text-xs text-white">&#10003;</span><strong class="text-sm text-slate-900">QR code</strong></span><span class="mt-2 block text-xs leading-5 text-slate-500">Always created for in-office signing.</span></div>
+                    </div>
+                    <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">Confirm the patient, treatment, price, and terms before continuing. Generating the signing link makes this version immutable.</div>
+                    <button type="submit" class="mt-5 min-h-12 w-full rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200"><?= in_array($status, ['sent', 'viewed'], true) ? 'Create a new secure signing link' : 'Create secure signing link' ?></button>
+                </form>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div id="contract-area-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" aria-hidden="true">
     <div class="w-full max-w-xl rounded-[2rem] bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="contract-area-modal-title">
@@ -618,10 +650,24 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         });
     }));
     document.querySelector('[data-print-contract]')?.addEventListener('click', () => window.print());
+    const digitalSignModal = document.getElementById('digital-sign-modal');
+    const setDigitalSignModal = open => {
+        if (!digitalSignModal) return;
+        digitalSignModal.classList.toggle('hidden', !open);
+        digitalSignModal.classList.toggle('flex', open);
+        digitalSignModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        document.body.classList.toggle('overflow-hidden', open);
+        if (open) digitalSignModal.querySelector('[data-close-digital-sign]')?.focus();
+    };
+    document.querySelector('[data-open-digital-sign]')?.addEventListener('click', () => setDigitalSignModal(true));
+    document.querySelectorAll('[data-close-digital-sign]').forEach(button => button.addEventListener('click', () => setDigitalSignModal(false)));
+    digitalSignModal?.addEventListener('click', event => { if (event.target === digitalSignModal) setDigitalSignModal(false); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && digitalSignModal?.getAttribute('aria-hidden') === 'false') setDigitalSignModal(false); });
     document.querySelector('[data-copy-contract-link]')?.addEventListener('click', async event => {
         await navigator.clipboard.writeText(q('contract-share-url').value);
         event.currentTarget.textContent = 'Copied';
     });
+    <?php if ($shareUrl !== ''): ?>setDigitalSignModal(true);<?php endif; ?>
     syncTreatmentControls();
     syncCustomItems();
     syncPreview();

@@ -187,10 +187,11 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
         document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{const pre=button.dataset.mode==='preprinted';doc.classList.toggle('preprinted',pre);document.querySelectorAll('[data-mode]').forEach(other=>{const active=other===button;other.classList.toggle('bg-white',active);other.classList.toggle('shadow-sm',active);other.classList.toggle('text-slate-600',!active);});}));
         document.querySelector('[data-print]')?.addEventListener('click',()=>window.print());
         const canvas=document.getElementById('signature-canvas'); if(!canvas)return;
-        const ctx=canvas.getContext('2d');ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle='#0f172a';let drawing=false;let hasInk=false;
+        const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(canvas.clientWidth*ratio);canvas.height=Math.round(canvas.clientHeight*ratio);
+        const ctx=canvas.getContext('2d');ctx.lineWidth=2.5*ratio;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#0f172a';ctx.imageSmoothingEnabled=true;let drawing=false;let hasInk=false;
         const point=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*(canvas.width/r.width),y:(e.clientY-r.top)*(canvas.height/r.height)}};
         canvas.addEventListener('pointerdown',e=>{drawing=true;const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y);canvas.setPointerCapture(e.pointerId)});
-        canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke();hasInk=true});
+        canvas.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke();hasInk=true});
         canvas.addEventListener('pointerup',()=>drawing=false);canvas.addEventListener('pointercancel',()=>drawing=false);
         document.getElementById('clear-signature').addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasInk=false});
         document.getElementById('signature-form').addEventListener('submit',e=>{if(!hasInk){e.preventDefault();alert('Please draw your signature before submitting.');return;}document.getElementById('signature-data').value=canvas.toDataURL('image/png');});

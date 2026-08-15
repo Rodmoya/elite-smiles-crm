@@ -12,7 +12,7 @@ if ($token !== '') {
     $recipient = db_one('SELECT * FROM mailing_recipients WHERE tracking_token = :token LIMIT 1', ['token' => $token]);
     if ($recipient) {
         $campaign = mailing_campaign((int)$recipient['campaign_id']);
-        $target = trim((string)($campaign['cta_url'] ?? ''));
+        $target = $campaign ? mailing_campaign_destination($campaign) : '';
         db_execute('UPDATE mailing_recipients SET clicked_at = COALESCE(clicked_at, NOW()) WHERE id = :id LIMIT 1', ['id' => (int)$recipient['id']]);
         db_execute('UPDATE mailing_contacts SET last_engaged_at = NOW() WHERE id = :id LIMIT 1', ['id' => (int)$recipient['contact_id']]);
         mailing_log_event((int)$recipient['campaign_id'], (int)$recipient['contact_id'], (int)$recipient['id'], 'clicked', ['target' => $target]);

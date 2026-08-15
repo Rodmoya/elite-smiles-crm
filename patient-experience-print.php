@@ -24,6 +24,7 @@ $signatures = (array)($snapshot['signatures'] ?? []);
 $patientName = trim((string)($snapshot['session']['patient_name'] ?? $signedPacket['patient_name'] ?? 'Patient'));
 $signedAt = (string)($signedPacket['signed_at'] ?? $snapshot['signed_at'] ?? '');
 $snapshotHash = (string)($signedPacket['snapshot_hash'] ?? '');
+$logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 
 $answerValue = static function (string $key) use ($answers): mixed {
     $answer = $answers[$key] ?? null;
@@ -68,6 +69,7 @@ $isChoiceType = static fn(string $type): bool => in_array($type, ['radio', 'yes_
         .letterhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 11px; border-bottom: 2px solid #111; }
         .brand { font-family: Georgia, serif; font-size: 22pt; font-weight: 700; letter-spacing: -.5px; }
         .brand small { display: block; margin-top: 1px; font: 7.5pt Arial, sans-serif; letter-spacing: 1.4px; text-transform: uppercase; }
+        .brand-logo { display:block; width:172px; height:auto; }
         .document-meta { text-align: right; color: #374151; font-size: 8pt; }
         h1 { margin: 18px 0 3px; font-size: 18pt; }
         .description { margin: 0 0 16px; color: #4b5563; }
@@ -87,12 +89,35 @@ $isChoiceType = static fn(string $type): bool => in_array($type, ['radio', 'yes_
         .signature-image { display: block; width: auto; max-width: 320px; height: 70px; margin: 5px 0; object-fit: contain; object-position: left center; }
         .signature-line { display: flex; flex-wrap: wrap; gap: 18px; padding-top: 6px; border-top: 1px solid #9ca3af; font-size: 8pt; }
         .packet-footer { position: absolute; right: .55in; bottom: .24in; left: .55in; display: flex; justify-content: space-between; gap: 12px; color: #6b7280; font-size: 6.8pt; }
+        /* Official patient form system: compact, legible, and faithful to the saved form. */
+        body { background: #e5e7eb; font-size: 11px; line-height: 1.25; }
+        .form-page { width: 8.5in; min-height: 11in; padding: .28in .34in .38in; overflow: hidden; }
+        .letterhead { gap: 18px; padding-bottom: 7px; border-bottom: 2px solid #111; }
+        .brand { font-size: 21px; letter-spacing: -.3px; }
+        .brand small { font-size: 7px; letter-spacing: 1.2px; }
+        .document-meta { color: #111; font-size: 8px; line-height: 1.35; }
+        h1 { margin: 10px 0 2px; font-size: 16px; line-height: 1.15; }
+        .description { margin: 0 0 8px; color: #374151; font-size: 9px; }
+        .static-heading { margin: 7px 0 0; padding: 5px 7px; border: 0; border-left: 4px solid #111; background: #d1d5db; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+        .legal-copy { margin: 0; padding: 7px 8px; border: 1px solid #9ca3af; text-align: justify; font-size: 9px; line-height: 1.3; }
+        .divider { margin: 7px 0 0; padding: 5px 7px; border-left: 4px solid #111; background: #e5e7eb; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .fields { gap: 0; border-top: 1px solid #9ca3af; border-left: 1px solid #9ca3af; }
+        .field { min-height: 34px; margin: -1px 0 0 -1px; padding: 5px 7px; border: 1px solid #9ca3af; border-radius: 0; }
+        .label { margin-bottom: 2px; color: #374151; font-size: 8px; font-weight: 800; letter-spacing: .25px; }
+        .value { min-height: 13px; font-size: 11px; font-weight: 700; }
+        .choices { gap: 4px 12px; font-size: 9px; }
+        .choice::before { display: inline-flex; width: 10px; height: 10px; margin-right: 4px; align-items: center; justify-content: center; border: 1px solid #111; vertical-align: -1px; font-size: 9px; font-weight: 900; line-height: 1; }
+        .choice.selected::before { content: 'X'; }
+        .signature-block { min-height: 88px; margin: -1px 0 0 -1px; padding: 7px 8px; }
+        .signature-image { max-width: 290px; height: 48px; margin: 3px 0; }
+        .signature-line { gap: 16px; padding-top: 4px; font-size: 8px; }
+        .packet-footer { right: .34in; bottom: .16in; left: .34in; color: #4b5563; font-size: 7px; }
         @page { size: Letter; margin: 0; }
         @media print {
             body { background: #fff; }
             .no-print { display: none !important; }
             .packet { width: auto; margin: 0; box-shadow: none; }
-            .form-page { width: 8.5in; min-height: 11in; padding: .45in .55in .55in; border: 0; }
+            .form-page { width: 8.5in; height: 11in; min-height: 11in; padding: .28in .34in .38in; border: 0; }
         }
     </style>
 </head>
@@ -114,7 +139,7 @@ $isChoiceType = static fn(string $type): bool => in_array($type, ['radio', 'yes_
             ?>
             <section class="form-page">
                 <header class="letterhead">
-                    <div class="brand">Elite Smiles<small>by Walter Meden DDS</small></div>
+                    <div class="brand"><img class="brand-logo" src="<?= e($logoUrl) ?>" alt="Elite Smiles by Walter Meden DDS"></div>
                     <div class="document-meta">
                         Patient: <?= e($patientName) ?><br>
                         Signed: <?= e(format_datetime($signedAt)) ?><br>

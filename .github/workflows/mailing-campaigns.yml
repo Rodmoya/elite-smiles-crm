@@ -1,0 +1,22 @@
+name: Mailing Campaigns Publisher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send due mailing campaign batches
+        env:
+          CRON_SECRET: ${{ secrets.ELITE_LEAD_AGENT_CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-delay 5 --retry-all-errors \
+            -X POST \
+            -H "X-Elite-Cron-Secret: $CRON_SECRET" \
+            "https://hi.elitesmilesutah.com/crm/app/api/mailing_send_cron.php"

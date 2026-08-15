@@ -48,6 +48,7 @@ $campaigns = $data['campaigns'];
 $contacts = $data['contacts'];
 $selected = $data['selected'];
 $statusLabels = mailing_status_labels();
+$audienceOptions = mailing_audience_options();
 $health = mailing_system_health($mailingAvailable);
 
 function mailing_badge_class(string $status): string
@@ -66,11 +67,20 @@ function mailing_health_label(bool $ready): string
 }
 
 $selectedStatus = (string)($selected['status'] ?? '');
+$selectedAudience = mailing_normalize_audience((string)($selected['audience_filter'] ?? 'all_subscribed'));
+$selectedAudienceCount = $mailingAvailable && $selected ? mailing_audience_count($selectedAudience) : 0;
 $selectedLocked = in_array($selectedStatus, ['sending', 'sent'], true);
 $canSendSelected = $selected !== null
-    && in_array($selectedStatus, ['approved', 'sending'], true)
-    && (int)$counts['contacts'] > 0
+    && in_array($selectedStatus, ['approved', 'scheduled', 'sending'], true)
+    && $selectedAudienceCount > 0
     && !empty($health['sender']);
+$mailingTimeOptions = [];
+for ($hour = 0; $hour < 24; $hour++) {
+    foreach ([0, 30] as $minute) {
+        $value = sprintf('%02d:%02d', $hour, $minute);
+        $mailingTimeOptions[$value] = date('g:i A', strtotime($value));
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -164,12 +174,14 @@ $canSendSelected = $selected !== null
                                 <select id="mailing-goal" name="goal" class="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base sm:text-sm">
                                     <option value="education">Educational newsletter</option><option value="financing">Financing announcement</option><option value="veneers">Veneers consultation</option><option value="reactivation">Patient reactivation</option><option value="seasonal">Seasonal smile update</option>
                                 </select>
+                                <label class="block text-sm font-semibold" for="mailing-audience">Audience</label>
+                                <select id="mailing-audience" name="audience_filter" class="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base sm:text-sm"><?php foreach ($audienceOptions as $value => $label): ?><option value="<?= e($value) ?>"><?= e($label) ?></option><?php endforeach; ?></select>
                                 <label class="block text-sm font-semibold" for="mailing-direction">Direction <span class="font-normal text-slate-500">(optional)</span></label>
                                 <textarea id="mailing-direction" name="instruction" rows="5" class="w-full rounded-xl border border-slate-300 px-3 py-3 text-base leading-6 sm:text-sm" placeholder="Example: A useful summer veneers education email. Premium, natural, and conversational."></textarea>
                                 <label class="block text-sm font-semibold" for="mailing-cta-hint">Button destination</label>
                                 <input id="mailing-cta-hint" name="cta_hint" type="url" inputmode="url" class="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base sm:text-sm" value="<?= e(base_url('l/veneers-draper-google-v2?utm_source=patient_mailings&utm_medium=email')) ?>">
-                                <button class="min-h-12 w-full rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50" type="submit">Generate draft</button>
-                                <p class="text-xs leading-5 text-slate-500">Logo, business address, tracking, and unsubscribe are added automatically.</p>
+                                <button class="min-h-12 w-full rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50" type="submit">Create complete AI campaign</button>
+                                <p class="text-xs leading-5 text-slate-500">OpenAI writes the campaign, Nano Banana creates the image, and the CRM assembles the branded email. Nothing sends automatically.</p>
                             </form>
                         </section>
 
@@ -204,10 +216,10 @@ $canSendSelected = $selected !== null
                                         <?= csrf_input() ?><input type="hidden" name="campaign_id" value="<?= e((string)$selected['id']) ?>">
                                         <div class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-semibold">Internal title<input name="title" value="<?= e((string)$selected['title']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label><label class="text-sm font-semibold">Subject line<input name="subject" value="<?= e((string)$selected['subject']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label></div>
                                         <label class="block text-sm font-semibold">Inbox preview<input name="preview_text" value="<?= e((string)$selected['preview_text']) ?>" <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label>
-                                        <label class="block text-sm font-semibold">Email headline<input name="hero_title" value="<?= e((string)$selected['hero_title']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label>
-                                        <label class="block text-sm font-semibold">Message<textarea name="body_html" rows="8" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base leading-7 read-only:bg-slate-100 sm:text-sm"><?= e((string)$selected['body_html']) ?></textarea></label>
-                                        <input type="hidden" name="body_text" value="<?= e((string)$selected['body_text']) ?>">
-                                        <div class="grid gap-4 sm:grid-cols-[0.7fr_1.3fr]"><label class="text-sm font-semibold">Button label<input name="cta_label" value="<?= e((string)$selected['cta_label']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label><label class="text-sm font-semibold">Button destination<input name="cta_url" type="url" value="<?= e((string)$selected['cta_url']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label></div>
+                                        <label class="block text-sm font-semibold">Email headline<input id="mailing-headline-editor" name="hero_title" value="<?= e((string)$selected['hero_title']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label>
+                                        <label class="block text-sm font-semibold">Message<textarea id="mailing-body-editor" name="body_text" rows="9" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base leading-7 read-only:bg-slate-100 sm:text-sm"><?= e((string)$selected['body_text']) ?></textarea><span class="mt-1 block text-xs font-normal text-slate-500">Write naturally. Blank lines create new paragraphs in the finished email.</span></label>
+                                        <label class="block text-sm font-semibold">Audience<select name="audience_filter" <?= $selectedLocked ? 'disabled' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base disabled:bg-slate-100 sm:text-sm"><?php foreach ($audienceOptions as $value => $label): ?><option value="<?= e($value) ?>" <?= $value === $selectedAudience ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                                        <div class="grid gap-4 sm:grid-cols-[0.7fr_1.3fr]"><label class="text-sm font-semibold">Button label<input id="mailing-cta-editor" name="cta_label" value="<?= e((string)$selected['cta_label']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label><label class="text-sm font-semibold">Button destination<input name="cta_url" type="url" value="<?= e((string)$selected['cta_url']) ?>" required <?= $selectedLocked ? 'readonly' : '' ?> class="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base read-only:bg-slate-100 sm:text-sm"></label></div>
                                         <?php if (!$selectedLocked): ?><button class="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold transition hover:bg-slate-50" type="submit">Save changes</button><?php else: ?><p class="rounded-xl bg-slate-100 px-4 py-3 text-xs leading-5 text-slate-600">This campaign is locked because delivery has started. Create a new version to change its content.</p><?php endif; ?>
                                     </form>
 
@@ -215,10 +227,10 @@ $canSendSelected = $selected !== null
                                         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-[#f6f2eb] shadow-sm">
                                             <div class="bg-slate-950 px-6 py-5 text-center"><img src="<?= e((string)$logoUrl) ?>" alt="Elite Smiles" class="mx-auto h-auto w-44 brightness-0 invert"></div>
                                             <?php $selectedImage = mailing_campaign_image_url($selected); if ($selectedImage !== ''): ?><img src="<?= e($selectedImage) ?>" alt="" class="aspect-[16/8] w-full object-cover" loading="lazy"><?php endif; ?>
-                                            <div class="bg-white p-6"><p class="text-2xl font-semibold leading-tight"><?= e((string)$selected['hero_title']) ?></p><div class="mt-4 text-sm leading-7 text-slate-600"><?= mailing_sanitize_body_html((string)$selected['body_html']) ?></div><span class="mt-5 inline-flex min-h-11 items-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white"><?= e((string)$selected['cta_label']) ?></span></div>
+                                            <div class="bg-white p-6"><p id="mailing-preview-headline" class="text-2xl font-semibold leading-tight"><?= e((string)$selected['hero_title']) ?></p><div id="mailing-preview-body" class="mt-4 text-sm leading-7 text-slate-600"><?= mailing_sanitize_body_html((string)$selected['body_html']) ?></div><span id="mailing-preview-cta" class="mt-5 inline-flex min-h-11 items-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white"><?= e((string)$selected['cta_label']) ?></span></div>
                                             <div class="border-t border-[#e8dfd1] bg-white px-6 py-4 text-[11px] leading-5 text-slate-500">Elite Smiles by Walter Meden DDS · Draper, Utah<br>Every delivered email includes a secure unsubscribe link.</div>
                                         </div>
-                                        <div class="mt-4 grid grid-cols-4 gap-2 text-center"><?php foreach ([['Recipients', $selected['recipient_count'] ?? 0], ['Sent', $selected['delivered_count'] ?? 0], ['Opened', $selected['opened_count'] ?? 0], ['Clicked', $selected['clicked_count'] ?? 0]] as [$metric, $value]): ?><div class="rounded-xl bg-slate-50 px-2 py-3"><p class="text-lg font-semibold tabular-nums"><?= e((string)$value) ?></p><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500"><?= e($metric) ?></p></div><?php endforeach; ?></div>
+                                        <div class="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-5"><?php foreach ([['Audience', $selectedAudienceCount], ['Sent', $selected['delivered_count'] ?? 0], ['Opened', $selected['opened_count'] ?? 0], ['Clicked', $selected['clicked_count'] ?? 0], ['Leads', $selected['lead_count'] ?? 0]] as [$metric, $value]): ?><div class="rounded-xl bg-slate-50 px-2 py-3"><p class="text-lg font-semibold tabular-nums"><?= e((string)$value) ?></p><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500"><?= e($metric) ?></p></div><?php endforeach; ?></div>
                                     </div>
                                 </div>
 
@@ -232,6 +244,14 @@ $canSendSelected = $selected !== null
                                         <form method="POST" action="<?= e(base_url('app/actions/mailing_send.php')) ?>" data-mailing-form data-crm-confirm="Send this approved campaign to subscribed contacts now? Unsubscribed contacts are always excluded." data-crm-confirm-label="Send campaign"><?= csrf_input() ?><input type="hidden" name="campaign_id" value="<?= e((string)$selected['id']) ?>"><button <?= $canSendSelected ? '' : 'disabled' ?> title="<?= e($canSendSelected ? 'Send campaign' : 'Approve the campaign, configure the sender, and import subscribed contacts first.') ?>" class="min-h-11 w-full rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300" type="submit"><?= $selectedStatus === 'sending' ? 'Continue sending' : 'Send campaign' ?></button></form>
                                     </div>
                                 </div>
+                                <?php if (in_array($selectedStatus, ['approved', 'scheduled'], true)): ?>
+                                    <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                            <div><p class="text-sm font-semibold">Schedule delivery</p><p class="mt-1 text-xs leading-5 text-slate-500">The publisher checks every five minutes and continues large campaigns in safe batches.</p><?php if ($selectedStatus === 'scheduled' && !empty($selected['scheduled_at'])): ?><p class="mt-2 text-xs font-semibold text-amber-800">Currently scheduled for <?= e(date('M j, Y \a\t g:i A', strtotime((string)$selected['scheduled_at']))) ?></p><?php endif; ?></div>
+                                            <form method="POST" action="<?= e(base_url('app/actions/mailing_schedule.php')) ?>" class="grid gap-2 sm:grid-cols-[150px_150px_auto]" data-mailing-form><?= csrf_input() ?><input type="hidden" name="campaign_id" value="<?= e((string)$selected['id']) ?>"><label class="text-xs font-semibold">Date<input name="schedule_date" type="date" min="<?= e(date('Y-m-d')) ?>" required class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"></label><label class="text-xs font-semibold">Time<select name="schedule_time" required class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><?php foreach ($mailingTimeOptions as $value => $label): ?><option value="<?= e($value) ?>" <?= $value === '10:00' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label><button class="min-h-11 self-end rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold transition hover:bg-slate-100" type="submit"><?= $selectedStatus === 'scheduled' ? 'Reschedule' : 'Schedule' ?></button></form>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </section>
 
@@ -257,6 +277,7 @@ $canSendSelected = $selected !== null
         const busy = document.querySelector('[data-mailing-busy]');
         document.querySelectorAll('[data-mailing-form]').forEach(form => form.addEventListener('submit', event => {
             if (event.defaultPrevented || !form.checkValidity()) return;
+            if (form.dataset.crmConfirm && form.dataset.crmConfirmBypass !== '1') return;
             window.setTimeout(() => {
                 busy?.setAttribute('aria-hidden', 'false');
                 form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; });
@@ -264,6 +285,27 @@ $canSendSelected = $selected !== null
         }));
         const toast = document.querySelector('[role="status"].fixed');
         if (toast) window.setTimeout(() => toast.remove(), 5000);
+
+        const headlineEditor = document.getElementById('mailing-headline-editor');
+        const bodyEditor = document.getElementById('mailing-body-editor');
+        const ctaEditor = document.getElementById('mailing-cta-editor');
+        const previewHeadline = document.getElementById('mailing-preview-headline');
+        const previewBody = document.getElementById('mailing-preview-body');
+        const previewCta = document.getElementById('mailing-preview-cta');
+        const renderBody = () => {
+            if (!bodyEditor || !previewBody) return;
+            previewBody.replaceChildren();
+            const blocks = bodyEditor.value.trim().split(/\n\s*\n/).filter(Boolean);
+            blocks.forEach(block => {
+                const paragraph = document.createElement('p');
+                paragraph.className = 'mt-3 first:mt-0';
+                paragraph.textContent = block.replace(/\n+/g, ' ');
+                previewBody.appendChild(paragraph);
+            });
+        };
+        headlineEditor?.addEventListener('input', () => { if (previewHeadline) previewHeadline.textContent = headlineEditor.value; });
+        ctaEditor?.addEventListener('input', () => { if (previewCta) previewCta.textContent = ctaEditor.value; });
+        bodyEditor?.addEventListener('input', renderBody);
     })();
     </script>
 </body>

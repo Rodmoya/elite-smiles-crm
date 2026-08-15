@@ -19,7 +19,7 @@ if (is_post() && post('action') === 'logout') {
 
 patient_experience_ensure_schema();
 
-$currentPage = strtolower(trim((string)get('tab', ''))) === 'contracts' ? 'patient_contracts' : 'patient_experience';
+$currentPage = strtolower(trim((string)get('tab', 'contracts'))) === 'contracts' ? 'patient_contracts' : 'patient_experience';
 $pageTitle = 'Patient Experience';
 $logoutAction = base_url('patient-experience.php');
 $successMessage = flash_get('success') ?? '';
@@ -254,9 +254,9 @@ $contracts = patient_experience_contract_list(100);
 $selectedContractId = (int)get('contract_id', '0');
 $selectedContract = $selectedContractId > 0 ? patient_experience_contract_by_id($selectedContractId) : null;
 $contractShareUrl = (string)(flash_get('contract_share_url') ?? '');
-$activeTab = strtolower(trim((string)get('tab', 'patients')));
+$activeTab = strtolower(trim((string)get('tab', 'contracts')));
 if (!in_array($activeTab, ['setup', 'patients', 'contracts'], true)) {
-    $activeTab = 'patients';
+    $activeTab = 'contracts';
 }
 if ($selectedReview) {
     $activeTab = 'patients';

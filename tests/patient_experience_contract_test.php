@@ -14,6 +14,8 @@ $libraryLabel = 'Contract QA ' . bin2hex(random_bytes(5));
 try {
     patient_experience_ensure_schema();
     $creatorMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/patient_experience/contract_creator.php');
+    $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
+    $legacySidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar.php');
     $sidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar_live.php');
     $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
     $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-3 gap-1.5');
@@ -27,6 +29,9 @@ try {
     contract_expect(str_contains($sidebarMarkup, "patient-experience.php?tab=contracts"), 'Contract Creator navigation does not deep-link to the contracts tab.');
     contract_expect(str_contains($sidebarMarkup, "'key' => 'patient_experience', 'label' => 'Patient Experience', 'href' => base_url('patient-experience.php?tab=contracts')"), 'Patient Experience navigation does not open Contracts first.');
     contract_expect($contractsTabPosition !== false && $patientsTabPosition !== false && $contractsTabPosition < $patientsTabPosition, 'Contracts is not the first Patient Experience tab.');
+    contract_expect(str_contains($patientExperienceMarkup, "get('tab', 'contracts')"), 'Patient Experience does not open Contracts by default.');
+    contract_expect(str_contains($patientExperienceMarkup, "\$activeTab = 'contracts';"), 'Invalid Patient Experience tabs do not fall back to Contracts.');
+    contract_expect(str_contains($legacySidebarMarkup, "patient-experience.php?tab=contracts"), 'Legacy Patient Experience navigation does not open Contracts first.');
     contract_expect(str_contains($creatorMarkup, 'grid-cols-1 gap-2 sm:grid-cols-2'), 'Included treatment controls are not using the adaptive two-column layout.');
     contract_expect(!str_contains($creatorMarkup, '>3. Treatment area<'), 'The obsolete standalone treatment-area section is still visible.');
     contract_expect(str_contains($creatorMarkup, 'id="contract-area-modal"'), 'The per-procedure tooth selector modal is missing.');

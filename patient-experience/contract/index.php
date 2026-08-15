@@ -29,6 +29,7 @@ $snapshot = (array)($contract['snapshot'] ?? []);
 $agreement = (array)($snapshot['contract'] ?? []);
 $financials = (array)($snapshot['financials'] ?? []);
 $terms = (array)($snapshot['terms'] ?? []);
+$sedationBody = preg_replace('/^Optional\s*-?\s*/i', '', (string)($terms['sedation'] ?? '')) ?? (string)($terms['sedation'] ?? '');
 $practice = (array)($snapshot['practice'] ?? []);
 $signature = (array)($contract['signature'] ?? []);
 $money = static fn(mixed $amount): string => '$' . number_format((float)$amount, 2);
@@ -36,10 +37,10 @@ $legacyArchLabel = match ((string)($agreement['arch_scope'] ?? '')) {
     'upper' => 'Upper arch', 'lower' => 'Lower arch', 'both' => 'Both arches', default => '',
 };
 $legacyTeeth = array_map('intval', (array)($agreement['selected_teeth'] ?? []));
-$legacyAreaLabel = $legacyArchLabel !== '' ? $legacyArchLabel : ($legacyTeeth ? 'Teeth ' . implode(', ', $legacyTeeth) : '');
+$legacyAreaLabel = $legacyArchLabel !== '' ? $legacyArchLabel : ($legacyTeeth ? 'Teeth ' . patient_experience_contract_format_teeth($legacyTeeth) : '');
 $lineItemAreaLabel = static function (array $item) use ($legacyAreaLabel): string {
     $teeth = patient_experience_contract_normalize_teeth($item['teeth'] ?? []);
-    if ($teeth) return 'Teeth ' . implode(', ', $teeth);
+    if ($teeth) return 'Teeth ' . patient_experience_contract_format_teeth($teeth);
     $arch = (string)($item['arch_scope'] ?? '');
     if ($arch === 'both') return 'Both arches';
     if (in_array($arch, ['upper', 'lower'], true)) return ucfirst($arch) . ' arch';
@@ -141,7 +142,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                         <p><?= e((string)$terms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
                         <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
-                        <p class="agreement-sedation"><?= e((string)$terms['sedation']) ?></p>
+                        <p class="agreement-sedation"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
                         <p><strong><?= e((string)$terms['discount_acceptance']) ?></strong></p>
                     <?php else: ?>
                         <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>

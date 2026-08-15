@@ -23,7 +23,7 @@ if (!function_exists('patient_experience_contract_definitions')) {
                 'options' => [
                     'veneers' => 'Veneers',
                     'internal_restorations' => 'Internal restorations',
-                    'digital_analog_smile_design' => 'Digital and analog smile design',
+                    'digital_analog_smile_design' => 'Digital smile design',
                     'gingivectomy' => 'Gingivectomies for cosmetic reasons (laser procedure)',
                     'full_mouth_debridement' => 'Full-mouth debridement with deep scaling',
                     'custom_shade' => 'Custom shade',
@@ -175,7 +175,7 @@ if (!function_exists('patient_experience_contract_original_terms')) {
             'treatment_changes' => 'I am aware that cosmetic/dental treatment can/may change in the process of performing it, and that those changes are what the doctor considers best for my dental health. I am aware that if such changes occur that I am financially responsible for said treatment. All cosmetic, prosthetic fixed or removable and any restoration treatment must be paid before the seating or delivery date.',
             'insurance_responsibility' => 'I am aware that I am responsible for any balances my insurance does not cover.',
             'insurance_estimate' => 'Insurance benefits are estimated based on information provided by your insurer and are not guaranteed. Any portion not paid by insurance remains the patient’s responsibility.',
-            'sedation' => 'Optional- I.V. Sedation is available for an hourly fee determined by the anesthesiologist. This charge is payable separately to him/her on the day of your procedure.',
+            'sedation' => "Optional - I.V. sedation is available for an hourly fee determined by the anesthesiologist. This fee is paid separately to the anesthesia provider on the day of treatment. If sedation is scheduled, cancellation or rescheduling requires at least two weeks' notice to avoid a sedation cancellation fee charged by the anesthesia provider.",
             'discount_acceptance' => 'The above price is a discounted price if the treatment plan is accepted today.',
             'original_cancellation' => 'Note: There will be a cancellation fee of $1,500. on cases $4000. or above. Cases below $4,000. the total deposit will not be refunded.',
         ];
@@ -354,6 +354,37 @@ if (!function_exists('patient_experience_contract_normalize_teeth')) {
         }
         ksort($teeth);
         return array_values($teeth);
+    }
+}
+
+if (!function_exists('patient_experience_contract_format_teeth')) {
+    function patient_experience_contract_format_teeth(mixed $value): string
+    {
+        $teeth = patient_experience_contract_normalize_teeth($value);
+        if ($teeth === []) return '';
+
+        $segments = [];
+        $start = $teeth[0];
+        $previous = $start;
+        $flush = static function (int $rangeStart, int $rangeEnd) use (&$segments): void {
+            if (($rangeEnd - $rangeStart + 1) >= 4) {
+                $segments[] = $rangeStart . '-' . $rangeEnd;
+                return;
+            }
+            for ($tooth = $rangeStart; $tooth <= $rangeEnd; $tooth++) $segments[] = (string)$tooth;
+        };
+
+        foreach (array_slice($teeth, 1) as $tooth) {
+            if ($tooth === $previous + 1) {
+                $previous = $tooth;
+                continue;
+            }
+            $flush($start, $previous);
+            $start = $previous = $tooth;
+        }
+        $flush($start, $previous);
+
+        return '#' . implode(',', $segments);
     }
 }
 

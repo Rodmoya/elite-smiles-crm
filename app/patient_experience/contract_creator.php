@@ -17,6 +17,7 @@ $isEditable = !$contract || $status === 'draft';
 $shareUrl = (string)($contractShareUrl ?? '');
 $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.', '');
 $originalTerms = patient_experience_contract_original_terms();
+$sedationBody = preg_replace('/^Optional\s*-?\s*/i', '', (string)$originalTerms['sedation']) ?? (string)$originalTerms['sedation'];
 $agreementDate = trim((string)($contract['agreement_date'] ?? ''));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date('Y-m-d');
 ?>
@@ -145,7 +146,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                                             <input class="peer sr-only" type="checkbox" name="line_items[]" value="<?= e($optionKey) ?>" <?= $treatmentKey === $definitionKey && in_array($optionKey, $selectedItemKeys, true) ? 'checked' : '' ?>>
                                             <span class="flex h-full w-full flex-col justify-center rounded-l-xl px-3 py-1 text-[13px] leading-4 text-slate-700 transition peer-checked:bg-blue-50 peer-checked:text-blue-900 peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100">
                                                 <span><?= e((string)$optionLabel) ?></span>
-                                                <?php if ($areaMode !== 'none'): ?><span class="mt-0.5 text-[11px] font-medium leading-[14px] text-slate-500" data-area-summary><?= $existingAreaTeeth ? 'Teeth ' . e(implode(', ', $existingAreaTeeth)) : ($existingAreaArch !== '' ? e(ucfirst($existingAreaArch) . ($existingAreaArch === 'both' ? ' arches' : ' arch')) : ($areaMode === 'teeth' ? 'Select teeth' : 'Select arch')) ?></span><?php endif; ?>
+                                                <?php if ($areaMode !== 'none'): ?><span class="mt-0.5 text-[11px] font-medium leading-[14px] text-slate-500" data-area-summary><?= $existingAreaTeeth ? 'Teeth ' . e(patient_experience_contract_format_teeth($existingAreaTeeth)) : ($existingAreaArch !== '' ? e(ucfirst($existingAreaArch) . ($existingAreaArch === 'both' ? ' arches' : ' arch')) : ($areaMode === 'teeth' ? 'Select teeth' : 'Select arch')) ?></span><?php endif; ?>
                                             </span>
                                         </label>
                                         <?php if ($areaMode !== 'none'): ?><button type="button" data-edit-item-area class="flex w-12 shrink-0 items-center justify-center border-l border-slate-300 text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-blue-100" aria-label="<?= e(($areaMode === 'teeth' ? 'Choose teeth for ' : 'Choose arch for ') . (string)$optionLabel) ?>"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></button><?php endif; ?>
@@ -228,7 +229,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                         <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
                         <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
-                        <p class="contract-sedation"><?= e((string)$originalTerms['sedation']) ?></p>
+                        <p class="contract-sedation"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
                         <p><strong><?= e((string)$originalTerms['discount_acceptance']) ?></strong></p>
                     </div>
                     <div class="contract-closing-block">
@@ -474,12 +475,36 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         if (card.dataset.areaMode === 'arch') return Boolean(areaInputs(card).querySelector('input[name^="line_item_arch"]')?.value);
         return true;
     }
+    function formatTeeth(teeth) {
+        const values = [...new Set(teeth.map(Number).filter(tooth => tooth >= 1 && tooth <= 32))].sort((a, b) => a - b);
+        if (!values.length) return '';
+        const segments = [];
+        const flush = (start, end) => {
+            if (end - start + 1 >= 4) {
+                segments.push(start + '-' + end);
+                return;
+            }
+            for (let tooth = start; tooth <= end; tooth += 1) segments.push(String(tooth));
+        };
+        let start = values[0];
+        let previous = start;
+        values.slice(1).forEach(tooth => {
+            if (tooth === previous + 1) {
+                previous = tooth;
+                return;
+            }
+            flush(start, previous);
+            start = previous = tooth;
+        });
+        flush(start, previous);
+        return '#' + segments.join(',');
+    }
     function updateAreaSummary(card) {
         const summary = card.querySelector('[data-area-summary]');
         if (!summary) return;
         const teeth = Array.from(areaInputs(card).querySelectorAll('input[name^="line_item_teeth"]')).map(input => Number(input.value)).sort((a, b) => a - b);
         const arch = areaInputs(card).querySelector('input[name^="line_item_arch"]')?.value || '';
-        summary.textContent = teeth.length ? 'Teeth ' + teeth.join(', ') : (arch ? (arch === 'both' ? 'Both arches' : arch.charAt(0).toUpperCase() + arch.slice(1) + ' arch') : (card.dataset.areaMode === 'teeth' ? 'Select teeth' : 'Select arch'));
+        summary.textContent = teeth.length ? 'Teeth ' + formatTeeth(teeth) : (arch ? (arch === 'both' ? 'Both arches' : arch.charAt(0).toUpperCase() + arch.slice(1) + ' arch') : (card.dataset.areaMode === 'teeth' ? 'Select teeth' : 'Select arch'));
     }
     function openAreaModal(card, shouldUncheck = false) {
         activeAreaCard = card;

@@ -59,6 +59,7 @@ try {
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list { margin:0 0 16pt;'), 'Preview needs more space between procedures and legal language.');
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list li { margin:0 0 3pt;'), 'Preview procedures do not have the requested subtle row spacing.');
     contract_expect(str_contains($creatorMarkup, 'class="contract-sedation"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language is not red.');
+    contract_expect(str_contains($creatorMarkup, '<strong>Optional</strong>'), 'Preview sedation language does not bold Optional.');
     contract_expect(str_contains($creatorMarkup, "<strong><?= e((string)\$originalTerms['discount_acceptance']) ?></strong>"), 'Preview discounted-price language is not bold.');
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
     contract_expect($creatorScriptPosition !== false && !str_contains(substr($creatorMarkup, $creatorScriptPosition), '@media'), 'A CSS media rule was rendered inside the Contract Creator JavaScript.');
@@ -81,10 +82,12 @@ try {
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list { margin:0 0 16pt;'), 'Signing document needs more space between procedures and legal language.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list li { margin:0 0 3pt;'), 'Signing-document procedures do not have the requested subtle row spacing.');
     contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
+    contract_expect(str_contains($publicContractMarkup, '<strong>Optional</strong>'), 'Signing-document sedation language does not bold Optional.');
     contract_expect(str_contains($publicContractMarkup, "<strong><?= e((string)\$terms['discount_acceptance']) ?></strong>"), 'Signing-document discounted-price language is not bold.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
         contract_expect(trim((string)(patient_experience_contract_original_terms()[$termKey] ?? '')) !== '', 'Original contract language is missing: ' . $termKey);
     }
+    contract_expect(str_contains((string)patient_experience_contract_original_terms()['sedation'], "two weeks' notice"), 'Sedation cancellation notice is missing from the approved terms.');
     $historicalOptions = [
         'diagnostic_wax_up', 'full_mouth_debridement', 'therapeutic_parenteral_medication',
         'implant_abutment_crown', 'pedicle_graft', 'high_end_temporaries', 'dexamethasone',
@@ -99,6 +102,11 @@ try {
     $definitions = patient_experience_contract_definitions();
     contract_expect(($definitions['veneers']['option_area_modes']['veneers'] ?? '') === 'teeth', 'Veneers does not open the tooth selector.');
     contract_expect(($definitions['veneers']['option_area_modes']['internal_restorations'] ?? '') === 'teeth', 'Internal restorations does not open the tooth selector.');
+    contract_expect(in_array('Digital smile design', (array)($definitions['veneers']['options'] ?? []), true), 'Veneers treatment options do not identify smile design as digital only.');
+    contract_expect(!in_array('Digital and analog smile design', (array)($definitions['veneers']['options'] ?? []), true), 'Legacy analog smile design wording is still patient-facing.');
+    contract_expect(patient_experience_contract_format_teeth([5, 6, 7]) === '#5,6,7', 'Short tooth selections do not retain the required #5,6,7 format.');
+    contract_expect(patient_experience_contract_format_teeth([2, 3, 4, 5, 6, 7, 8]) === '#2-8', 'Consecutive tooth selections are not collapsed to #2-8.');
+    contract_expect(patient_experience_contract_format_teeth([2, 3, 4, 5, 6, 7, 8, 10]) === '#2-8,10', 'Mixed tooth ranges are not formatted correctly.');
     foreach (['extractions', 'crowns', 'bridges'] as $toothProcedure) {
         contract_expect(($definitions['complex_restorative']['option_area_modes'][$toothProcedure] ?? '') === 'teeth', ucfirst($toothProcedure) . ' does not retain its own tooth selection.');
     }

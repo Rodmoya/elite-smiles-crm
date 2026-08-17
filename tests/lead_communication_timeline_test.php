@@ -43,8 +43,8 @@ lead_timeline_expect(
     'Every communication source must be assigned to a timeline channel.'
 );
 lead_timeline_expect(
-    str_contains($source, 'return bTime - aTime;') && str_contains($source, 'unifiedTimeline.scrollTop = 0;'),
-    'The unified timeline must display the newest entries first.'
+    str_contains($source, 'return aTime - bTime;') && str_contains($source, 'scrollThreadPaneToBottom(unifiedTimeline);'),
+    'The unified timeline must read like a conversation with the newest entry at the bottom.'
 );
 lead_timeline_expect(
     str_contains($source, "['ArrowLeft', 'ArrowRight', 'Home', 'End']"),

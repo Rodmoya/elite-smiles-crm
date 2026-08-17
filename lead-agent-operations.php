@@ -200,14 +200,14 @@ $eventLabels = [
                     <span class="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200"><?= e((string) ($selectedReport['report_status'] ?? 'live') === 'final' ? 'Saved day' : 'Live today') ?></span>
                 </div>
                 <h2 id="summary-heading" class="mt-6 text-2xl font-semibold tracking-tight">Executive summary</h2>
-                <p class="mt-4 max-w-3xl text-lg leading-8 text-slate-200"><?= e((string) ($selectedReport['executive_summary'] ?? 'No summary is available.')) ?></p>
+                <p class="mt-4 max-w-3xl text-lg leading-8 text-slate-200"><?= lead_agent_linked_report_text((string) ($selectedReport['executive_summary'] ?? 'No summary is available.'), $metrics, 'font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white') ?></p>
                 <p class="mt-8 text-xs text-slate-400">Updated <?= e((string) ($selectedReport['updated_at'] ?? now())) ?> · saved automatically</p>
             </article>
 
             <article class="rounded-[2rem] border border-blue-200 bg-blue-50 p-6 shadow-sm lg:p-8">
                 <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">Morning review</p>
                 <h2 class="mt-3 text-xl font-semibold text-slate-950">What happened yesterday</h2>
-                <p class="mt-4 text-sm leading-7 text-slate-700"><?= e((string) ($morningReport['morning_review'] ?? 'The prior-day review will appear after the agent records activity.')) ?></p>
+                <p class="mt-4 text-sm leading-7 text-slate-700"><?= lead_agent_linked_report_text((string) ($morningReport['morning_review'] ?? 'The prior-day review will appear after the agent records activity.'), (array) ($morningReport['metrics'] ?? []), 'font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 hover:decoration-blue-700') ?></p>
                 <a href="<?= e(base_url('lead-agent-operations.php?date=' . rawurlencode($yesterday))) ?>" class="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-blue-800 underline decoration-blue-300 underline-offset-4">Open yesterday’s saved record</a>
             </article>
         </section>
@@ -365,7 +365,7 @@ $eventLabels = [
                     <?php foreach ($activity as $event): ?>
                         <div class="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
                             <time class="text-xs font-medium tabular-nums text-slate-500"><?= e(date('g:i A', strtotime((string) $event['created_at']))) ?></time>
-                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?= e((string) ($event['full_name'] ?? ((int) ($event['lead_id'] ?? 0) === 0 ? 'System' : 'Lead'))) ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
+                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?php if ((int) ($event['lead_id'] ?? 0) > 0): ?><a href="<?= e(base_url('leads.php?id=' . (int) $event['lead_id'])) ?>" class="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-blue-800"><?= e((string) ($event['full_name'] ?? 'Lead')) ?></a><?php else: ?>System<?php endif; ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
                             <span class="text-right text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e(trim((string)($event['channel'] ?? '') . ' ' . (string)($event['status'] ?? ''))) ?></span>
                         </div>
                     <?php endforeach; ?>

@@ -1749,6 +1749,16 @@ if (!function_exists('lead_agent_daily_metrics')) {
         $eventCount = static function (string $where, array $params = []) use ($date): int {
             return (int) db_value("SELECT COUNT(*) FROM lead_agent_events WHERE DATE(created_at) = :report_date AND {$where}", ['report_date' => $date] + $params);
         };
+        $eventLeads = static function (string $where) use ($date): array {
+            return db_all("SELECT l.id, l.full_name
+                FROM lead_agent_events e
+                INNER JOIN leads l ON l.id = e.lead_id
+                WHERE DATE(e.created_at) = :report_date AND {$where}
+                GROUP BY l.id, l.full_name
+                ORDER BY MAX(e.created_at) DESC, l.id DESC", ['report_date' => $date]);
+        };
+        $schedulingLeads = $eventLeads("e.event_type = 'handoff' AND (e.reason LIKE '%scheduling%' OR e.reason LIKE 'Lead selected an appointment option%' OR e.reason LIKE 'Lead selected an appointment option and supplied DOB.%')");
+        $exceptionLeads = $eventLeads("e.event_type = 'handoff' AND e.reason NOT LIKE '%scheduling%' AND e.reason NOT LIKE 'Lead selected an appointment option%' AND e.reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'");
         $metrics = [
             'enrolled' => $eventCount("event_type = 'enrolled'"),
             'cadence_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent') AND status = 'sent'"),
@@ -1756,8 +1766,12 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
             'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
             'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
-            'ready_to_schedule_today' => $eventCount("event_type = 'handoff' AND (reason LIKE '%scheduling%' OR reason LIKE 'Lead selected an appointment option%' OR reason LIKE 'Lead selected an appointment option and supplied DOB.%')"),
-            'needs_attention_today' => $eventCount("event_type = 'handoff' AND reason NOT LIKE '%scheduling%' AND reason NOT LIKE 'Lead selected an appointment option%' AND reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'"),
+            // These are people, not event totals. A lead can generate more than one
+            // handoff event during the same conversation and must only be counted once.
+            'ready_to_schedule_today' => count($schedulingLeads),
+            'needs_attention_today' => count($exceptionLeads),
+            'scheduling_leads' => $schedulingLeads,
+            'exception_leads' => $exceptionLeads,
             'policy_blocks' => $eventCount("event_type = 'handoff' AND reason LIKE '%policy%'"),
             'delivery_failures' => $eventCount("event_type = 'handoff' AND reason LIKE '%deliver%'"),
             'deferred_today' => $eventCount("event_type = 'deferred'"),
@@ -1777,6 +1791,25 @@ if (!function_exists('lead_agent_daily_metrics')) {
 }
 
 if (!function_exists('lead_agent_report_copy')) {
+    function lead_agent_report_lead_names(array $rows): string
+    {
+        $names = [];
+        foreach ($rows as $row) {
+            $name = trim((string) ($row['full_name'] ?? ''));
+            if ($name !== '' && !in_array($name, $names, true)) {
+                $names[] = $name;
+            }
+        }
+        if (count($names) < 2) {
+            return $names[0] ?? '';
+        }
+        if (count($names) === 2) {
+            return $names[0] . ' and ' . $names[1];
+        }
+        $last = array_pop($names);
+        return implode(', ', $names) . ', and ' . $last;
+    }
+
     function lead_agent_report_copy(string $date, array $metrics): array
     {
         $label = (new DateTimeImmutable($date, new DateTimeZone(APP_TIMEZONE)))->format('F j');
@@ -1787,10 +1820,14 @@ if (!function_exists('lead_agent_report_copy')) {
             ? "Lead Agent completed {$metrics['actions_completed']} communication actions on {$label}: {$metrics['sms_sent']} {$textLabel}, {$metrics['emails_sent']} {$emailLabel}, and {$metrics['inbound_handled']} inbound {$inboundLabel} reviewed."
             : "Lead Agent recorded no communication actions on {$label}. The system remained available and monitored enrolled leads.";
         if ($metrics['ready_to_schedule_today'] > 0) {
-            $summary .= " {$metrics['ready_to_schedule_today']} lead" . ($metrics['ready_to_schedule_today'] === 1 ? ' is' : 's are') . ' ready for Rod to schedule.';
+            $names = lead_agent_report_lead_names((array) ($metrics['scheduling_leads'] ?? []));
+            $summary .= " {$metrics['ready_to_schedule_today']} lead" . ($metrics['ready_to_schedule_today'] === 1 ? ' is' : 's are') . ' ready for Rod to schedule'
+                . ($names !== '' ? ": {$names}." : '.');
         }
         if ($metrics['needs_attention_today'] > 0) {
-            $summary .= " {$metrics['needs_attention_today']} exception" . ($metrics['needs_attention_today'] === 1 ? ' requires' : 's require') . ' human judgment.';
+            $names = lead_agent_report_lead_names((array) ($metrics['exception_leads'] ?? []));
+            $summary .= " {$metrics['needs_attention_today']} exception" . ($metrics['needs_attention_today'] === 1 ? ' requires' : 's require') . ' human judgment'
+                . ($names !== '' ? ": {$names}." : '.');
         } else {
             $summary .= ' No new exception required human judgment.';
         }
@@ -1804,13 +1841,48 @@ if (!function_exists('lead_agent_report_copy')) {
         }
         $review = "Yesterday the agent handled {$metrics['inbound_handled']} inbound conversation" . ($metrics['inbound_handled'] === 1 ? '' : 's')
             . " and sent {$metrics['outbound_total']} approved follow-up" . ($metrics['outbound_total'] === 1 ? '' : 's') . '.';
+        $schedulingNames = lead_agent_report_lead_names((array) ($metrics['scheduling_leads'] ?? []));
         $review .= $metrics['ready_to_schedule_today'] > 0
-            ? " Start with the {$metrics['ready_to_schedule_today']} scheduling handoff" . ($metrics['ready_to_schedule_today'] === 1 ? '' : 's') . '.'
+            ? " Start with the {$metrics['ready_to_schedule_today']} scheduling handoff" . ($metrics['ready_to_schedule_today'] === 1 ? '' : 's') . ($schedulingNames !== '' ? ": {$schedulingNames}." : '.')
             : ' There are no new scheduling handoffs from that day.';
+        $exceptionNames = lead_agent_report_lead_names((array) ($metrics['exception_leads'] ?? []));
         $review .= $metrics['needs_attention_today'] > 0
-            ? " Then review {$metrics['needs_attention_today']} agent exception" . ($metrics['needs_attention_today'] === 1 ? '' : 's') . '.'
+            ? " Then review {$metrics['needs_attention_today']} agent exception" . ($metrics['needs_attention_today'] === 1 ? '' : 's') . ($exceptionNames !== '' ? ": {$exceptionNames}." : '.')
             : ' The agent completed its work without a new exception.';
         return ['executive_summary' => $summary, 'morning_review' => $review];
+    }
+}
+
+if (!function_exists('lead_agent_linked_report_text')) {
+    function lead_agent_linked_report_text(string $text, array $metrics, string $className = ''): string
+    {
+        $leadMap = [];
+        foreach (['scheduling_leads', 'exception_leads'] as $key) {
+            foreach ((array) ($metrics[$key] ?? []) as $lead) {
+                $leadId = (int) ($lead['id'] ?? 0);
+                $name = trim((string) ($lead['full_name'] ?? ''));
+                if ($leadId > 0 && $name !== '') {
+                    $leadMap[$name] = $leadId;
+                }
+            }
+        }
+        if ($leadMap === []) {
+            return e($text);
+        }
+        uksort($leadMap, static fn(string $left, string $right): int => strlen($right) <=> strlen($left));
+        $parts = preg_split('/(' . implode('|', array_map(static fn(string $name): string => preg_quote($name, '/'), array_keys($leadMap))) . ')/u', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (!is_array($parts)) {
+            return e($text);
+        }
+        $html = '';
+        foreach ($parts as $part) {
+            if (array_key_exists($part, $leadMap)) {
+                $html .= '<a href="' . e(base_url('leads.php?id=' . $leadMap[$part])) . '" class="' . e($className) . '">' . e($part) . '</a>';
+            } else {
+                $html .= e($part);
+            }
+        }
+        return $html;
     }
 }
 

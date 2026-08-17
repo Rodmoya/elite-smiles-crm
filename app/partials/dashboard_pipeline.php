@@ -263,7 +263,7 @@ $consultationOptions = [
                             </div>
                         </div>
                         <div class="px-5 py-4">
-                            <p class="text-sm leading-6 text-slate-700"><?= e($leadAgentHeaderSummary !== '' ? $leadAgentHeaderSummary : 'The agent has not recorded an action today yet.') ?></p>
+                            <p class="text-sm leading-6 text-slate-700"><?= lead_agent_linked_report_text($leadAgentHeaderSummary !== '' ? $leadAgentHeaderSummary : 'The agent has not recorded an action today yet.', $leadAgentHeaderMetrics, 'font-semibold text-blue-800 underline decoration-blue-300 underline-offset-2 hover:decoration-blue-700') ?></p>
                             <dl class="mt-4 grid grid-cols-3 gap-2" aria-label="Lead Agent metrics today">
                                 <div class="rounded-2xl bg-slate-50 px-3 py-3"><dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Texts</dt><dd class="mt-1 text-lg font-semibold tabular-nums text-slate-950"><?= e((string) ((int) ($leadAgentHeaderMetrics['sms_sent'] ?? 0))) ?></dd></div>
                                 <div class="rounded-2xl bg-slate-50 px-3 py-3"><dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Emails</dt><dd class="mt-1 text-lg font-semibold tabular-nums text-slate-950"><?= e((string) ((int) ($leadAgentHeaderMetrics['emails_sent'] ?? 0))) ?></dd></div>

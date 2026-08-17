@@ -96,6 +96,26 @@ $reportCopy = lead_agent_report_copy('2026-08-05', [
 ]);
 expect_true(str_contains($reportCopy['executive_summary'], '1 text, 1 email'), 'Executive summary copy should use singular channel labels correctly.');
 
+$namedReportCopy = lead_agent_report_copy('2026-08-05', [
+    'actions_completed' => 1,
+    'sms_sent' => 1,
+    'emails_sent' => 0,
+    'outbound_total' => 1,
+    'inbound_handled' => 0,
+    'ready_to_schedule_today' => 1,
+    'needs_attention_today' => 1,
+    'scheduling_leads' => [['id' => 7, 'full_name' => 'Alex Schedule']],
+    'exception_leads' => [['id' => 8, 'full_name' => 'Jordan Review']],
+]);
+expect_true(str_contains($namedReportCopy['executive_summary'], 'Alex Schedule'), 'Executive summary should name scheduling handoffs.');
+expect_true(str_contains($namedReportCopy['executive_summary'], 'Jordan Review'), 'Executive summary should name human-review exceptions.');
+$linkedReportCopy = lead_agent_linked_report_text($namedReportCopy['executive_summary'], [
+    'scheduling_leads' => [['id' => 7, 'full_name' => 'Alex Schedule']],
+    'exception_leads' => [['id' => 8, 'full_name' => 'Jordan Review']],
+]);
+expect_true(str_contains($linkedReportCopy, 'leads.php?id=7'), 'Scheduling names should link to their lead record.');
+expect_true(str_contains($linkedReportCopy, 'leads.php?id=8'), 'Exception names should link to their lead record.');
+
 $alignedMorning = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 06:15:00', new DateTimeZone(APP_TIMEZONE)));
 $alignedNight = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 21:15:00', new DateTimeZone(APP_TIMEZONE)));
 expect_true($alignedMorning->format('Y-m-d H:i') === '2026-08-06 08:00', 'Morning sends should move to 8 AM.');

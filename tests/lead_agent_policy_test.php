@@ -25,6 +25,8 @@ $specificTime = lead_agent_scheduling_preferences('Can I come Thursday at 4:30 P
 expect_true($specificTime['day'] === 'thursday' && $specificTime['specific_time'] === '4:30 PM', 'A specific requested time should be captured.');
 $spanishPreference = lead_agent_scheduling_preferences('El martes por la tarde me funciona mejor.');
 expect_true($spanishPreference['day'] === 'tuesday' && $spanishPreference['period'] === 'afternoon', 'Spanish day and time-of-day preferences should remain in the scheduling flow.');
+$nextWeekPreference = lead_agent_scheduling_preferences('Next week works for me.');
+expect_true($nextWeekPreference['day'] === 'next week' && !empty($nextWeekPreference['has_preference']), 'A next-week preference must not trigger the same scheduling question again.');
 $acknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], $preference);
 expect_true(str_contains($acknowledgment, 'Let me check our availability') && substr_count($acknowledgment, '?') === 0, 'A captured preference should receive a natural acknowledgment without another question.');
 $preferenceQuestion = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], lead_agent_scheduling_preferences('I want to schedule.'));
@@ -59,6 +61,8 @@ expect_true(lead_agent_sms_blocked($emailOnlyBackfill), 'DND must block every au
 $noChannelBackfill = $emailOnlyBackfill;
 $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
+expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_to_schedule']) === 'conversation_owned_or_paused', 'Follow-up must stay silent after a scheduling handoff.');
+expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'human_takeover', 'human_takeover' => 1]) === 'conversation_owned_or_paused', 'Follow-up must stay silent while a human owns the conversation.');
 
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 13, 'Cadence should contain the active sprint, daily taper, and nurture steps.');

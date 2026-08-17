@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/leads/lead_agent.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -57,6 +58,9 @@ if (empty($result['ok'])) {
 
 if (function_exists('lead_comm_clear_follow_up_attention')) {
     lead_comm_clear_follow_up_attention($leadId);
+}
+if (function_exists('lead_agent_record_human_outbound')) {
+    lead_agent_record_human_outbound($leadId, 'email', $body);
 }
 
 $aiNoteResult = function_exists('lead_ai_create_outbound_note')

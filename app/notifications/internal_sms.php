@@ -30,7 +30,7 @@ if (!function_exists('internal_sms_default_recipients')) {
     {
         return [
             ['key' => 'dr_meden', 'name' => 'Dr. Walter Meden', 'phone' => '8016887200', 'enabled' => true],
-            ['key' => 'rod_moya', 'name' => 'Rod Moya', 'phone' => '8014994831', 'enabled' => true],
+            ['key' => 'rod_moya', 'name' => 'Rod Moya', 'phone' => '8016037011', 'enabled' => true],
         ];
     }
 }
@@ -78,11 +78,35 @@ if (!function_exists('internal_sms_sanitize_recipients')) {
 }
 
 if (!function_exists('internal_sms_recipients')) {
+    function internal_sms_upgrade_legacy_recipients(array $rows): array
+    {
+        $changed = false;
+        foreach ($rows as &$row) {
+            if (
+                (string) ($row['key'] ?? '') === 'rod_moya'
+                && internal_sms_normalize_phone((string) ($row['phone'] ?? '')) === '+18014994831'
+            ) {
+                $row['phone'] = '+18016037011';
+                $changed = true;
+            }
+        }
+        unset($row);
+        return ['recipients' => $rows, 'changed' => $changed];
+    }
+
     function internal_sms_recipients(): array
     {
         $saved = crm_settings_get_json('internal_sms_recipients', null);
         $rows = is_array($saved) ? internal_sms_sanitize_recipients($saved) : [];
-        return $rows !== [] ? $rows : internal_sms_default_recipients();
+        if ($rows === []) {
+            return internal_sms_default_recipients();
+        }
+        $upgrade = internal_sms_upgrade_legacy_recipients($rows);
+        $rows = (array) ($upgrade['recipients'] ?? []);
+        if (!empty($upgrade['changed'])) {
+            crm_settings_set_json('internal_sms_recipients', $rows, 0);
+        }
+        return $rows;
     }
 }
 

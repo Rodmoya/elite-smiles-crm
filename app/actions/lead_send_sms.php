@@ -69,6 +69,7 @@ require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/leads/lead_agent.php';
 
 if (!function_exists('auth_check')) {
     lead_sms_json_response(500, ['ok' => false, 'message' => 'Auth helper not available.']);
@@ -170,6 +171,9 @@ lead_comm_insert_activity($leadId, 'sms_outbound', 'Sent SMS to ' . ($sendResult
     'twilio_status' => $sendResult['twilio_status'] ?? '',
 ]);
 lead_comm_update_rollup($leadId);
+if (function_exists('lead_agent_record_human_outbound')) {
+    lead_agent_record_human_outbound($leadId, 'sms', $sentBody);
+}
 if (function_exists('lead_comm_clear_follow_up_attention')) {
     lead_comm_clear_follow_up_attention($leadId);
 }

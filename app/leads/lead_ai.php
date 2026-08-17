@@ -142,7 +142,8 @@ if (!function_exists('lead_ai_system_prompt')) {
             'One-question SMS rule: keep SMS easy to answer. Prefer one direct scheduling question unless DOB is also required for booking.',
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
-            'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
+            'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: do not message if the patient asks to stop. If they say STOP/CANCEL/UNSUBSCRIBE, classify not_interested, recommend opted_out, should_send false, needs_human_review false.',
             'Return only JSON matching the schema.',
@@ -192,7 +193,8 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete.',
-            'Use the recent SMS, email, and activity context to avoid repeating yourself and to continue the conversation naturally.',
+            'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
             'Do not include any phone number in the patient-facing email unless the operator explicitly instructs you to include one.',
@@ -352,6 +354,78 @@ if (!function_exists('lead_ai_recent_activity_log')) {
     }
 }
 
+if (!function_exists('lead_ai_patient_conversation')) {
+    /**
+     * Return the complete available patient-facing conversation in chronology.
+     * Activities remain separate because operational noise must not be mistaken
+     * for something the patient or team actually said.
+     */
+    function lead_ai_patient_conversation(int $leadId): array
+    {
+        if ($leadId <= 0) {
+            return [];
+        }
+
+        $events = [];
+        try {
+            $smsRows = db_all(
+                "SELECT id, direction, body, created_at
+                 FROM lead_messages
+                 WHERE lead_id = :lead_id
+                 ORDER BY created_at ASC, id ASC
+                 LIMIT 500",
+                ['lead_id' => $leadId]
+            );
+            foreach ($smsRows as $message) {
+                $events[] = [
+                    'id' => (int) ($message['id'] ?? 0),
+                    'channel' => 'sms',
+                    'direction' => (string) ($message['direction'] ?? ''),
+                    'subject' => '',
+                    'body' => mb_substr((string) ($message['body'] ?? ''), 0, 1200),
+                    'created_at' => (string) ($message['created_at'] ?? ''),
+                ];
+            }
+        } catch (Throwable $e) {
+            // SMS history is optional when the table is unavailable during setup.
+        }
+
+        try {
+            $emailRows = db_all(
+                "SELECT id, direction, subject, body, created_at
+                 FROM lead_emails
+                 WHERE lead_id = :lead_id
+                 ORDER BY created_at ASC, id ASC
+                 LIMIT 500",
+                ['lead_id' => $leadId]
+            );
+            foreach ($emailRows as $email) {
+                $events[] = [
+                    'id' => (int) ($email['id'] ?? 0),
+                    'channel' => 'email',
+                    'direction' => (string) ($email['direction'] ?? ''),
+                    'subject' => mb_substr((string) ($email['subject'] ?? ''), 0, 240),
+                    'body' => mb_substr((string) ($email['body'] ?? ''), 0, 2000),
+                    'created_at' => (string) ($email['created_at'] ?? ''),
+                ];
+            }
+        } catch (Throwable $e) {
+            // Email history is optional when the table is unavailable during setup.
+        }
+
+        usort($events, static function (array $left, array $right): int {
+            $cmp = strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? ''));
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+            $cmp = strcmp((string) ($left['channel'] ?? ''), (string) ($right['channel'] ?? ''));
+            return $cmp !== 0 ? $cmp : ((int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0));
+        });
+
+        return $events;
+    }
+}
+
 if (!function_exists('lead_ai_text_preview')) {
     function lead_ai_text_preview(string $text, int $limit = 180): string
     {
@@ -368,42 +442,11 @@ if (!function_exists('lead_ai_thread_state')) {
     function lead_ai_thread_state(array $lead, string $mode = 'inbound_sms'): array
     {
         $leadId = (int)($lead['id'] ?? 0);
-        $smsThread = lead_ai_recent_sms_thread($leadId, 8);
-        $emailThread = lead_ai_recent_email_thread($leadId, 6);
+        $conversation = lead_ai_patient_conversation($leadId);
+        $smsThread = array_values(array_filter($conversation, static fn(array $event): bool => ($event['channel'] ?? '') === 'sms'));
+        $emailThread = array_values(array_filter($conversation, static fn(array $event): bool => ($event['channel'] ?? '') === 'email'));
         $now = time();
-
-        $events = [];
-
-        foreach ($smsThread as $message) {
-            $events[] = [
-                'channel' => 'sms',
-                'direction' => (string)($message['direction'] ?? ''),
-                'body' => (string)($message['body'] ?? ''),
-                'subject' => '',
-                'created_at' => (string)($message['created_at'] ?? ''),
-            ];
-        }
-
-        foreach ($emailThread as $email) {
-            $events[] = [
-                'channel' => 'email',
-                'direction' => (string)($email['direction'] ?? ''),
-                'body' => (string)($email['body'] ?? ''),
-                'subject' => (string)($email['subject'] ?? ''),
-                'created_at' => (string)($email['created_at'] ?? ''),
-            ];
-        }
-
-        usort($events, static function (array $left, array $right): int {
-            $leftAt = (string)($left['created_at'] ?? '');
-            $rightAt = (string)($right['created_at'] ?? '');
-            $cmp = strcmp($leftAt, $rightAt);
-            if ($cmp !== 0) {
-                return $cmp;
-            }
-
-            return strcmp((string)($left['channel'] ?? ''), (string)($right['channel'] ?? ''));
-        });
+        $events = $conversation;
 
         $lastInbound = null;
         $lastOutbound = null;
@@ -477,6 +520,7 @@ if (!function_exists('lead_ai_thread_state')) {
             ] : null,
             'sms_count' => count($smsThread),
             'email_count' => count($emailThread),
+            'event_count' => count($events),
             'mode' => $mode,
         ];
     }
@@ -609,8 +653,7 @@ if (!function_exists('lead_ai_context')) {
             'thread_state' => $threadState,
             'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
-            'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 8),
-            'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
+            'patient_conversation' => lead_ai_patient_conversation($leadId),
             'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
@@ -645,8 +688,7 @@ if (!function_exists('lead_ai_email_context')) {
             'thread_state' => $threadState,
             'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
-            'recent_email_thread' => lead_ai_recent_email_thread($leadId, 8),
-            'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
+            'patient_conversation' => lead_ai_patient_conversation($leadId),
             'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
@@ -755,8 +797,7 @@ if (!function_exists('lead_ai_create_outbound_note')) {
                     'subject' => mb_substr($subject, 0, 255),
                     'body' => mb_substr($body, 0, 1800),
                 ],
-                'recent_sms_thread' => lead_ai_recent_sms_thread($leadId, 6),
-                'recent_email_thread' => lead_ai_recent_email_thread($leadId, 6),
+                'patient_conversation' => lead_ai_patient_conversation($leadId),
                 'recent_activity_log' => lead_ai_recent_activity_log($leadId, 6),
             ];
 

@@ -84,6 +84,30 @@ try {
     $performance = lead_agent_performance_metrics(30);
     integration_expect((int) ($performance['touches'] ?? 0) >= 1 && (float) ($performance['reply_rate'] ?? 0) > 0, 'Conversion metrics must include attributed touchpoints.');
 
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'Monday works for me.',
+        'is_read' => 0,
+    ]);
+    lead_agent_record_human_outbound($leadId, 'sms', 'Monday at 10 AM is available.');
+    $humanState = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+    integration_expect(!empty($humanState['human_takeover']) && (string) ($humanState['status'] ?? '') === 'human_takeover', 'A manual staff message must give the thread to the human and stop cadence.');
+    integration_expect(empty($humanState['next_action_at']), 'Human takeover must clear the next automated follow-up.');
+    $humanOwnedReply = lead_agent_handle_inbound($leadId, 'Monday works for me', 'sms', 'integration-human-owned-' . $leadId);
+    integration_expect(!empty($humanOwnedReply['handled']) && empty($humanOwnedReply['sent']) && (string) ($humanOwnedReply['status'] ?? '') === 'human_takeover', 'The agent must stay silent when a patient replies after Rod takes over.');
+
+    require_once dirname(__DIR__) . '/app/leads/lead_ai.php';
+    $conversation = lead_ai_patient_conversation($leadId);
+    integration_expect(count($conversation) >= 2, 'AI context must include the complete cross-channel patient conversation.');
+    $conversationTimes = array_column($conversation, 'created_at');
+    $sortedTimes = $conversationTimes;
+    sort($sortedTimes);
+    integration_expect($conversationTimes === $sortedTimes, 'AI patient conversation must be chronological.');
+
     $trackingToken = bin2hex(random_bytes(12));
     $emailId = lead_email_insert([
         'lead_id' => $leadId,

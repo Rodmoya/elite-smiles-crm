@@ -414,9 +414,9 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
             'saturday' => 'saturday', 'sábado' => 'saturday', 'sabado' => 'saturday',
             'sunday' => 'sunday', 'domingo' => 'sunday',
             'today' => 'today', 'hoy' => 'today',
-            'tomorrow' => 'tomorrow',
+            'tomorrow' => 'tomorrow', 'next week' => 'next week',
         ];
-        if (preg_match('/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
+        if (preg_match('/\b(next\s+week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
             $day = $dayAliases[strtolower((string) $matches[1])] ?? '';
         }
 
@@ -823,12 +823,46 @@ if (!function_exists('lead_agent_pause')) {
     }
 }
 
+if (!function_exists('lead_agent_record_human_outbound')) {
+    /** Manual staff communication is an explicit ownership signal. */
+    function lead_agent_record_human_outbound(int $leadId, string $channel, string $body): void
+    {
+        if ($leadId <= 0) {
+            return;
+        }
+        lead_agent_ensure_schema();
+        $state = db_one('SELECT lead_id FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        if (!$state) {
+            return;
+        }
+        db_execute(
+            "UPDATE lead_agent_states
+             SET status = 'human_takeover', human_takeover = 1, next_action_at = NULL,
+                 pause_reason = 'manual_staff_message', last_decision = 'manual_staff_takeover',
+                 lock_token = '', locked_at = NULL, updated_at = NOW()
+             WHERE lead_id = :lead_id",
+            ['lead_id' => $leadId]
+        );
+        lead_agent_event(
+            $leadId,
+            'human-outbound-' . $channel . '-' . $leadId . '-' . hash('sha256', $body . '|' . microtime(true)),
+            'human_takeover',
+            $channel,
+            'recorded',
+            'manual_staff_message'
+        );
+    }
+}
+
 if (!function_exists('lead_agent_internal_handoff')) {
     function lead_agent_internal_handoff(array $lead, string $kind, string $reason, array $context = []): array
     {
         $leadId = (int) ($lead['id'] ?? 0);
         $status = $kind === 'ready_to_schedule' ? 'ready_to_schedule' : 'needs_attention';
         lead_agent_pause($leadId, $reason, $status);
+        db_execute('UPDATE lead_agent_states SET human_takeover = 1, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
+            'lead_id' => $leadId,
+        ]);
 
         if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
             db_execute('UPDATE leads SET follow_up_status = :status, next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1', [
@@ -1074,6 +1108,20 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
     {
         $leadId = (int) ($lead['id'] ?? 0);
         $preferences = lead_agent_scheduling_preferences($body);
+        if (trim((string) ($preferences['day'] ?? '')) === '' && trim((string) ($lead['scheduling_preferred_day'] ?? '')) !== '') {
+            $preferences['day'] = strtolower(trim((string) $lead['scheduling_preferred_day']));
+        }
+        if (trim((string) ($preferences['specific_time'] ?? '')) === '' && trim((string) ($preferences['period'] ?? '')) === '') {
+            $knownTime = trim((string) ($lead['scheduling_preferred_time'] ?? ''));
+            if (in_array(strtolower($knownTime), ['morning', 'afternoon', 'evening'], true)) {
+                $preferences['period'] = strtolower($knownTime);
+            } elseif ($knownTime !== '') {
+                $preferences['specific_time'] = $knownTime;
+            }
+        }
+        $preferences['has_preference'] = trim((string) ($preferences['day'] ?? '')) !== ''
+            || trim((string) ($preferences['period'] ?? '')) !== ''
+            || trim((string) ($preferences['specific_time'] ?? '')) !== '';
         lead_agent_save_scheduling_preferences($leadId, $preferences);
         $message = lead_agent_scheduling_acknowledgment($lead, $preferences);
         $draft = $channel === 'email'
@@ -1289,6 +1337,14 @@ if (!function_exists('lead_agent_handle_inbound')) {
             lead_agent_pause($leadId, 'lead_not_ready', 'paused');
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
+        if (!empty($state['human_takeover']) || in_array((string) ($state['status'] ?? ''), ['human_takeover', 'ready_to_schedule', 'needs_attention'], true)) {
+            lead_agent_event($leadId, 'human-owned-' . $eventKey, 'inbound_routed_to_human', $channel, 'recorded', 'human_takeover_active');
+            lead_comm_insert_activity($leadId, 'lead_agent_human_owned_inbound', 'Lead Agent stayed silent because Rod owns this conversation.', [
+                'channel' => $channel,
+                'event_key' => $eventKey,
+            ], 'Lead Agent');
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false, 'status' => 'human_takeover'];
+        }
         if ($intent === 'needs_attention') {
             lead_agent_record_learning($intent, $channel, 'human_review');
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Inbound message requires human judgment.') + ['intent' => $intent, 'handled' => true];
@@ -1400,11 +1456,103 @@ if (!function_exists('lead_agent_daily_outbound_count')) {
     }
 }
 
+if (!function_exists('lead_agent_latest_patient_direction')) {
+    function lead_agent_latest_patient_direction(int $leadId): array
+    {
+        if ($leadId <= 0) {
+            return [];
+        }
+        try {
+            $row = db_one(
+                "SELECT direction, channel, created_at, id FROM (
+                    SELECT direction, 'sms' AS channel, created_at, id FROM lead_messages WHERE lead_id = :sms_lead_id
+                    UNION ALL
+                    SELECT direction, 'email' AS channel, created_at, id FROM lead_emails WHERE lead_id = :email_lead_id
+                 ) patient_events
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                ['sms_lead_id' => $leadId, 'email_lead_id' => $leadId]
+            );
+            return $row ?: [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
+if (!function_exists('lead_agent_followup_context_reason')) {
+    /** Guard follow-up with the current conversation, not cadence state alone. */
+    function lead_agent_followup_context_reason(array $lead, array $state): string
+    {
+        $status = trim((string) ($state['status'] ?? ''));
+        if (!in_array($status, ['active', 'engaged'], true)) {
+            return 'conversation_owned_or_paused';
+        }
+        if (trim((string) ($state['scheduling_phase'] ?? '')) !== '') {
+            return 'scheduling_in_progress';
+        }
+        if (in_array(trim((string) ($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)) {
+            return 'human_follow_up_state';
+        }
+        $latest = lead_agent_latest_patient_direction((int) ($lead['id'] ?? 0));
+        if ((string) ($latest['direction'] ?? '') === 'inbound') {
+            return 'unanswered_inbound';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lead_agent_contextual_followup')) {
+    function lead_agent_contextual_followup(array $lead, string $channel, int $step): ?array
+    {
+        $leadId = (int) ($lead['id'] ?? 0);
+        $hasConversation = false;
+        try {
+            $hasConversation = ((int) db_value('SELECT COUNT(*) FROM lead_messages WHERE lead_id = :lead_id', ['lead_id' => $leadId])
+                + (int) db_value('SELECT COUNT(*) FROM lead_emails WHERE lead_id = :lead_id', ['lead_id' => $leadId])) > 0;
+        } catch (Throwable $e) {
+            $hasConversation = false;
+        }
+        if (!$hasConversation) {
+            return lead_agent_approved_followup($lead, $channel, $step);
+        }
+
+        $leadAiPath = __DIR__ . '/lead_ai.php';
+        if (is_file($leadAiPath)) {
+            require_once $leadAiPath;
+        }
+        $instruction = 'Lead Agent instruction: Write the next natural follow-up after reading the complete patient_conversation. '
+            . 'Continue from what was actually discussed; do not repeat a question already answered or introduce a fresh conversation. '
+            . 'If the latest patient message still needs an answer, scheduling is underway, or a staff member owns the thread, do not send.';
+        $leadForAi = $lead;
+        $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\n" . $instruction);
+        if ($channel === 'email' && function_exists('lead_ai_generate_email')) {
+            $ai = lead_ai_generate_email($leadForAi, '', 'lead_agent_follow_up');
+            $data = (array) ($ai['data'] ?? []);
+            if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
+                return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')];
+            }
+            return null;
+        }
+        if ($channel === 'sms' && function_exists('lead_ai_generate_reply')) {
+            $ai = lead_ai_generate_reply($leadForAi, '', 'lead_agent_follow_up');
+            $data = (array) ($ai['data'] ?? []);
+            if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
+                return ['subject' => '', 'body' => (string) ($data['reply'] ?? '')];
+            }
+        }
+        return null;
+    }
+}
+
 if (!function_exists('lead_agent_guardrail_reason')) {
     function lead_agent_guardrail_reason(array $lead, array $state, array $schedule): string
     {
         if (!empty($state['human_takeover'])) {
             return 'human_takeover';
+        }
+        $contextReason = lead_agent_followup_context_reason($lead, $state);
+        if ($contextReason !== '') {
+            return $contextReason;
         }
         $stage = trim((string) ($lead['status'] ?? ''));
         if (in_array($stage, ['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead'], true)) {
@@ -1446,7 +1594,7 @@ if (!function_exists('lead_agent_process_state')) {
         if ($reason !== '') {
             $decisionType = 'deferred';
             $nextActionAt = null;
-            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'all_channels_opted_out', 'human_takeover'], true)) {
+            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
                 $decisionType = 'paused';
             } else {
@@ -1473,7 +1621,11 @@ if (!function_exists('lead_agent_process_state')) {
         }
 
         $eventKey = 'cadence-' . $leadId . '-' . $nextStep;
-        $draft = lead_agent_approved_followup($lead, $channel, $nextStep);
+        $draft = lead_agent_contextual_followup($lead, $channel, $nextStep);
+        if ($draft === null) {
+            lead_agent_internal_handoff($lead, 'needs_attention', 'Context-aware follow-up could not produce a safe message.');
+            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'contextual_followup_review'];
+        }
         $flags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
         if ($flags !== []) {
             lead_agent_internal_handoff($lead, 'needs_attention', 'Cadence content failed a policy gate.');

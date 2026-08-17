@@ -2162,7 +2162,7 @@ $consultationOptions = [
 
                                             <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Unified Timeline</p>
 
-                                            <p class="mt-1 text-sm text-slate-500">Latest patient touchpoints and CRM notes. SMS is shown first.</p>
+                                            <p class="mt-1 text-sm text-slate-500">Conversation order with the newest message at the bottom. SMS is shown first.</p>
 
                                         </div>
 
@@ -5433,8 +5433,8 @@ $consultationOptions = [
         items.sort((a, b) => {
             const aTime = threadTimeValue(a.time || '');
             const bTime = threadTimeValue(b.time || '');
-            if (aTime !== bTime) return bTime - aTime;
-            return Number(b.id || 0) - Number(a.id || 0);
+            if (aTime !== bTime) return aTime - bTime;
+            return Number(a.id || 0) - Number(b.id || 0);
         });
 
         const counts = items.reduce((summary, item) => {
@@ -5538,7 +5538,7 @@ $consultationOptions = [
             `;
         }).join('');
 
-        unifiedTimeline.scrollTop = 0;
+        scrollThreadPaneToBottom(unifiedTimeline);
 
     }
 

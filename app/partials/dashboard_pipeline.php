@@ -2156,17 +2156,35 @@ $consultationOptions = [
 
                                 <div id="lead-unified-timeline-panel" class="flex min-h-0 flex-col rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm xl:col-start-2 xl:row-start-1">
 
-                                    <div class="flex items-center justify-between gap-3">
+                                    <div class="flex flex-wrap items-end justify-between gap-3">
 
                                         <div>
 
                                             <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Unified Timeline</p>
 
-                                            <p class="mt-1 text-sm text-slate-500">Latest patient touchpoints and CRM notes.</p>
+                                            <p class="mt-1 text-sm text-slate-500">Latest patient touchpoints and CRM notes. SMS is shown first.</p>
 
                                         </div>
 
-                                        <span class="text-[11px] font-medium text-slate-400">Latest first</span>
+                                        <div
+                                            id="lead-timeline-filter"
+                                            class="inline-flex min-h-11 flex-wrap items-center rounded-xl border border-slate-200 bg-slate-50 p-1"
+                                            role="tablist"
+                                            aria-label="Filter communication timeline"
+                                        >
+                                            <?php foreach (['sms' => 'SMS', 'email' => 'Email', 'notes' => 'Notes', 'all' => 'All'] as $timelineFilterKey => $timelineFilterLabel): ?>
+                                                <button
+                                                    type="button"
+                                                    role="tab"
+                                                    data-timeline-filter="<?= e($timelineFilterKey) ?>"
+                                                    aria-selected="<?= $timelineFilterKey === 'sms' ? 'true' : 'false' ?>"
+                                                    class="timeline-filter-button inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 <?= $timelineFilterKey === 'sms' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900' ?>"
+                                                >
+                                                    <span><?= e($timelineFilterLabel) ?></span>
+                                                    <span data-timeline-filter-count="<?= e($timelineFilterKey) ?>" class="min-w-5 rounded-full bg-white/15 px-1.5 py-0.5 text-center text-[10px] leading-none">0</span>
+                                                </button>
+                                            <?php endforeach; ?>
+                                        </div>
 
                                     </div>
 
@@ -2756,6 +2774,8 @@ $consultationOptions = [
 
     const activityFeed = document.getElementById('modal-activity-feed');
     const unifiedTimeline = document.getElementById('modal-unified-timeline');
+    const timelineFilterButtons = Array.from(document.querySelectorAll('[data-timeline-filter]'));
+    const timelineFilterCounts = Array.from(document.querySelectorAll('[data-timeline-filter-count]'));
     const emailHistory = document.getElementById('modal-email-history');
     const leadIntelSummaryText = document.getElementById('lead-intel-summary-text');
     const leadIntelMissingList = document.getElementById('lead-intel-missing-list');
@@ -2905,6 +2925,8 @@ $consultationOptions = [
     let isSendingEmail = false;
     let isClosingLeadModal = false;
     let composerMode = 'sms';
+    let activeTimelineFilter = 'sms';
+    let activeTimelineThread = {};
     let composerDraftSources = {
         sms: 'manual',
         email: 'manual',
@@ -4624,6 +4646,7 @@ $consultationOptions = [
 
         return {
             type: communicationMarkers[type],
+            channel: type.startsWith('sms_') ? 'sms' : (type.startsWith('email_') ? 'email' : 'notes'),
             tone: failed ? 'rose' : (opted ? 'amber' : 'slate'),
             time: activity.created_at || '',
             title: communicationMarkers[type],
@@ -5340,9 +5363,31 @@ $consultationOptions = [
         });
     }
 
+    function setTimelineFilter(filter, options = {}) {
+        const safeFilter = ['sms', 'email', 'notes', 'all'].includes(String(filter)) ? String(filter) : 'sms';
+        activeTimelineFilter = safeFilter;
+
+        timelineFilterButtons.forEach((button) => {
+            const selected = button.dataset.timelineFilter === safeFilter;
+            button.setAttribute('aria-selected', selected ? 'true' : 'false');
+            button.tabIndex = selected ? 0 : -1;
+            button.classList.toggle('bg-slate-900', selected);
+            button.classList.toggle('text-white', selected);
+            button.classList.toggle('shadow-sm', selected);
+            button.classList.toggle('text-slate-600', !selected);
+            button.classList.toggle('hover:bg-white', !selected);
+            button.classList.toggle('hover:text-slate-900', !selected);
+        });
+
+        if (options.render !== false) {
+            renderUnifiedTimeline(activeTimelineThread);
+        }
+    }
+
     function renderUnifiedTimeline(thread) {
 
         if (!unifiedTimeline) return;
+        activeTimelineThread = thread && typeof thread === 'object' ? thread : {};
 
         const items = [];
 
@@ -5350,6 +5395,7 @@ $consultationOptions = [
             const direction = String(email.direction || '') === 'inbound' ? 'Inbound Email' : 'Outbound Email';
             const opened = email.opened_at ? 'Opened ' + formatThreadTime(email.opened_at || '') : '';
             items.push({
+                channel: 'email',
                 type: direction,
                 tone: String(email.direction || '') === 'inbound' ? 'emerald' : 'blue',
                 time: email.created_at || '',
@@ -5363,6 +5409,7 @@ $consultationOptions = [
         (thread?.messages || []).forEach((message) => {
             const isOutbound = String(message.direction || '') === 'outbound';
             items.push({
+                channel: 'sms',
                 type: isOutbound ? 'Outbound SMS' : 'Inbound SMS',
                 tone: isOutbound ? 'blue' : 'emerald',
                 time: message.created_at || '',
@@ -5373,7 +5420,7 @@ $consultationOptions = [
         });
 
         noteTimelineItems(activeCard?.dataset?.leadNotes || '').forEach((note) => {
-            items.push(note);
+            items.push({ ...note, channel: 'notes' });
         });
 
         (thread?.activities || []).forEach((activity) => {
@@ -5386,12 +5433,31 @@ $consultationOptions = [
         items.sort((a, b) => {
             const aTime = threadTimeValue(a.time || '');
             const bTime = threadTimeValue(b.time || '');
-            if (aTime !== bTime) return aTime - bTime;
-            return Number(a.id || 0) - Number(b.id || 0);
+            if (aTime !== bTime) return bTime - aTime;
+            return Number(b.id || 0) - Number(a.id || 0);
         });
 
-        if (!items.length) {
-            unifiedTimeline.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">No communication history yet.</div>';
+        const counts = items.reduce((summary, item) => {
+            const channel = ['sms', 'email', 'notes'].includes(item.channel) ? item.channel : 'notes';
+            summary[channel] += 1;
+            summary.all += 1;
+            return summary;
+        }, { sms: 0, email: 0, notes: 0, all: 0 });
+
+        timelineFilterCounts.forEach((count) => {
+            const channel = count.dataset.timelineFilterCount || 'all';
+            count.textContent = String(counts[channel] || 0);
+        });
+
+        setTimelineFilter(activeTimelineFilter, { render: false });
+        const visibleItems = activeTimelineFilter === 'all'
+            ? items
+            : items.filter((item) => item.channel === activeTimelineFilter);
+
+        if (!visibleItems.length) {
+            const label = { sms: 'SMS messages', email: 'emails', notes: 'notes and CRM activity', all: 'communication history' }[activeTimelineFilter] || 'communication history';
+            unifiedTimeline.innerHTML = `<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">No ${escapeHtml(label)} yet.</div>`;
+            unifiedTimeline.scrollTop = 0;
             return;
         }
 
@@ -5425,28 +5491,54 @@ $consultationOptions = [
             return '<path d="M12 8v4l3 3"></path><circle cx="12" cy="12" r="10"></circle>';
         }
 
-        unifiedTimeline.innerHTML = items.map((item) => `
-            <div class="rounded-2xl border px-4 py-3 ${toneClasses[item.tone] || toneClasses.slate}">
+        const renderHeader = (item, includePreview = false) => {
+            const preview = String(item.body || '').replace(/\s+/g, ' ').trim();
+            return `
                 <div class="flex items-start gap-3">
                     <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${iconClasses[item.tone] || iconClasses.slate}">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${timelineIcon(item.type)}</svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${timelineIcon(item.type)}</svg>
                     </span>
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
                             <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
                         </div>
-                        <p class="mt-2 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
-                        ${item.body_html
-                            ? `<div class="lead-email-html mt-3 max-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800">${item.body_html}</div>`
-                            : (item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : '')}
-                        ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
+                        <p class="mt-1 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
+                        ${includePreview && preview ? `<p class="mt-1 truncate text-xs opacity-70">${escapeHtml(preview)}</p>` : ''}
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        };
 
-        scrollThreadPaneToBottom(unifiedTimeline);
+        const renderBody = (item) => `
+            ${item.body_html
+                ? `<div class="lead-email-html mt-3 max-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800">${item.body_html}</div>`
+                : (item.body ? `<p class="mt-2 whitespace-pre-wrap text-sm leading-6">${escapeHtml(item.body || '')}</p>` : '')}
+            ${item.meta ? `<p class="mt-2 text-[11px] font-medium opacity-70">${escapeHtml(item.meta)}</p>` : ''}
+        `;
+
+        unifiedTimeline.innerHTML = visibleItems.map((item) => {
+            const toneClass = toneClasses[item.tone] || toneClasses.slate;
+            if (item.channel === 'email' || item.channel === 'notes') {
+                return `
+                    <details class="group rounded-2xl border px-4 py-3 ${toneClass}" data-timeline-channel="${escapeHtml(item.channel)}">
+                        <summary class="cursor-pointer list-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">
+                            ${renderHeader(item, true)}
+                            <p class="mt-2 text-[11px] font-semibold opacity-70">Open ${item.channel === 'email' ? 'email' : 'details'}</p>
+                        </summary>
+                        <div class="border-t border-current/10 pt-1">${renderBody(item)}</div>
+                    </details>
+                `;
+            }
+            return `
+                <article class="rounded-2xl border px-4 py-3 ${toneClass}" data-timeline-channel="sms">
+                    ${renderHeader(item)}
+                    <div class="pl-11">${renderBody(item)}</div>
+                </article>
+            `;
+        }).join('');
+
+        unifiedTimeline.scrollTop = 0;
 
     }
 
@@ -8343,6 +8435,27 @@ function applyCommunicationViewportFit() {
     if (saveCommunicationNoteButton) saveCommunicationNoteButton.addEventListener('click', saveCommunicationNote);
 
     if (loadThreadButton) loadThreadButton.addEventListener('click', loadLeadThread);
+
+    timelineFilterButtons.forEach((button, index) => {
+        button.addEventListener('click', function () {
+            setTimelineFilter(button.dataset.timelineFilter || 'sms');
+        });
+        button.addEventListener('keydown', function (event) {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            let nextIndex = index;
+            if (event.key === 'Home') nextIndex = 0;
+            if (event.key === 'End') nextIndex = timelineFilterButtons.length - 1;
+            if (event.key === 'ArrowLeft') nextIndex = (index - 1 + timelineFilterButtons.length) % timelineFilterButtons.length;
+            if (event.key === 'ArrowRight') nextIndex = (index + 1) % timelineFilterButtons.length;
+            const nextButton = timelineFilterButtons[nextIndex];
+            if (nextButton) {
+                setTimelineFilter(nextButton.dataset.timelineFilter || 'sms');
+                nextButton.focus();
+            }
+        });
+    });
+    setTimelineFilter('sms', { render: false });
 
     if (smsInput) {
         smsInput.addEventListener('input', function () {

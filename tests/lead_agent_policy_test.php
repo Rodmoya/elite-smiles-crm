@@ -67,6 +67,11 @@ expect_true(lead_agent_lead_is_already_scheduled(['status' => 'consultation_book
 expect_true(lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_status' => 'scheduled']), 'A scheduled consultation status must close the scheduling handoff.');
 expect_true(lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_date' => '2026-08-20 10:00:00']), 'A saved consultation date must close the scheduling handoff.');
 expect_true(!lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_status' => 'requested']), 'A requested consultation without an appointment must remain ready for scheduling.');
+expect_true(lead_agent_guardrail_reason(
+    ['id' => 0, 'status' => 'contacted', 'consultation_status' => 'scheduled'],
+    ['status' => 'active', 'human_takeover' => 0, 'started_at' => '2026-08-01 09:00:00'],
+    ['channel' => 'sms']
+) === 'terminal_or_human_stage', 'A scheduled consultation status must block routine cadence even when the legacy lead stage is stale.');
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_preference']) === '', 'An unanswered request for a missing scheduling preference must remain eligible for follow-up.');
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 
@@ -96,6 +101,24 @@ foreach ($plan as $step => $item) {
 }
 $redirect = lead_agent_cost_redirect($sampleLead, 'sms');
 expect_true(lead_agent_policy_flags((string) $redirect['body']) === [], 'Approved question redirect must not discuss treatment cost.');
+
+$fallback = lead_agent_safe_contextual_fallback([
+    'full_name' => 'Taylor Example',
+    'procedure_interest' => 'Veneers',
+], 'sms', 13);
+expect_true((string) ($fallback['draft_source'] ?? '') === 'approved_fallback', 'Long-term nurture must have an approved fallback when AI drafting is unavailable.');
+expect_true(str_contains((string) $fallback['body'], 'whenever you are ready'), 'Fallback nurture should keep the door open without pressure.');
+expect_true(str_contains((string) $fallback['body'], 'veneers consultation'), 'Fallback nurture should preserve the known treatment interest.');
+expect_true(lead_agent_policy_flags((string) $fallback['body']) === [], 'Approved fallback nurture must pass policy gates.');
+
+$preferenceFallback = lead_agent_safe_contextual_fallback([
+    'full_name' => 'Taylor Example',
+    'procedure_interest' => 'Veneers',
+    'scheduling_preferred_day' => 'Wednesday',
+    'scheduling_preferred_time' => 'morning',
+], 'sms', 13);
+expect_true(str_contains((string) $preferenceFallback['body'], 'Wednesday morning'), 'Fallback nurture must remember previously supplied scheduling preferences.');
+expect_true(!str_contains((string) $preferenceFallback['body'], 'mornings or afternoons'), 'Fallback nurture must not repeat an answered preference question.');
 
 $reportCopy = lead_agent_report_copy('2026-08-05', [
     'actions_completed' => 2,

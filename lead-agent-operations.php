@@ -99,6 +99,8 @@ $latestRun = lead_agent_latest_run();
 $runHealth = lead_agent_run_health($latestRun);
 $performance = lead_agent_performance_metrics(30);
 $channelPerformance = lead_agent_performance_by_channel(30);
+$strategyPerformance = lead_agent_performance_by_strategy(30);
+$conversionPriorityRows = lead_conversion_priority_rows(8);
 $globallyPaused = lead_agent_is_globally_paused();
 lead_agent_close_scheduling_handoff();
 $scheduledLeadCondition = lead_agent_scheduled_sql_condition('l');
@@ -269,6 +271,48 @@ $eventLabels = [
                         <p class="mt-3 text-sm text-slate-600"><strong class="tabular-nums text-slate-950"><?= e((string) round(((int) ($channelRow['replies'] ?? 0) / $touches) * 100, 1)) ?>%</strong> replied &middot; <strong class="tabular-nums text-slate-950"><?= e((string) ((int) ($channelRow['bookings'] ?? 0))) ?></strong> booked &middot; <strong class="tabular-nums text-slate-950"><?= e((string) ((int) ($channelRow['failures'] ?? 0))) ?></strong> failed</p>
                     </article>
                 <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section aria-labelledby="conversion-intelligence-heading" class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Next-best-action intelligence</p>
+                    <h2 id="conversion-intelligence-heading" class="mt-2 text-xl font-semibold text-slate-950">What the agent understands and why it acts</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">Each lead has durable conversion memory built from the complete conversation. Full messages remain in Communications; this view stores only operational signals.</p>
+                </div>
+                <span class="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-800"><?= e((string) count($conversionPriorityRows)) ?> prioritized</span>
+            </div>
+            <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,.75fr)]">
+                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                    <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
+                        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Lead</th><th class="px-4 py-3">Readiness</th><th class="px-4 py-3">Next strategy</th><th class="px-4 py-3">Reason</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100">
+                        <?php if ($conversionPriorityRows === []): ?><tr><td colspan="4" class="px-4 py-7 text-center text-slate-500">Conversion memory will populate as active leads are evaluated.</td></tr><?php endif; ?>
+                        <?php foreach ($conversionPriorityRows as $memory): $strategyKey = (string) ($memory['strategy_key'] ?? ''); ?>
+                            <tr class="align-top">
+                                <td class="px-4 py-4"><a href="<?= e(base_url('leads.php?lead_id=' . (int) $memory['lead_id'])) ?>" class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-violet-800"><?= e((string) ($memory['full_name'] ?? 'Lead')) ?></a><span class="mt-1 block text-xs text-slate-500"><?= e(ucwords((string) ($memory['conversation_state'] ?? 'exploring'))) ?></span></td>
+                                <td class="px-4 py-4"><span class="inline-flex rounded-full bg-violet-50 px-2.5 py-1 font-bold tabular-nums text-violet-800"><?= e((string) ((int) ($memory['readiness_score'] ?? 0))) ?>%</span></td>
+                                <td class="px-4 py-4 font-semibold text-slate-800"><?= e((string) (lead_conversion_strategy_labels()[$strategyKey] ?? ucwords(str_replace('_', ' ', $strategyKey)))) ?></td>
+                                <td class="max-w-md px-4 py-4 text-xs leading-5 text-slate-600"><?= e((string) ($memory['strategy_reason'] ?? '')) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-950">Strategy outcomes · 30 days</h3>
+                    <p class="mt-1 text-xs leading-5 text-slate-500">Replies, scheduling intent, bookings, and opt-outs teach the agent which safe approach works best.</p>
+                    <div class="mt-4 space-y-3">
+                        <?php if ($strategyPerformance === []): ?><p class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">New tracked strategies begin learning with the next send.</p><?php endif; ?>
+                        <?php foreach (array_slice($strategyPerformance, 0, 6) as $strategy): $touches = max(1, (int) ($strategy['touches'] ?? 0)); $key = (string) ($strategy['strategy_key'] ?? ''); ?>
+                            <div class="rounded-2xl border border-slate-200 px-4 py-3">
+                                <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-slate-800"><?= e((string) (lead_conversion_strategy_labels()[$key] ?? ucwords(str_replace('_', ' ', $key)))) ?></span><span class="text-xs tabular-nums text-slate-500"><?= e((string) $touches) ?> touches</span></div>
+                                <p class="mt-2 text-xs text-slate-600"><strong class="text-slate-900"><?= e((string) round(((int) ($strategy['replies'] ?? 0) / $touches) * 100, 1)) ?>%</strong> replied · <strong class="text-slate-900"><?= e((string) ((int) ($strategy['scheduling_intents'] ?? 0))) ?></strong> scheduling · <strong class="text-slate-900"><?= e((string) ((int) ($strategy['bookings'] ?? 0))) ?></strong> booked</p>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
             </div>
         </section>
 

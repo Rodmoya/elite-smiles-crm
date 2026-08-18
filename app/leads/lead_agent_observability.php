@@ -28,6 +28,9 @@ if (!function_exists('lead_agent_observability_ensure_schema')) {
             delivery_status VARCHAR(40) NOT NULL DEFAULT 'accepted',
             lead_source VARCHAR(120) NOT NULL DEFAULT '',
             procedure_interest VARCHAR(190) NOT NULL DEFAULT '',
+            strategy_key VARCHAR(60) NOT NULL DEFAULT '',
+            strategy_reason VARCHAR(500) NOT NULL DEFAULT '',
+            decision_confidence DECIMAL(4,3) NOT NULL DEFAULT 0.000,
             sent_at DATETIME NOT NULL,
             delivered_at DATETIME NULL,
             opened_at DATETIME NULL,
@@ -46,6 +49,17 @@ if (!function_exists('lead_agent_observability_ensure_schema')) {
             KEY idx_lead_agent_touchpoint_sent (sent_at),
             KEY idx_lead_agent_touchpoint_delivery (delivery_status, sent_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $strategyColumns = [
+            'strategy_key' => "ALTER TABLE lead_agent_touchpoints ADD COLUMN strategy_key VARCHAR(60) NOT NULL DEFAULT '' AFTER procedure_interest",
+            'strategy_reason' => "ALTER TABLE lead_agent_touchpoints ADD COLUMN strategy_reason VARCHAR(500) NOT NULL DEFAULT '' AFTER strategy_key",
+            'decision_confidence' => 'ALTER TABLE lead_agent_touchpoints ADD COLUMN decision_confidence DECIMAL(4,3) NOT NULL DEFAULT 0.000 AFTER strategy_reason',
+        ];
+        foreach ($strategyColumns as $column => $sql) {
+            if (!db_one("SHOW COLUMNS FROM lead_agent_touchpoints LIKE '" . $column . "'")) {
+                db_query($sql);
+            }
+        }
     }
 }
 
@@ -73,14 +87,17 @@ if (!function_exists('lead_agent_record_touchpoint')) {
 
         db_query(
             "INSERT INTO lead_agent_touchpoints
-                (lead_id, event_key, channel, cadence_step, phase, message_id, email_id, provider_id, delivery_status, lead_source, procedure_interest, sent_at, created_at, updated_at)
+                (lead_id, event_key, channel, cadence_step, phase, message_id, email_id, provider_id, delivery_status, lead_source, procedure_interest, strategy_key, strategy_reason, decision_confidence, sent_at, created_at, updated_at)
              VALUES
-                (:lead_id, :event_key, :channel, :step, :phase, :message_id, :email_id, :provider_id, :delivery_status, :lead_source, :procedure_interest, :sent_at, NOW(), NOW())
+                (:lead_id, :event_key, :channel, :step, :phase, :message_id, :email_id, :provider_id, :delivery_status, :lead_source, :procedure_interest, :strategy_key, :strategy_reason, :decision_confidence, :sent_at, NOW(), NOW())
              ON DUPLICATE KEY UPDATE
                 message_id = COALESCE(VALUES(message_id), message_id),
                 email_id = COALESCE(VALUES(email_id), email_id),
                 provider_id = IF(VALUES(provider_id) <> '', VALUES(provider_id), provider_id),
                 delivery_status = IF(delivery_status IN ('delivered', 'opened', 'bounced', 'failed', 'undelivered', 'dropped'), delivery_status, VALUES(delivery_status)),
+                strategy_key = IF(VALUES(strategy_key) <> '', VALUES(strategy_key), strategy_key),
+                strategy_reason = IF(VALUES(strategy_reason) <> '', VALUES(strategy_reason), strategy_reason),
+                decision_confidence = GREATEST(decision_confidence, VALUES(decision_confidence)),
                 updated_at = NOW()",
             [
                 'lead_id' => $leadId,
@@ -94,6 +111,9 @@ if (!function_exists('lead_agent_record_touchpoint')) {
                 'delivery_status' => substr((string) ($send['delivery_status'] ?? 'accepted'), 0, 40),
                 'lead_source' => substr((string) ($lead['source'] ?? ''), 0, 120),
                 'procedure_interest' => substr((string) ($lead['procedure_interest'] ?? ''), 0, 190),
+                'strategy_key' => substr((string) ($send['strategy_key'] ?? ''), 0, 60),
+                'strategy_reason' => substr((string) ($send['strategy_reason'] ?? ''), 0, 500),
+                'decision_confidence' => max(0.0, min(1.0, (float) ($send['decision_confidence'] ?? 0))),
                 'sent_at' => trim((string) ($send['sent_at'] ?? '')) !== '' ? (string) $send['sent_at'] : now(),
             ]
         );
@@ -332,6 +352,24 @@ if (!function_exists('lead_agent_performance_by_channel')) {
             FROM lead_agent_touchpoints
             WHERE sent_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
             GROUP BY channel ORDER BY channel");
+    }
+}
+
+if (!function_exists('lead_agent_performance_by_strategy')) {
+    function lead_agent_performance_by_strategy(int $days = 30): array
+    {
+        lead_agent_observability_ensure_schema();
+        $days = max(1, min(365, $days));
+        return db_all("SELECT strategy_key, COUNT(*) AS touches,
+                SUM(replied_at IS NOT NULL) AS replies,
+                SUM(scheduling_intent_at IS NOT NULL) AS scheduling_intents,
+                SUM(consultation_booked_at IS NOT NULL) AS bookings,
+                SUM(opted_out_at IS NOT NULL) AS opt_outs
+            FROM lead_agent_touchpoints
+            WHERE sent_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY) AND strategy_key <> ''
+            GROUP BY strategy_key
+            ORDER BY (SUM(consultation_booked_at IS NOT NULL) * 4 + SUM(scheduling_intent_at IS NOT NULL) * 2 + SUM(replied_at IS NOT NULL)) / GREATEST(COUNT(*), 1) DESC,
+                     COUNT(*) DESC");
     }
 }
 

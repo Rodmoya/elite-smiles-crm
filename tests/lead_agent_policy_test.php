@@ -63,6 +63,10 @@ $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_to_schedule']) === 'conversation_owned_or_paused', 'Follow-up must stay silent after a scheduling handoff.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'human_takeover', 'human_takeover' => 1]) === 'conversation_owned_or_paused', 'Follow-up must stay silent while a human owns the conversation.');
+expect_true(lead_agent_lead_is_already_scheduled(['status' => 'consultation_booked']), 'A booked pipeline stage must close the scheduling handoff.');
+expect_true(lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_status' => 'scheduled']), 'A scheduled consultation status must close the scheduling handoff.');
+expect_true(lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_date' => '2026-08-20 10:00:00']), 'A saved consultation date must close the scheduling handoff.');
+expect_true(!lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_status' => 'requested']), 'A requested consultation without an appointment must remain ready for scheduling.');
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_preference']) === '', 'An unanswered request for a missing scheduling preference must remain eligible for follow-up.');
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 

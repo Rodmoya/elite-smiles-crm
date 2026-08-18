@@ -63,6 +63,8 @@ $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_to_schedule']) === 'conversation_owned_or_paused', 'Follow-up must stay silent after a scheduling handoff.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'human_takeover', 'human_takeover' => 1]) === 'conversation_owned_or_paused', 'Follow-up must stay silent while a human owns the conversation.');
+expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_preference']) === '', 'An unanswered request for a missing scheduling preference must remain eligible for follow-up.');
+expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 11, 'Cadence should define the twice-daily five-day sprint and the first daily follow-up.');

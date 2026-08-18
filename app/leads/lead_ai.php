@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/core/twilio.php';
 require_once __DIR__ . '/lead_service.php';
 require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
+require_once __DIR__ . '/lead_conversion_intelligence.php';
 
 if (!function_exists('lead_ai_schema')) {
     function lead_ai_schema(): array
@@ -34,8 +35,14 @@ if (!function_exists('lead_ai_schema')) {
                 'needs_human_review' => ['type' => 'boolean'],
                 'should_send' => ['type' => 'boolean'],
                 'confidence' => ['type' => 'number'],
+                'conversation_state' => ['type' => 'string', 'enum' => ['exploring', 'engaged', 'objection', 'nurturing', 'scheduling', 'closed', 'human_review']],
+                'strategy_key' => ['type' => 'string', 'enum' => ['goal_discovery', 'education', 'trust_credibility', 'objection_resolution', 'consultation_value', 'scheduling_preference', 'open_door']],
+                'strategy_reason' => ['type' => 'string'],
+                'known_goal' => ['type' => 'string'],
+                'known_objection' => ['type' => 'string'],
+                'next_best_action' => ['type' => 'string'],
             ],
-            'required' => ['classification', 'reply', 'note', 'recommended_stage', 'needs_human_review', 'should_send', 'confidence'],
+            'required' => ['classification', 'reply', 'note', 'recommended_stage', 'needs_human_review', 'should_send', 'confidence', 'conversation_state', 'strategy_key', 'strategy_reason', 'known_goal', 'known_objection', 'next_best_action'],
             'additionalProperties' => false,
         ];
     }
@@ -62,8 +69,14 @@ if (!function_exists('lead_ai_email_schema')) {
                 'needs_human_review' => ['type' => 'boolean'],
                 'should_send' => ['type' => 'boolean'],
                 'confidence' => ['type' => 'number'],
+                'conversation_state' => ['type' => 'string', 'enum' => ['exploring', 'engaged', 'objection', 'nurturing', 'scheduling', 'closed', 'human_review']],
+                'strategy_key' => ['type' => 'string', 'enum' => ['goal_discovery', 'education', 'trust_credibility', 'objection_resolution', 'consultation_value', 'scheduling_preference', 'open_door']],
+                'strategy_reason' => ['type' => 'string'],
+                'known_goal' => ['type' => 'string'],
+                'known_objection' => ['type' => 'string'],
+                'next_best_action' => ['type' => 'string'],
             ],
-            'required' => ['classification', 'subject', 'body', 'note', 'recommended_stage', 'next_follow_up_at', 'needs_human_review', 'should_send', 'confidence'],
+            'required' => ['classification', 'subject', 'body', 'note', 'recommended_stage', 'next_follow_up_at', 'needs_human_review', 'should_send', 'confidence', 'conversation_state', 'strategy_key', 'strategy_reason', 'known_goal', 'known_objection', 'next_best_action'],
             'additionalProperties' => false,
         ];
     }
@@ -132,8 +145,7 @@ if (!function_exists('lead_ai_system_prompt')) {
             'If thread_state.active_thread is false, a friendly greeting is allowed and often helpful for follow-up messages, as long as the reply still feels specific to the current lead and prior context.',
             'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
             'Only avoid the greeting when the thread is active and clearly a live conversation.',
-            'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
-            'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
+            'Financial boundary: do not discuss costs, prices, payments, insurance, financing, monthly amounts, or approval by SMS. If asked, say every smile is custom and guide the lead to the complimentary consultation without adding financial details.',
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
             'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
@@ -145,6 +157,8 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'Conversion intelligence: use conversion_memory as durable context. Follow its recommended_action unless the newest patient message changes the situation. Select one strategy_key, explain the choice in strategy_reason, and return the updated conversation_state, known_goal, known_objection, and next_best_action.',
+            'Do not repeat either of the two recent strategies unless the latest patient message makes that strategy necessary. Ask at most one easy patient-facing question.',
             'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: do not message if the patient asks to stop. If they say STOP/CANCEL/UNSUBSCRIBE, classify not_interested, recommend opted_out, should_send false, needs_human_review false.',
@@ -188,8 +202,7 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, the body should start with the response itself, not "Hi", "Hello", or the patient name.',
             'Only avoid the greeting when the thread is active and clearly a live conversation.',
             'Email format: concise subject, plain-text body, short paragraphs, signed "The Elite Smiles Team" with no phone number.',
-            'Financing: 0% interest may be available for qualified patients. Do not promise approval.',
-            'Pricing: never give exact pricing without an exam. Explain that every smile case is custom, not cookie-cutter, and Dr. Meden needs to see the teeth, bite, and goals before options, pricing, and financing can be reviewed accurately.',
+            'Financial boundary: do not discuss costs, prices, payments, insurance, financing, monthly amounts, or approval by email. If asked, say every smile is custom and guide the lead to the complimentary consultation without adding financial details.',
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Invite clinical questions to be reviewed with Dr. Meden.',
             'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
@@ -198,6 +211,8 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'Conversion intelligence: use conversion_memory as durable context. Follow its recommended_action unless the newest patient message changes the situation. Select one strategy_key, explain the choice in strategy_reason, and return the updated conversation_state, known_goal, known_objection, and next_best_action.',
+            'Do not repeat either of the two recent strategies unless the latest patient message makes that strategy necessary. Keep the email focused on one clear next step.',
             'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
             'If operator instructions are present in the context, follow them while staying compliant.',
             'Compliance: if the patient asks to stop or says they are not interested, do not write a follow-up email to send. Set should_send false.',
@@ -674,6 +689,8 @@ if (!function_exists('lead_ai_context')) {
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1200),
             ],
             'thread_state' => $threadState,
+            'conversion_memory' => $leadId > 0 ? lead_conversion_load($leadId) : [],
+            'recent_conversion_strategies' => $leadId > 0 ? lead_conversion_recent_strategies($leadId, 3) : [],
             'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
             'patient_conversation' => lead_ai_patient_conversation($leadId),
@@ -709,6 +726,8 @@ if (!function_exists('lead_ai_email_context')) {
                 'notes' => mb_substr((string)($lead['notes'] ?? ''), 0, 1600),
             ],
             'thread_state' => $threadState,
+            'conversion_memory' => $leadId > 0 ? lead_conversion_load($leadId) : [],
+            'recent_conversion_strategies' => $leadId > 0 ? lead_conversion_recent_strategies($leadId, 3) : [],
             'scheduling_context' => lead_ai_scheduling_context($lead, $latestMessage),
             'prompt_context' => $latestMessage,
             'patient_conversation' => lead_ai_patient_conversation($leadId),
@@ -910,6 +929,7 @@ if (!function_exists('lead_ai_generate_reply')) {
         $data['should_send'] = (bool)($data['should_send'] ?? false);
         $data['needs_human_review'] = (bool)($data['needs_human_review'] ?? true);
         $data = lead_ai_apply_scheduling_posture($lead, $data, $latestMessage);
+        lead_conversion_apply_ai_result((int) ($lead['id'] ?? 0), $data);
 
         if ($data['reply'] === '') {
             $data['should_send'] = false;
@@ -1002,6 +1022,7 @@ if (!function_exists('lead_ai_generate_email')) {
         $data['should_send'] = (bool)($data['should_send'] ?? false);
         $data['needs_human_review'] = (bool)($data['needs_human_review'] ?? true);
         $data = lead_ai_apply_scheduling_posture($lead, $data, $latestMessage);
+        lead_conversion_apply_ai_result((int) ($lead['id'] ?? 0), $data);
 
         if ($data['subject'] === '' || $data['body'] === '') {
             $data['should_send'] = false;

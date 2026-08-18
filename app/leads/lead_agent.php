@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/notifications/internal_sms.php';
 require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
 require_once __DIR__ . '/lead_agent_observability.php';
+require_once __DIR__ . '/lead_conversion_intelligence.php';
 
 if (!function_exists('lead_agent_enabled')) {
     function lead_agent_enabled(): bool
@@ -152,6 +153,7 @@ if (!function_exists('lead_agent_ensure_schema')) {
             }
         }
         lead_agent_observability_ensure_schema();
+        lead_conversion_ensure_schema();
     }
 }
 
@@ -1217,6 +1219,21 @@ if (!function_exists('lead_agent_first_name')) {
     }
 }
 
+if (!function_exists('lead_agent_draft_conversion_meta')) {
+    function lead_agent_draft_conversion_meta(array $draft, array $memory = []): array
+    {
+        $strategy = trim((string) ($draft['strategy_key'] ?? $memory['strategy_key'] ?? ''));
+        if (!array_key_exists($strategy, lead_conversion_strategy_labels())) {
+            $strategy = 'consultation_value';
+        }
+        return [
+            'strategy_key' => $strategy,
+            'strategy_reason' => mb_substr(trim((string) ($draft['strategy_reason'] ?? $memory['strategy_reason'] ?? 'Safe next-best action selected from the complete conversation.')), 0, 500),
+            'decision_confidence' => max(0.0, min(1.0, (float) ($draft['confidence'] ?? $memory['confidence'] ?? 0.5))),
+        ];
+    }
+}
+
 if (!function_exists('lead_agent_approved_followup')) {
     function lead_agent_approved_followup(array $lead, string $channel, int $step): array
     {
@@ -1311,7 +1328,7 @@ if (!function_exists('lead_agent_send_natural_reply')) {
             return $send + ['sent' => false];
         }
         lead_agent_event($leadId, $eventKey, 'automatic_reply', $channel, 'sent', $intent);
-        lead_agent_record_touchpoint($lead, $eventKey, $channel, 0, 'automatic_reply', $send);
+        lead_agent_record_touchpoint($lead, $eventKey, $channel, 0, 'automatic_reply', $send + lead_agent_draft_conversion_meta($draft));
         return $send + ['sent' => true];
     }
 }
@@ -1558,6 +1575,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             lead_agent_enroll($leadId, ['source' => 'inbound_message']);
             $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
         }
+        $conversionMemory = lead_conversion_refresh($lead, 0);
         if (!empty($state['human_takeover'])) {
             lead_agent_release_expired_human_takeovers($leadId);
             $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
@@ -1649,15 +1667,19 @@ if (!function_exists('lead_agent_handle_inbound')) {
                 $ai = lead_ai_generate_email($leadForAi, $body, 'lead_agent_inbound_email');
                 $data = (array) ($ai['data'] ?? []);
                 if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                    $draft = ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')];
+                    $draft = ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')] + lead_agent_draft_conversion_meta($data, $conversionMemory);
                 }
             } elseif (function_exists('lead_ai_generate_reply')) {
                 $ai = lead_ai_generate_reply($leadForAi, $body, 'lead_agent_inbound_sms');
                 $data = (array) ($ai['data'] ?? []);
                 if (!empty($ai['ok']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                    $draft = ['subject' => '', 'body' => (string) ($data['reply'] ?? '')];
+                    $draft = ['subject' => '', 'body' => (string) ($data['reply'] ?? '')] + lead_agent_draft_conversion_meta($data, $conversionMemory);
                 }
             }
+        }
+
+        if (is_array($draft)) {
+            $draft += lead_agent_draft_conversion_meta($draft, $conversionMemory);
         }
 
         if (!$draft || lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? '')) !== []) {
@@ -1684,7 +1706,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             'lead_id' => $leadId,
         ]);
         lead_agent_event($leadId, $sendKey, 'automatic_reply', $channel, 'sent', $intent);
-        lead_agent_record_touchpoint($lead, $sendKey, $channel, 0, 'automatic_reply', $send);
+        lead_agent_record_touchpoint($lead, $sendKey, $channel, 0, 'automatic_reply', $send + lead_agent_draft_conversion_meta($draft, $conversionMemory));
         lead_agent_record_learning($intent, $channel, 'automatic_reply_sent');
         return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => true];
     }
@@ -1804,6 +1826,7 @@ if (!function_exists('lead_agent_contextual_followup')) {
     function lead_agent_contextual_followup(array $lead, string $channel, int $step): ?array
     {
         $leadId = (int) ($lead['id'] ?? 0);
+        $conversionMemory = $leadId > 0 ? lead_conversion_refresh($lead, $step) : [];
         $hasConversation = false;
         try {
             $hasConversation = ((int) db_value('SELECT COUNT(*) FROM lead_messages WHERE lead_id = :lead_id', ['lead_id' => $leadId])
@@ -1812,7 +1835,7 @@ if (!function_exists('lead_agent_contextual_followup')) {
             $hasConversation = false;
         }
         if (!$hasConversation) {
-            return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_template'];
+            return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_template'] + lead_agent_draft_conversion_meta([], $conversionMemory);
         }
 
         $leadAiPath = __DIR__ . '/lead_ai.php';
@@ -1825,6 +1848,15 @@ if (!function_exists('lead_agent_contextual_followup')) {
             . 'If the latest patient message still needs an answer, confirmed availability is being checked, appointment options were offered, or a staff member owns the thread, do not send.';
         $leadForAi = $lead;
         $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\n" . $instruction);
+        if ($conversionMemory !== []) {
+            $leadForAi['notes'] .= "\n\nConversion decision (never mention this internal analysis):\n"
+                . 'Strategy: ' . (string) ($conversionMemory['strategy_key'] ?? '') . "\n"
+                . 'Why: ' . (string) ($conversionMemory['strategy_reason'] ?? '') . "\n"
+                . 'Next action: ' . (string) ($conversionMemory['recommended_action'] ?? '') . "\n"
+                . 'Known goal: ' . (string) ($conversionMemory['treatment_goal'] ?? '') . "\n"
+                . 'Known objection: ' . (string) ($conversionMemory['primary_objection'] ?? '') . "\n"
+                . 'Language: ' . (string) ($conversionMemory['language'] ?? 'en');
+        }
         $learned = lead_agent_cadence_learning_guidance($channel, 3);
         if ($learned !== []) {
             $guidance = array_values(array_filter(array_map(static fn(array $item): string => trim((string) ($item['guidance'] ?? '')), $learned)));
@@ -1836,18 +1868,18 @@ if (!function_exists('lead_agent_contextual_followup')) {
             $ai = lead_ai_generate_email($leadForAi, '', 'lead_agent_follow_up');
             $data = (array) ($ai['data'] ?? []);
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? ''), 'draft_source' => 'ai'];
+                return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? ''), 'draft_source' => 'ai'] + lead_agent_draft_conversion_meta($data, $conversionMemory);
             }
-            return lead_agent_safe_contextual_fallback($lead, $channel, $step);
+            return lead_agent_safe_contextual_fallback($lead, $channel, $step) + lead_agent_draft_conversion_meta([], $conversionMemory);
         }
         if ($channel === 'sms' && function_exists('lead_ai_generate_reply')) {
             $ai = lead_ai_generate_reply($leadForAi, '', 'lead_agent_follow_up');
             $data = (array) ($ai['data'] ?? []);
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                return ['subject' => '', 'body' => (string) ($data['reply'] ?? ''), 'draft_source' => 'ai'];
+                return ['subject' => '', 'body' => (string) ($data['reply'] ?? ''), 'draft_source' => 'ai'] + lead_agent_draft_conversion_meta($data, $conversionMemory);
             }
         }
-        return lead_agent_safe_contextual_fallback($lead, $channel, $step);
+        return lead_agent_safe_contextual_fallback($lead, $channel, $step) + lead_agent_draft_conversion_meta([], $conversionMemory);
     }
 }
 
@@ -2001,11 +2033,11 @@ if (!function_exists('lead_agent_process_state')) {
             lead_agent_event($leadId, $eventKey . '-draft-' . date('YmdHis'), 'draft_fallback_used', $channel, 'recorded', $draftSource, ['step' => $nextStep]);
         }
         if ($dryRun || lead_agent_mode() === 'shadow') {
-            lead_agent_event($leadId, $eventKey . '-shadow-' . date('YmdHi'), 'shadow_cadence', $channel, 'would_send', (string) $schedule['phase'], ['step' => $nextStep]);
+            lead_agent_event($leadId, $eventKey . '-shadow-' . date('YmdHi'), 'shadow_cadence', $channel, 'would_send', (string) $schedule['phase'], ['step' => $nextStep] + lead_agent_draft_conversion_meta($draft));
             db_execute('UPDATE lead_agent_states SET lock_token = \'\', locked_at = NULL, last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id', [
                 'decision' => 'shadow_would_send_step_' . $nextStep, 'lead_id' => $leadId,
             ]);
-            return ['lead_id' => $leadId, 'action' => 'would_send', 'channel' => $channel, 'step' => $nextStep];
+            return ['lead_id' => $leadId, 'action' => 'would_send', 'channel' => $channel, 'step' => $nextStep] + lead_agent_draft_conversion_meta($draft);
         }
 
         if (!lead_agent_event($leadId, $eventKey, 'cadence_reserved', $channel, 'pending', (string) $schedule['phase'], ['step' => $nextStep])) {
@@ -2063,9 +2095,9 @@ if (!function_exists('lead_agent_process_state')) {
         ]);
         lead_agent_sync_crm_followup_schedule($leadId);
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
-        lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send);
+        lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send + lead_agent_draft_conversion_meta($draft));
         lead_agent_record_learning('cadence_followup', $channel, $draftSource . '_sent');
-        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at'], 'draft_source' => $draftSource];
+        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at'], 'draft_source' => $draftSource] + lead_agent_draft_conversion_meta($draft);
     }
 }
 
@@ -2089,10 +2121,12 @@ if (!function_exists('lead_agent_run_due')) {
         $backfill = [];
         $repairedCatchup = 0;
         $recoveredDraftingExceptions = 0;
+        $conversionMemoriesRefreshed = 0;
         $dueCount = 0;
         $results = [];
         try {
             $backfill = lead_agent_backfill_eligible(200, $dryRun);
+            $conversionMemoriesRefreshed = $dryRun ? 0 : lead_conversion_refresh_active_memories(40);
             $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
             $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
             $rows = db_all("SELECT * FROM lead_agent_states
@@ -2142,7 +2176,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

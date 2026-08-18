@@ -16,6 +16,9 @@ lead_email_ensure_schema();
 foreach (['human_takeover_until', 'scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context'] as $column) {
     integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'"), 'Scheduling state column is missing: ' . $column);
 }
+foreach (['strategy_key', 'strategy_reason', 'decision_confidence'] as $column) {
+    integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_touchpoints LIKE '" . $column . "'"), 'Conversion tracking column is missing: ' . $column);
+}
 
 db_begin();
 try {
@@ -71,9 +74,12 @@ try {
         'sms',
         1,
         'same_day',
-        ['message_id' => $messageId, 'provider_id' => 'SM_TEST_' . $leadId, 'delivery_status' => 'queued']
+        ['message_id' => $messageId, 'provider_id' => 'SM_TEST_' . $leadId, 'delivery_status' => 'queued', 'strategy_key' => 'goal_discovery', 'strategy_reason' => 'Synthetic next-best action.', 'decision_confidence' => 0.82]
     );
     integration_expect($touchpointId > 0, 'Automated touchpoint attribution was not created.');
+    $strategyTouchpoint = db_one('SELECT strategy_key, strategy_reason, decision_confidence FROM lead_agent_touchpoints WHERE id = :id LIMIT 1', ['id' => $touchpointId]);
+    integration_expect((string) ($strategyTouchpoint['strategy_key'] ?? '') === 'goal_discovery', 'Touchpoint must retain the selected conversion strategy.');
+    integration_expect((float) ($strategyTouchpoint['decision_confidence'] ?? 0) >= 0.82, 'Touchpoint must retain decision confidence.');
     lead_agent_update_touchpoint_delivery('sms', $messageId, 'delivered', 'SM_TEST_' . $leadId);
     lead_agent_attribute_outcome($leadId, 'reply');
     lead_agent_attribute_outcome($leadId, 'scheduling_intent');
@@ -112,6 +118,9 @@ try {
     $sortedTimes = $conversationTimes;
     sort($sortedTimes);
     integration_expect($conversationTimes === $sortedTimes, 'AI patient conversation must be chronological.');
+    $memory = lead_conversion_refresh(['id' => $leadId, 'full_name' => 'Lead Agent Integration Test', 'procedure_interest' => 'veneers'], 3);
+    integration_expect((string) ($memory['treatment_goal'] ?? '') === 'veneers', 'Conversion memory must preserve known treatment interest.');
+    integration_expect((bool) db_one('SELECT lead_id FROM lead_agent_conversion_memories WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]), 'Conversion memory must persist per lead.');
 
     $trackingToken = bin2hex(random_bytes(12));
     $emailId = lead_email_insert([

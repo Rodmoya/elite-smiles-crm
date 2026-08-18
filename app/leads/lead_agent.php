@@ -52,6 +52,7 @@ if (!function_exists('lead_agent_ensure_schema')) {
             last_decision VARCHAR(80) NOT NULL DEFAULT '',
             handoff_notified_at DATETIME NULL,
             human_takeover TINYINT(1) NOT NULL DEFAULT 0,
+            human_takeover_until DATETIME NULL,
             pause_reason VARCHAR(190) NOT NULL DEFAULT '',
             lock_token VARCHAR(80) NOT NULL DEFAULT '',
             locked_at DATETIME NULL,
@@ -138,6 +139,7 @@ if (!function_exists('lead_agent_ensure_schema')) {
             KEY idx_lead_agent_learning_evidence (evidence_count, last_seen_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $stateColumns = [
+            'human_takeover_until' => 'ALTER TABLE lead_agent_states ADD COLUMN human_takeover_until DATETIME NULL AFTER human_takeover',
             'scheduling_phase' => "ALTER TABLE lead_agent_states ADD COLUMN scheduling_phase VARCHAR(40) NOT NULL DEFAULT '' AFTER pause_reason",
             'availability_option_1' => 'ALTER TABLE lead_agent_states ADD COLUMN availability_option_1 DATETIME NULL AFTER scheduling_phase',
             'availability_option_2' => 'ALTER TABLE lead_agent_states ADD COLUMN availability_option_2 DATETIME NULL AFTER availability_option_1',
@@ -251,17 +253,15 @@ if (!function_exists('lead_agent_cadence_plan')) {
         return [
             1 => ['hours' => 8, 'channel' => 'sms', 'phase' => 'same_day'],
             2 => ['hours' => 18, 'channel' => 'email', 'phase' => 'active_sprint'],
-            3 => ['hours' => 24, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            3 => ['hours' => 32, 'channel' => 'sms', 'phase' => 'active_sprint'],
             4 => ['hours' => 42, 'channel' => 'email', 'phase' => 'active_sprint'],
-            5 => ['hours' => 48, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            5 => ['hours' => 56, 'channel' => 'sms', 'phase' => 'active_sprint'],
             6 => ['hours' => 66, 'channel' => 'email', 'phase' => 'active_sprint'],
-            7 => ['hours' => 72, 'channel' => 'sms', 'phase' => 'active_sprint'],
-            8 => ['hours' => 96, 'channel' => 'email', 'phase' => 'daily_taper'],
-            9 => ['hours' => 120, 'channel' => 'sms', 'phase' => 'daily_taper'],
-            10 => ['hours' => 144, 'channel' => 'email', 'phase' => 'daily_taper'],
-            11 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'daily_taper'],
-            12 => ['hours' => 252, 'channel' => 'email', 'phase' => 'twice_weekly'],
-            13 => ['hours' => 336, 'channel' => 'sms', 'phase' => 'twice_weekly'],
+            7 => ['hours' => 80, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            8 => ['hours' => 90, 'channel' => 'email', 'phase' => 'active_sprint'],
+            9 => ['hours' => 104, 'channel' => 'sms', 'phase' => 'active_sprint'],
+            10 => ['hours' => 114, 'channel' => 'email', 'phase' => 'active_sprint'],
+            11 => ['hours' => 138, 'channel' => 'sms', 'phase' => 'daily_follow_up'],
         ];
     }
 }
@@ -293,10 +293,23 @@ if (!function_exists('lead_agent_step_schedule')) {
         }
 
         $extra = max(1, $step - count($plan));
-        $hours = 336 + ($extra * 84);
+        $hours = 138 + ($extra * 24);
         $channel = $extra % 2 === 0 ? 'sms' : 'email';
         $at = lead_agent_align_contact_time($start->modify('+' . ($hours * 3600) . ' seconds'));
-        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'twice_weekly', 'at' => $at->format('Y-m-d H:i:s')];
+        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'daily_follow_up', 'at' => $at->format('Y-m-d H:i:s')];
+    }
+}
+
+if (!function_exists('lead_agent_daily_outbound_limit')) {
+    function lead_agent_daily_outbound_limit(string $startedAt, ?DateTimeImmutable $now = null): int
+    {
+        $zone = new DateTimeZone(APP_TIMEZONE);
+        $started = new DateTimeImmutable($startedAt !== '' ? $startedAt : 'now', $zone);
+        $current = $now ? $now->setTimezone($zone) : new DateTimeImmutable('now', $zone);
+        $startedDay = $started->setTime(0, 0);
+        $currentDay = $current->setTime(0, 0);
+        $elapsedDays = max(0, (int) $startedDay->diff($currentDay)->format('%r%a'));
+        return $elapsedDays < 5 ? 2 : 1;
     }
 }
 
@@ -384,7 +397,7 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/\b(call me|please call|can you call|complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
             return 'needs_attention';
         }
-        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|afternoon|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
+        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|mornings|mornign|afternoon|afternoons|evening|weekday|weekend|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
             return 'ready_to_schedule';
         }
         return 'general';
@@ -396,7 +409,7 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
     {
         $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
         $period = '';
-        if (preg_match('/\b(morning|mornings|mañana|mañanas)\b/ui', $text)) {
+        if (preg_match('/\b(morning|mornings|mornign|mañana|mañanas)\b/ui', $text)) {
             $period = 'morning';
         } elseif (preg_match('/\b(afternoon|afternoons|tarde|tardes)\b/ui', $text)) {
             $period = 'afternoon';
@@ -408,7 +421,9 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
         $dayAliases = [
             'monday' => 'monday', 'lunes' => 'monday',
             'tuesday' => 'tuesday', 'martes' => 'tuesday',
-            'wednesday' => 'wednesday', 'miércoles' => 'wednesday', 'miercoles' => 'wednesday',
+            'wednesday' => 'wednesday', 'wednesdays' => 'wednesday', 'wensday' => 'wednesday',
+            'wensdays' => 'wednesday', 'wenesday' => 'wednesday', 'wenesdays' => 'wednesday',
+            'miércoles' => 'wednesday', 'miercoles' => 'wednesday',
             'thursday' => 'thursday', 'jueves' => 'thursday',
             'friday' => 'friday', 'viernes' => 'friday',
             'saturday' => 'saturday', 'sábado' => 'saturday', 'sabado' => 'saturday',
@@ -416,7 +431,7 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
             'today' => 'today', 'hoy' => 'today',
             'tomorrow' => 'tomorrow', 'next week' => 'next week',
         ];
-        if (preg_match('/\b(next\s+week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
+        if (preg_match('/\b(next\s+week|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
             $day = $dayAliases[strtolower((string) $matches[1])] ?? '';
         }
 
@@ -431,7 +446,17 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
             'period' => $period,
             'specific_time' => $specificTime,
             'has_preference' => $day !== '' || $period !== '' || $specificTime !== '',
+            'ready_for_availability' => $day !== '' && ($period !== '' || $specificTime !== ''),
         ];
+    }
+}
+
+if (!function_exists('lead_agent_scheduling_preferences_complete')) {
+    function lead_agent_scheduling_preferences_complete(array $preferences): bool
+    {
+        return trim((string) ($preferences['day'] ?? '')) !== ''
+            && (trim((string) ($preferences['period'] ?? '')) !== ''
+                || trim((string) ($preferences['specific_time'] ?? '')) !== '');
     }
 }
 
@@ -459,14 +484,28 @@ if (!function_exists('lead_agent_scheduling_acknowledgment')) {
     function lead_agent_scheduling_acknowledgment(array $lead, array $preferences): string
     {
         $first = lead_agent_first_name($lead);
-        $hello = $first !== '' ? 'Perfect, ' . $first . '—' : 'Perfect—';
-        if (empty($preferences['has_preference'])) {
-            return ($first !== '' ? 'Absolutely, ' . $first . '—' : 'Absolutely—')
-                . 'I can help with that. Are mornings or afternoons usually better for you?';
+        $day = trim((string) ($preferences['day'] ?? ''));
+        $period = trim((string) ($preferences['period'] ?? ''));
+        $specificTime = trim((string) ($preferences['specific_time'] ?? ''));
+        $hasDay = $day !== '';
+        $hasTime = $period !== '' || $specificTime !== '';
+        $name = $first !== '' ? ', ' . $first : '';
+        if (!$hasDay && !$hasTime) {
+            return 'Absolutely' . $name . '—I can check what we have available this week. '
+                . 'Do mornings or afternoons usually work better for you? '
+                . 'We schedule consultations from 9:00 AM through our last consultation at 6:00 PM.';
+        }
+        if ($hasDay && !$hasTime) {
+            return ucfirst($day) . ' works as a preference' . $name . '. Do you prefer morning or afternoon? '
+                . 'We schedule consultations from 9:00 AM through our last consultation at 6:00 PM.';
+        }
+        if (!$hasDay && $hasTime) {
+            $timeLabel = $specificTime !== '' ? 'Around ' . $specificTime : ucfirst($period);
+            return $timeLabel . ' works as a preference' . $name . '. Is there a particular day this week that is easiest for you?';
         }
         $label = lead_agent_scheduling_preference_label($preferences);
-        return $hello . ($label !== '' ? $label . ' should work. ' : '')
-            . 'Let me check our availability and I’ll send you two options shortly.';
+        return ($label !== '' ? $label : 'That time') . ' sounds good' . $name . '. '
+            . 'Let me check whether that is available, and I’ll get back to you shortly.';
     }
 }
 
@@ -740,6 +779,7 @@ if (!function_exists('lead_agent_enroll')) {
                 updated_at = NOW()",
             ['lead_id' => $leadId, 'started_at' => $startedAt, 'next_action_at' => $next['at'], 'last_action_at' => $startedAt]
         );
+        lead_agent_sync_crm_followup_schedule($leadId);
         lead_agent_event($leadId, 'enroll-' . $leadId . '-' . date('YmdHis'), 'enrolled', '', 'recorded', 'first_touch_completed', $context + ['next_action_at' => $next['at']]);
         if (function_exists('lead_comm_insert_activity')) {
             lead_comm_insert_activity($leadId, 'lead_agent_enrolled', 'Lead Agent started the active-sprint nurture sequence.', [
@@ -824,7 +864,7 @@ if (!function_exists('lead_agent_pause')) {
 }
 
 if (!function_exists('lead_agent_record_human_outbound')) {
-    /** Manual staff communication is an explicit ownership signal. */
+    /** Manual staff communication owns the thread only until the next day. */
     function lead_agent_record_human_outbound(int $leadId, string $channel, string $body): void
     {
         if ($leadId <= 0) {
@@ -835,22 +875,104 @@ if (!function_exists('lead_agent_record_human_outbound')) {
         if (!$state) {
             return;
         }
+        $resumeAt = (new DateTimeImmutable('tomorrow 09:00', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
         db_execute(
             "UPDATE lead_agent_states
-             SET status = 'human_takeover', human_takeover = 1, next_action_at = NULL,
-                 pause_reason = 'manual_staff_message', last_decision = 'manual_staff_takeover',
+             SET status = 'human_takeover', human_takeover = 1, human_takeover_until = :resume_at, next_action_at = NULL,
+                 pause_reason = 'manual_staff_message_until_next_day', last_decision = 'temporary_staff_takeover',
                  lock_token = '', locked_at = NULL, updated_at = NOW()
              WHERE lead_id = :lead_id",
-            ['lead_id' => $leadId]
+            ['resume_at' => $resumeAt, 'lead_id' => $leadId]
         );
+        db_execute('UPDATE leads SET next_follow_up_at = :resume_at, updated_at = NOW() WHERE id = :lead_id LIMIT 1', [
+            'resume_at' => $resumeAt,
+            'lead_id' => $leadId,
+        ]);
         lead_agent_event(
             $leadId,
             'human-outbound-' . $channel . '-' . $leadId . '-' . hash('sha256', $body . '|' . microtime(true)),
             'human_takeover',
             $channel,
             'recorded',
-            'manual_staff_message'
+            'manual_staff_message_until_next_day',
+            ['resume_at' => $resumeAt]
         );
+    }
+}
+
+if (!function_exists('lead_agent_release_expired_human_takeovers')) {
+    function lead_agent_release_expired_human_takeovers(?int $onlyLeadId = null): int
+    {
+        lead_agent_ensure_schema();
+        $params = [];
+        $leadFilter = '';
+        if ($onlyLeadId !== null && $onlyLeadId > 0) {
+            $leadFilter = ' AND lead_id = :lead_id';
+            $params['lead_id'] = $onlyLeadId;
+        }
+        $rows = db_all("SELECT * FROM lead_agent_states
+            WHERE status = 'human_takeover' AND human_takeover = 1
+              AND pause_reason IN ('manual_staff_message', 'manual_staff_message_until_next_day')
+              AND (human_takeover_until <= NOW() OR (human_takeover_until IS NULL AND DATE(updated_at) < CURDATE())){$leadFilter}", $params);
+        $released = 0;
+        foreach ($rows as $state) {
+            $leadId = (int) ($state['lead_id'] ?? 0);
+            $latest = lead_agent_latest_patient_direction($leadId);
+            if ((string) ($latest['direction'] ?? '') === 'inbound') {
+                continue;
+            }
+            $resume = lead_agent_align_contact_time(new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
+            $released += db_execute("UPDATE lead_agent_states
+                SET status = 'active', human_takeover = 0, human_takeover_until = NULL,
+                    pause_reason = '', next_action_at = :next_action_at,
+                    last_decision = 'temporary_staff_takeover_expired', updated_at = NOW()
+                WHERE lead_id = :lead_id AND status = 'human_takeover' AND human_takeover = 1", [
+                'next_action_at' => $resume,
+                'lead_id' => $leadId,
+            ]);
+            db_execute('UPDATE leads SET next_follow_up_at = :next_action_at, updated_at = NOW() WHERE id = :lead_id LIMIT 1', [
+                'next_action_at' => $resume,
+                'lead_id' => $leadId,
+            ]);
+            lead_agent_event($leadId, 'temporary-takeover-released-' . $leadId . '-' . date('Ymd'), 'resumed', '', 'recorded', 'temporary_staff_takeover_expired');
+        }
+        return $released;
+    }
+}
+
+if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
+    /** Keep the lead list and worker on one authoritative follow-up schedule. */
+    function lead_agent_sync_crm_followup_schedule(?int $onlyLeadId = null): int
+    {
+        lead_agent_ensure_schema();
+        $params = [];
+        $where = '';
+        if ($onlyLeadId !== null && $onlyLeadId > 0) {
+            $where = ' WHERE s.lead_id = :lead_id';
+            $params['lead_id'] = $onlyLeadId;
+        }
+        $rows = db_all("SELECT s.lead_id, s.status, s.human_takeover, s.human_takeover_until, s.next_action_at
+            FROM lead_agent_states s{$where}", $params);
+        $updated = 0;
+        foreach ($rows as $state) {
+            $status = (string) ($state['status'] ?? '');
+            $temporaryTakeover = $status === 'human_takeover'
+                && !empty($state['human_takeover'])
+                && trim((string) ($state['human_takeover_until'] ?? '')) !== '';
+            $nextAt = null;
+            if (in_array($status, ['active', 'engaged'], true) && empty($state['human_takeover'])) {
+                $nextAt = trim((string) ($state['next_action_at'] ?? '')) ?: null;
+            } elseif ($temporaryTakeover) {
+                $nextAt = trim((string) ($state['human_takeover_until'] ?? '')) ?: null;
+            }
+            $updated += db_execute('UPDATE leads SET next_follow_up_at = :next_action_at, updated_at = NOW()
+                WHERE id = :lead_id AND NOT (next_follow_up_at <=> :next_action_compare) LIMIT 1', [
+                'next_action_at' => $nextAt,
+                'next_action_compare' => $nextAt,
+                'lead_id' => (int) ($state['lead_id'] ?? 0),
+            ]);
+        }
+        return $updated;
     }
 }
 
@@ -860,7 +982,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         $leadId = (int) ($lead['id'] ?? 0);
         $status = $kind === 'ready_to_schedule' ? 'ready_to_schedule' : 'needs_attention';
         lead_agent_pause($leadId, $reason, $status);
-        db_execute('UPDATE lead_agent_states SET human_takeover = 1, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
+        db_execute('UPDATE lead_agent_states SET human_takeover = 1, human_takeover_until = NULL, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
             'lead_id' => $leadId,
         ]);
 
@@ -906,9 +1028,10 @@ if (!function_exists('lead_agent_internal_handoff')) {
         $internal = ['ok' => false, 'message' => 'Rod recipient is unavailable.'];
         $recipient = internal_sms_find_recipient('rod_moya');
         if ($recipient && !empty($recipient['enabled'])) {
+            $leadUrl = base_url('leads.php?id=' . $leadId);
             $internal = internal_sms_send(
                 $recipient,
-                'Elite AI: ' . $operatorMessage . ' Open CRM lead #' . $leadId . '.',
+                'Elite AI: ' . $operatorMessage . ' Open ' . $leadName . ': ' . $leadUrl,
                 0
             );
         }
@@ -1122,6 +1245,7 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
         $preferences['has_preference'] = trim((string) ($preferences['day'] ?? '')) !== ''
             || trim((string) ($preferences['period'] ?? '')) !== ''
             || trim((string) ($preferences['specific_time'] ?? '')) !== '';
+        $preferences['ready_for_availability'] = lead_agent_scheduling_preferences_complete($preferences);
         lead_agent_save_scheduling_preferences($leadId, $preferences);
         $message = lead_agent_scheduling_acknowledgment($lead, $preferences);
         $draft = $channel === 'email'
@@ -1135,12 +1259,15 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
         }
 
         $preferenceLabel = lead_agent_scheduling_preference_label($preferences);
-        if (empty($preferences['has_preference'])) {
-            db_execute("UPDATE lead_agent_states SET status = 'engaged', scheduling_phase = 'awaiting_preference', scheduling_context = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'asked_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+        if (empty($preferences['ready_for_availability'])) {
+            db_execute("UPDATE lead_agent_states SET status = 'engaged', human_takeover = 0, human_takeover_until = NULL, scheduling_phase = 'awaiting_preference', scheduling_context = :context, next_action_at = NULL, last_action_at = NOW(), last_decision = 'asked_for_missing_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", [
+                'context' => substr($preferenceLabel, 0, 500),
+                'lead_id' => $leadId,
+            ]);
             if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
                 db_execute("UPDATE leads SET follow_up_status = 'reply_received', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
             }
-            return ['ok' => true, 'handled' => true, 'intent' => 'ready_to_schedule', 'sent' => !empty($send['sent']), 'status' => 'awaiting_preference'];
+            return ['ok' => true, 'handled' => true, 'intent' => 'ready_to_schedule', 'sent' => !empty($send['sent']), 'status' => 'awaiting_preference', 'preference' => $preferenceLabel];
         }
 
         db_execute("UPDATE lead_agent_states SET scheduling_phase = 'awaiting_availability', scheduling_context = :context, next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_requested', updated_at = NOW() WHERE lead_id = :lead_id", [
@@ -1193,7 +1320,7 @@ if (!function_exists('lead_agent_offer_availability')) {
         if (!empty($send['shadow'])) {
             return ['ok' => true, 'message' => 'Shadow mode: the two options were prepared but not sent.', 'shadow' => true, 'channel' => $channel];
         }
-        db_execute("UPDATE lead_agent_states SET status = 'awaiting_slot_selection', scheduling_phase = 'awaiting_slot_selection', availability_option_1 = :option1, availability_option_2 = :option2, selected_availability = NULL, human_takeover = 0, pause_reason = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_offered', updated_at = NOW() WHERE lead_id = :lead_id", [
+        db_execute("UPDATE lead_agent_states SET status = 'awaiting_slot_selection', scheduling_phase = 'awaiting_slot_selection', availability_option_1 = :option1, availability_option_2 = :option2, selected_availability = NULL, human_takeover = 0, human_takeover_until = NULL, pause_reason = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_offered', updated_at = NOW() WHERE lead_id = :lead_id", [
             'option1' => $normalized1,
             'option2' => $normalized2,
             'lead_id' => $leadId,
@@ -1312,6 +1439,10 @@ if (!function_exists('lead_agent_handle_inbound')) {
         $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
         if (!$state) {
             lead_agent_enroll($leadId, ['source' => 'inbound_message']);
+            $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        }
+        if (!empty($state['human_takeover'])) {
+            lead_agent_release_expired_human_takeovers($leadId);
             $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
         }
         if ((string) ($state['last_inbound_event_key'] ?? '') === $eventKey) {
@@ -1568,9 +1699,8 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         if ($hour < 8 || $hour >= 21) {
             return 'quiet_hours';
         }
-        $startedDay = substr((string) ($state['started_at'] ?? ''), 0, 10);
         $today = date('Y-m-d');
-        $max = $today === $startedDay ? 3 : (((int) ($schedule['hours'] ?? 0)) <= 72 ? 2 : 1);
+        $max = lead_agent_daily_outbound_limit((string) ($state['started_at'] ?? ''));
         if (lead_agent_daily_outbound_count((int) $lead['id'], $today) >= $max) {
             return 'daily_cap';
         }
@@ -1663,6 +1793,7 @@ if (!function_exists('lead_agent_process_state')) {
             'decision' => 'sent_step_' . $nextStep,
             'lead_id' => $leadId,
         ]);
+        lead_agent_sync_crm_followup_schedule($leadId);
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
         lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send);
         return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at']];
@@ -1681,6 +1812,7 @@ if (!function_exists('lead_agent_run_due')) {
         if (!$dryRun) {
             lead_agent_prune_retention();
             lead_agent_backfill_touchpoints(5000);
+            lead_agent_release_expired_human_takeovers();
         }
         $limit = max(1, min(50, $limit));
         $run = lead_agent_run_start($dryRun);
@@ -1719,6 +1851,9 @@ if (!function_exists('lead_agent_run_due')) {
                     esm_log('lead_agent', 'Lead agent worker failed.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
                     $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
                 }
+            }
+            if (!$dryRun) {
+                lead_agent_sync_crm_followup_schedule();
             }
             lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup);
         } catch (Throwable $e) {

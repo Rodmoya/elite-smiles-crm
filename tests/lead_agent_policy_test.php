@@ -28,7 +28,7 @@ expect_true($spanishPreference['day'] === 'tuesday' && $spanishPreference['perio
 $nextWeekPreference = lead_agent_scheduling_preferences('Next week works for me.');
 expect_true($nextWeekPreference['day'] === 'next week' && !empty($nextWeekPreference['has_preference']), 'A next-week preference must not trigger the same scheduling question again.');
 $acknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], $preference);
-expect_true(str_contains($acknowledgment, 'Let me check our availability') && substr_count($acknowledgment, '?') === 0, 'A captured preference should receive a natural acknowledgment without another question.');
+expect_true(str_contains($acknowledgment, 'Let me check whether that is available') && substr_count($acknowledgment, '?') === 0, 'A complete preference should receive a natural acknowledgment without another question.');
 $preferenceQuestion = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], lead_agent_scheduling_preferences('I want to schedule.'));
 expect_true(substr_count($preferenceQuestion, '?') === 1 && str_contains($preferenceQuestion, 'mornings or afternoons'), 'A scheduling request without a preference should ask one simple question.');
 $option1 = '2026-08-19 15:30:00';
@@ -65,11 +65,17 @@ expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'human_takeover', 'human_takeover' => 1]) === 'conversation_owned_or_paused', 'Follow-up must stay silent while a human owns the conversation.');
 
 $plan = lead_agent_cadence_plan();
-expect_true(count($plan) === 13, 'Cadence should contain the active sprint, daily taper, and nurture steps.');
+expect_true(count($plan) === 11, 'Cadence should define the twice-daily five-day sprint and the first daily follow-up.');
 expect_true($plan[1]['hours'] === 8 && $plan[1]['channel'] === 'sms', 'A second SMS must wait at least eight hours.');
-expect_true($plan[7]['hours'] === 72 && $plan[7]['phase'] === 'active_sprint', 'Active sprint should cover the first 72 hours.');
-expect_true($plan[11]['hours'] === 168 && $plan[11]['phase'] === 'daily_taper', 'Daily taper should run through day seven.');
-expect_true($plan[12]['phase'] === 'twice_weekly', 'Long-term nurture should be twice weekly.');
+expect_true($plan[10]['hours'] === 114 && $plan[10]['phase'] === 'active_sprint', 'The active sprint should provide two follow-up opportunities per day through day five.');
+expect_true($plan[11]['hours'] === 138 && $plan[11]['phase'] === 'daily_follow_up', 'Daily follow-up should begin after the five-day sprint.');
+$dailyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 14);
+expect_true($dailyStep['hours'] === 210 && $dailyStep['phase'] === 'daily_follow_up', 'Long-term follow-up must continue every 24 hours instead of tapering to twice weekly.');
+
+$dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
+$daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
+expect_true($dayFiveLimit === 2, 'The agent may make up to two total outreach attempts per day through day five.');
+expect_true($daySixLimit === 1, 'The agent must reduce to one outreach attempt per day after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
 expect_true($incremental['at'] === '2026-08-06 08:00:00', 'An overdue catch-up must schedule the next step from the send time instead of an expired start date.');
@@ -115,6 +121,29 @@ $linkedReportCopy = lead_agent_linked_report_text($namedReportCopy['executive_su
 ]);
 expect_true(str_contains($linkedReportCopy, 'leads.php?id=7'), 'Scheduling names should link to their lead record.');
 expect_true(str_contains($linkedReportCopy, 'leads.php?id=8'), 'Exception names should link to their lead record.');
+
+$completePreference = lead_agent_scheduling_preferences('Wenesdays in the mornign work for me.');
+expect_true((string) ($completePreference['day'] ?? '') === 'wednesday', 'Common Wednesday misspellings should be understood.');
+expect_true((string) ($completePreference['period'] ?? '') === 'morning', 'Common morning misspellings should be understood.');
+expect_true(lead_agent_scheduling_preferences_complete($completePreference), 'A day and time period should be enough to request availability from Rod.');
+$completeAcknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Maria Lopez'], $completePreference);
+expect_true(str_contains($completeAcknowledgment, 'Let me check whether that is available'), 'Complete preferences must be acknowledged without promising availability.');
+expect_true(!str_contains($completeAcknowledgment, 'should work'), 'The agent must never imply an unconfirmed time is available.');
+
+$dayOnlyPreference = lead_agent_scheduling_preferences('Wednesday would work.');
+expect_true(!lead_agent_scheduling_preferences_complete($dayOnlyPreference), 'A day without a time preference must not trigger Rod yet.');
+$dayOnlyAcknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Maria Lopez'], $dayOnlyPreference);
+expect_true(str_contains($dayOnlyAcknowledgment, 'Do you prefer morning or afternoon?'), 'Day-only scheduling should collect the missing time preference.');
+expect_true(str_contains($dayOnlyAcknowledgment, '9:00 AM') && str_contains($dayOnlyAcknowledgment, '6:00 PM'), 'Scheduling guidance should explain consultation hours.');
+
+$timeOnlyPreference = lead_agent_scheduling_preferences('Mornings are easier.');
+expect_true(!lead_agent_scheduling_preferences_complete($timeOnlyPreference), 'A time period without a day must not trigger Rod yet.');
+$timeOnlyAcknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Maria Lopez'], $timeOnlyPreference);
+expect_true(str_contains($timeOnlyAcknowledgment, 'particular day this week'), 'Time-only scheduling should collect the missing day preference.');
+
+$openAvailabilityAcknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Maria Lopez'], lead_agent_scheduling_preferences('What do you have available?'));
+expect_true(str_contains($openAvailabilityAcknowledgment, 'check what we have available this week'), 'Open availability questions should receive a natural response.');
+expect_true(str_contains($openAvailabilityAcknowledgment, 'mornings or afternoons'), 'Open availability questions should narrow the preference before involving Rod.');
 
 $alignedMorning = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 06:15:00', new DateTimeZone(APP_TIMEZONE)));
 $alignedNight = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 21:15:00', new DateTimeZone(APP_TIMEZONE)));

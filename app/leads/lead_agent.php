@@ -247,6 +247,84 @@ if (!function_exists('lead_agent_learned_guidance')) {
     }
 }
 
+if (!function_exists('lead_agent_refresh_cadence_learning')) {
+    /**
+     * Convert observed delivery/reply outcomes into generalized guidance.
+     * No patient text or identifiers are stored in the learning table.
+     */
+    function lead_agent_refresh_cadence_learning(int $days = 30): int
+    {
+        lead_agent_ensure_schema();
+        $days = max(7, min(90, $days));
+        $rows = db_all("SELECT channel, cadence_step,
+                COUNT(*) AS touches,
+                SUM(replied_at IS NOT NULL) AS replies,
+                SUM(scheduling_intent_at IS NOT NULL) AS scheduling_intents,
+                SUM(consultation_booked_at IS NOT NULL) AS bookings,
+                SUM(delivery_status IN ('failed','undelivered','bounced','dropped')) AS failures
+            FROM lead_agent_touchpoints
+            WHERE cadence_step > 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
+            GROUP BY channel, cadence_step");
+        $updated = 0;
+        foreach ($rows as $row) {
+            $channel = in_array((string) ($row['channel'] ?? ''), ['sms', 'email'], true) ? (string) $row['channel'] : '';
+            $step = max(1, (int) ($row['cadence_step'] ?? 0));
+            $touches = max(0, (int) ($row['touches'] ?? 0));
+            if ($channel === '' || $touches < 1) {
+                continue;
+            }
+            $replies = max(0, (int) ($row['replies'] ?? 0));
+            $scheduling = max(0, (int) ($row['scheduling_intents'] ?? 0));
+            $bookings = max(0, (int) ($row['bookings'] ?? 0));
+            $failures = max(0, (int) ($row['failures'] ?? 0));
+            $replyRate = round(($replies / $touches) * 100, 1);
+            $schedulingRate = round(($scheduling / $touches) * 100, 1);
+            $failureRate = round(($failures / $touches) * 100, 1);
+            $intent = 'cadence_step_' . $step;
+            $key = $intent . '|' . $channel;
+            $guidance = "Observed {$touches} {$channel} follow-ups at cadence step {$step}: {$replyRate}% replied, {$schedulingRate}% showed scheduling intent, {$failureRate}% failed delivery. Keep the next message concise, warm, low-pressure, and focused on one next step.";
+            db_query(
+                "INSERT INTO lead_agent_learning_items
+                    (learning_key, intent, channel, guidance, evidence_count, successful_reply_count, scheduling_handoff_count, last_outcome, last_seen_at, created_at, updated_at)
+                 VALUES (:learning_key, :intent, :channel, :guidance, :evidence, :replies, :scheduling, :outcome, NOW(), NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE guidance = VALUES(guidance), evidence_count = VALUES(evidence_count),
+                    successful_reply_count = VALUES(successful_reply_count), scheduling_handoff_count = VALUES(scheduling_handoff_count),
+                    last_outcome = VALUES(last_outcome), last_seen_at = NOW(), updated_at = NOW()",
+                [
+                    'learning_key' => substr($key, 0, 120),
+                    'intent' => substr($intent, 0, 60),
+                    'channel' => $channel,
+                    'guidance' => substr($guidance, 0, 500),
+                    'evidence' => $touches,
+                    'replies' => $replies,
+                    'scheduling' => $scheduling,
+                    'outcome' => $bookings > 0 ? 'consultation_booked' : ($scheduling > 0 ? 'ready_to_schedule' : 'observed'),
+                ]
+            );
+            $updated++;
+        }
+        return $updated;
+    }
+}
+
+if (!function_exists('lead_agent_cadence_learning_guidance')) {
+    function lead_agent_cadence_learning_guidance(string $channel, int $limit = 3): array
+    {
+        lead_agent_ensure_schema();
+        $channel = in_array($channel, ['sms', 'email'], true) ? $channel : '';
+        if ($channel === '') {
+            return [];
+        }
+        $limit = max(1, min(5, $limit));
+        return db_all("SELECT intent, channel, guidance, evidence_count, successful_reply_count, scheduling_handoff_count
+            FROM lead_agent_learning_items
+            WHERE channel = :channel AND intent LIKE 'cadence_step_%'
+            ORDER BY (successful_reply_count + scheduling_handoff_count * 2) / GREATEST(evidence_count, 1) DESC,
+                     evidence_count DESC, last_seen_at DESC
+            LIMIT {$limit}", ['channel' => $channel]);
+    }
+}
+
 if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
@@ -1168,6 +1246,40 @@ if (!function_exists('lead_agent_approved_followup')) {
     }
 }
 
+if (!function_exists('lead_agent_safe_contextual_fallback')) {
+    /** Approved copy used only when the model cannot safely draft routine nurture. */
+    function lead_agent_safe_contextual_fallback(array $lead, string $channel, int $step): array
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $day = trim((string) ($lead['scheduling_preferred_day'] ?? ''));
+        $time = trim((string) ($lead['scheduling_preferred_time'] ?? ''));
+        $interest = strtolower(trim((string) ($lead['procedure_interest'] ?? '')));
+        $goal = str_contains($interest, 'veneer') ? 'veneers consultation' : 'smile consultation';
+
+        if ($day !== '' && $time === '') {
+            $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
+                . '. You previously mentioned ' . $day . '. Would morning or afternoon be easier?';
+        } elseif ($day === '' && $time !== '') {
+            $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
+                . '. You previously preferred ' . $time . '. What day usually works best for you?';
+        } elseif ($day !== '' && $time !== '') {
+            $body = $hello . ' we are here whenever you are ready for your complimentary ' . $goal
+                . '. Would you like me to ask Rod to check current availability for ' . $day . ' ' . $time . '?';
+        } elseif ($step >= 9) {
+            $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
+                . '. Would you like me to check what appointment times are currently available?';
+        } else {
+            return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_fallback'];
+        }
+
+        if ($channel === 'email') {
+            return ['subject' => 'Whenever you are ready', 'body' => $body . "\n\nElite Smiles", 'draft_source' => 'approved_fallback'];
+        }
+        return ['subject' => '', 'body' => $body, 'draft_source' => 'approved_fallback'];
+    }
+}
+
 if (!function_exists('lead_agent_cost_redirect')) {
     function lead_agent_cost_redirect(array $lead, string $channel): array
     {
@@ -1650,7 +1762,7 @@ if (!function_exists('lead_agent_contextual_followup')) {
             $hasConversation = false;
         }
         if (!$hasConversation) {
-            return lead_agent_approved_followup($lead, $channel, $step);
+            return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_template'];
         }
 
         $leadAiPath = __DIR__ . '/lead_ai.php';
@@ -1663,22 +1775,29 @@ if (!function_exists('lead_agent_contextual_followup')) {
             . 'If the latest patient message still needs an answer, confirmed availability is being checked, appointment options were offered, or a staff member owns the thread, do not send.';
         $leadForAi = $lead;
         $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\n" . $instruction);
+        $learned = lead_agent_cadence_learning_guidance($channel, 3);
+        if ($learned !== []) {
+            $guidance = array_values(array_filter(array_map(static fn(array $item): string => trim((string) ($item['guidance'] ?? '')), $learned)));
+            if ($guidance !== []) {
+                $leadForAi['notes'] .= "\n\nAggregated Lead Agent learning (never mention this to the lead):\n- " . implode("\n- ", $guidance);
+            }
+        }
         if ($channel === 'email' && function_exists('lead_ai_generate_email')) {
             $ai = lead_ai_generate_email($leadForAi, '', 'lead_agent_follow_up');
             $data = (array) ($ai['data'] ?? []);
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? '')];
+                return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? ''), 'draft_source' => 'ai'];
             }
-            return null;
+            return lead_agent_safe_contextual_fallback($lead, $channel, $step);
         }
         if ($channel === 'sms' && function_exists('lead_ai_generate_reply')) {
             $ai = lead_ai_generate_reply($leadForAi, '', 'lead_agent_follow_up');
             $data = (array) ($ai['data'] ?? []);
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
-                return ['subject' => '', 'body' => (string) ($data['reply'] ?? '')];
+                return ['subject' => '', 'body' => (string) ($data['reply'] ?? ''), 'draft_source' => 'ai'];
             }
         }
-        return null;
+        return lead_agent_safe_contextual_fallback($lead, $channel, $step);
     }
 }
 
@@ -1694,6 +1813,9 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         }
         $stage = trim((string) ($lead['status'] ?? ''));
         if (in_array($stage, ['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead'], true)) {
+            return 'terminal_or_human_stage';
+        }
+        if (in_array(strtolower(trim((string) ($lead['consultation_status'] ?? ''))), ['scheduled', 'booked', 'confirmed', 'completed'], true)) {
             return 'terminal_or_human_stage';
         }
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
@@ -1712,6 +1834,55 @@ if (!function_exists('lead_agent_guardrail_reason')) {
             return 'daily_cap';
         }
         return '';
+    }
+}
+
+if (!function_exists('lead_agent_recover_drafting_exceptions')) {
+    /**
+     * Model/provider drafting failures are not human decisions. Requeue only
+     * those historical exceptions; clinical, inbound, scheduling, consent,
+     * and delivery exceptions remain untouched.
+     */
+    function lead_agent_recover_drafting_exceptions(int $limit = 100): int
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(500, $limit));
+        $consultationDateGuard = lead_agent_leads_has_column('consultation_date')
+            ? " AND COALESCE(l.consultation_date, '') = ''"
+            : '';
+        $consultationStatusGuard = lead_agent_leads_has_column('consultation_status')
+            ? " AND COALESCE(l.consultation_status, '') NOT IN ('scheduled','booked','confirmed','completed')"
+            : '';
+        $rows = db_all("SELECT s.lead_id
+            FROM lead_agent_states s
+            INNER JOIN leads l ON l.id = s.lead_id
+            WHERE s.status = 'needs_attention'
+              AND s.pause_reason IN ('Context-aware follow-up could not produce a safe message.', 'Cadence content failed a policy gate.')
+              AND l.status NOT IN ('opted_out','consultation_booked','consult_completed','treatment_accepted','treatment_completed','lost_lead')
+              {$consultationDateGuard}
+              {$consultationStatusGuard}
+            ORDER BY s.updated_at ASC LIMIT {$limit}");
+        $recovered = 0;
+        foreach ($rows as $row) {
+            $leadId = (int) ($row['lead_id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $next = lead_agent_align_contact_time(new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
+            $changed = db_execute("UPDATE lead_agent_states SET status = 'active', human_takeover = 0, human_takeover_until = NULL,
+                    pause_reason = '', next_action_at = :next_action_at, last_decision = 'recovered_with_approved_fallback',
+                    lock_token = '', locked_at = NULL, updated_at = NOW()
+                WHERE lead_id = :lead_id AND status = 'needs_attention'
+                  AND pause_reason IN ('Context-aware follow-up could not produce a safe message.', 'Cadence content failed a policy gate.')", [
+                'next_action_at' => $next,
+                'lead_id' => $leadId,
+            ]);
+            if ($changed > 0) {
+                $recovered += $changed;
+                lead_agent_event($leadId, 'drafting-exception-recovered-' . $leadId . '-' . date('YmdHis'), 'resumed', '', 'recorded', 'approved_fallback_available');
+            }
+        }
+        return $recovered;
     }
 }
 
@@ -1760,13 +1931,21 @@ if (!function_exists('lead_agent_process_state')) {
         $eventKey = 'cadence-' . $leadId . '-' . $nextStep;
         $draft = lead_agent_contextual_followup($lead, $channel, $nextStep);
         if ($draft === null) {
-            lead_agent_internal_handoff($lead, 'needs_attention', 'Context-aware follow-up could not produce a safe message.');
-            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'contextual_followup_review'];
+            $draft = lead_agent_safe_contextual_fallback($lead, $channel, $nextStep);
         }
+        $draftSource = (string) ($draft['draft_source'] ?? 'ai');
         $flags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
+        if ($flags !== [] && $draftSource === 'ai') {
+            $draft = lead_agent_safe_contextual_fallback($lead, $channel, $nextStep);
+            $draftSource = 'approved_fallback';
+            $flags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
+        }
         if ($flags !== []) {
             lead_agent_internal_handoff($lead, 'needs_attention', 'Cadence content failed a policy gate.');
             return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'policy_gate', 'flags' => $flags];
+        }
+        if (in_array($draftSource, ['approved_fallback', 'approved_template'], true)) {
+            lead_agent_event($leadId, $eventKey . '-draft-' . date('YmdHis'), 'draft_fallback_used', $channel, 'recorded', $draftSource, ['step' => $nextStep]);
         }
         if ($dryRun || lead_agent_mode() === 'shadow') {
             lead_agent_event($leadId, $eventKey . '-shadow-' . date('YmdHi'), 'shadow_cadence', $channel, 'would_send', (string) $schedule['phase'], ['step' => $nextStep]);
@@ -1786,8 +1965,35 @@ if (!function_exists('lead_agent_process_state')) {
             db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
                 'reason' => substr((string) ($send['message'] ?? 'delivery_failed'), 0, 190), 'event_key' => $eventKey,
             ]);
-            lead_agent_internal_handoff($lead, 'needs_attention', 'Automated follow-up delivery failed.');
-            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'delivery_failed'];
+            lead_agent_record_learning('cadence_followup', $channel, 'delivery_failed');
+            $alternate = $channel === 'sms' ? 'email' : 'sms';
+            $alternateBlocked = $alternate === 'sms' ? lead_agent_sms_blocked($lead) : lead_agent_email_blocked($lead);
+            if (!$alternateBlocked) {
+                $alternateKey = $eventKey . '-failover-' . $alternate;
+                $alternateDraft = lead_agent_safe_contextual_fallback($lead, $alternate, $nextStep);
+                if (lead_agent_policy_flags((string) ($alternateDraft['subject'] ?? '') . ' ' . (string) ($alternateDraft['body'] ?? '')) === []
+                    && lead_agent_event($leadId, $alternateKey, 'cadence_reserved', $alternate, 'pending', 'provider_failover', ['step' => $nextStep, 'failed_channel' => $channel])) {
+                    $alternateSend = $alternate === 'email'
+                        ? lead_agent_email_send($lead, (string) ($alternateDraft['subject'] ?? 'Whenever you are ready'), (string) $alternateDraft['body'], $alternateKey)
+                        : lead_agent_sms_send($lead, (string) $alternateDraft['body'], $alternateKey);
+                    if (!empty($alternateSend['ok'])) {
+                        $channel = $alternate;
+                        $eventKey = $alternateKey;
+                        $draft = $alternateDraft;
+                        $draftSource = 'provider_failover';
+                        $send = $alternateSend;
+                    } else {
+                        db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
+                            'reason' => substr((string) ($alternateSend['message'] ?? 'delivery_failed'), 0, 190),
+                            'event_key' => $alternateKey,
+                        ]);
+                    }
+                }
+            }
+            if (empty($send['ok'])) {
+                lead_agent_internal_handoff($lead, 'needs_attention', 'Automated follow-up failed on every consented delivery channel.');
+                return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'delivery_failed_all_channels'];
+            }
         }
 
         $following = lead_agent_step_schedule((string) $state['started_at'], $nextStep + 1);
@@ -1803,7 +2009,8 @@ if (!function_exists('lead_agent_process_state')) {
         lead_agent_sync_crm_followup_schedule($leadId);
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
         lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send);
-        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at']];
+        lead_agent_record_learning('cadence_followup', $channel, $draftSource . '_sent');
+        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at'], 'draft_source' => $draftSource];
     }
 }
 
@@ -1819,16 +2026,19 @@ if (!function_exists('lead_agent_run_due')) {
         if (!$dryRun) {
             lead_agent_prune_retention();
             lead_agent_backfill_touchpoints(5000);
+            lead_agent_refresh_cadence_learning(30);
             lead_agent_release_expired_human_takeovers();
         }
         $limit = max(1, min(50, $limit));
         $run = lead_agent_run_start($dryRun);
         $backfill = [];
         $repairedCatchup = 0;
+        $recoveredDraftingExceptions = 0;
         $dueCount = 0;
         $results = [];
         try {
             $backfill = lead_agent_backfill_eligible(200, $dryRun);
+            $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
             $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
             $rows = db_all("SELECT * FROM lead_agent_states
                 WHERE status IN ('active', 'engaged')
@@ -1877,7 +2087,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 
@@ -1913,7 +2123,11 @@ if (!function_exists('lead_agent_daily_metrics')) {
             $eventLeads("e.event_type = 'handoff' AND (e.reason LIKE '%scheduling%' OR e.reason LIKE 'Lead selected an appointment option%' OR e.reason LIKE 'Lead selected an appointment option and supplied DOB.%')"),
             static fn(array $lead): bool => !lead_agent_lead_is_already_scheduled($lead)
         ));
-        $exceptionLeads = $eventLeads("e.event_type = 'handoff' AND e.reason NOT LIKE '%scheduling%' AND e.reason NOT LIKE 'Lead selected an appointment option%' AND e.reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'");
+        $exceptionLeads = $eventLeads("e.event_type = 'handoff'
+            AND e.reason NOT LIKE '%scheduling%'
+            AND e.reason NOT LIKE 'Lead selected an appointment option%'
+            AND e.reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'
+            AND e.reason NOT IN ('Context-aware follow-up could not produce a safe message.', 'Cadence content failed a policy gate.')");
         $metrics = [
             'enrolled' => $eventCount("event_type = 'enrolled'"),
             'cadence_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent') AND status = 'sent'"),
@@ -1932,6 +2146,7 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'deferred_today' => $eventCount("event_type = 'deferred'"),
             'paused_today' => $eventCount("event_type = 'paused'"),
             'worker_errors_today' => $eventCount("event_type = 'worker_error'"),
+            'approved_fallbacks_today' => $eventCount("event_type = 'draft_fallback_used'"),
             'learning_observations' => $eventCount("event_type = 'inbound_classified'"),
             'active_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0"),
             'ready_to_schedule_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states s
@@ -1977,6 +2192,11 @@ if (!function_exists('lead_agent_report_copy')) {
         $summary = $metrics['actions_completed'] > 0
             ? "Lead Agent completed {$metrics['actions_completed']} communication actions on {$label}: {$metrics['sms_sent']} {$textLabel}, {$metrics['emails_sent']} {$emailLabel}, and {$metrics['inbound_handled']} inbound {$inboundLabel} reviewed."
             : "Lead Agent recorded no communication actions on {$label}. The system remained available and monitored enrolled leads.";
+        $approvedFallbacks = (int) ($metrics['approved_fallbacks_today'] ?? 0);
+        if ($approvedFallbacks > 0) {
+            $summary .= " {$approvedFallbacks} follow-up" . ($approvedFallbacks === 1 ? ' used' : 's used')
+                . ' approved fallback copy because personalized AI drafting was unavailable.';
+        }
         if ($metrics['ready_to_schedule_today'] > 0) {
             $names = lead_agent_report_lead_names((array) ($metrics['scheduling_leads'] ?? []));
             $summary .= " {$metrics['ready_to_schedule_today']} lead" . ($metrics['ready_to_schedule_today'] === 1 ? ' is' : 's are') . ' ready for Rod to schedule'

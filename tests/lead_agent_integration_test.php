@@ -83,6 +83,10 @@ try {
     integration_expect(!empty($touchpoint['replied_at']) && !empty($touchpoint['scheduling_intent_at']) && !empty($touchpoint['consultation_booked_at']), 'Reply, scheduling, and booking outcomes must attribute to the latest touch.');
     $performance = lead_agent_performance_metrics(30);
     integration_expect((int) ($performance['touches'] ?? 0) >= 1 && (float) ($performance['reply_rate'] ?? 0) > 0, 'Conversion metrics must include attributed touchpoints.');
+    integration_expect(lead_agent_refresh_cadence_learning(30) >= 1, 'Daily cadence learning did not aggregate touchpoint outcomes.');
+    $cadenceGuidance = lead_agent_cadence_learning_guidance('sms', 5);
+    integration_expect($cadenceGuidance !== [], 'Aggregated cadence guidance was not available to future drafts.');
+    integration_expect(str_contains((string) ($cadenceGuidance[0]['guidance'] ?? ''), 'Observed'), 'Cadence guidance must summarize observed outcomes without patient content.');
 
     lead_comm_insert_message([
         'lead_id' => $leadId,
@@ -143,6 +147,13 @@ try {
     integration_expect(!empty($pausedRun['paused']) && (int) ($pausedRun['processed'] ?? -1) === 0, 'Paused agent must not process due leads.');
     lead_agent_set_global_pause(false, 0);
     integration_expect(!lead_agent_is_globally_paused(), 'Agent must resume after the pause is cleared.');
+
+    db_execute("UPDATE lead_agent_states SET status = 'needs_attention', human_takeover = 1,
+        pause_reason = 'Context-aware follow-up could not produce a safe message.', next_action_at = NULL
+        WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+    integration_expect(lead_agent_recover_drafting_exceptions(500) >= 1, 'Historical model-drafting exceptions must be requeued automatically.');
+    $recoveredState = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+    integration_expect((string) ($recoveredState['status'] ?? '') === 'active' && empty($recoveredState['human_takeover']) && !empty($recoveredState['next_action_at']), 'Recovered drafting exceptions must resume cadence without human intervention.');
 
     db_execute("UPDATE lead_agent_states SET status = 'needs_attention', pause_reason = 'Integration test exception', next_action_at = NULL WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
     $exceptions = lead_agent_exception_rows(100);

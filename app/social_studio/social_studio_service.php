@@ -1779,6 +1779,9 @@ if (!function_exists('social_studio_generate_image_binary')) {
         if (str_contains(strtolower($model), 'gemini-3')) {
             $imageFormat['imageSize'] = (string)($format['image_size'] ?? 'IMAGE_SIZE_TWO_K');
         }
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'message' => 'PHP cURL extension is required for Nano Banana image generation.'];
+        }
 
         $parts = [[
             'text' => $prompt . "\n\nOutput requirement: " . (string)($format['output_requirement'] ?? 'Return one vertical 4:5 portrait image composed for an Instagram feed post.'),

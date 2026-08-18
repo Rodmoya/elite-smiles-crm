@@ -267,7 +267,9 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
             }
 
             try {
-                $existing = db_one("SHOW COLUMNS FROM leads LIKE :column_name", ['column_name' => $dateColumn]);
+                $existing = db_one(
+                    "SHOW COLUMNS FROM leads LIKE '" . str_replace("'", "''", $dateColumn) . "'"
+                );
                 $isNullable = strtoupper((string)($existing['Null'] ?? $existing['null'] ?? '')) === 'YES';
                 $default = $existing['Default'] ?? $existing['default'] ?? null;
                 if ($isNullable && ($default === null || $default === 'NULL')) {

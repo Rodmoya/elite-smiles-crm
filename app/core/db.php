@@ -28,11 +28,16 @@ if (!function_exists('db')) {
             try {
                 $pdo->exec("SET time_zone = 'America/Denver'");
             } catch (PDOException $timezoneError) {
-                $offset = new DateTime('now', new DateTimeZone(APP_TIMEZONE));
-                $pdo->exec("SET time_zone = '" . $offset->format('P') . "'");
+                try {
+                    $offset = new DateTime('now', new DateTimeZone(APP_TIMEZONE));
+                    $offsetText = $offset->format('P');
+                } catch (Exception $offsetError) {
+                    $offsetText = '+00:00';
+                }
+                $pdo->exec("SET time_zone = '" . $offsetText . "'");
                 esm_log('database', 'Fell back to UTC offset timezone.', [
                     'timezone' => APP_TIMEZONE,
-                    'offset' => $offset->format('P'),
+                    'offset' => $offsetText,
                     'message' => $timezoneError->getMessage(),
                 ]);
             }

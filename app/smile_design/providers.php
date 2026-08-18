@@ -422,7 +422,11 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
         $brushMaskPath = '';
         $brushOverlayPath = '';
         $refinedSelectionPrompt = '';
-        if ($isVeneerSimulation && $selectionMode === 'brush' && $brushMaskData !== '') {
+        // Lip repositioning shares the same brush-mask capture as veneer mode so a doctor
+        // can mark exactly where the new lower lip border should land, instead of relying
+        // on text description alone. The tooth-oriented OpenAI refinement pass below stays
+        // veneer-only since "selected teeth" framing does not apply to a lip edit.
+        if (($isVeneerSimulation || $isLipRepositionOnly) && $selectionMode === 'brush' && $brushMaskData !== '') {
             $maskResult = smile_design_data_url_to_temp_png($brushMaskData, 'esm-brush-mask-');
             if (!empty($maskResult['ok'])) {
                 $brushMaskPath = (string)$maskResult['path'];
@@ -441,7 +445,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
                         $tempFiles[] = $brushOverlayPath;
                     }
                 }
-                if ($primarySourcePath !== '' && $brushOverlayPath !== '') {
+                if ($isVeneerSimulation && $primarySourcePath !== '' && $brushOverlayPath !== '') {
                     $refinement = smile_design_refine_edit_prompt_with_openai([
                         $primarySourcePath,
                         $brushOverlayPath,

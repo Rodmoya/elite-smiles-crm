@@ -47,6 +47,9 @@ if (!function_exists('elite_openai_json_response')) {
         if (!elite_openai_is_configured()) {
             return ['ok' => false, 'message' => 'OpenAI is not configured.'];
         }
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'message' => 'PHP cURL extension is not available for OpenAI responses.'];
+        }
 
         $userContent = [['type' => 'input_text', 'text' => $userPrompt]];
         $imageInputs = is_array($imageDataUrl) ? $imageDataUrl : ($imageDataUrl !== '' ? [$imageDataUrl] : []);
@@ -132,6 +135,9 @@ if (!function_exists('elite_openai_image_json_response')) {
     {
         if (!elite_openai_is_configured()) {
             return ['ok' => false, 'message' => 'OpenAI is not configured.'];
+        }
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'message' => 'PHP cURL extension is not available for OpenAI vision analysis.'];
         }
         if (!is_file($imagePath)) {
             return ['ok' => false, 'message' => 'Source image for analysis was not found.'];
@@ -225,6 +231,9 @@ if (!function_exists('elite_openai_images_json_response')) {
     {
         if (!elite_openai_is_configured()) {
             return ['ok' => false, 'message' => 'OpenAI is not configured.'];
+        }
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'message' => 'PHP cURL extension is not available for OpenAI image analysis.'];
         }
 
         $content = [['type' => 'input_text', 'text' => $systemPrompt . "\n\n" . $userPrompt]];

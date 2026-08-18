@@ -8758,7 +8758,13 @@ function applyCommunicationViewportFit() {
         }
     });
 
-    board.querySelectorAll('.lead-card').forEach((card) => {
+    const boundPipelineCards = new WeakSet();
+    const boundPipelineColumns = new WeakSet();
+
+    function bindPipelineCard(card) {
+        if (!card || boundPipelineCards.has(card)) return;
+        boundPipelineCards.add(card);
+
         card.addEventListener('dragstart', function () {
 
             draggedCard = card;
@@ -8811,11 +8817,11 @@ function applyCommunicationViewportFit() {
 
         });
 
-    });
+    }
 
-
-
-    board.querySelectorAll('.pipeline-column').forEach((column) => {
+    function bindPipelineColumn(column) {
+        if (!column || boundPipelineColumns.has(column)) return;
+        boundPipelineColumns.add(column);
 
         const dropzone = column.querySelector('.pipeline-dropzone');
 
@@ -8903,7 +8909,99 @@ function applyCommunicationViewportFit() {
 
         });
 
-    });
+    }
+
+    board.querySelectorAll('.lead-card').forEach(bindPipelineCard);
+    board.querySelectorAll('.pipeline-column').forEach(bindPipelineColumn);
+
+    function pipelineDropzoneViewState(dropzone) {
+        if (!dropzone) return { scrollTop: 0, anchorLeadId: '', anchorOffset: 0 };
+
+        const dropzoneTop = dropzone.getBoundingClientRect().top;
+        const anchor = Array.from(dropzone.querySelectorAll('.lead-card')).find((card) => {
+            return card.getBoundingClientRect().bottom > dropzoneTop;
+        }) || null;
+
+        return {
+            scrollTop: dropzone.scrollTop,
+            anchorLeadId: anchor?.dataset?.leadId || '',
+            anchorOffset: anchor ? anchor.getBoundingClientRect().top - dropzoneTop : 0,
+        };
+    }
+
+    function restorePipelineDropzoneView(dropzone, state) {
+        if (!dropzone || !state) return;
+
+        dropzone.scrollTop = Number(state.scrollTop || 0);
+        if (!state.anchorLeadId) return;
+
+        const anchor = dropzone.querySelector('.lead-card[data-lead-id="' + CSS.escape(String(state.anchorLeadId)) + '"]');
+        if (!anchor) return;
+
+        const currentOffset = anchor.getBoundingClientRect().top - dropzone.getBoundingClientRect().top;
+        dropzone.scrollTop += currentOffset - Number(state.anchorOffset || 0);
+    }
+
+    window.elitePipelineApplySnapshot = function (incomingBoard) {
+        if (!board || !(incomingBoard instanceof Element)) return false;
+
+        const incomingColumns = Array.from(incomingBoard.querySelectorAll('.pipeline-column[data-display-stage-key]'));
+        if (incomingColumns.length === 0) return false;
+
+        const viewportScrollLeft = viewport ? viewport.scrollLeft : 0;
+        const viewportScrollTop = viewport ? viewport.scrollTop : 0;
+        const windowScrollX = window.scrollX;
+        const windowScrollY = window.scrollY;
+        const dropzoneStates = new Map();
+
+        board.querySelectorAll('.pipeline-column[data-display-stage-key]').forEach((column) => {
+            const displayStageKey = column.dataset.displayStageKey || '';
+            dropzoneStates.set(displayStageKey, pipelineDropzoneViewState(column.querySelector('.pipeline-dropzone')));
+        });
+
+        incomingColumns.forEach((incomingColumn) => {
+            const displayStageKey = incomingColumn.dataset.displayStageKey || '';
+            if (!displayStageKey) return;
+
+            const currentColumn = board.querySelector('.pipeline-column[data-display-stage-key="' + CSS.escape(displayStageKey) + '"]');
+            const incomingDropzone = incomingColumn.querySelector('.pipeline-dropzone');
+            if (!currentColumn || !incomingDropzone) return;
+
+            const currentHeader = currentColumn.firstElementChild;
+            const incomingHeader = incomingColumn.firstElementChild;
+            if (currentHeader && incomingHeader) {
+                currentHeader.replaceWith(incomingHeader.cloneNode(true));
+            }
+
+            const currentDropzone = currentColumn.querySelector('.pipeline-dropzone');
+            if (!currentDropzone) return;
+
+            currentDropzone.replaceChildren(...Array.from(incomingDropzone.childNodes).map((node) => node.cloneNode(true)));
+            currentDropzone.querySelectorAll('.lead-card').forEach(bindPipelineCard);
+            bindPipelineColumn(currentColumn);
+        });
+
+        updateColumnCounts();
+        applyPipelineLeadSearch();
+        applyPipelineBoardMobileMode();
+        renderPipelineNotifications();
+
+        const restoreView = () => {
+            if (viewport) {
+                viewport.scrollLeft = viewportScrollLeft;
+                viewport.scrollTop = viewportScrollTop;
+            }
+            board.querySelectorAll('.pipeline-column[data-display-stage-key]').forEach((column) => {
+                const displayStageKey = column.dataset.displayStageKey || '';
+                restorePipelineDropzoneView(column.querySelector('.pipeline-dropzone'), dropzoneStates.get(displayStageKey));
+            });
+            window.scrollTo(windowScrollX, windowScrollY);
+        };
+
+        restoreView();
+        window.requestAnimationFrame(restoreView);
+        return true;
+    };
 
     const initialLeadId = new URLSearchParams(window.location.search).get('lead_id');
     if (initialLeadId) {

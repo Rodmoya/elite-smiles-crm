@@ -18,6 +18,24 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
           test -n "$CRON_SECRET"
-          curl --fail-with-body --silent --show-error \
-            -H "X-Elite-Cron-Secret: $CRON_SECRET" \
-            "https://hi.elitesmilesutah.com/crm/app/api/lead_agent_cron.php?limit=20&dry_run=${DRY_RUN}"
+          response_file="$(mktemp)"
+          valid_response=false
+          for attempt in 1 2 3; do
+            http_code="$(curl --silent --show-error --max-time 120 \
+              --output "$response_file" --write-out '%{http_code}' \
+              -A 'Elite-Smiles-Lead-Agent-GitHub-Fallback/1.0' \
+              -H "X-Elite-Cron-Secret: $CRON_SECRET" \
+              -H 'Accept: application/json' \
+              "https://hi.elitesmilesutah.com/crm/app/api/lead_agent_cron.php?limit=20&dry_run=${DRY_RUN}" || true)"
+            cat "$response_file"
+            if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] && jq -e '.ok == true' "$response_file" >/dev/null 2>&1; then
+              valid_response=true
+              break
+            fi
+            echo "Lead Agent endpoint attempt ${attempt} did not return valid JSON (HTTP ${http_code})." >&2
+            sleep 5
+          done
+          if [[ "$valid_response" != true ]]; then
+            echo 'Lead Agent fallback failed: endpoint was blocked or returned a non-JSON response.' >&2
+            exit 1
+          fi

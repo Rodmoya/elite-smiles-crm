@@ -13,7 +13,7 @@ lead_agent_ensure_schema();
 lead_comm_ensure_schema();
 lead_email_ensure_schema();
 
-foreach (['scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context'] as $column) {
+foreach (['human_takeover_until', 'scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context'] as $column) {
     integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'"), 'Scheduling state column is missing: ' . $column);
 }
 
@@ -97,6 +97,7 @@ try {
     $humanState = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
     integration_expect(!empty($humanState['human_takeover']) && (string) ($humanState['status'] ?? '') === 'human_takeover', 'A manual staff message must give the thread to the human and stop cadence.');
     integration_expect(empty($humanState['next_action_at']), 'Human takeover must clear the next automated follow-up.');
+    integration_expect(!empty($humanState['human_takeover_until']) && strtotime((string) $humanState['human_takeover_until']) > time(), 'A normal staff takeover must expire the next day instead of pausing automation forever.');
     $humanOwnedReply = lead_agent_handle_inbound($leadId, 'Monday works for me', 'sms', 'integration-human-owned-' . $leadId);
     integration_expect(!empty($humanOwnedReply['handled']) && empty($humanOwnedReply['sent']) && (string) ($humanOwnedReply['status'] ?? '') === 'human_takeover', 'The agent must stay silent when a patient replies after Rod takes over.');
 

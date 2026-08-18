@@ -320,7 +320,7 @@ $eventLabels = [
                     ?>
                         <div class="rounded-2xl border border-slate-200 p-4">
                             <div class="flex items-start justify-between gap-4">
-                                <span><a href="<?= e(base_url('leads.php?id=' . (int) $row['id'])) ?>" class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-emerald-800"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></a><span class="mt-1 block text-xs text-slate-500"><?= e((string) ($row['source'] ?? '')) ?></span></span>
+                                <span><a href="<?= e(base_url('leads.php?lead_id=' . (int) $row['id'])) ?>" class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-emerald-800"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></a><span class="mt-1 block text-xs text-slate-500"><?= e((string) ($row['source'] ?? '')) ?></span></span>
                                 <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><?= e($preference !== '' ? $preference : 'Preference not captured') ?></span>
                             </div>
                             <?php if (in_array((string) ($row['scheduling_phase'] ?? ''), ['', 'awaiting_availability'], true)): ?>
@@ -348,7 +348,7 @@ $eventLabels = [
                 <div class="mt-5 space-y-3">
                     <?php if ($attentionRows === []): ?><p class="rounded-2xl bg-emerald-50 px-4 py-5 text-sm text-emerald-800">Clear. The agent can proceed on every active conversation.</p><?php endif; ?>
                     <?php foreach ($attentionRows as $row): $queue = (array) ($row['_action_queue'] ?? []); ?>
-                        <a href="<?= e(base_url('leads.php?id=' . (int) $row['id'])) ?>" class="block min-h-14 rounded-2xl border border-slate-200 px-4 py-3 transition hover:border-rose-300 hover:bg-rose-50/50">
+                        <a href="<?= e(base_url('leads.php?lead_id=' . (int) $row['id'])) ?>" class="block min-h-14 rounded-2xl border border-slate-200 px-4 py-3 transition hover:border-rose-300 hover:bg-rose-50/50">
                             <span class="font-semibold text-slate-900"><?= e((string) ($row['full_name'] ?? 'Lead')) ?></span>
                             <span class="mt-1 block text-xs leading-5 text-slate-600"><?= e((string) ($queue['reason'] ?? 'Human review required.')) ?></span>
                         </a>
@@ -365,7 +365,7 @@ $eventLabels = [
                     <?php foreach ($activity as $event): ?>
                         <div class="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
                             <time class="text-xs font-medium tabular-nums text-slate-500"><?= e(date('g:i A', strtotime((string) $event['created_at']))) ?></time>
-                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?php if ((int) ($event['lead_id'] ?? 0) > 0): ?><a href="<?= e(base_url('leads.php?id=' . (int) $event['lead_id'])) ?>" class="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-blue-800"><?= e((string) ($event['full_name'] ?? 'Lead')) ?></a><?php else: ?>System<?php endif; ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
+                            <div><p class="text-sm font-semibold text-slate-900"><?= e($eventLabels[(string) $event['event_type']] ?? ucwords(str_replace('_', ' ', (string) $event['event_type']))) ?></p><p class="mt-1 text-xs leading-5 text-slate-500"><?php if ((int) ($event['lead_id'] ?? 0) > 0): ?><a href="<?= e(base_url('leads.php?lead_id=' . (int) $event['lead_id'])) ?>" class="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-blue-800"><?= e((string) ($event['full_name'] ?? 'Lead')) ?></a><?php else: ?>System<?php endif; ?><?= trim((string) ($event['reason'] ?? '')) !== '' ? ' · ' . e((string) $event['reason']) : '' ?></p></div>
                             <span class="text-right text-xs font-semibold uppercase tracking-wide text-slate-500"><?= e(trim((string)($event['channel'] ?? '') . ' ' . (string)($event['status'] ?? ''))) ?></span>
                         </div>
                     <?php endforeach; ?>

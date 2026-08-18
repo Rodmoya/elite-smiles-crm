@@ -121,8 +121,8 @@ $linkedReportCopy = lead_agent_linked_report_text($namedReportCopy['executive_su
     'scheduling_leads' => [['id' => 7, 'full_name' => 'Alex Schedule']],
     'exception_leads' => [['id' => 8, 'full_name' => 'Jordan Review']],
 ]);
-expect_true(str_contains($linkedReportCopy, 'leads.php?id=7'), 'Scheduling names should link to their lead record.');
-expect_true(str_contains($linkedReportCopy, 'leads.php?id=8'), 'Exception names should link to their lead record.');
+expect_true(str_contains($linkedReportCopy, 'leads.php?lead_id=7'), 'Scheduling names should use the Leads module parameter that opens the record.');
+expect_true(str_contains($linkedReportCopy, 'leads.php?lead_id=8'), 'Exception names should use the Leads module parameter that opens the record.');
 
 $completePreference = lead_agent_scheduling_preferences('Wenesdays in the mornign work for me.');
 expect_true((string) ($completePreference['day'] ?? '') === 'wednesday', 'Common Wednesday misspellings should be understood.');

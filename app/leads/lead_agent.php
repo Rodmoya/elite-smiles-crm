@@ -1028,7 +1028,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         $internal = ['ok' => false, 'message' => 'Rod recipient is unavailable.'];
         $recipient = internal_sms_find_recipient('rod_moya');
         if ($recipient && !empty($recipient['enabled'])) {
-            $leadUrl = base_url('leads.php?id=' . $leadId);
+            $leadUrl = base_url('leads.php?lead_id=' . $leadId);
             $internal = internal_sms_send(
                 $recipient,
                 'Elite AI: ' . $operatorMessage . ' Open ' . $leadName . ': ' . $leadUrl,
@@ -2019,7 +2019,7 @@ if (!function_exists('lead_agent_linked_report_text')) {
         $html = '';
         foreach ($parts as $part) {
             if (array_key_exists($part, $leadMap)) {
-                $html .= '<a href="' . e(base_url('leads.php?id=' . $leadMap[$part])) . '" class="' . e($className) . '">' . e($part) . '</a>';
+                $html .= '<a href="' . e(base_url('leads.php?lead_id=' . $leadMap[$part])) . '" class="' . e($className) . '">' . e($part) . '</a>';
             } else {
                 $html .= e($part);
             }

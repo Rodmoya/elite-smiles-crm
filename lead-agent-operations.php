@@ -100,11 +100,18 @@ $runHealth = lead_agent_run_health($latestRun);
 $performance = lead_agent_performance_metrics(30);
 $channelPerformance = lead_agent_performance_by_channel(30);
 $globallyPaused = lead_agent_is_globally_paused();
+lead_agent_close_scheduling_handoff();
+$scheduledLeadCondition = lead_agent_scheduled_sql_condition('l');
 $readyRows = db_all("SELECT l.id, l.full_name, l.source, l.scheduling_preferred_day, l.scheduling_preferred_time,
         s.pause_reason, s.scheduling_phase, s.scheduling_context, s.updated_at
     FROM lead_agent_states s INNER JOIN leads l ON l.id = s.lead_id
-    WHERE s.status = 'ready_to_schedule' ORDER BY s.updated_at DESC LIMIT 8");
-$agentReadyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'");
+    WHERE s.status = 'ready_to_schedule'
+      AND NOT {$scheduledLeadCondition}
+    ORDER BY s.updated_at DESC LIMIT 8");
+$agentReadyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states s
+    INNER JOIN leads l ON l.id = s.lead_id
+    WHERE s.status = 'ready_to_schedule'
+      AND NOT {$scheduledLeadCondition}");
 $pipelineCounts = lead_pipeline_counts();
 $pipelineSchedulingTotal = (int)($pipelineCounts['scheduling'] ?? 0);
 $attentionRows = lead_agent_exception_rows(8);

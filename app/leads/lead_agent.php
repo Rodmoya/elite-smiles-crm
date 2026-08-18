@@ -1882,9 +1882,17 @@ if (!function_exists('lead_agent_run_due')) {
 }
 
 if (!function_exists('lead_agent_daily_metrics')) {
+    function lead_agent_lead_is_already_scheduled(array $lead): bool
+    {
+        return in_array(trim((string) ($lead['status'] ?? '')), ['consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed'], true)
+            || in_array(trim((string) ($lead['consultation_status'] ?? '')), ['scheduled', 'booked', 'confirmed', 'completed'], true)
+            || trim((string) ($lead['consultation_date'] ?? '')) !== '';
+    }
+
     function lead_agent_daily_metrics(string $date): array
     {
         lead_agent_ensure_schema();
+        lead_agent_close_scheduling_handoff();
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             throw new InvalidArgumentException('Invalid report date.');
         }
@@ -1892,14 +1900,19 @@ if (!function_exists('lead_agent_daily_metrics')) {
             return (int) db_value("SELECT COUNT(*) FROM lead_agent_events WHERE DATE(created_at) = :report_date AND {$where}", ['report_date' => $date] + $params);
         };
         $eventLeads = static function (string $where) use ($date): array {
-            return db_all("SELECT l.id, l.full_name
+            $consultationStatusSelect = lead_agent_leads_has_column('consultation_status') ? 'l.consultation_status' : "'' AS consultation_status";
+            $consultationDateSelect = lead_agent_leads_has_column('consultation_date') ? 'l.consultation_date' : "'' AS consultation_date";
+            return db_all("SELECT l.id, l.full_name, l.status, {$consultationStatusSelect}, {$consultationDateSelect}
                 FROM lead_agent_events e
                 INNER JOIN leads l ON l.id = e.lead_id
                 WHERE DATE(e.created_at) = :report_date AND {$where}
                 GROUP BY l.id, l.full_name
                 ORDER BY MAX(e.created_at) DESC, l.id DESC", ['report_date' => $date]);
         };
-        $schedulingLeads = $eventLeads("e.event_type = 'handoff' AND (e.reason LIKE '%scheduling%' OR e.reason LIKE 'Lead selected an appointment option%' OR e.reason LIKE 'Lead selected an appointment option and supplied DOB.%')");
+        $schedulingLeads = array_values(array_filter(
+            $eventLeads("e.event_type = 'handoff' AND (e.reason LIKE '%scheduling%' OR e.reason LIKE 'Lead selected an appointment option%' OR e.reason LIKE 'Lead selected an appointment option and supplied DOB.%')"),
+            static fn(array $lead): bool => !lead_agent_lead_is_already_scheduled($lead)
+        ));
         $exceptionLeads = $eventLeads("e.event_type = 'handoff' AND e.reason NOT LIKE '%scheduling%' AND e.reason NOT LIKE 'Lead selected an appointment option%' AND e.reason NOT LIKE 'Lead selected an appointment option and supplied DOB.%'");
         $metrics = [
             'enrolled' => $eventCount("event_type = 'enrolled'"),
@@ -1921,7 +1934,10 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'worker_errors_today' => $eventCount("event_type = 'worker_error'"),
             'learning_observations' => $eventCount("event_type = 'inbound_classified'"),
             'active_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0"),
-            'ready_to_schedule_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'ready_to_schedule'"),
+            'ready_to_schedule_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states s
+                INNER JOIN leads l ON l.id = s.lead_id
+                WHERE s.status = 'ready_to_schedule'
+                  AND NOT " . lead_agent_scheduled_sql_condition('l')),
             'needs_attention_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'needs_attention'"),
             'overdue_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),
             'oldest_overdue_minutes' => (int) db_value("SELECT COALESCE(MAX(TIMESTAMPDIFF(MINUTE, next_action_at, NOW())), 0) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),

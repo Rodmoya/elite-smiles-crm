@@ -194,6 +194,71 @@ if (!function_exists('lead_agent_update_touchpoint_delivery')) {
     }
 }
 
+if (!function_exists('lead_agent_leads_has_column')) {
+    function lead_agent_leads_has_column(string $column): bool
+    {
+        if (function_exists('leads_has_column')) {
+            return leads_has_column($column);
+        }
+        static $columns = null;
+        if ($columns === null) {
+            $columns = [];
+            try {
+                foreach (db_all('SHOW COLUMNS FROM leads') as $row) {
+                    $field = trim((string) ($row['Field'] ?? ''));
+                    if ($field !== '') {
+                        $columns[$field] = true;
+                    }
+                }
+            } catch (Throwable $e) {
+                $columns = [];
+            }
+        }
+        return isset($columns[$column]);
+    }
+}
+
+if (!function_exists('lead_agent_scheduled_sql_condition')) {
+    function lead_agent_scheduled_sql_condition(string $alias = 'l'): string
+    {
+        $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'l';
+        $clauses = ["{$prefix}.status IN ('consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed')"];
+        if (lead_agent_leads_has_column('consultation_status')) {
+            $clauses[] = "COALESCE({$prefix}.consultation_status, '') IN ('scheduled', 'booked', 'confirmed', 'completed')";
+        }
+        if (lead_agent_leads_has_column('consultation_date')) {
+            $clauses[] = "COALESCE({$prefix}.consultation_date, '') <> ''";
+        }
+        return '(' . implode(' OR ', $clauses) . ')';
+    }
+}
+
+if (!function_exists('lead_agent_close_scheduling_handoff')) {
+    /** Remove completed scheduling work from the agent's actionable queue. */
+    function lead_agent_close_scheduling_handoff(int $leadId = 0): int
+    {
+        try {
+            $params = [];
+            $leadFilter = '';
+            if ($leadId > 0) {
+                $leadFilter = ' AND l.id = :lead_id';
+                $params['lead_id'] = $leadId;
+            }
+            $scheduledCondition = lead_agent_scheduled_sql_condition('l');
+            return db_execute("UPDATE lead_agent_states s
+                INNER JOIN leads l ON l.id = s.lead_id
+                SET s.status = 'scheduled', s.human_takeover = 0, s.human_takeover_until = NULL,
+                    s.next_action_at = NULL, s.scheduling_phase = '', s.pause_reason = 'consultation_already_scheduled',
+                    s.last_decision = 'scheduling_handoff_completed', s.lock_token = '', s.locked_at = NULL,
+                    s.updated_at = NOW(), l.next_follow_up_at = NULL, l.updated_at = NOW()
+                WHERE s.status IN ('ready_to_schedule', 'awaiting_slot_selection', 'awaiting_dob')
+                  AND {$scheduledCondition}{$leadFilter}", $params);
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+}
+
 if (!function_exists('lead_agent_attribute_outcome')) {
     function lead_agent_attribute_outcome(int $leadId, string $outcome): bool
     {
@@ -207,6 +272,9 @@ if (!function_exists('lead_agent_attribute_outcome')) {
             default => '',
         };
         if ($field === '') return false;
+        if ($outcome === 'consultation_booked') {
+            lead_agent_close_scheduling_handoff($leadId);
+        }
         $touchpoint = db_one(
             "SELECT id FROM lead_agent_touchpoints
              WHERE lead_id = :lead_id AND sent_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)

@@ -166,6 +166,17 @@ try {
     integration_expect(isset($report['metrics']['overdue_now'], $report['metrics']['deferred_today']), 'Daily report must include queue-health metrics.');
     integration_expect(trim((string) ($report['executive_summary'] ?? '')) !== '', 'Daily executive summary was not generated.');
 
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'Thank you, but that is too far for me to travel.',
+        'is_read' => 1,
+    ]);
+    integration_expect(lead_agent_latest_inbound_closure_reason($leadId) === 'explicit_decline_or_distance', 'Conversation-level declines must override a stale active CRM stage.');
+
     db_rollBack();
     echo "Lead Agent integration test passed.\n";
 } catch (Throwable $e) {

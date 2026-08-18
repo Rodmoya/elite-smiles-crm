@@ -466,7 +466,7 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text)\b/i', $text)) {
             return 'opt_out';
         }
-        if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause)\b/i', $text)) {
+        if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want)\b/i', $text)) {
             return 'pause';
         }
         if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
@@ -1727,6 +1727,56 @@ if (!function_exists('lead_agent_latest_patient_direction')) {
     }
 }
 
+if (!function_exists('lead_agent_latest_inbound_closure_reason')) {
+    /** Respect explicit declines even when the pipeline stage was not updated. */
+    function lead_agent_latest_inbound_closure_reason(int $leadId): string
+    {
+        if ($leadId <= 0) {
+            return '';
+        }
+        try {
+            $row = db_one(
+                "SELECT body FROM (
+                    SELECT body, created_at, id FROM lead_messages WHERE lead_id = :sms_lead_id AND direction = 'inbound'
+                    UNION ALL
+                    SELECT body, created_at, id FROM lead_emails WHERE lead_id = :email_lead_id AND direction = 'inbound'
+                 ) inbound_events
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                ['sms_lead_id' => $leadId, 'email_lead_id' => $leadId]
+            );
+            $body = strtolower(trim(preg_replace('/\s+/', ' ', substr((string) ($row['body'] ?? ''), 0, 1200)) ?? ''));
+            if ($body === '') {
+                return '';
+            }
+            if (preg_match('/\b(not interested|no longer interested|no thank you|do not want|don\'t want|too far|farther than|cannot travel|can\'t travel|please stop|do not contact|don\'t contact|wrong number)\b/i', $body)) {
+                return 'explicit_decline_or_distance';
+            }
+        } catch (Throwable $e) {
+            return '';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lead_agent_recent_sms_delivery_issue')) {
+    /** Route to email after a recent SMS failure instead of repeating the bad path. */
+    function lead_agent_recent_sms_delivery_issue(int $leadId, int $days = 14): bool
+    {
+        if ($leadId <= 0) {
+            return false;
+        }
+        $days = max(1, min(30, $days));
+        try {
+            return (int) db_value("SELECT COUNT(*) FROM lead_messages
+                WHERE lead_id = :lead_id AND direction = 'outbound'
+                  AND created_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
+                  AND LOWER(COALESCE(twilio_status, '')) IN ('failed','undelivered')", ['lead_id' => $leadId]) > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
 if (!function_exists('lead_agent_followup_context_reason')) {
     /** Guard follow-up with the current conversation, not cadence state alone. */
     function lead_agent_followup_context_reason(array $lead, array $state): string
@@ -1806,6 +1856,9 @@ if (!function_exists('lead_agent_guardrail_reason')) {
     {
         if (!empty($state['human_takeover'])) {
             return 'human_takeover';
+        }
+        if (lead_agent_latest_inbound_closure_reason((int) ($lead['id'] ?? 0)) !== '') {
+            return 'conversation_closed';
         }
         $contextReason = lead_agent_followup_context_reason($lead, $state);
         if ($contextReason !== '') {
@@ -1902,7 +1955,7 @@ if (!function_exists('lead_agent_process_state')) {
         if ($reason !== '') {
             $decisionType = 'deferred';
             $nextActionAt = null;
-            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
+            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'conversation_closed', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
                 $decisionType = 'paused';
             } else {
@@ -1917,7 +1970,7 @@ if (!function_exists('lead_agent_process_state')) {
         }
 
         $channel = (string) $schedule['channel'];
-        if ($channel === 'sms' && lead_agent_sms_blocked($lead)) {
+        if ($channel === 'sms' && (lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue($leadId))) {
             $channel = 'email';
         }
         if ($channel === 'email' && lead_agent_email_blocked($lead)) {
@@ -1967,7 +2020,9 @@ if (!function_exists('lead_agent_process_state')) {
             ]);
             lead_agent_record_learning('cadence_followup', $channel, 'delivery_failed');
             $alternate = $channel === 'sms' ? 'email' : 'sms';
-            $alternateBlocked = $alternate === 'sms' ? lead_agent_sms_blocked($lead) : lead_agent_email_blocked($lead);
+            $alternateBlocked = $alternate === 'sms'
+                ? (lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue($leadId))
+                : lead_agent_email_blocked($lead);
             if (!$alternateBlocked) {
                 $alternateKey = $eventKey . '-failover-' . $alternate;
                 $alternateDraft = lead_agent_safe_contextual_fallback($lead, $alternate, $nextStep);

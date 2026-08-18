@@ -137,6 +137,8 @@ if (!function_exists('lead_ai_system_prompt')) {
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Ask clinical questions to be reviewed by Dr. Meden at consultation.',
             'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
+            'Date and time safety: current_time in the context is authoritative and uses America/Denver. Never offer, suggest, or describe a date/time earlier than current_time. Interpret weekday names as the next future occurrence unless the operator supplied a specific future date.',
+            'Availability safety: never claim a slot is open unless the operator supplied that exact current availability. If an old offered time is now past, say Rod will check fresh availability and ask for the patient’s current day/time preference.',
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete. If several are missing, ask for the preferred day and DOB in one concise message; do not overwhelm them.',
             'One-question SMS rule: keep SMS easy to answer. Prefer one direct scheduling question unless DOB is also required for booking.',
@@ -191,6 +193,8 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'First-response psychology: lower pressure first, ask one easy preference or goal question, validate curiosity, then invite the complimentary consultation as the natural next step.',
             'Clinical safety: do not diagnose, prescribe, guarantee outcomes, or answer urgent medical issues. Invite clinical questions to be reviewed with Dr. Meden.',
             'Scheduling: the consultation is complimentary/free. Office hours are Monday through Thursday from 9 AM to 6 PM. Special Friday and Saturday morning consultation appointments may be available when needed.',
+            'Date and time safety: current_time in the context is authoritative and uses America/Denver. Never offer, suggest, or describe a date/time earlier than current_time. Interpret weekday names as the next future occurrence unless the operator supplied a specific future date.',
+            'Availability safety: never claim a slot is open unless the operator supplied that exact current availability. If an old offered time is now past, say Rod will check fresh availability and ask for the patient’s current day/time preference.',
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
@@ -586,6 +590,8 @@ if (!function_exists('lead_ai_scheduling_context')) {
         }
 
         return [
+            'past_dates_forbidden' => true,
+            'availability_requires_operator_confirmation' => true,
             'office_hours' => 'Monday-Thursday 9 AM-6 PM',
             'special_consult_hours' => 'Friday and Saturday morning by special appointment when needed',
             'consultation_type' => 'complimentary consultation with Dr. Meden',
@@ -598,6 +604,22 @@ if (!function_exists('lead_ai_scheduling_context')) {
             'next_best_question' => $missing === []
                 ? 'Confirm the appointment details or tell Rod to check availability.'
                 : 'Ask for ' . implode(' and ', array_slice($missing, 0, 2)) . '.',
+        ];
+    }
+}
+
+if (!function_exists('lead_ai_current_time_context')) {
+    function lead_ai_current_time_context(?DateTimeImmutable $now = null): array
+    {
+        $zone = new DateTimeZone(APP_TIMEZONE);
+        $current = $now ? $now->setTimezone($zone) : new DateTimeImmutable('now', $zone);
+        return [
+            'datetime' => $current->format(DateTimeInterface::ATOM),
+            'date' => $current->format('Y-m-d'),
+            'time' => $current->format('g:i A'),
+            'day_of_week' => $current->format('l'),
+            'timezone' => APP_TIMEZONE,
+            'past_dates_forbidden' => true,
         ];
     }
 }
@@ -632,6 +654,7 @@ if (!function_exists('lead_ai_context')) {
 
         return json_encode([
             'mode' => $mode,
+            'current_time' => lead_ai_current_time_context(),
             'lead' => [
                 'id' => $leadId,
                 'first_name' => lead_ai_first_name($lead),
@@ -667,7 +690,7 @@ if (!function_exists('lead_ai_email_context')) {
 
         return json_encode([
             'mode' => $mode,
-            'current_datetime' => date('Y-m-d H:i:s'),
+            'current_time' => lead_ai_current_time_context(),
             'lead' => [
                 'id' => $leadId,
                 'first_name' => lead_ai_first_name($lead),

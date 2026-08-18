@@ -246,19 +246,12 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
         const backgroundRefreshMs = 12000;
         const quietMs = 2000;
         const versionUrl = <?= json_encode(base_url('leads.php?action=pipeline_version'), JSON_UNESCAPED_SLASHES) ?>;
-        const scrollKey = 'elite-leads-scroll-y';
         let currentVersion = <?= json_encode($pipelineVersion, JSON_UNESCAPED_SLASHES) ?>;
         let currentNotificationVersion = '';
         let lastInteractionAt = Date.now();
         let refreshPending = false;
         let requestInFlight = false;
         let refreshTimer = null;
-
-        const savedScroll = Number(window.sessionStorage.getItem(scrollKey) || 0);
-        if (savedScroll > 0) {
-            window.sessionStorage.removeItem(scrollKey);
-            window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
-        }
 
         const markInteraction = () => {
             lastInteractionAt = Date.now();
@@ -282,9 +275,27 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             return Date.now() - lastInteractionAt >= quietMs;
         };
 
-        const reloadPipeline = () => {
-            window.sessionStorage.setItem(scrollKey, String(window.scrollY || 0));
-            window.location.reload();
+        const refreshPipelineSilently = async () => {
+            const snapshotUrl = new URL(window.location.href);
+            snapshotUrl.hash = '';
+            snapshotUrl.searchParams.delete('action');
+            snapshotUrl.searchParams.set('_pipeline_snapshot', String(Date.now()));
+
+            const response = await fetch(snapshotUrl.toString(), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'text/html' }
+            });
+            if (!response.ok) throw new Error('Pipeline snapshot failed.');
+
+            const html = await response.text();
+            const snapshot = new DOMParser().parseFromString(html, 'text/html');
+            const incomingBoard = snapshot.getElementById('lead-pipeline-board');
+            if (!incomingBoard || typeof window.elitePipelineApplySnapshot !== 'function') {
+                return false;
+            }
+
+            return window.elitePipelineApplySnapshot(incomingBoard) === true;
         };
 
         const scheduleNextCheck = (delay = null) => {
@@ -332,11 +343,14 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                     return;
                 }
                 if (boardChanged) {
-                    currentVersion = String(data.version);
                     refreshPending = true;
                 }
                 if (refreshPending && canRefresh()) {
-                    reloadPipeline();
+                    const refreshed = await refreshPipelineSilently();
+                    if (refreshed) {
+                        currentVersion = String(data.version);
+                        refreshPending = false;
+                    }
                 }
             } catch (error) {
                 // Keep the current board usable when a background check fails.

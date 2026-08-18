@@ -296,6 +296,25 @@ if (!function_exists('elite_gemini_extract_text')) {
 }
 
 if (!function_exists('elite_gemini_json_response')) {
+    /**
+     * generateContent responseSchema still uses Google's legacy Schema proto.
+     * Remove JSON Schema keywords that some Gemini models/endpoints reject.
+     */
+    function elite_gemini_response_schema(array $schema): array
+    {
+        $sanitized = [];
+        foreach ($schema as $key => $value) {
+            if ($key === 'additionalProperties') {
+                continue;
+            }
+            if (is_array($value)) {
+                $value = elite_gemini_response_schema($value);
+            }
+            $sanitized[$key] = $value;
+        }
+        return $sanitized;
+    }
+
     function elite_gemini_json_response(string $systemPrompt, string $userPrompt, array $schema, string $schemaName, ?string $model = null): array
     {
         if (!elite_gemini_is_configured()) {
@@ -319,7 +338,7 @@ if (!function_exists('elite_gemini_json_response')) {
             'generationConfig' => [
                 'temperature' => 0.2,
                 'responseMimeType' => 'application/json',
-                'responseSchema' => $schema,
+                'responseSchema' => elite_gemini_response_schema($schema),
             ],
         ];
 

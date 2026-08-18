@@ -1260,12 +1260,17 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
 
         $preferenceLabel = lead_agent_scheduling_preference_label($preferences);
         if (empty($preferences['ready_for_availability'])) {
-            db_execute("UPDATE lead_agent_states SET status = 'engaged', human_takeover = 0, human_takeover_until = NULL, scheduling_phase = 'awaiting_preference', scheduling_context = :context, next_action_at = NULL, last_action_at = NOW(), last_decision = 'asked_for_missing_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", [
+            $nextPreferenceFollowup = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+8 hours'))->format('Y-m-d H:i:s');
+            db_execute("UPDATE lead_agent_states SET status = 'engaged', human_takeover = 0, human_takeover_until = NULL, scheduling_phase = 'awaiting_preference', scheduling_context = :context, next_action_at = :next_action_at, last_action_at = NOW(), last_decision = 'asked_for_missing_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", [
                 'context' => substr($preferenceLabel, 0, 500),
+                'next_action_at' => $nextPreferenceFollowup,
                 'lead_id' => $leadId,
             ]);
             if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
-                db_execute("UPDATE leads SET follow_up_status = 'reply_received', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                db_execute("UPDATE leads SET follow_up_status = 'reply_received', next_follow_up_at = :next_action_at, updated_at = NOW() WHERE id = :id LIMIT 1", [
+                    'next_action_at' => $nextPreferenceFollowup,
+                    'id' => $leadId,
+                ]);
             }
             return ['ok' => true, 'handled' => true, 'intent' => 'ready_to_schedule', 'sent' => !empty($send['sent']), 'status' => 'awaiting_preference', 'preference' => $preferenceLabel];
         }
@@ -1618,7 +1623,8 @@ if (!function_exists('lead_agent_followup_context_reason')) {
         if (!in_array($status, ['active', 'engaged'], true)) {
             return 'conversation_owned_or_paused';
         }
-        if (trim((string) ($state['scheduling_phase'] ?? '')) !== '') {
+        $schedulingPhase = trim((string) ($state['scheduling_phase'] ?? ''));
+        if ($schedulingPhase !== '' && $schedulingPhase !== 'awaiting_preference') {
             return 'scheduling_in_progress';
         }
         if (in_array(trim((string) ($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)) {
@@ -1653,7 +1659,8 @@ if (!function_exists('lead_agent_contextual_followup')) {
         }
         $instruction = 'Lead Agent instruction: Write the next natural follow-up after reading the complete patient_conversation. '
             . 'Continue from what was actually discussed; do not repeat a question already answered or introduce a fresh conversation. '
-            . 'If the latest patient message still needs an answer, scheduling is underway, or a staff member owns the thread, do not send.';
+            . 'If the agent is waiting for a missing scheduling preference, ask only for the missing day or morning/afternoon preference. '
+            . 'If the latest patient message still needs an answer, confirmed availability is being checked, appointment options were offered, or a staff member owns the thread, do not send.';
         $leadForAi = $lead;
         $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\n" . $instruction);
         if ($channel === 'email' && function_exists('lead_ai_generate_email')) {

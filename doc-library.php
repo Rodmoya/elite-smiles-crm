@@ -285,6 +285,10 @@ $renderTextBlock = static function (string $text): string {
             background: #fff;
         }
 
+        .doc-field-group + .doc-field-group {
+            margin-top: 0.1rem;
+        }
+
         .doc-inline-items {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -399,6 +403,112 @@ $renderTextBlock = static function (string $text): string {
             .doc-paper.doc-form-large .doc-field,
             .doc-paper.doc-form-large .doc-signature-row {
                 min-height: 2.35rem;
+            }
+
+            body,
+            .doc-paper {
+                font-size: 13px;
+            }
+
+            .doc-paper.doc-form-large .doc-section-title,
+            .doc-section-title {
+                font-size: 13px;
+                font-weight: 700;
+                margin-top: 0.45rem;
+                margin-bottom: 0.3rem;
+            }
+
+            .doc-paper.doc-form-large .doc-subtitle-block,
+            .doc-subtitle-block {
+                font-size: 12px;
+                line-height: 1.45;
+                margin-bottom: 0.25rem;
+            }
+
+            .doc-paper.doc-form-large .doc-text-block,
+            .doc-text-block {
+                font-size: 12px;
+                line-height: 1.45;
+                margin-top: 0.18rem;
+                margin-bottom: 0.28rem;
+            }
+
+            .doc-paper.doc-form-large .doc-field-row {
+                column-gap: 0.26in;
+                row-gap: 0.3in;
+                margin-bottom: 0.28in;
+            }
+
+            .doc-paper.doc-form-large .doc-field,
+            .doc-field {
+                min-height: 2.6rem;
+                border-bottom-width: 2px;
+                line-height: 1.4;
+            }
+
+            .doc-paper.doc-form-large .doc-field label {
+                align-items: center;
+            }
+
+            .doc-paper.doc-form-large .doc-field label span {
+                font-size: 12px;
+                letter-spacing: 0.015em;
+            }
+
+            .doc-paper.doc-form-large .doc-field input,
+            .doc-field input,
+            .doc-paper.doc-form-large .doc-signature-input,
+            .doc-signature-input {
+                font-size: 15px;
+                padding-top: 0.12rem;
+                padding-bottom: 0.12rem;
+            }
+
+            .doc-paper.doc-form-large .doc-signature-row,
+            .doc-signature-row {
+                min-height: 2.5rem;
+                border-bottom-width: 2px;
+                gap: 0.58rem;
+            }
+
+            .doc-paper.doc-form-large .doc-signature-wrap {
+                margin-bottom: 0.2rem;
+            }
+
+            .doc-paper.doc-form-large .doc-signature-label,
+            .doc-signature-label {
+                font-size: 12px;
+                letter-spacing: 0.01em;
+            }
+
+            .doc-paper.doc-form-large .doc-field-options,
+            .doc-field-options {
+                row-gap: 0.22rem;
+            }
+
+            .doc-paper.doc-form-large .doc-field-item,
+            .doc-field-item {
+                font-size: 12px;
+                line-height: 1.45;
+            }
+
+            .doc-paper.doc-form-large .doc-field-item input[type="checkbox"],
+            .doc-field-item input[type="checkbox"] {
+                width: 0.95rem;
+                height: 0.95rem;
+                border-width: 2px;
+            }
+
+            .doc-paper.doc-form-large .doc-footer,
+            .doc-footer {
+                font-size: 9.5px;
+                line-height: 1.35;
+            }
+
+            .doc-paper.doc-form-large,
+            .doc-paper {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
     </style>

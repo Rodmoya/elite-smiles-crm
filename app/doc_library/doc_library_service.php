@@ -51,6 +51,7 @@ if (!function_exists('doc_library_templates')) {
                     ],
                     [
                         'title' => 'PATIENT/ACCOUNT RESPONSIBLE PERSON',
+                        'page_break_before' => true,
                         'rows' => [
                             [['type' => 'text', 'label' => 'Last Name', 'name' => 'welcome_responsible_last_name'], ['type' => 'text', 'label' => 'First Name', 'name' => 'welcome_responsible_first_name']],
                             [['type' => 'text', 'label' => 'Relationship to Patient', 'name' => 'welcome_responsible_relationship']],

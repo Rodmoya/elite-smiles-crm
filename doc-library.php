@@ -90,17 +90,18 @@ $renderTextBlock = static function (string $text): string {
             background: var(--doc-paper-bg);
             color: #111827;
             font-family: Calibri, Arial, Helvetica, sans-serif;
-            width: min(8.7in, 100%);
+            width: min(8.6in, 100%);
         }
 
         .doc-paper {
             position: relative;
-            padding: 0.48in 0.56in 0.95in;
+            padding: 0.52in 0.58in 0.95in;
             min-height: 10.9in;
             border: 1px solid #e2e8f0;
             border-radius: 0.4rem;
             box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
             background: var(--doc-paper-bg);
+            box-sizing: border-box;
         }
 
         .doc-header {
@@ -119,7 +120,7 @@ $renderTextBlock = static function (string $text): string {
 
         .doc-page-title {
             margin-top: 0.22rem;
-            font-size: 0.98rem;
+            font-size: 1rem;
             font-weight: 700;
             letter-spacing: 0.1em;
             text-transform: uppercase;
@@ -135,7 +136,7 @@ $renderTextBlock = static function (string $text): string {
         .doc-section-title {
             margin-top: 0.5rem;
             margin-bottom: 0.26rem;
-            font-size: 0.76rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.12em;
             font-weight: 700;
@@ -143,14 +144,14 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-subtitle-block {
-            font-size: 11px;
+            font-size: 12px;
             color: #475569;
             margin-top: 0.02rem;
             margin-bottom: 0.22rem;
         }
 
         .doc-text-block {
-            font-size: 11px;
+            font-size: 12px;
             color: #111827;
             line-height: 1.35;
             margin-top: 0.13rem;
@@ -174,7 +175,7 @@ $renderTextBlock = static function (string $text): string {
         .doc-field {
             position: relative;
             margin: 0;
-            min-height: 1.75rem;
+            min-height: 1.9rem;
             border-bottom: 1px solid #0f172a;
             display: flex;
             align-items: flex-end;
@@ -185,7 +186,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-paper.doc-form-large .doc-field {
-            min-height: 2.05rem;
+            min-height: 2.25rem;
         }
 
         .doc-field label {
@@ -203,7 +204,7 @@ $renderTextBlock = static function (string $text): string {
             padding-right: 0.2rem;
             font-weight: 600;
             letter-spacing: 0.01em;
-            font-size: 11px;
+            font-size: 12px;
         }
 
         .doc-field input {
@@ -221,7 +222,7 @@ $renderTextBlock = static function (string $text): string {
 
         .doc-paper.doc-form-large .doc-field input {
             font-size: 14px;
-            padding: 0.24rem 0.02rem 0.16rem;
+            padding: 0.28rem 0.02rem 0.16rem;
         }
 
         .doc-signature-wrap {
@@ -232,16 +233,16 @@ $renderTextBlock = static function (string $text): string {
 
         .doc-signature-row {
             border-bottom: 1px solid #0f172a;
-            min-height: 1.5rem;
+            min-height: 1.8rem;
             padding-bottom: 0.12rem;
             display: flex;
             align-items: flex-end;
             gap: 0.45rem;
-            font-size: 11px;
+            font-size: 12px;
         }
 
         .doc-paper.doc-form-large .doc-signature-row {
-            min-height: 1.9rem;
+            min-height: 2.1rem;
             font-size: 12px;
         }
 
@@ -265,6 +266,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-paper.doc-form-large .doc-signature-input {
+            font-size: 13px;
             padding: 0.16rem 0.02rem;
         }
 
@@ -272,7 +274,7 @@ $renderTextBlock = static function (string $text): string {
             margin: 0.12rem 0 0.35rem;
             padding-left: 0.9rem;
             list-style: none;
-            font-size: 11px;
+            font-size: 12px;
             line-height: 1.35;
             color: #0f172a;
         }
@@ -296,7 +298,7 @@ $renderTextBlock = static function (string $text): string {
             display: inline-flex;
             align-items: center;
             gap: 0.32rem;
-            font-size: 11px;
+            font-size: 12px;
             color: #334155;
             line-height: 1.3;
         }
@@ -321,11 +323,21 @@ $renderTextBlock = static function (string $text): string {
             bottom: 0.22in;
             border-top: 1px solid #e2e8f0;
             padding-top: 0.18rem;
-            font-size: 9.3px;
+            font-size: 10px;
             text-align: center;
             color: #64748b;
             line-height: 1.35;
             letter-spacing: 0.01em;
+        }
+
+        .doc-page-break {
+            break-before: page;
+            page-break-before: always;
+            margin-top: 0;
+            margin-bottom: 0;
+            padding-top: 0;
+            height: 0;
+            width: 100%;
         }
 
         @media (max-width: 1024px) {
@@ -343,8 +355,14 @@ $renderTextBlock = static function (string $text): string {
         }
 
         @media print {
+            @page {
+                size: letter portrait;
+                margin: 0.4in 0.35in 0.35in;
+            }
+
             body {
                 background: white;
+                margin: 0;
             }
 
             .doc-no-print {
@@ -362,8 +380,9 @@ $renderTextBlock = static function (string $text): string {
 
             .doc-paper {
                 margin: 0 !important;
-                width: 100% !important;
-                min-height: auto;
+                width: 8.5in !important;
+                max-width: 8.5in !important;
+                min-height: 11in;
                 border: 0;
                 box-shadow: none;
                 padding: 0.42in 0.45in 0.78in;
@@ -372,6 +391,16 @@ $renderTextBlock = static function (string $text): string {
             .doc-field input,
             .doc-signature-input {
                 color: #111827;
+            }
+
+            .doc-paper.doc-form-large .doc-field-row {
+                row-gap: 0.26in;
+                margin-bottom: 0.22in;
+            }
+
+            .doc-paper.doc-form-large .doc-field,
+            .doc-paper.doc-form-large .doc-signature-row {
+                min-height: 2.35rem;
             }
         }
     </style>
@@ -428,7 +457,12 @@ $renderTextBlock = static function (string $text): string {
                             $sectionSubtitle = (string)($section['subtitle'] ?? '');
                             $fields = (array)($section['fields'] ?? []);
                             $rows = (array)($section['rows'] ?? []);
+                            $pageBreakBefore = (bool)($section['page_break_before'] ?? false);
                             ?>
+
+                            <?php if ($pageBreakBefore): ?>
+                                <div class="doc-page-break"></div>
+                            <?php endif; ?>
 
                             <?php if ($sectionTitle !== ''): ?>
                                 <div class="doc-section-title"><?= e($sectionTitle) ?></div>

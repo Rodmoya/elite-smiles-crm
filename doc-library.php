@@ -162,21 +162,30 @@ $renderTextBlock = static function (string $text): string {
             display: grid;
             grid-template-columns: repeat(12, minmax(0, 1fr));
             column-gap: 0.32in;
-            row-gap: 0.14in;
+            row-gap: 0.19in;
             margin-bottom: 0.15in;
+        }
+
+        .doc-paper.doc-form-large .doc-field-row {
+            row-gap: 0.24in;
+            margin-bottom: 0.22in;
         }
 
         .doc-field {
             position: relative;
             margin: 0;
-            min-height: 1.16rem;
+            min-height: 1.75rem;
             border-bottom: 1px solid #0f172a;
             display: flex;
             align-items: flex-end;
-            line-height: 1.15;
+            line-height: 1.25;
             min-width: 0;
             font-size: 12px;
             color: #0f172a;
+        }
+
+        .doc-paper.doc-form-large .doc-field {
+            min-height: 2.05rem;
         }
 
         .doc-field label {
@@ -204,10 +213,15 @@ $renderTextBlock = static function (string $text): string {
             outline: 0;
             background: transparent;
             color: #0f172a;
-            font-size: 12px;
-            padding: 0.08rem 0.02rem;
+            font-size: 13px;
+            padding: 0.18rem 0.02rem 0.12rem;
             font-family: inherit;
-            line-height: 1.15;
+            line-height: 1.35;
+        }
+
+        .doc-paper.doc-form-large .doc-field input {
+            font-size: 14px;
+            padding: 0.24rem 0.02rem 0.16rem;
         }
 
         .doc-signature-wrap {
@@ -218,12 +232,17 @@ $renderTextBlock = static function (string $text): string {
 
         .doc-signature-row {
             border-bottom: 1px solid #0f172a;
-            min-height: 1.1rem;
+            min-height: 1.5rem;
             padding-bottom: 0.12rem;
             display: flex;
             align-items: flex-end;
             gap: 0.45rem;
             font-size: 11px;
+        }
+
+        .doc-paper.doc-form-large .doc-signature-row {
+            min-height: 1.9rem;
+            font-size: 12px;
         }
 
         .doc-signature-label {
@@ -241,8 +260,12 @@ $renderTextBlock = static function (string $text): string {
             color: #0f172a;
             min-width: 0;
             flex: 1;
-            font-size: 12px;
+            font-size: 13px;
             padding: 0.08rem 0.02rem;
+        }
+
+        .doc-paper.doc-form-large .doc-signature-input {
+            padding: 0.16rem 0.02rem;
         }
 
         .doc-plain-list {
@@ -388,7 +411,7 @@ $renderTextBlock = static function (string $text): string {
             </aside>
 
             <div class="doc-shell">
-                <div class="doc-paper">
+                <div class="doc-paper <?= $selectedTemplateKey === 'welcome_patient_information' ? 'doc-form-large' : '' ?>">
                     <header class="doc-header">
                         <img src="<?= e($baseLogo) ?>" alt="Elite Smiles" class="doc-logo" loading="eager">
                         <div class="doc-page-title"><?= e($documentTitle) ?></div>

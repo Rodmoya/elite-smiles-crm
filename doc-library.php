@@ -737,7 +737,7 @@ $renderTextBlock = static function (string $text): string {
                                             $span = $resolveSpan($field, count($row));
                                             $style = 'grid-column: span ' . $span . ' / span ' . $span . ';';
                                             $inputType = match ((string)($field['type'] ?? 'text')) {
-                                                'date' => 'date',
+                                                'date' => 'text',
                                                 'email' => 'email',
                                                 default => 'text',
                                             };

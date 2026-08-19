@@ -24,14 +24,13 @@ if (!function_exists('doc_library_templates')) {
                     [
                         'title' => 'PATIENT INFORMATION',
                         'rows' => [
-                            [['type' => 'date', 'label' => 'Date', 'name' => 'welcome_date']],
-                            [['type' => 'text', 'label' => 'Name', 'name' => 'welcome_name', 'class' => 'doc-field-full']],
+                            [['type' => 'date', 'label' => 'Date', 'name' => 'welcome_date', 'size' => 'short'], ['type' => 'text', 'label' => 'Name', 'name' => 'welcome_name', 'size' => 'wide']],
                             [['type' => 'text', 'label' => 'Last Name', 'name' => 'welcome_last_name'], ['type' => 'text', 'label' => 'First Name', 'name' => 'welcome_first_name'], ['type' => 'text', 'label' => 'Middle Initial', 'name' => 'welcome_middle_initial', 'size' => 'short']],
-                            [['type' => 'text', 'label' => 'Social Security #', 'name' => 'welcome_ssn']],
+                            [['type' => 'text', 'label' => 'Social Security #', 'name' => 'welcome_ssn', 'size' => 'short']],
                             [['type' => 'text', 'label' => 'Address', 'name' => 'welcome_address', 'class' => 'doc-field-full']],
                             [['type' => 'text', 'label' => 'City', 'name' => 'welcome_city'], ['type' => 'text', 'label' => 'State', 'name' => 'welcome_state', 'size' => 'short'], ['type' => 'text', 'label' => 'Zip', 'name' => 'welcome_zip', 'size' => 'short']],
                             [['type' => 'text', 'label' => 'Day Phone', 'name' => 'welcome_day_phone'], ['type' => 'text', 'label' => 'Alt Phone', 'name' => 'welcome_alt_phone']],
-                            [['type' => 'email', 'label' => 'E-mail', 'name' => 'welcome_email', 'class' => 'doc-field-full']],
+                            [['type' => 'email', 'label' => 'E-mail', 'name' => 'welcome_email', 'class' => 'doc-field-full', 'size' => 'full']],
                             [['type' => 'text', 'label' => 'Age', 'name' => 'welcome_age', 'size' => 'short'], ['type' => 'date', 'label' => 'Birthdate', 'name' => 'welcome_birthdate']],
                             [['type' => 'checkbox_row', 'label' => 'Sex', 'name' => 'welcome_sex', 'options' => ['Male', 'Female'] , 'inline' => true]],
                             [['type' => 'checkbox_row', 'label' => 'Marital Status', 'name' => 'welcome_marital_status', 'options' => ['Married', 'Widowed', 'Single', 'Separated', 'Divorced', 'Partnered'], 'inline' => false]],
@@ -55,7 +54,7 @@ if (!function_exists('doc_library_templates')) {
                         'rows' => [
                             [['type' => 'text', 'label' => 'Last Name', 'name' => 'welcome_responsible_last_name'], ['type' => 'text', 'label' => 'First Name', 'name' => 'welcome_responsible_first_name']],
                             [['type' => 'text', 'label' => 'Relationship to Patient', 'name' => 'welcome_responsible_relationship']],
-                            [['type' => 'text', 'label' => 'Social Security #', 'name' => 'welcome_responsible_ssn']],
+                            [['type' => 'text', 'label' => 'Social Security #', 'name' => 'welcome_responsible_ssn', 'size' => 'short']],
                             [['type' => 'text', 'label' => 'Address (if different)', 'name' => 'welcome_responsible_address', 'class' => 'doc-field-full']],
                             [['type' => 'text', 'label' => 'City', 'name' => 'welcome_responsible_city'], ['type' => 'text', 'label' => 'State', 'name' => 'welcome_responsible_state', 'size' => 'short'], ['type' => 'text', 'label' => 'Zip', 'name' => 'welcome_responsible_zip', 'size' => 'short']],
                             [['type' => 'text', 'label' => 'Phone', 'name' => 'welcome_responsible_phone']],

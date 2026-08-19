@@ -294,6 +294,107 @@ $renderTextBlock = static function (string $text): string {
             min-height: 1.3rem;
         }
 
+        /* Print-first intake layout: compact, proportional rows with ample handwriting space. */
+        .doc-paper.doc-form-large .doc-form-page {
+            padding: 0.42in 0.5in 0.72in;
+        }
+
+        .doc-paper.doc-form-large .doc-header {
+            margin-bottom: 0.32rem;
+            padding-bottom: 0.38rem;
+        }
+
+        .doc-paper.doc-form-large .doc-logo {
+            width: 1.65in;
+        }
+
+        .doc-paper.doc-form-large .doc-page-title {
+            margin-top: 0.12rem;
+            font-size: 0.9rem;
+        }
+
+        .doc-paper.doc-form-large .doc-page-subtitle {
+            margin-top: 0.08rem;
+            font-size: 0.7rem;
+        }
+
+        .doc-paper.doc-form-large .doc-field-row {
+            column-gap: 0.12in;
+            row-gap: 0;
+            margin-bottom: 0.085in;
+        }
+
+        .doc-paper.doc-form-large .doc-field {
+            min-height: 0.43in;
+            border-color: #64748b;
+            border-radius: 0.12rem;
+            padding: 0.07in 0.09in 0.04in;
+            box-shadow: none;
+        }
+
+        .doc-paper.doc-form-large .doc-field label {
+            gap: 0.02in;
+        }
+
+        .doc-paper.doc-form-large .doc-field label span {
+            font-size: 9px;
+            line-height: 1;
+            letter-spacing: 0.025em;
+            text-transform: uppercase;
+        }
+
+        .doc-paper.doc-form-large .doc-field input {
+            min-height: 0.19in;
+            padding: 0;
+            font-size: 12px;
+            line-height: 1.1;
+        }
+
+        .doc-paper.doc-form-large .doc-field-group {
+            padding: 0.055in 0.09in;
+            border: 1px solid #94a3b8;
+            border-radius: 0.12rem;
+        }
+
+        .doc-paper.doc-form-large .doc-field-group > p {
+            margin: 0 0 0.035in;
+            font-size: 9px;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .doc-paper.doc-form-large .doc-field-options {
+            gap: 0.06in 0.16in;
+        }
+
+        .doc-paper.doc-form-large .doc-field-item {
+            font-size: 10px;
+            line-height: 1.1;
+        }
+
+        .doc-paper.doc-form-large .doc-field-item input[type="checkbox"] {
+            width: 0.13in;
+            height: 0.13in;
+        }
+
+        .doc-paper.doc-form-large .doc-section-title {
+            margin-top: 0.16in;
+            margin-bottom: 0.08in;
+            padding: 0.045in 0.08in;
+            border-left-width: 0.08in;
+            border-radius: 0;
+            font-size: 10px;
+            line-height: 1.1;
+            letter-spacing: 0.04em;
+        }
+
+        .doc-paper.doc-form-large .doc-text-block {
+            margin: 0 0 0.08in;
+            font-size: 10px;
+            line-height: 1.25;
+        }
+
         .doc-signature-wrap {
             margin-bottom: 0.18rem;
             display: grid;
@@ -585,9 +686,9 @@ $renderTextBlock = static function (string $text): string {
             }
 
             .doc-paper.doc-form-large .doc-field-row {
-                column-gap: 0.26in;
-                row-gap: 0.22in;
-                margin-bottom: 0.2in;
+                column-gap: 0.12in;
+                row-gap: 0;
+                margin-bottom: 0.075in;
             }
 
             .doc-paper.doc-form-large .doc-field,
@@ -597,13 +698,20 @@ $renderTextBlock = static function (string $text): string {
                 line-height: 1.4;
             }
 
+            .doc-paper.doc-form-large .doc-field {
+                min-height: 0.4in;
+                border-width: 1px;
+                padding: 0.055in 0.075in 0.035in;
+                line-height: 1.1;
+            }
+
             .doc-paper.doc-form-large .doc-field label {
-                align-items: center;
+                align-items: flex-start;
             }
 
             .doc-paper.doc-form-large .doc-field label span {
-                font-size: 12px;
-                letter-spacing: 0.015em;
+                font-size: 8.5px;
+                letter-spacing: 0.025em;
                 font-weight: 700;
             }
 
@@ -615,6 +723,24 @@ $renderTextBlock = static function (string $text): string {
                 padding-top: 0.22rem;
                 padding-bottom: 0.12rem;
                 line-height: 1.45;
+            }
+
+            .doc-paper.doc-form-large .doc-field input {
+                min-height: 0.18in;
+                padding: 0;
+                font-size: 11px;
+                line-height: 1.1;
+            }
+
+            .doc-paper.doc-form-large .doc-section-title {
+                margin-top: 0.11in;
+                margin-bottom: 0.055in;
+                padding: 0.035in 0.07in;
+                font-size: 9.5px;
+            }
+
+            .doc-paper.doc-form-large .doc-field-group {
+                padding: 0.045in 0.075in;
             }
 
         .doc-paper.doc-form-large .doc-signature-row,

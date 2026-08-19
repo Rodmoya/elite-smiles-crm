@@ -67,9 +67,7 @@ $resolveSpan = static function (array $field, int $rowCount): int {
 };
 
 $renderTextBlock = static function (string $text): string {
-    $text = nl2br(e($text), false);
-    $text = str_replace(["• ", "- "], ["• ", "• "], $text);
-    return $text;
+    return nl2br(e($text), false);
 };
 
 ?>

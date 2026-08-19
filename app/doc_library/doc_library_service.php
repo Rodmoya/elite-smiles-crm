@@ -116,7 +116,7 @@ if (!function_exists('doc_library_templates')) {
                         'title' => 'CONSENT TO PROCEED',
                         'subtitle' => '(Dental Treatment Consent Form)',
                         'fields' => [
-                            ['type' => 'paragraph', 'text' => 'I authorize the office of Dr. Walter Meden and designated associates or assistants to perform such procedures as may be necessary or advisable for the treatment of my dental health or the dental health of my minor child.'],
+                            ['type' => 'paragraph', 'text' => 'I authorize Dr. [NAME] and designated associates or assistants to perform such procedures as may be necessary or advisable for the treatment of my dental health or the dental health of my minor child.'],
                             ['type' => 'paragraph', 'text' => 'I authorize, if needed, the use and administration of sedatives (including nitrous oxide), analgesics, and other medications related to restorative, therapeutic, diagnostic, and/or surgical treatment.'],
                             ['type' => 'paragraph', 'text' => "I understand and accept that complications may occur:\n- Local anesthetic side effects (pain/swelling/hematoma etc.)\n- Sensitivity, soreness, or discomfort during and after treatment\n- Allergic reactions to materials or medications\n- Tissue trauma (including tongue/cheek abrasion or laceration)\n- Need for additional treatment or sutures\n- Rare aspiration/swallowing of small instruments/components requiring further care\n- Need for additional x-rays in rare circumstances"],
                             ['type' => 'paragraph', 'text' => 'I understand that certain medications can affect treatment (for example osteoporosis medications such as Fosamax, Boniva, Actonel, etc.) and I must disclose all current prescriptions and conditions.'],
@@ -146,7 +146,7 @@ if (!function_exists('doc_library_templates')) {
                         'type' => 'info',
                         'title' => 'CONSENT FOR PHOTOGRAPHIC IMAGE USE',
                         'rows' => [
-                            [['type' => 'row_title', 'text' => 'The undersigned authorizes the office of Dr. Walter Meden to use the following images:']],
+                            [['type' => 'row_title', 'text' => 'The undersigned authorizes the office of Dr. [NAME] to use the following images:']],
                             [['type' => 'checkbox_list', 'name' => 'photo_image_authorization', 'options' => ['Before and after pictures of my teeth', 'Before and after pictures of my full face', 'Before and after pictures of my minor child’s teeth and/or full face']]],
                         ],
                     ],

@@ -1240,13 +1240,13 @@ if (!function_exists('lead_agent_approved_followup')) {
         $first = lead_agent_first_name($lead);
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
         $sms = [
-            1 => $hello . ' Rod with Elite Smiles checking back. What would you most like to improve about your smile? I can help you with the next step. Reply STOP to opt out.',
-            3 => $hello . ' if a brighter, more even smile is still on your mind, I can help you arrange a complimentary consultation with Dr. Meden. Do mornings or afternoons usually work better?',
-            5 => $hello . ' just making sure your questions did not get lost. What would help you feel comfortable taking the next step toward your smile consultation?',
-            7 => $hello . ' I am still here to help with your smile goals. Would you like Rod to help arrange your complimentary consultation?',
-            9 => $hello . ' checking in from Elite Smiles. If you are still exploring your options, a complimentary consultation is the easiest next step. Would you like help getting started?',
-            11 => $hello . ' your smile consultation is here whenever you are ready. Reply with the best day of the week and Rod can help from there.',
-            13 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply when you are ready and we will help with the next step.',
+            1 => $hello . ' Hi, thanks for staying in touch. What is the one thing you want to improve about your smile first?',
+            3 => $hello . ' if a brighter, more even smile is still your goal, I can help you arrange a complimentary consultation with Dr. Meden. Do mornings or afternoons usually work better for you?',
+            5 => $hello . ' I want to make sure I have what you shared right. What would make the next step feel easier for you?',
+            7 => $hello . ' I am still here for your smile goals. If you are ready, I can help get your complimentary consultation in motion—let me know if you want that.',
+            9 => $hello . ' checking in from Elite Smiles. If you are still exploring your options, a complimentary consultation is the easiest next step. What feels best for you, mornings or afternoons?',
+            11 => $hello . ' thanks for keeping this moving. Your smile consultation is here whenever you are ready. Reply with your preferred day, and I can ask Rod to check availability.',
+            13 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply when you are ready and we will help you move forward.',
         ];
         if ($channel === 'sms') {
             $body = $sms[$step] ?? $hello . ' Elite Smiles checking in. Is improving your smile still something you would like help with? Reply STOP to opt out.';
@@ -1263,6 +1263,89 @@ if (!function_exists('lead_agent_approved_followup')) {
     }
 }
 
+if (!function_exists('lead_agent_strategy_followup_draft')) {
+    function lead_agent_strategy_followup_draft(array $lead, string $channel, int $step, array $conversionMemory = []): array
+    {
+        $first = lead_agent_first_name($lead);
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $goal = trim((string) ($conversionMemory['treatment_goal'] ?? (string) ($lead['procedure_interest'] ?? 'smile care')));
+        $goal = $goal !== '' ? strtolower(preg_replace('/\s+/u', ' ', $goal)) : 'your smile goals';
+        $objection = trim((string) ($conversionMemory['primary_objection'] ?? ''));
+        $strategy = trim((string) ($conversionMemory['strategy_key'] ?? 'consultation_value'));
+        $day = trim((string) ($lead['scheduling_preferred_day'] ?? ''));
+        $time = trim((string) ($lead['scheduling_preferred_time'] ?? ''));
+        $hasDay = $day !== '';
+        $hasTime = $time !== '';
+
+        $goalLine = 'your smile goals';
+        if ($goal !== '') {
+            $goalLine = preg_match('/\b(veneers|implants|smile\s+makeover)\b/i', $goal)
+                ? $goal
+                : 'your smile goals';
+        }
+
+        $sms = '';
+        $subject = '';
+        $body = '';
+
+        switch ($strategy) {
+            case 'goal_discovery':
+                $sms = $hello . ' one quick question: what is the biggest result you are hoping for with ' . $goalLine . '?';
+                $subject = 'Your smile goals';
+                $body = $hello . "\n\nGreat choice to keep your goal clear before anything else. What is the biggest thing you would like to improve?\n\nElite Smiles";
+                break;
+            case 'education':
+                $sms = $hello . ' most people find a short consult helps us focus on exactly what matters for them. Would you like a quick overview of options for ' . $goalLine . '?';
+                $subject = 'Helpful next step for your smile';
+                $body = $hello . "\n\nA helpful first step is a free consult so we can review photos and options specifically for your smile goals.\n\nWould you like a quick overview first?\n\nElite Smiles";
+                break;
+            case 'trust_credibility':
+                $sms = $hello . ' totally understand moving slowly on this. Dr. Meden usually starts with a complimentary consult to review your goals, expectations, and timing options. Would that still be helpful for you?';
+                $subject = 'A calm next step for your smile';
+                $body = $hello . "\n\nThat is a very reasonable place to be. Dr. Meden likes to review each smile in a complimentary consult and map what is realistic for your specific goals before anything starts.\n\nWould you like that kind of first step?\n\nElite Smiles";
+                break;
+            case 'objection_resolution':
+                $objectionText = $objection !== '' ? 'I hear your concern about ' . str_replace('_', ' ', $objection) . '. ' : '';
+                $sms = $hello . ' ' . $objectionText . 'Totally valid. What part would you like me to clarify first?';
+                $subject = 'Let me help with that';
+                $body = $hello . "\n\n" . $objectionText . 'Totally valid. If that concern is important right now, what specific detail would help you feel better about next steps?\n\nElite Smiles';
+                break;
+            case 'scheduling_preference':
+                if ($hasDay && !$hasTime) {
+                    $sms = $hello . ' thanks for sharing ' . ucfirst($day) . '. Do mornings or afternoons usually work best?';
+                } elseif (!$hasDay && $hasTime) {
+                    $sms = $hello . ' thanks for sharing your timing. Is there a particular day this week that is best for you?';
+                } elseif ($hasDay && $hasTime) {
+                    $sms = $hello . ' great, I can ask Rod to check availability on ' . $day . ' in the ' . $time . '.';
+                } else {
+                    $sms = $hello . ' would mornings or afternoons usually work best for you?';
+                }
+                $subject = 'Checking availability';
+                $body = $hello . "\n\n" . ($hasDay && $hasTime
+                    ? 'Great—thank you for that. I can ask Rod to check what we currently have available ' . $day . ' in the ' . $time . '.'
+                    : 'Great, thanks for sharing what works for you. I can ask Rod to check if there are complimentary consultation options that fit your timing.') .
+                    "\n\nWould you like me to check that for you?\n\nElite Smiles";
+                break;
+            case 'open_door':
+                $sms = $hello . ' just keeping the line open. If now feels like a better time, I can still help with a complimentary consultation. No pressure—does that sound okay?';
+                $subject = 'Whenever you are ready';
+                $body = $hello . "\n\nNo pressure at all — we are here whenever you are ready. If you want, we can keep this simple and start with a complimentary consult with Dr. Meden.\n\nElite Smiles";
+                break;
+            default:
+                $sms = $hello . ' this is a quick note from Elite Smiles. If improving your smile is still important, we can use a complimentary consultation as a clear next step. Would mornings or afternoons be easier for you?';
+                $subject = 'What is the next step for you?';
+                $body = $hello . "\n\nIf your timing is moving forward, we can keep it simple with a complimentary consultation with Dr. Meden.\n\nWould mornings or afternoons be easier to start with?\n\nElite Smiles";
+                break;
+        }
+
+        if ($channel === 'email') {
+            return ['subject' => $subject !== '' ? $subject : 'Your smile consultation', 'body' => $body !== '' ? $body : $sms . "\n\nElite Smiles"];
+        }
+
+        return ['subject' => '', 'body' => $sms, 'draft_source' => 'strategy_template', 'strategy_key' => $strategy];
+    }
+}
+
 if (!function_exists('lead_agent_safe_contextual_fallback')) {
     /** Approved copy used only when the model cannot safely draft routine nurture. */
     function lead_agent_safe_contextual_fallback(array $lead, string $channel, int $step): array
@@ -1276,13 +1359,13 @@ if (!function_exists('lead_agent_safe_contextual_fallback')) {
 
         if ($day !== '' && $time === '') {
             $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
-                . '. You previously mentioned ' . $day . '. Would morning or afternoon be easier?';
+                . '. You previously mentioned ' . $day . '. Would mornings or afternoons usually work best?';
         } elseif ($day === '' && $time !== '') {
             $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
-                . '. You previously preferred ' . $time . '. What day usually works best for you?';
+                . '. You previously preferred ' . $time . '. What day of the week works best for you?';
         } elseif ($day !== '' && $time !== '') {
             $body = $hello . ' we are here whenever you are ready for your complimentary ' . $goal
-                . '. Would you like me to ask Rod to check current availability for ' . $day . ' ' . $time . '?';
+                . '. Would you like me to ask Rod to check availability for ' . $day . ' ' . $time . '?';
         } elseif ($step >= 9) {
             $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
                 . '. Would you like me to check what appointment times are currently available?';
@@ -1838,6 +1921,8 @@ if (!function_exists('lead_agent_contextual_followup')) {
             return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_template'] + lead_agent_draft_conversion_meta([], $conversionMemory);
         }
 
+        $strategyDraft = lead_agent_strategy_followup_draft($lead, $channel, $step, $conversionMemory);
+
         $leadAiPath = __DIR__ . '/lead_ai.php';
         if (is_file($leadAiPath)) {
             require_once $leadAiPath;
@@ -1870,6 +1955,9 @@ if (!function_exists('lead_agent_contextual_followup')) {
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
                 return ['subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? ''), 'draft_source' => 'ai'] + lead_agent_draft_conversion_meta($data, $conversionMemory);
             }
+            if (!empty($strategyDraft) && lead_agent_policy_flags((string) ($strategyDraft['subject'] ?? '') . ' ' . (string) ($strategyDraft['body'] ?? '')) === []) {
+                return $strategyDraft + lead_agent_draft_conversion_meta($strategyDraft, $conversionMemory);
+            }
             return lead_agent_safe_contextual_fallback($lead, $channel, $step) + lead_agent_draft_conversion_meta([], $conversionMemory);
         }
         if ($channel === 'sms' && function_exists('lead_ai_generate_reply')) {
@@ -1877,6 +1965,9 @@ if (!function_exists('lead_agent_contextual_followup')) {
             $data = (array) ($ai['data'] ?? []);
             if (!empty($ai['ok']) && !empty($data['should_send']) && empty($data['needs_human_review']) && (float) ($data['confidence'] ?? 0) >= (float) ELITE_AI_MIN_CONFIDENCE) {
                 return ['subject' => '', 'body' => (string) ($data['reply'] ?? ''), 'draft_source' => 'ai'] + lead_agent_draft_conversion_meta($data, $conversionMemory);
+            }
+            if (!empty($strategyDraft) && lead_agent_policy_flags((string) ($strategyDraft['body'] ?? '')) === []) {
+                return $strategyDraft + lead_agent_draft_conversion_meta($strategyDraft, $conversionMemory);
             }
         }
         return lead_agent_safe_contextual_fallback($lead, $channel, $step) + lead_agent_draft_conversion_meta([], $conversionMemory);

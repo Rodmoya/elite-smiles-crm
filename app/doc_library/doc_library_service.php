@@ -127,10 +127,9 @@ if (!function_exists('doc_library_templates')) {
                         'title' => 'Signatures',
                         'rows' => [
                             [['type' => 'text', 'label' => 'Patient Name', 'name' => 'ctb_patient_name', 'class' => 'doc-field-full']],
-                            [['type' => 'text', 'label' => 'Patient or legal guardian signature', 'name' => 'ctb_patient_guardian_signature', 'class' => 'doc-field-full']],
-                            [['type' => 'date', 'label' => 'Date', 'name' => 'ctb_signature_date']],
+                            [['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'ctb_signature_date', 'right_label' => 'Patient or legal guardian signature', 'right_name' => 'ctb_patient_guardian_signature']],
                             [['type' => 'text', 'label' => 'Witness', 'name' => 'ctb_witness', 'class' => 'doc-field-full']],
-                            [['type' => 'date', 'label' => 'Date', 'name' => 'ctb_witness_date']],
+                            [['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'ctb_witness_date', 'right_label' => 'Witness Signature', 'right_name' => 'ctb_witness_signature']],
                             [['type' => 'row_title', 'text' => "WALTER MEDEN D.D.S., P.C.\n11762 STATE STREET, SUITE 300\nDRAPER, UT 84020\n(801) 572-6262"]],
                         ],
                     ],
@@ -158,10 +157,8 @@ if (!function_exists('doc_library_templates')) {
                     ],
                     [
                         'rows' => [
-                            [['type' => 'signature_single', 'label' => 'Patient or Parent Signature', 'name' => 'photo_patient_signature']],
-                            [['type' => 'signature_single', 'label' => 'Date', 'name' => 'photo_patient_signature_date']],
-                            [['type' => 'signature_single', 'label' => 'Witness Signature (office staff)', 'name' => 'photo_witness_signature']],
-                            [['type' => 'signature_single', 'label' => 'Date', 'name' => 'photo_witness_signature_date']],
+                            [['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'photo_patient_signature_date', 'right_label' => 'Patient or Parent Signature', 'right_name' => 'photo_patient_signature']],
+                            [['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'photo_witness_signature_date', 'right_label' => 'Witness Signature (office staff)', 'right_name' => 'photo_witness_signature']],
                         ],
                     ],
                     [
@@ -210,8 +207,7 @@ if (!function_exists('doc_library_templates')) {
                         'rows' => [
                             [['type' => 'text', 'label' => 'Patient Name', 'name' => 'hipaa_patient_name', 'class' => 'doc-field-full']],
                             [['type' => 'text', 'label' => 'Relationship to Patient', 'name' => 'hipaa_patient_relationship', 'class' => 'doc-field-full']],
-                            [['type' => 'signature_single', 'label' => 'Signature', 'name' => 'hipaa_signature']],
-                            [['type' => 'signature_single', 'label' => 'Date', 'name' => 'hipaa_signature_date']],
+                            [['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'hipaa_signature_date', 'right_label' => 'Signature', 'right_name' => 'hipaa_signature']],
                         ],
                     ],
                     [
@@ -247,8 +243,7 @@ if (!function_exists('doc_library_templates')) {
                             ['type' => 'paragraph', 'text' => 'I will provide at least 48 hours notice for cancellations.'],
                             ['type' => 'paragraph', 'text' => 'No-show/late cancelation may result in a late/no-show fee.'],
                             ['type' => 'paragraph', 'text' => 'I agree to follow the treatment recommendations and schedule and I will continue with the treatment plan unless changed by the office or myself.'],
-                            ['type' => 'signature_single', 'label' => 'Patient/Parent/Guardian Signature', 'name' => 'office_policy_signature'],
-                            ['type' => 'signature_single', 'label' => 'Date', 'name' => 'office_policy_signature_date'],
+                            ['type' => 'signature_double', 'signature_style' => 'line_under_label', 'left_label' => 'Date', 'left_name' => 'office_policy_signature_date', 'right_label' => 'Patient/Parent/Guardian Signature', 'right_name' => 'office_policy_signature'],
                         ],
                     ],
                 ],

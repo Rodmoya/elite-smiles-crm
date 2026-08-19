@@ -264,6 +264,52 @@ $renderTextBlock = static function (string $text): string {
             gap: 0.13rem;
         }
 
+        .doc-signature-line-wrap {
+            display: grid;
+            gap: 0.2rem;
+        }
+
+        .doc-signature-line-field {
+            display: grid;
+            gap: 0.2rem;
+        }
+
+        .doc-signature-line-input {
+            width: 100%;
+            border: 0;
+            border-bottom: 2px solid #0f172a;
+            background: transparent;
+            color: #0f172a;
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.45;
+            min-height: 1.32rem;
+            padding: 0 0 0.15rem;
+            box-sizing: border-box;
+            outline: 0;
+        }
+
+        .doc-signature-line-label {
+            display: block;
+            width: 100%;
+            font-size: 11px;
+            color: #334155;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            line-height: 1.1;
+        }
+
+        .doc-signature-line-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.65fr);
+            gap: 0.35rem;
+            align-items: end;
+        }
+
+        .doc-signature-line-pair {
+            min-height: 2.35rem;
+        }
+
         .doc-signature-row {
             border: 1px solid #1e293b;
             border-radius: 0.22rem;
@@ -386,6 +432,26 @@ $renderTextBlock = static function (string $text): string {
             padding-top: 0;
             height: 0;
             width: 100%;
+            border-top: 1px dashed #cbd5e1;
+            margin-top: 0.78rem;
+            margin-bottom: 0.78rem;
+            position: relative;
+            color: #64748b;
+            min-height: 0.95rem;
+        }
+
+        .doc-page-break::before {
+            content: "Page 2";
+            position: absolute;
+            top: -0.58rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--doc-paper-bg);
+            padding: 0 0.4rem;
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
         }
 
         @media (max-width: 1024px) {
@@ -525,12 +591,29 @@ $renderTextBlock = static function (string $text): string {
                 line-height: 1.45;
             }
 
-            .doc-paper.doc-form-large .doc-signature-row,
-            .doc-signature-row {
-                min-height: 2.65rem;
-                border-bottom-width: 2px;
-                gap: 0.58rem;
-            }
+        .doc-paper.doc-form-large .doc-signature-row,
+        .doc-signature-row {
+            min-height: 2.65rem;
+            border-bottom-width: 2px;
+            gap: 0.58rem;
+        }
+
+        .doc-paper.doc-form-large .doc-signature-line-input,
+        .doc-signature-line-input {
+            min-height: 1.45rem;
+            font-size: 16px;
+            padding-bottom: 0.18rem;
+        }
+
+        .doc-paper.doc-form-large .doc-signature-line-label,
+        .doc-signature-line-label {
+            font-size: 12px;
+        }
+
+        .doc-paper.doc-form-large .doc-signature-line-columns,
+        .doc-signature-line-columns {
+            gap: 0.28rem;
+        }
 
             .doc-paper.doc-form-large .doc-signature-wrap {
                 margin-bottom: 0.2rem;
@@ -719,11 +802,46 @@ $renderTextBlock = static function (string $text): string {
                                                 <?php
                                                 $sigLabel = (string)($signature['label'] ?? '');
                                                 $sigName = (string)($signature['name'] ?? $signature['left_name'] ?? '');
+                                                $signatureStyle = (string)($signature['signature_style'] ?? 'boxed');
+
+                                                if ($signatureStyle === 'line_under_label' && $firstType === 'signature_single') {
+                                                    ?>
+                                                    <div class="doc-signature-line-wrap">
+                                                        <input class="doc-signature-line-input" type="text" name="<?= e($sigName) ?>" aria-label="<?= e($sigLabel) ?>">
+                                                        <span class="doc-signature-line-label"><?= e($sigLabel) ?></span>
+                                                    </div>
+                                                    <?php
+                                                    continue;
+                                                }
+
                                                 if ($firstType === 'signature_double') {
                                                     $leftLabel = (string)($signature['left_label'] ?? $sigLabel);
                                                     $rightLabel = (string)($signature['right_label'] ?? '');
                                                     $leftName = (string)($signature['left_name'] ?? '');
                                                     $rightName = (string)($signature['right_name'] ?? '');
+
+                                                    if ($signatureStyle === 'line_under_label') {
+                                                        ?>
+                                                        <div class="doc-signature-line-wrap doc-signature-line-pair">
+                                                            <div class="doc-signature-line-columns">
+                                                                <?php if ($leftLabel !== ''): ?>
+                                                                    <div class="doc-signature-line-field">
+                                                                        <input class="doc-signature-line-input" type="text" name="<?= e($leftName) ?>" aria-label="<?= e($leftLabel) ?>">
+                                                                        <span class="doc-signature-line-label"><?= e($leftLabel) ?></span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <?php if ($rightLabel !== ''): ?>
+                                                                    <div class="doc-signature-line-field">
+                                                                        <input class="doc-signature-line-input" type="text" name="<?= e($rightName) ?>" aria-label="<?= e($rightLabel) ?>">
+                                                                        <span class="doc-signature-line-label"><?= e($rightLabel) ?></span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                        <?php
+                                                        continue;
+                                                    }
+
                                                     if ($leftLabel !== '') {
                                                         ?>
                                                         <div class="doc-signature-wrap">

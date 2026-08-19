@@ -277,8 +277,20 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
                     <label class="block text-xs font-semibold text-slate-700">Audience<select name="audience" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="any">Any adult</option><option value="woman">Woman</option><option value="man">Man</option></select></label>
                     <label class="block text-xs font-semibold text-slate-700">Age range<select name="age_range" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="25-34">25–34</option><option value="35-44">35–44</option><option value="45-54">45–54</option><option value="55+">55+</option></select></label>
                     <label class="block text-xs font-semibold text-slate-700">Text position<select name="text_position" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="source">Recommended position</option><option value="left">Left</option><option value="right">Right</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Model<select name="model_profile" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="woman">Woman</option><option value="man">Man</option><option value="mixed">Mixed</option><option value="neutral">Neutral close-up</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Color mood<select name="color_mood" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="auto">CMO chooses</option><option value="warm_ivory">Warm ivory + champagne</option><option value="neutral">Clean neutral</option><option value="dark_luxury">Dark luxury</option><option value="cool_minimal">Cool minimal</option><option value="studio">Clinic studio</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Reference mode<select name="style_reference_mode" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="style_anchor">Create our version (anchor style)</option><option value="photo_reference">Follow photo more closely</option></select></label>
+                    <label class="block text-xs font-semibold text-slate-700">Creative mode<select name="novelty_mode" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="balanced">Balanced (recommended)</option><option value="conservative">Conservative</option><option value="fresh">Fresh</option><option value="experimental">Experimental</option></select></label>
                     <label class="block text-xs font-semibold text-slate-700">Posts<select name="count" class="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"><?php for ($i=1;$i<=7;$i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?></select></label>
                 </div>
+                <label class="block text-xs font-semibold text-slate-700">Optional creative anti-repetition hints
+                    <input type="text" name="novelty_avoid" maxlength="400" class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" placeholder="Avoid repeating: spring, gum line close-up, woman in pink, question opens">
+                    <span class="mt-1 block text-xs leading-5 text-slate-500">Use this when you want to prevent a specific look or copy pattern from repeating.</span>
+                </label>
+                <label class="block text-xs font-semibold text-slate-700">Optional reference caption guidance
+                    <textarea name="reference_caption" maxlength="500" rows="3" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs leading-6" placeholder="Paste source caption wording that you want the new version to keep its tone/structure, but with fresh phrasing."></textarea>
+                    <span class="mt-1 block text-xs leading-5 text-slate-500">Useful when you want the same cadence and confidence but not verbatim copy.</span>
+                </label>
                 <details class="rounded-xl border border-slate-200 bg-slate-50 p-3"><summary class="cursor-pointer text-sm font-semibold text-slate-700">Optional visual inspiration</summary><label class="mt-3 block text-xs font-semibold text-slate-700">Upload image<input type="file" name="inspiration_image" accept="image/jpeg,image/png,image/webp" class="mt-1 block w-full rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs"></label></details>
                 <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><strong class="block">The CMO will:</strong> interpret the brief, choose the strongest approved Brand Library system, write new overlay copy and caption, generate a clean image, assemble the typography, and run guardrail checks.</div>
                 <button id="social-original-button" type="submit" class="min-h-12 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Create original post</button>
@@ -291,7 +303,43 @@ $brandHistory = db_all('SELECT version,change_note,activated_at,created_at,statu
                 <?php if ($selected): ?><span class="<?= e(social_studio_badge_class((string)$selected['status'])) ?> rounded-full border px-3 py-1 text-xs font-semibold"><?= e(social_studio_status_labels()[(string)$selected['status']] ?? (string)$selected['status']) ?></span><?php endif; ?>
             </div>
             <?php if ($selected): ?>
-                <?php if ($selectedBrief): ?><div class="mx-auto mb-4 max-w-[620px] rounded-xl border border-violet-200 bg-violet-50 p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-violet-950">CMO interpretation</p><div class="flex gap-2"><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">Original</span><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">Brand Book v<?= e((string)($selected['brand_book_version'] ?? 1)) ?></span></div></div><dl class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4"><div><dt class="text-violet-600">Focus</dt><dd class="mt-1 font-semibold text-violet-950"><?= e(social_studio_focus_label((string)($selectedBrief['focus'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Purpose</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e(str_replace('_', ' ', (string)($selectedBrief['purpose'] ?? ''))) ?></dd></div><div><dt class="text-violet-600">Audience</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['audience'] ?? 'Any')) ?></dd></div><div><dt class="text-violet-600">Text</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['text_position'] ?? 'Recommended')) ?></dd></div></dl><?php if (trim((string)($selected['reference_reason'] ?? '')) !== ''): ?><p class="mt-3 border-t border-violet-200 pt-3 text-xs leading-5 text-violet-900"><strong>Brand Library choice:</strong> <?= e((string)$selected['reference_reason']) ?></p><?php endif; ?></div><?php endif; ?>
+                <?php if ($selectedBrief): ?><div class="mx-auto mb-4 max-w-[620px] rounded-xl border border-violet-200 bg-violet-50 p-4"><div class="flex items-center justify-between gap-3"><p class="text-sm font-semibold text-violet-950">CMO interpretation</p><div class="flex gap-2"><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">Original</span><span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">Brand Book v<?= e((string)($selected['brand_book_version'] ?? 1)) ?></span></div></div><dl class="mt-3 grid gap-3 text-xs sm:grid-cols-4"><?php
+                    $creativeMode = match ((string)($selectedBrief['novelty_mode'] ?? 'balanced')) {
+                        'conservative' => 'Conservative (safe variation)',
+                        'fresh' => 'Fresh (higher variation)',
+                        'experimental' => 'Experimental (max variation)',
+                        default => 'Balanced',
+                    };
+                    $colorMode = match ((string)($selectedBrief['color_mood'] ?? 'auto')) {
+                        'warm_ivory' => 'Warm ivory + champagne',
+                        'neutral' => 'Clean neutral',
+                        'dark_luxury' => 'Dark luxury',
+                        'cool_minimal' => 'Cool minimal',
+                        'studio' => 'Studio',
+                        default => 'CMO chooses',
+                    };
+                    $modelProfile = match ((string)($selectedBrief['model_profile'] ?? 'auto')) {
+                        'woman' => 'Woman',
+                        'man' => 'Man',
+                        'mixed' => 'Mixed',
+                        'neutral' => 'Neutral close-up',
+                        default => 'CMO chooses',
+                    };
+                    $referenceMode = match ((string)($selectedBrief['style_reference_mode'] ?? 'style_anchor')) {
+                        'photo_reference' => 'Photo reference',
+                        default => 'Style anchor',
+                    };
+                    ?>
+                    <div><dt class="text-violet-600">Focus</dt><dd class="mt-1 font-semibold text-violet-950"><?= e(social_studio_focus_label((string)($selectedBrief['focus'] ?? ''))) ?></dd></div>
+                    <div><dt class="text-violet-600">Purpose</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e(str_replace('_', ' ', (string)($selectedBrief['purpose'] ?? ''))) ?></dd></div>
+                    <div><dt class="text-violet-600">Audience</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['audience'] ?? 'Any')) ?></dd></div>
+                    <div><dt class="text-violet-600">Text</dt><dd class="mt-1 font-semibold capitalize text-violet-950"><?= e((string)($selectedBrief['text_position'] ?? 'Recommended')) ?></dd></div>
+                    <div><dt class="text-violet-600">Creative mode</dt><dd class="mt-1 font-semibold text-violet-950"><?= e($creativeMode) ?></dd></div>
+                    <div><dt class="text-violet-600">Model</dt><dd class="mt-1 font-semibold text-violet-950"><?= e($modelProfile) ?></dd></div>
+                    <div><dt class="text-violet-600">Color</dt><dd class="mt-1 font-semibold text-violet-950"><?= e($colorMode) ?></dd></div>
+                    <div><dt class="text-violet-600">Reference mode</dt><dd class="mt-1 font-semibold text-violet-950"><?= e($referenceMode) ?></dd></div>
+                    <?php if (trim((string)($selectedBrief['novelty_avoid'] ?? '')) !== ''): ?><div><dt class="text-violet-600">Avoid</dt><dd class="mt-1 font-semibold text-violet-950"><?= e((string)$selectedBrief['novelty_avoid']) ?></dd></div><?php endif; ?>
+                </dl><?php if (trim((string)($selected['reference_reason'] ?? '')) !== ''): ?><p class="mt-3 border-t border-violet-200 pt-3 text-xs leading-5 text-violet-900"><strong>Brand Library choice:</strong> <?= e((string)$selected['reference_reason']) ?></p><?php endif; ?></div><?php endif; ?>
                 <article class="mx-auto max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header class="flex items-center gap-3 border-b border-slate-100 px-4 py-3"><img class="h-9 w-9 rounded-full object-cover" src="<?= e(base_url('assets/img/elite-smiles-instagram-avatar.jpg')) ?>" alt="Elite Smiles"><div><p class="text-sm font-semibold">elitesmilesutah</p><p class="text-xs text-slate-500">Elite Smiles by Walter Meden DDS</p></div><span class="ml-auto font-bold tracking-[0.2em]">···</span></header>
                     <?php if ($selectedImageUrl !== ''): ?><img class="social-preview-image" src="<?= e($selectedImageUrl) ?>" alt="<?= e((string)$selected['title']) ?>" data-social-raster-source data-draft-id="<?= e((string)$selected['id']) ?>"><?php else: ?><div class="grid aspect-[4/5] place-items-center bg-slate-100 p-8 text-center text-sm text-slate-500">Generate the clean photo to assemble this post.</div><?php endif; ?>

@@ -78,6 +78,13 @@ social_original_assert(
     str_contains($pageSource, 'max-h-[92dvh] overflow-y-auto') && str_contains($pageSource, 'lg:overflow-hidden'),
     'The post preview must scroll as one surface on smaller viewports.'
 );
+social_original_assert(str_contains($pageSource, 'name="novelty_mode"'), 'Original form must expose a creative novelty mode selector.');
+social_original_assert(str_contains($pageSource, 'name="novelty_avoid"'), 'Original form must expose a novelty anti-repetition input.');
+social_original_assert(str_contains($pageSource, 'name="model_profile"'), 'Original form must expose model profile control.');
+social_original_assert(str_contains($pageSource, 'name="color_mood"'), 'Original form must expose color mood control.');
+social_original_assert(str_contains($pageSource, 'name="style_reference_mode"'), 'Original form must expose style reference mode control.');
+social_original_assert(str_contains($pageSource, 'name="reference_caption"'), 'Original form must expose reference caption field.');
+social_original_assert(str_contains($actionSource, 'novelty_mode') && str_contains($actionSource, 'novelty_avoid'), 'Original generation action should pass creative novelty settings.');
 social_original_assert(
     str_contains($pageSource, 'data-social-review-list')
     && preg_match('/data-social-review-list[^>]*(?:max-h-|overflow-y-auto)/', $pageSource) !== 1,

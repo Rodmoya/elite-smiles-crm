@@ -17,6 +17,12 @@ $controls = [
     'audience' => (string)post('audience', 'auto'),
     'age_range' => (string)post('age_range', 'auto'),
     'text_position' => (string)post('text_position', 'auto'),
+    'model_profile' => (string)post('model_profile', 'auto'),
+    'color_mood' => (string)post('color_mood', 'auto'),
+    'style_reference_mode' => (string)post('style_reference_mode', 'style_anchor'),
+    'novelty_mode' => (string)post('novelty_mode', 'balanced'),
+    'reference_caption' => trim((string)post('reference_caption', '')),
+    'novelty_avoid' => trim((string)post('novelty_avoid', '')),
 ];
 $inspirationDataUrl = '';
 if (!empty($_FILES['inspiration_image']['tmp_name']) && is_uploaded_file($_FILES['inspiration_image']['tmp_name'])) {

@@ -851,7 +851,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         return ['ok' => true, 'template' => social_studio_normalize_overlay_template($template), 'count' => $count];
     }
 
-    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = [], ?array &$createdIds = null): int
+    function social_studio_seed_drafts(string $focus, int $count, int $createdBy = 0, string $instruction = '', string $inspirationImageDataUrl = '', array $remixTemplate = [], ?array &$createdIds = null, array $creativeBrief = []): int
     {
         social_studio_ensure_schema();
 
@@ -863,7 +863,7 @@ if (!function_exists('social_studio_seed_drafts')) {
         if ($hashtags === []) {
             $hashtags = social_studio_default_hashtags($focus);
         }
-        $topics = social_studio_generate_topics($focus, $count, $instruction, $inspirationImageDataUrl);
+        $topics = social_studio_generate_topics($focus, $count, $instruction, $inspirationImageDataUrl, $creativeBrief);
         if ($topics === []) {
             throw new RuntimeException('OpenAI returned no usable social drafts. Nothing was added to the review queue.');
         }
@@ -948,8 +948,52 @@ if (!function_exists('social_studio_seed_drafts')) {
     }
 }
 
+if (!function_exists('social_studio_style_reference_instructions')) {
+    function social_studio_style_reference_instructions(array $creativeBrief): string
+    {
+        $referenceMode = trim((string)($creativeBrief['style_reference_mode'] ?? 'style_anchor'));
+        if (!in_array($referenceMode, ['style_anchor', 'photo_reference'], true)) {
+            $referenceMode = 'style_anchor';
+        }
+
+        $instructions = $referenceMode === 'photo_reference'
+            ? 'Style reference mode: PHOTO REFERENCE. Treat the uploaded image as the primary visual blueprint for composition and pose family, while outputting a compliant new photo variant with no logos, no readable text, no watermark, and no brand marks.'
+            : 'Style reference mode: STYLE ANCHOR. Use the uploaded image only as style and aesthetic guidance. Preserve the editorial mood, framing grammar, subject hierarchy, and polish, but generate a brand-new look with a different subject/model and scene details.';
+
+        $colorMood = trim((string)($creativeBrief['color_mood'] ?? 'auto'));
+        $colorMap = [
+            'warm_ivory' => 'Use warm ivory whites, champagne-gold accents, and soft flattering contrast.',
+            'neutral' => 'Use a balanced neutral palette with clean whites, light gray shadows, and restrained charcoal contrast.',
+            'dark_luxury' => 'Use premium dark luxury contrast: deep charcoal/black with controlled white highlights.',
+            'cool_minimal' => 'Use cool neutral tones with crisp clinical control and minimal decorative color.',
+            'studio' => 'Use a clean studio palette: white key light balance with neutral background and subtle contrast.',
+        ];
+        if ($colorMood !== 'auto' && isset($colorMap[$colorMood])) {
+            $instructions .= "\nColor control: " . $colorMap[$colorMood];
+        }
+
+        $modelProfile = trim((string)($creativeBrief['model_profile'] ?? 'auto'));
+        if ($modelProfile === 'woman') {
+            $instructions .= "\nModel control: generate a woman-focused subject with clear eyes, bright natural smile, and relaxed confidence.";
+        } elseif ($modelProfile === 'man') {
+            $instructions .= "\nModel control: generate a man-focused subject with clear eyes, bright natural smile, and relaxed confidence.";
+        } elseif ($modelProfile === 'mixed') {
+            $instructions .= "\nModel control: generate mixed gender expressions across variants while preserving the same premium editorial mood.";
+        } elseif ($modelProfile === 'neutral') {
+            $instructions .= "\nModel control: prefer neutral close-up smile-first framing without explicit gender emphasis.";
+        }
+
+        $referenceCaption = trim((string)($creativeBrief['reference_caption'] ?? ''));
+        if ($referenceCaption !== '') {
+            $instructions .= "\nReference copy behavior: use reference caption only as tone and structural guidance. Keep hook rhythm and phrasing fresh, not verbatim.";
+        }
+
+        return $instructions;
+    }
+}
+
 if (!function_exists('social_studio_generate_topics')) {
-    function social_studio_generate_topics(string $focus, int $count, string $instruction = '', string $inspirationImageDataUrl = ''): array
+    function social_studio_generate_topics(string $focus, int $count, string $instruction = '', string $inspirationImageDataUrl = '', array $creativeBrief = []): array
     {
         if (!elite_openai_is_configured()) {
             throw new RuntimeException('OpenAI is not configured. No fallback drafts were created.');
@@ -987,10 +1031,21 @@ if (!function_exists('social_studio_generate_topics')) {
 
         $system = 'You are the Elite Smiles Master CMO. Write concise, premium, compliant dental marketing posts using the complete brand operating system below. ' . social_studio_editorial_context();
         $isOriginal = str_contains($instruction, 'ORIGINAL CREATION BRIEF');
+        $noveltyPayload = [];
+        if ($isOriginal && is_array($creativeBrief)) {
+            $noveltyPayload = array_intersect_key($creativeBrief, [
+                'novelty_mode' => true,
+                'novelty_avoid' => true,
+                'novelty_profile' => true,
+            ]);
+        }
+        $noveltyInstructions = social_studio_novelty_instructions($creativeBrief ?: [], $noveltyPayload['novelty_profile'] ?? [], $count);
+        $referenceInstructions = social_studio_style_reference_instructions($creativeBrief);
         $modeDirection = $isOriginal
             ? 'This is an ORIGINAL creation inside an approved Elite Smiles design system. Develop a genuinely new concept, hook, caption, and photographic direction from the structured brief. Reuse only the design grammar and saved overlay geometry; never copy source-photo pixels or old treatment claims.'
             : 'This is a REMIX. The selected base post is a locked template, not loose inspiration. Preserve its composition, crop, subject scale, palette, typography, hierarchy, CTA treatment, and approved overlay copy except for explicitly requested substitutions.';
-        $user = "Create {$count} draft social posts for {$focus}. {$modeDirection} The deterministic overlay is handled separately by CRM; do not render or position on-image copy in these drafts. Create a fresh caption while directing only the clean photo through the supplied brief. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present; for clinical or 3D education, use complete credible anatomy and a clear focal model. The image remains unbranded with no text, logo, watermark, or typography. Instruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
+        $noveltyInstruction = $noveltyInstructions !== '' ? "\n\n{$noveltyInstructions}" : '';
+        $user = "Create {$count} draft social posts for {$focus}. {$modeDirection} The deterministic overlay is handled separately by CRM; do not render or position on-image copy in these drafts. Create a fresh caption while directing only the clean photo through the supplied brief. Return overlay_eyebrow and overlay_blocks as empty placeholders because CRM supplies the overlay. Return base_reference_key, base_post_prompt, and overlay_spec for every draft. The Nano Banana image prompt must request a close, sharp subject with both eyes visible and brilliant bright-white cosmetically perfect teeth where a person is present; for clinical or 3D education, use complete credible anatomy and a clear focal model. The image remains unbranded with no text, logo, watermark, or typography.\n{$referenceInstructions}" . $noveltyInstruction . "\nInstruction: " . ($instruction !== '' ? $instruction : 'Use the selected base post and requested controls.');
         $response = elite_openai_json_response($system, $user, $schema, 'social_studio_drafts', $inspirationImageDataUrl);
         if (empty($response['ok']) || !is_array($response['data']['drafts'] ?? null)) {
             throw new RuntimeException('OpenAI draft generation failed: ' . (string)($response['message'] ?? 'No structured drafts returned.'));

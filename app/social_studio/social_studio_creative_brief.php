@@ -8,21 +8,171 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             'type' => 'object',
             'additionalProperties' => false,
             'properties' => [
-                'focus' => ['type' => 'string', 'enum' => ['veneers', 'implants', 'smile_makeover', 'lip_repositioning', 'dental_education']],
-                'purpose' => ['type' => 'string', 'enum' => ['educational', 'social_ad']],
-                'audience' => ['type' => 'string', 'enum' => ['any', 'woman', 'man']],
-                'age_range' => ['type' => 'string', 'enum' => ['any', '25-34', '35-44', '45-54', '55+']],
-                'text_position' => ['type' => 'string', 'enum' => ['source', 'left', 'right']],
-                'visual_format' => ['type' => 'string', 'enum' => ['editorial_card', 'portrait', 'smile_closeup', 'clinical_3d', 'benefit_list', 'dark_luxury']],
-                'editorial_angle' => ['type' => 'string'],
-                'subject_direction' => ['type' => 'string'],
-                'overlay_direction' => ['type' => 'string'],
-                'cta' => ['type' => 'string'],
+            'focus' => ['type' => 'string', 'enum' => ['veneers', 'implants', 'smile_makeover', 'lip_repositioning', 'dental_education']],
+            'purpose' => ['type' => 'string', 'enum' => ['educational', 'social_ad']],
+            'audience' => ['type' => 'string', 'enum' => ['any', 'woman', 'man']],
+            'age_range' => ['type' => 'string', 'enum' => ['any', '25-34', '35-44', '45-54', '55+']],
+            'text_position' => ['type' => 'string', 'enum' => ['source', 'left', 'right']],
+            'model_profile' => ['type' => 'string', 'enum' => ['auto', 'woman', 'man', 'mixed', 'neutral']],
+            'color_mood' => ['type' => 'string', 'enum' => ['auto', 'warm_ivory', 'neutral', 'dark_luxury', 'cool_minimal', 'studio']],
+            'style_reference_mode' => ['type' => 'string', 'enum' => ['style_anchor', 'photo_reference']],
+            'reference_caption' => ['type' => 'string'],
+            'visual_format' => ['type' => 'string', 'enum' => ['editorial_card', 'portrait', 'smile_closeup', 'clinical_3d', 'benefit_list', 'dark_luxury']],
+            'editorial_angle' => ['type' => 'string'],
+            'subject_direction' => ['type' => 'string'],
+            'overlay_direction' => ['type' => 'string'],
+            'cta' => ['type' => 'string'],
                 'location' => ['type' => 'string'],
                 'include_financing' => ['type' => 'boolean'],
+                'novelty_mode' => ['type' => 'string', 'enum' => ['conservative', 'balanced', 'fresh', 'experimental']],
+                'novelty_avoid' => ['type' => 'string'],
             ],
             'required' => ['focus', 'purpose', 'audience', 'age_range', 'text_position', 'visual_format', 'editorial_angle', 'subject_direction', 'overlay_direction', 'cta', 'location', 'include_financing'],
         ];
+    }
+
+    function social_studio_normalize_novelty_mode(string $mode): string
+    {
+        $mode = trim((string)$mode);
+        return in_array($mode, ['conservative', 'fresh', 'experimental'], true) ? $mode : 'balanced';
+    }
+
+    function social_studio_slugify_social_signal(string $value, int $maxLength = 80): string
+    {
+        $value = trim((string)preg_replace('/\s+/u', ' ', mb_strtolower($value, 'UTF-8')));
+        $value = trim((string)preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $value));
+        return mb_substr($value, 0, max(8, $maxLength));
+    }
+
+    function social_studio_signal_counters_to_top(array $counter, int $limit = 3): array
+    {
+        if ($counter === []) {
+            return [];
+        }
+        arsort($counter, SORT_NUMERIC);
+        $result = [];
+        $i = 0;
+        foreach ($counter as $signal => $count) {
+            if ($signal === '' || $i >= $limit) break;
+            $result[$signal] = (int)$count;
+            $i++;
+        }
+        return $result;
+    }
+
+    function social_studio_recent_novelty_profile(string $focus, int $windowDays = 45, int $sampleLimit = 45): array
+    {
+        social_studio_ensure_schema();
+        $focus = in_array($focus, ['veneers', 'implants', 'smile_makeover', 'lip_repositioning', 'dental_education'], true) ? $focus : 'veneers';
+        $windowDays = max(14, min(120, $windowDays));
+        $sampleLimit = max(10, min(120, $sampleLimit));
+        $focus = str_replace('\'', '', $focus);
+        $safeWindowDays = (int)$windowDays;
+        $safeLimit = (int)$sampleLimit;
+        $rows = db_all(
+            'SELECT id, created_at, content_focus, creative_brief_json, title, caption FROM social_studio_drafts WHERE creation_mode = "original" AND content_focus = :focus AND created_at >= DATE_SUB(NOW(), INTERVAL ' . $safeWindowDays . ' DAY) ORDER BY created_at DESC LIMIT ' . $safeLimit,
+            ['focus' => $focus]
+        );
+
+        $positionCounter = [];
+        $angleCounter = [];
+        $hookCounter = [];
+        $voiceCounter = [];
+        $examples = [];
+        foreach ($rows as $row) {
+            $brief = json_decode((string)($row['creative_brief_json'] ?? ''), true);
+            if (!is_array($brief)) {
+                $brief = [];
+            }
+            $angle = social_studio_slugify_social_signal((string)($brief['editorial_angle'] ?? ''), 80);
+            $topic = social_studio_slugify_social_signal((string)($brief['subject_direction'] ?? ''), 80);
+            $overlay = social_studio_slugify_social_signal((string)($brief['overlay_direction'] ?? ''), 80);
+            $focusSignal = social_studio_slugify_social_signal((string)($brief['focus'] ?? ''), 80);
+            $position = social_studio_slugify_social_signal((string)($brief['text_position'] ?? ''), 40);
+            $voice = social_studio_slugify_social_signal((string)($brief['audience'] ?? ''), 40);
+            $title = social_studio_slugify_social_signal((string)($row['title'] ?? ''), 60);
+            $caption = social_studio_slugify_social_signal((string)($row['caption'] ?? ''), 90);
+
+            if (!empty($angle)) $angleCounter[$angle] = ($angleCounter[$angle] ?? 0) + 1;
+            if (!empty($topic)) $hookCounter[$topic] = ($hookCounter[$topic] ?? 0) + 1;
+            if (!empty($overlay)) $angleCounter[$overlay] = ($angleCounter[$overlay] ?? 0) + 1;
+            if (!empty($focusSignal)) $voiceCounter[$focusSignal] = ($voiceCounter[$focusSignal] ?? 0) + 1;
+            if (!empty($position)) $positionCounter[$position] = ($positionCounter[$position] ?? 0) + 1;
+            if (!empty($caption)) {
+                $hookCounter[$caption] = ($hookCounter[$caption] ?? 0) + 1;
+            }
+            if (!empty($title)) {
+                $hookCounter[$title] = ($hookCounter[$title] ?? 0) + 1;
+            }
+
+            $examples[] = [
+                'draft_id' => (int)($row['id'] ?? 0),
+                'date' => (string)($row['created_at'] ?? ''),
+                'angle' => $angle,
+                'position' => $position,
+                'topic' => $topic,
+                'voice' => $voice,
+                'cta' => social_studio_slugify_social_signal((string)($brief['cta'] ?? ''), 70),
+            ];
+        }
+
+        $topAngles = social_studio_signal_counters_to_top($angleCounter, 4);
+        $topHooks = social_studio_signal_counters_to_top($hookCounter, 6);
+        $topPosition = social_studio_signal_counters_to_top($positionCounter, 3);
+        $topVoice = social_studio_signal_counters_to_top($voiceCounter, 3);
+        if (count($rows) > 0) {
+            $examples = array_slice($examples, 0, min(10, count($examples)));
+        }
+        return [
+            'focus' => $focus,
+            'window_days' => $windowDays,
+            'sample_count' => count($rows),
+            'top_angles' => $topAngles,
+            'top_hooks' => $topHooks,
+            'top_positions' => $topPosition,
+            'top_voice' => $topVoice,
+            'examples' => $examples,
+        ];
+    }
+
+    function social_studio_novelty_instructions(array $brief, array $profile = [], int $batchCount = 1): string
+    {
+        $mode = social_studio_normalize_novelty_mode((string)($brief['novelty_mode'] ?? 'balanced'));
+        $manualAvoid = trim((string)($brief['novelty_avoid'] ?? ''));
+        $avoidLines = [];
+        if ($manualAvoid !== '') {
+            $avoidLines[] = 'User explicit avoid list: ' . $manualAvoid;
+        }
+        if ($profile === []) {
+            $focus = in_array((string)($brief['focus'] ?? ''), ['veneers', 'implants', 'smile_makeover', 'lip_repositioning', 'dental_education'], true) ? (string)$brief['focus'] : 'veneers';
+            $profile = social_studio_recent_novelty_profile($focus);
+        }
+
+        if (!empty($profile['top_hooks'])) {
+            $avoidLines[] = 'Common recent hooks to rotate away from: ' . implode(', ', array_keys((array)$profile['top_hooks']));
+        }
+        if (!empty($profile['top_angles'])) {
+            $avoidLines[] = 'Recent preferred angle patterns to rotate: ' . implode(', ', array_keys((array)$profile['top_angles']));
+        }
+        if (!empty($profile['top_positions'])) {
+            $avoidLines[] = 'Common text positions in recent output: ' . implode(', ', array_keys((array)$profile['top_positions']));
+        }
+        if (!empty($profile['top_voice'])) {
+            $avoidLines[] = 'Recent audience/voice defaults: ' . implode(', ', array_keys((array)$profile['top_voice']));
+        }
+
+        $modeRules = [
+            'conservative' => 'Keep structure close to prior performance. Maintain the same post family, but change one meaningful variable (one angle, one opening question, one subject nuance).',
+            'balanced' => 'Keep the Brand Book style. Avoid straight repetition by changing hook, opening line, and one visual direction in each post batch.',
+            'fresh' => 'Prioritize originality: alternate at least two distinct hooks, two subject angles, and two callout directions across the batch.',
+            'experimental' => 'Push novelty with controlled variation: at least three posts should differ in voice, structure, and visual angle, while staying strictly within the Brand Book and compliance rules.',
+        ];
+        $target = max(1, (int)$batchCount);
+        return "Creative Agent novelty mode: {$mode}.\n"
+            . "Required behavior: {$modeRules[$mode]}\n"
+            . "For this request, generate {$target} draft(s) where each draft has a unique first-line hook and no repeated copy rhythm.\n"
+            . ($avoidLines !== [] ? "Do not reuse these repeated patterns as first-class defaults: " . implode(' | ', $avoidLines) . "\n" : '')
+            . 'Use different opening intent for at least half the batch: mix educational question, social proof-style reassurance, and practical planning language. Keep the tone premium, warm, and consultative.';
     }
 
     function social_studio_interpret_creative_brief(string $instruction, array $controls = []): array
@@ -52,9 +202,31 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             $explicit = trim((string)($controls[$field] ?? 'auto'));
             if ($explicit !== '' && $explicit !== 'auto' && in_array($explicit, $allowed, true)) $brief[$field] = $explicit;
         }
+        $modelProfile = trim((string)($controls['model_profile'] ?? 'auto'));
+        if (in_array($modelProfile, ['auto', 'woman', 'man', 'mixed', 'neutral'], true)) {
+            $brief['model_profile'] = $modelProfile;
+        }
+        $colorMood = trim((string)($controls['color_mood'] ?? 'auto'));
+        if (in_array($colorMood, ['auto', 'warm_ivory', 'neutral', 'dark_luxury', 'cool_minimal', 'studio'], true)) {
+            $brief['color_mood'] = $colorMood;
+        }
+        $referenceMode = trim((string)($controls['style_reference_mode'] ?? 'style_anchor'));
+        if (!in_array($referenceMode, ['style_anchor', 'photo_reference'], true)) {
+            $referenceMode = 'style_anchor';
+        }
+        $brief['style_reference_mode'] = $referenceMode;
+        $referenceCaption = trim((string)($controls['reference_caption'] ?? ''));
+        if ($referenceCaption !== '') {
+            $brief['reference_caption'] = $referenceCaption;
+        }
         $brief['request'] = $instruction;
+        $brief['novelty_mode'] = social_studio_normalize_novelty_mode((string)($controls['novelty_mode'] ?? 'balanced'));
+        if (trim((string)($controls['novelty_avoid'] ?? '')) !== '') {
+            $brief['novelty_avoid'] = trim((string)$controls['novelty_avoid']);
+        }
         $brief['cta'] = trim((string)($brief['cta'] ?? '')) ?: 'Schedule a complimentary consultation.';
         $brief['location'] = 'Draper, Utah';
+        $brief['novelty_profile'] = social_studio_recent_novelty_profile((string)$brief['focus']);
         return $brief;
     }
 
@@ -186,7 +358,7 @@ if (!function_exists('social_studio_creative_brief_schema')) {
             'source_hashtags' => '',
         ];
         $ids = [];
-        $created = social_studio_seed_drafts((string)$brief['focus'], $count, $createdBy, $productionInstruction, $inspirationImageDataUrl, $remixTemplate, $ids);
+        $created = social_studio_seed_drafts((string)$brief['focus'], $count, $createdBy, $productionInstruction, $inspirationImageDataUrl, $remixTemplate, $ids, $brief);
         $briefJson = json_encode($brief, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         foreach ($ids as $id) {
             db_execute('UPDATE social_studio_drafts SET creation_mode="original", creative_brief_json=:brief, reference_reason=:reason, version_number=1 WHERE id=:id LIMIT 1', ['id' => (int)$id, 'brief' => $briefJson, 'reason' => (string)$recommendation['reason']]);

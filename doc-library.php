@@ -94,14 +94,46 @@ $renderTextBlock = static function (string $text): string {
         .doc-paper {
             position: relative;
             overflow: hidden;
-            padding: 0.52in 0.58in 0.95in;
-            min-height: 10.9in;
-            border: 1px solid #e2e8f0;
-            border-radius: 0.4rem;
-            box-shadow: 0 14px 35px rgba(15, 23, 42, 0.12);
+            padding: 0;
+            min-height: auto;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
             background: var(--doc-paper-bg);
             box-sizing: border-box;
             isolation: isolate;
+        }
+
+        .doc-form-pages {
+            display: flex;
+            flex-direction: column;
+            gap: 0.38in;
+        }
+
+        .doc-form-page {
+            position: relative;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.35rem;
+            min-height: 10.65in;
+            padding: 0.52in 0.58in 0.95in;
+            box-shadow: 0 14px 35px rgba(15, 23, 42, 0.12);
+            background: var(--doc-paper-bg);
+            box-sizing: border-box;
+        }
+
+        .doc-form-page {
+            page-break-after: always;
+            -webkit-column-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        .doc-form-page:last-child {
+            page-break-after: auto;
+        }
+
+        .doc-form-page[data-doc-page="2"] .doc-footer,
+        .doc-form-page[data-doc-page="3"] .doc-footer {
+            bottom: 0.2in;
         }
 
         .doc-header {
@@ -178,7 +210,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-paper.doc-form-large .doc-field-row {
-            row-gap: 0.24in;
+            row-gap: 0.19in;
             column-gap: 0.24in;
             margin-bottom: 0.2in;
         }
@@ -194,6 +226,10 @@ $renderTextBlock = static function (string $text): string {
         .doc-paper.doc-form-large .doc-text-block {
             margin-top: 0.02rem;
             margin-bottom: 0.22rem;
+        }
+
+        .doc-form-header {
+            margin-bottom: 0.5rem;
         }
 
         .doc-field {
@@ -214,7 +250,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-paper.doc-form-large .doc-field {
-            min-height: 2.7rem;
+            min-height: 2.2rem;
         }
 
         .doc-field label {
@@ -327,7 +363,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-paper.doc-form-large .doc-signature-row {
-            min-height: 2.3rem;
+            min-height: 2.15rem;
             font-size: 12px;
         }
 
@@ -425,33 +461,7 @@ $renderTextBlock = static function (string $text): string {
         }
 
         .doc-page-break {
-            break-before: page;
-            page-break-before: always;
-            margin-top: 0;
-            margin-bottom: 0;
-            padding-top: 0;
-            height: 0;
-            width: 100%;
-            border-top: 1px dashed #cbd5e1;
-            margin-top: 0.78rem;
-            margin-bottom: 0.78rem;
-            position: relative;
-            color: #64748b;
-            min-height: 0.95rem;
-        }
-
-        .doc-page-break::before {
-            content: "Page 2";
-            position: absolute;
-            top: -0.58rem;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--doc-paper-bg);
-            padding: 0 0.4rem;
-            font-size: 9px;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #64748b;
+            display: none;
         }
 
         @media (max-width: 1024px) {
@@ -496,15 +506,31 @@ $renderTextBlock = static function (string $text): string {
                 margin: 0 !important;
                 width: 8.5in !important;
                 max-width: 8.5in !important;
-                min-height: 11in;
+                min-height: auto;
                 border: 0;
                 box-shadow: none;
-                padding: 0.42in 0.45in 0.78in;
+                padding: 0;
             }
 
             .doc-shell {
                 width: 100%;
                 min-width: auto;
+            }
+
+            .doc-form-pages {
+                gap: 0;
+            }
+
+            .doc-form-page {
+                min-height: 10.72in;
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+                padding: 0.42in 0.45in 0.78in;
+            }
+
+            .doc-form-page:last-child {
+                page-break-after: avoid;
             }
 
             .doc-field input,
@@ -513,8 +539,8 @@ $renderTextBlock = static function (string $text): string {
             }
 
             .doc-paper.doc-form-large .doc-field-row {
-                row-gap: 0.26in;
-                margin-bottom: 0.22in;
+                row-gap: 0.22in;
+                margin-bottom: 0.2in;
             }
 
             .doc-paper.doc-form-large .doc-field,
@@ -560,13 +586,13 @@ $renderTextBlock = static function (string $text): string {
 
             .doc-paper.doc-form-large .doc-field-row {
                 column-gap: 0.26in;
-                row-gap: 0.34in;
-                margin-bottom: 0.3in;
+                row-gap: 0.22in;
+                margin-bottom: 0.2in;
             }
 
             .doc-paper.doc-form-large .doc-field,
             .doc-field {
-                min-height: 2.8rem;
+                min-height: 2.15rem;
                 border-bottom-width: 2px;
                 line-height: 1.4;
             }
@@ -593,7 +619,7 @@ $renderTextBlock = static function (string $text): string {
 
         .doc-paper.doc-form-large .doc-signature-row,
         .doc-signature-row {
-            min-height: 2.65rem;
+            min-height: 2.15rem;
             border-bottom-width: 2px;
             gap: 0.58rem;
         }
@@ -694,253 +720,276 @@ $renderTextBlock = static function (string $text): string {
 
             <div class="doc-shell">
                 <div class="doc-paper <?= $selectedTemplateKey === 'welcome_patient_information' ? 'doc-form-large' : '' ?>">
-                    <header class="doc-header">
-                        <img src="<?= e($baseLogo) ?>" alt="Elite Smiles" class="doc-logo" loading="eager">
-                        <div class="doc-page-title"><?= e($documentTitle) ?></div>
-                        <?php if ($documentSubtitle !== ''): ?>
-                            <div class="doc-page-subtitle"><?= e($documentSubtitle) ?></div>
-                        <?php endif; ?>
-                    </header>
-
+                    <?php
+                    $docPage = 1;
+                    $sectionIndex = 0;
+                    $renderDocHeader = static function () use ($baseLogo, $documentTitle, $documentSubtitle): void {
+                        ?>
+                        <header class="doc-header doc-form-header">
+                            <img src="<?= e($baseLogo) ?>" alt="Elite Smiles" class="doc-logo" loading="eager">
+                            <div class="doc-page-title"><?= e($documentTitle) ?></div>
+                            <?php if ($documentSubtitle !== ''): ?>
+                                <div class="doc-page-subtitle"><?= e($documentSubtitle) ?></div>
+                            <?php endif; ?>
+                        </header>
+                        <?php
+                    };
+                    ?>
                     <form id="doc-library-form" class="space-y-2" autocomplete="off">
-                        <?php foreach ($sections as $section): ?>
-                            <?php
-                            $sectionType = (string)($section['type'] ?? 'section');
-                            $sectionTitle = (string)($section['title'] ?? '');
-                            $sectionSubtitle = (string)($section['subtitle'] ?? '');
-                            $fields = (array)($section['fields'] ?? []);
-                            $rows = (array)($section['rows'] ?? []);
-                            $pageBreakBefore = (bool)($section['page_break_before'] ?? false);
-                            ?>
+                        <div class="doc-form-pages">
+                            <div class="doc-form-page" data-doc-page="1">
+                                <?php $renderDocHeader(); ?>
+                                <?php foreach ($sections as $section): ?>
+                                    <?php
+                                    $sectionTitle = (string)($section['title'] ?? '');
+                                    $sectionSubtitle = (string)($section['subtitle'] ?? '');
+                                    $fields = (array)($section['fields'] ?? []);
+                                    $rows = (array)($section['rows'] ?? []);
+                                    $pageBreakBefore = (bool)($section['page_break_before'] ?? false);
 
-                            <?php if ($pageBreakBefore): ?>
-                                <div class="doc-page-break"></div>
-                            <?php endif; ?>
-
-                            <?php if ($sectionTitle !== ''): ?>
-                                <div class="doc-section-title"><?= e($sectionTitle) ?></div>
-                            <?php endif; ?>
-
-                            <?php if ($sectionSubtitle !== ''): ?>
-                                <div class="doc-subtitle-block"><?= e($sectionSubtitle) ?></div>
-                            <?php endif; ?>
-
-                            <?php if (!empty($fields)): ?>
-                                <div class="doc-text-block">
-                                    <?php foreach ($fields as $field): ?>
-                                        <?php
-                                        $fieldType = (string)($field['type'] ?? 'text');
-                                        $fieldText = (string)($field['text'] ?? '');
-                                        $fieldName = (string)($field['name'] ?? '');
-                                        $fieldLabel = (string)($field['label'] ?? '');
-                                        $fieldOptions = (array)($field['options'] ?? []);
+                                    if ($pageBreakBefore && $sectionIndex > 0) {
                                         ?>
+                                        <footer class="doc-footer">
+                                            Elite Smiles by Dr. Walter Meden · 11762 South State, Suite 300, Draper, UT 84020 · (801) 572-6262
+                                        </footer>
+                                        </div>
+                                        <?php
+                                        $docPage++;
+                                        $sectionIndex = 0;
+                                        ?>
+                                        <div class="doc-form-page" data-doc-page="<?= $docPage ?>">
+                                            <?php $renderDocHeader(); ?>
+                                        <?php
+                                    }
+                                    ?>
 
-                                        <?php if ($fieldType === 'paragraph'): ?>
-                                            <?php
-                                            $isList = str_contains($fieldText, "\n-");
-                                            if ($isList) {
-                                                $items = preg_split('/\R- /', preg_replace('/^\- /', '', $fieldText));
+                                    <?php if ($sectionTitle !== ''): ?>
+                                        <div class="doc-section-title"><?= e($sectionTitle) ?></div>
+                                    <?php endif; ?>
+
+                                    <?php if ($sectionSubtitle !== ''): ?>
+                                        <div class="doc-subtitle-block"><?= e($sectionSubtitle) ?></div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($fields)): ?>
+                                        <div class="doc-text-block">
+                                            <?php foreach ($fields as $field): ?>
+                                                <?php
+                                                $fieldType = (string)($field['type'] ?? 'text');
+                                                $fieldText = (string)($field['text'] ?? '');
+                                                $fieldName = (string)($field['name'] ?? '');
+                                                $fieldLabel = (string)($field['label'] ?? '');
+                                                $fieldOptions = (array)($field['options'] ?? []);
                                                 ?>
-                                                <ul class="doc-plain-list">
-                                                    <?php foreach ((array)$items as $item): ?>
-                                                        <?php $line = trim((string)$item); ?>
-                                                        <?php if ($line !== ''): ?>
-                                                            <li><?= e($line) ?></li>
-                                                        <?php endif; ?>
-                                                    <?php endforeach; ?>
-                                                </ul>
-                                            <?php } else { ?>
-                                                <p><?= $renderTextBlock($fieldText) ?></p>
-                                            <?php } ?>
-                                        <?php elseif ($fieldType === 'checkbox'): ?>
-                                            <label class="doc-field-item">
-                                                <input type="checkbox" name="<?= e($fieldName) ?>" value="1">
-                                                <span><?= e($fieldLabel) ?></span>
-                                            </label>
-                                        <?php elseif ($fieldType === 'checkbox_list'): ?>
-                                            <div class="doc-field-group">
-                                                <p class="mb-1 text-xs font-semibold text-slate-700"><?= e($fieldLabel ?: 'Select all that apply:') ?></p>
-                                                <div class="doc-field-options">
-                                                    <?php foreach ($fieldOptions as $option): ?>
-                                                        <label class="doc-field-item">
-                                                            <input type="checkbox" name="<?= e($fieldName) ?>" value="<?= e((string)$option) ?>">
-                                                            <span><?= e((string)$option) ?></span>
-                                                        </label>
+
+                                                <?php if ($fieldType === 'paragraph'): ?>
+                                                    <?php
+                                                    $isList = str_contains($fieldText, "\n-");
+                                                    if ($isList) {
+                                                        $items = preg_split('/\R- /', preg_replace('/^\- /', '', $fieldText));
+                                                        ?>
+                                                        <ul class="doc-plain-list">
+                                                            <?php foreach ((array)$items as $item): ?>
+                                                                <?php $line = trim((string)$item); ?>
+                                                                <?php if ($line !== ''): ?>
+                                                                    <li><?= e($line) ?></li>
+                                                                <?php endif; ?>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php } else { ?>
+                                                        <p><?= $renderTextBlock($fieldText) ?></p>
+                                                    <?php } ?>
+                                                <?php elseif ($fieldType === 'checkbox'): ?>
+                                                    <label class="doc-field-item">
+                                                        <input type="checkbox" name="<?= e($fieldName) ?>" value="1">
+                                                        <span><?= e($fieldLabel) ?></span>
+                                                    </label>
+                                                <?php elseif ($fieldType === 'checkbox_list'): ?>
+                                                    <div class="doc-field-group">
+                                                        <p class="mb-1 text-xs font-semibold text-slate-700"><?= e($fieldLabel ?: 'Select all that apply:') ?></p>
+                                                        <div class="doc-field-options">
+                                                            <?php foreach ($fieldOptions as $option): ?>
+                                                                <label class="doc-field-item">
+                                                                    <input type="checkbox" name="<?= e($fieldName) ?>" value="<?= e((string)$option) ?>">
+                                                                    <span><?= e((string)$option) ?></span>
+                                                                </label>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($rows)): ?>
+                                        <?php foreach ($rows as $row): ?>
+                                            <?php if (!is_array($row) || empty($row)) {
+                                                continue;
+                                            } ?>
+
+                                            <?php
+                                            $row = array_values(array_filter((array)$row, static fn($entry): bool => is_array($entry)));
+                                            if (empty($row)) {
+                                                continue;
+                                            }
+
+                                            $firstType = (string)($row[0]['type'] ?? '');
+                                            if ($firstType === 'row_title') {
+                                                ?>
+                                                <div class="doc-text-block"><strong><?= e((string)($row[0]['text'] ?? '')) ?></strong></div>
+                                                <?php
+                                                continue;
+                                            }
+
+                                            if ($firstType === 'signature_single' || $firstType === 'signature_double') {
+                                                ?>
+                                                <div class="grid gap-3 sm:grid-cols-2">
+                                                    <?php foreach ($row as $signature): ?>
+                                                        <?php
+                                                        $sigLabel = (string)($signature['label'] ?? '');
+                                                        $sigName = (string)($signature['name'] ?? $signature['left_name'] ?? '');
+                                                        $signatureStyle = (string)($signature['signature_style'] ?? 'boxed');
+
+                                                        if ($signatureStyle === 'line_under_label' && $firstType === 'signature_single') {
+                                                            ?>
+                                                            <div class="doc-signature-line-wrap">
+                                                                <input class="doc-signature-line-input" type="text" name="<?= e($sigName) ?>" aria-label="<?= e($sigLabel) ?>">
+                                                                <span class="doc-signature-line-label"><?= e($sigLabel) ?></span>
+                                                            </div>
+                                                            <?php
+                                                            continue;
+                                                        }
+
+                                                        if ($firstType === 'signature_double') {
+                                                            $leftLabel = (string)($signature['left_label'] ?? $sigLabel);
+                                                            $rightLabel = (string)($signature['right_label'] ?? '');
+                                                            $leftName = (string)($signature['left_name'] ?? '');
+                                                            $rightName = (string)($signature['right_name'] ?? '');
+
+                                                            if ($signatureStyle === 'line_under_label') {
+                                                                ?>
+                                                                <div class="doc-signature-line-wrap doc-signature-line-pair">
+                                                                    <div class="doc-signature-line-columns">
+                                                                        <?php if ($leftLabel !== ''): ?>
+                                                                            <div class="doc-signature-line-field">
+                                                                                <input class="doc-signature-line-input" type="text" name="<?= e($leftName) ?>" aria-label="<?= e($leftLabel) ?>">
+                                                                                <span class="doc-signature-line-label"><?= e($leftLabel) ?></span>
+                                                                            </div>
+                                                                        <?php endif; ?>
+                                                                        <?php if ($rightLabel !== ''): ?>
+                                                                            <div class="doc-signature-line-field">
+                                                                                <input class="doc-signature-line-input" type="text" name="<?= e($rightName) ?>" aria-label="<?= e($rightLabel) ?>">
+                                                                                <span class="doc-signature-line-label"><?= e($rightLabel) ?></span>
+                                                                            </div>
+                                                                        <?php endif; ?>
+                                                                    </div>
+                                                                </div>
+                                                                <?php
+                                                                continue;
+                                                            }
+
+                                                            if ($leftLabel !== '') {
+                                                                ?>
+                                                                <div class="doc-signature-wrap">
+                                                                    <div class="doc-signature-row">
+                                                                        <span class="doc-signature-label"><?= e($leftLabel) ?></span>
+                                                                        <input class="doc-signature-input" type="text" name="<?= e($leftName) ?>" aria-label="<?= e($leftLabel) ?>">
+                                                                    </div>
+                                                                </div>
+                                                                <?php
+                                                            }
+                                                            if ($rightLabel !== '') {
+                                                                ?>
+                                                                <div class="doc-signature-wrap">
+                                                                    <div class="doc-signature-row">
+                                                                        <span class="doc-signature-label"><?= e($rightLabel) ?></span>
+                                                                        <input class="doc-signature-input" type="text" name="<?= e($rightName) ?>" aria-label="<?= e($rightLabel) ?>">
+                                                                    </div>
+                                                                </div>
+                                                                <?php
+                                                            }
+                                                            continue;
+                                                        }
+                                                        ?>
+                                                        <div class="doc-signature-wrap">
+                                                            <div class="doc-signature-row">
+                                                                <span class="doc-signature-label"><?= e($sigLabel) ?></span>
+                                                                <input class="doc-signature-input" type="text" name="<?= e($sigName) ?>" aria-label="<?= e($sigLabel) ?>">
+                                                            </div>
+                                                        </div>
                                                     <?php endforeach; ?>
                                                 </div>
-                                            </div>
-                                        <?php endif; ?>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-
-                            <?php if (!empty($rows)): ?>
-                                <?php foreach ($rows as $row): ?>
-                                    <?php if (!is_array($row) || empty($row)) {
-                                        continue;
-                                    } ?>
-
-                                    <?php
-                                    $row = array_values(array_filter((array)$row, static fn($entry): bool => is_array($entry)));
-                                    if (empty($row)) {
-                                        continue;
-                                    }
-
-                                    $firstType = (string)($row[0]['type'] ?? '');
-                                    if ($firstType === 'row_title') {
-                                        ?>
-                                        <div class="doc-text-block"><strong><?= e((string)($row[0]['text'] ?? '')) ?></strong></div>
-                                        <?php
-                                        continue;
-                                    }
-
-                                    if ($firstType === 'signature_single' || $firstType === 'signature_double') {
-                                        ?>
-                                        <div class="grid gap-3 sm:grid-cols-2">
-                                            <?php foreach ($row as $signature): ?>
                                                 <?php
-                                                $sigLabel = (string)($signature['label'] ?? '');
-                                                $sigName = (string)($signature['name'] ?? $signature['left_name'] ?? '');
-                                                $signatureStyle = (string)($signature['signature_style'] ?? 'boxed');
+                                                continue;
+                                            }
+                                            ?>
 
-                                                if ($signatureStyle === 'line_under_label' && $firstType === 'signature_single') {
-                                                    ?>
-                                                    <div class="doc-signature-line-wrap">
-                                                        <input class="doc-signature-line-input" type="text" name="<?= e($sigName) ?>" aria-label="<?= e($sigLabel) ?>">
-                                                        <span class="doc-signature-line-label"><?= e($sigLabel) ?></span>
-                                                    </div>
+                                            <div class="doc-field-row">
+                                                <?php foreach ($row as $field): ?>
                                                     <?php
-                                                    continue;
-                                                }
+                                                    $fieldType = (string)($field['type'] ?? 'text');
+                                                    $fieldLabel = (string)($field['label'] ?? '');
+                                                    $fieldName = (string)($field['name'] ?? '');
+                                                    $fieldOptions = (array)($field['options'] ?? []);
+                                                    $isInline = !empty($field['inline']);
+                                                    $span = $resolveSpan($field, count($row));
+                                                    $style = 'grid-column: span ' . $span . ' / span ' . $span . ';';
+                                                    $inputType = match ((string)($field['type'] ?? 'text')) {
+                                                        'date' => 'text',
+                                                        'email' => 'email',
+                                                        default => 'text',
+                                                    };
 
-                                                if ($firstType === 'signature_double') {
-                                                    $leftLabel = (string)($signature['left_label'] ?? $sigLabel);
-                                                    $rightLabel = (string)($signature['right_label'] ?? '');
-                                                    $leftName = (string)($signature['left_name'] ?? '');
-                                                    $rightName = (string)($signature['right_name'] ?? '');
-
-                                                    if ($signatureStyle === 'line_under_label') {
+                                                    if ($fieldType === 'checkbox_row') {
                                                         ?>
-                                                        <div class="doc-signature-line-wrap doc-signature-line-pair">
-                                                            <div class="doc-signature-line-columns">
-                                                                <?php if ($leftLabel !== ''): ?>
-                                                                    <div class="doc-signature-line-field">
-                                                                        <input class="doc-signature-line-input" type="text" name="<?= e($leftName) ?>" aria-label="<?= e($leftLabel) ?>">
-                                                                        <span class="doc-signature-line-label"><?= e($leftLabel) ?></span>
-                                                                    </div>
-                                                                <?php endif; ?>
-                                                                <?php if ($rightLabel !== ''): ?>
-                                                                    <div class="doc-signature-line-field">
-                                                                        <input class="doc-signature-line-input" type="text" name="<?= e($rightName) ?>" aria-label="<?= e($rightLabel) ?>">
-                                                                        <span class="doc-signature-line-label"><?= e($rightLabel) ?></span>
-                                                                    </div>
-                                                                <?php endif; ?>
+                                                        <div class="doc-field-group" style="<?= e($style) ?>">
+                                                            <p class="mb-1 text-xs font-semibold text-slate-700"><?= e($fieldLabel) ?></p>
+                                                            <div class="doc-field-options <?= $isInline ? 'doc-inline-items' : '' ?>">
+                                                                <?php foreach ($fieldOptions as $option): ?>
+                                                                    <label class="doc-field-item">
+                                                                        <input type="checkbox" name="<?= e($fieldName) ?>" value="<?= e((string)$option) ?>">
+                                                                        <span><?= e((string)$option) ?></span>
+                                                                    </label>
+                                                                <?php endforeach; ?>
                                                             </div>
                                                         </div>
                                                         <?php
                                                         continue;
                                                     }
 
-                                                    if ($leftLabel !== '') {
+                                                    if ($fieldType === 'checkbox') {
                                                         ?>
-                                                        <div class="doc-signature-wrap">
-                                                            <div class="doc-signature-row">
-                                                                <span class="doc-signature-label"><?= e($leftLabel) ?></span>
-                                                                <input class="doc-signature-input" type="text" name="<?= e($leftName) ?>" aria-label="<?= e($leftLabel) ?>">
-                                                            </div>
-                                                        </div>
-                                                        <?php
-                                                    }
-                                                    if ($rightLabel !== '') {
-                                                        ?>
-                                                        <div class="doc-signature-wrap">
-                                                            <div class="doc-signature-row">
-                                                                <span class="doc-signature-label"><?= e($rightLabel) ?></span>
-                                                                <input class="doc-signature-input" type="text" name="<?= e($rightName) ?>" aria-label="<?= e($rightLabel) ?>">
-                                                            </div>
-                                                        </div>
-                                                        <?php
-                                                    }
-                                                    continue;
-                                                }
-                                                ?>
-                                                <div class="doc-signature-wrap">
-                                                    <div class="doc-signature-row">
-                                                        <span class="doc-signature-label"><?= e($sigLabel) ?></span>
-                                                        <input class="doc-signature-input" type="text" name="<?= e($sigName) ?>" aria-label="<?= e($sigLabel) ?>">
-                                                    </div>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                        <?php
-                                        continue;
-                                    }
-                                    ?>
-
-                                    <div class="doc-field-row">
-                                        <?php foreach ($row as $field): ?>
-                                            <?php
-                                            $fieldType = (string)($field['type'] ?? 'text');
-                                            $fieldLabel = (string)($field['label'] ?? '');
-                                            $fieldName = (string)($field['name'] ?? '');
-                                            $fieldOptions = (array)($field['options'] ?? []);
-                                            $isInline = !empty($field['inline']);
-                                            $span = $resolveSpan($field, count($row));
-                                            $style = 'grid-column: span ' . $span . ' / span ' . $span . ';';
-                                            $inputType = match ((string)($field['type'] ?? 'text')) {
-                                                'date' => 'text',
-                                                'email' => 'email',
-                                                default => 'text',
-                                            };
-
-                                            if ($fieldType === 'checkbox_row') {
-                                                ?>
-                                                <div class="doc-field-group" style="<?= e($style) ?>">
-                                                    <p class="mb-1 text-xs font-semibold text-slate-700"><?= e($fieldLabel) ?></p>
-                                                    <div class="doc-field-options <?= $isInline ? 'doc-inline-items' : '' ?>">
-                                                        <?php foreach ($fieldOptions as $option): ?>
+                                                        <div class="doc-field-group" style="<?= e($style) ?>">
                                                             <label class="doc-field-item">
-                                                                <input type="checkbox" name="<?= e($fieldName) ?>" value="<?= e((string)$option) ?>">
-                                                                <span><?= e((string)$option) ?></span>
+                                                                <input type="checkbox" name="<?= e($fieldName) ?>" value="1">
+                                                                <span><?= e($fieldLabel) ?></span>
                                                             </label>
-                                                        <?php endforeach; ?>
+                                                        </div>
+                                                        <?php
+                                                        continue;
+                                                    }
+                                                    ?>
+                                                    <div style="<?= e($style) ?>">
+                                                        <div class="doc-field">
+                                                            <label>
+                                                                <span><?= e($fieldLabel) ?></span>
+                                                                <input type="<?= e($inputType) ?>" name="<?= e($fieldName) ?>" aria-label="<?= e($fieldLabel) ?>">
+                                                            </label>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <?php
-                                                continue;
-                                            }
-
-                                            if ($fieldType === 'checkbox') {
-                                                ?>
-                                                <div class="doc-field-group" style="<?= e($style) ?>">
-                                                    <label class="doc-field-item">
-                                                        <input type="checkbox" name="<?= e($fieldName) ?>" value="1">
-                                                        <span><?= e($fieldLabel) ?></span>
-                                                    </label>
-                                                </div>
-                                                <?php
-                                                continue;
-                                            }
-                                            ?>
-                                            <div style="<?= e($style) ?>">
-                                                <div class="doc-field">
-                                                    <label>
-                                                        <span><?= e($fieldLabel) ?></span>
-                                                        <input type="<?= e($inputType) ?>" name="<?= e($fieldName) ?>" aria-label="<?= e($fieldLabel) ?>">
-                                                    </label>
-                                                </div>
+                                                <?php endforeach; ?>
                                             </div>
                                         <?php endforeach; ?>
-                                    </div>
+                                    <?php endif; ?>
+                                    <?php $sectionIndex++; ?>
                                 <?php endforeach; ?>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
+                                <footer class="doc-footer">
+                                    Elite Smiles by Dr. Walter Meden · 11762 South State, Suite 300, Draper, UT 84020 · (801) 572-6262
+                                </footer>
+                            </div>
+                        </div>
                     </form>
 
-                    <footer class="doc-footer">
-                        Elite Smiles by Dr. Walter Meden · 11762 South State, Suite 300, Draper, UT 84020 · (801) 572-6262
-                    </footer>
                 </div>
             </div>
         </section>

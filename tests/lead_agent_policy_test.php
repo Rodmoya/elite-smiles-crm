@@ -58,6 +58,33 @@ expect_true(($operatorCommand['action'] ?? '') === 'offer', 'Rod must be able to
 expect_true(($operatorCommand['options'][0] ?? '') === '2026-08-26 15:00:00' && ($operatorCommand['options'][1] ?? '') === '2026-08-27 16:30:00', 'Operator appointment options must normalize in the CRM timezone.');
 expect_true((lead_agent_parse_operator_command('S161-ABCD tomorrow at 3', $operatorNow)['action'] ?? '') === 'invalid', 'An ambiguous one-option command must fail closed without sending.');
 expect_true((lead_agent_parse_operator_command('HELP', $operatorNow)['action'] ?? '') === 'help', 'The operator SMS channel must expose deterministic help.');
+
+$windowCommand = lead_agent_parse_operator_command('S161-ABCDEF next Monday and Tuesday from 2 to 5 are open', $operatorNow);
+expect_true(($windowCommand['action'] ?? '') === 'availability_window', 'Natural operator availability must be recognized as a calendar window.');
+$windows = (array) ($windowCommand['windows'] ?? []);
+expect_true(($windows[0]['start'] ?? '') === '2026-08-24 14:00:00' && ($windows[0]['end'] ?? '') === '2026-08-24 17:00:00', 'Next Monday must resolve from the current Mountain Time date.');
+expect_true(($windows[1]['start'] ?? '') === '2026-08-25 14:00:00' && ($windows[1]['end'] ?? '') === '2026-08-25 17:00:00', 'A second weekday in the same instruction must resolve to the correct date.');
+$windowSlots = lead_agent_available_slots_for_windows($windows, [
+    ['start' => '2026-08-24 14:30:00', 'end' => '2026-08-24 15:00:00'],
+], $operatorNow);
+expect_true(count($windowSlots) === 11, 'Two three-hour windows must become twelve 30-minute starts minus the occupied calendar slot.');
+$mondaySlots = array_values(array_filter($windowSlots, static fn(string $slot): bool => str_starts_with($slot, '2026-08-24')));
+expect_true(count($mondaySlots) === 5, 'Monday from 2 to 5 with one occupied block must correctly report five open 30-minute slots.');
+$chosenWindowSlots = lead_agent_choose_offer_slots($windowSlots);
+expect_true(($chosenWindowSlots[0] ?? '') === '2026-08-24 14:00:00' && ($chosenWindowSlots[1] ?? '') === '2026-08-25 14:00:00', 'The agent should offer one simple choice from each available day first.');
+$sameDayNow = new DateTimeImmutable('2026-08-24 15:10:00', new DateTimeZone(APP_TIMEZONE));
+$sameDayWindows = lead_agent_parse_operator_availability_windows('Monday from 2 to 5 is open', $sameDayNow);
+$sameDaySlots = lead_agent_available_slots_for_windows($sameDayWindows, [], $sameDayNow);
+expect_true($sameDaySlots === ['2026-08-24 15:30:00', '2026-08-24 16:00:00', '2026-08-24 16:30:00'], 'Same-day availability must discard elapsed slots using the current Mountain Time.');
+$lateMonday = new DateTimeImmutable('2026-08-24 17:10:00', new DateTimeZone(APP_TIMEZONE));
+$nextMondayWindow = lead_agent_parse_operator_availability_windows('Monday from 2 to 5 is open', $lateMonday);
+expect_true(($nextMondayWindow[0]['start'] ?? '') === '2026-08-31 14:00:00', 'Once the stated window has ended, an unqualified weekday must resolve to the following week.');
+$tuesdayNow = new DateTimeImmutable('2026-08-25 10:00:00', new DateTimeZone(APP_TIMEZONE));
+$scopedNextWindows = lead_agent_parse_operator_availability_windows('next Monday and Tuesday from 2 to 5', $tuesdayNow);
+expect_true(($scopedNextWindows[0]['start'] ?? '') === '2026-08-31 14:00:00' && ($scopedNextWindows[1]['start'] ?? '') === '2026-09-01 14:00:00', 'Next must scope a chronological weekday list instead of resolving Tuesday to today.');
+$unalignedWindow = lead_agent_parse_operator_availability_windows('next Monday from 2:10 to 3:10', $operatorNow);
+$alignedSlots = lead_agent_available_slots_for_windows($unalignedWindow, [], $operatorNow);
+expect_true($alignedSlots === ['2026-08-24 14:30:00'], 'Non-aligned windows must round forward to a valid 30-minute appointment start without leaving the stated window.');
 $webhookSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_webhook.php');
 expect_true(
     strpos($webhookSource, 'lead_agent_is_operator_sender($from)') < strpos($webhookSource, 'lead_comm_find_lead_by_phone($from)'),

@@ -13,7 +13,7 @@ lead_agent_ensure_schema();
 lead_comm_ensure_schema();
 lead_email_ensure_schema();
 
-foreach (['human_takeover_until', 'scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context'] as $column) {
+foreach (['human_takeover_until', 'scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context', 'availability_pool_json'] as $column) {
     integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'"), 'Scheduling state column is missing: ' . $column);
 }
 foreach (['strategy_key', 'strategy_reason', 'decision_confidence'] as $column) {

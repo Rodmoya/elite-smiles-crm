@@ -1016,9 +1016,9 @@ if (!function_exists('codex_api_operator_draft_message')) {
         $first = $first !== '' ? $first : 'there';
 
         return match ($actionKey) {
-            'reply_needed' => "Hi {$first}, this is Rod with Elite Smiles. I saw your message and wanted to help personally. The best next step is a complimentary consult so we can see what is actually right for you. Would morning or afternoon work better?",
-            'first_touch' => "Hi {$first}, this is Rod with Elite Smiles. Thanks for reaching out. Every smile plan is custom, so the easiest next step is a complimentary consult where we can see what is possible for you. Would you prefer Draper or Park City?",
-            'second_follow_up', 'overdue_follow_up' => "Hi {$first}, Rod from Elite Smiles checking back in. No pressure at all. If you are still interested, we can schedule a complimentary consult and answer your questions based on your smile, not a generic price sheet. Want me to send a couple available times?",
+            'reply_needed' => "Hi {$first}, this is Rod with Elite Smiles. I saw your message and wanted to help personally. What would be most helpful for you to understand next?",
+            'first_touch' => "Hi {$first}, this is Rod with Elite Smiles. Thanks for reaching out about veneers/smile options. What are you hoping to improve most—color, shape, spacing, worn teeth, or are you just exploring what may be possible? Reply STOP to opt out.",
+            'second_follow_up', 'overdue_follow_up' => "Hi {$first}, Rod from Elite Smiles checking back in. No pressure at all. If improving your smile is still a goal, would a complimentary conversation with Dr. Meden be helpful?",
             'ask_dob' => "Hi {$first}, we are almost set. To finish the appointment details, can you send your date of birth?",
             'confirm_appointment' => "Hi {$first}, Rod from Elite Smiles. Just confirming your complimentary consult. Reply YES if that still works, or send me a better time if you need to move it.",
             'offer_dates' => "Hi {$first}, happy to help. The consult is complimentary and custom to your goals. Would a morning or afternoon appointment be easier for you?",

@@ -426,7 +426,7 @@ if (!function_exists('lead_email_default_first_touch')) {
                     $greeting,
                     $serviceLine,
                     'Cada sonrisa se planifica de forma personalizada. Dr. Meden revisa tus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan generico.',
-                    'La consulta es gratis y sin presion. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres ver que es posible?',
+                    'La consulta es gratis y sin presion. Puedes responder este correo si tienes alguna pregunta; Rod tambien te enviara un mensaje de texto para que continuar la conversacion sea facil.',
                     "Con gusto,\nEl equipo de Elite Smiles",
                 ]),
             ];
@@ -444,7 +444,7 @@ if (!function_exists('lead_email_default_first_touch')) {
                 $greeting,
                 $serviceLine,
                 'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
-                'The consultation is complimentary and low pressure. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible?',
+                'The consultation is complimentary and low pressure. You can reply here with any questions; Rod will also text you so it is easy to continue the conversation.',
                 "Warmly,\nThe Elite Smiles Team",
             ]),
         ];
@@ -1126,7 +1126,7 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                     $currentFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
                     if ($currentFollowUp === '') {
                         $updates[] = 'next_follow_up_at = :next_follow_up_at';
-                        $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+1 day'));
+                        $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+48 hours'));
                     }
                 }
                 if (lead_email_column_exists('leads', 'follow_up_status')) {

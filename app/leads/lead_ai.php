@@ -1203,12 +1203,12 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
         $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
         if ($prefersSpanish) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-            return $greeting . ' soy Rod de Elite Smiles. Vi tu solicitud sobre opciones para tu sonrisa. Cada sonrisa es personalizada, asi que el mejor siguiente paso es una consulta gratis con Dr. Meden para revisar tus metas y opciones. Normalmente te funcionan mejor las mananas o las tardes? Responde STOP para cancelar.';
+            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos sobre opciones para tu sonrisa. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres conocer lo que es posible? Responde STOP para cancelar.';
         }
 
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
 
-        return $greeting . ' this is Rod with Elite Smiles. I saw your request about veneers/smile options. Every smile is custom, so the best next step is a complimentary consult with Dr. Meden to review your goals and options. Do mornings or afternoons usually work better? Reply STOP to opt out.';
+        return $greeting . ' this is Rod with Elite Smiles. Thanks for reaching out about veneers/smile options. What are you hoping to improve most—color, shape, spacing, worn teeth, or are you just exploring what may be possible? Reply STOP to opt out.';
     }
 }
 
@@ -1312,7 +1312,7 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
             ];
             if (function_exists('leads_has_column') && leads_has_column('next_follow_up_at')) {
                 $updates[] = 'next_follow_up_at = :next_follow_up_at';
-                $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+3 hours 30 minutes'));
+                $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+48 hours'));
             }
             if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
                 $updates[] = "follow_up_status = 'ok'";

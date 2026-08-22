@@ -45,6 +45,27 @@ if ($from === '' || $body === '') {
     exit;
 }
 
+// Rod's private operator number is a deterministic command channel. Route it
+// before patient lookup so an internal reply can never create or mutate a lead.
+if (lead_agent_is_operator_sender($from)) {
+    try {
+        $operatorResult = lead_agent_handle_operator_sms($from, $body, $messageSid);
+        $reply = trim((string) ($operatorResult['reply'] ?? ''));
+        esm_log('lead_agent_operator_sms', 'Processed authorized operator SMS.', [
+            'sid' => $messageSid,
+            'handled' => !empty($operatorResult['handled']),
+            'duplicate' => !empty($operatorResult['duplicate']),
+        ]);
+        echo $reply !== ''
+            ? '<Response><Message>' . htmlspecialchars($reply, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</Message></Response>'
+            : '<Response></Response>';
+    } catch (Throwable $e) {
+        esm_log('lead_agent_operator_sms', 'Operator SMS command failed safely.', ['sid' => $messageSid, 'error' => $e->getMessage()]);
+        echo '<Response><Message>Elite AI: I could not process that instruction, so nothing was sent. Please open the CRM.</Message></Response>';
+    }
+    exit;
+}
+
 $lead = lead_comm_find_lead_by_phone($from);
 if (!$lead) {
     $lead = lead_comm_create_inbound_lead($from, $body);

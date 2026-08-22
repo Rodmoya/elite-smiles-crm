@@ -15,6 +15,8 @@ expect_true(lead_agent_classify_inbound('Can I come in Tuesday afternoon?') === 
 expect_true(lead_agent_classify_inbound('How much does it cost?') === 'cost_redirect', 'Cost question should use approved redirect.');
 expect_true(lead_agent_classify_inbound('STOP') === 'opt_out', 'STOP should halt automation.');
 expect_true(lead_agent_classify_inbound('No thank you') === 'pause', 'A polite decline must stop automated follow-up.');
+expect_true(lead_agent_decline_kind('No thank you') === 'declined', 'An explicit decline must close the Scheduling pipeline record.');
+expect_true(lead_agent_decline_kind('Maybe later') === 'deferred', 'A timing deferral must not be treated as a permanent rejection.');
 expect_true(lead_agent_classify_inbound('That is too far for me to travel') === 'pause', 'A distance-based decline must stop automated follow-up.');
 expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_attention', 'Clinical concern should require human review.');
 expect_true(lead_agent_classify_inbound('I need an appointment because I have pain and swelling') === 'needs_attention', 'Clinical urgency must override scheduling language.');
@@ -40,6 +42,27 @@ expect_true(substr_count($offer, '?') === 1 && str_contains($offer, 'Wednesday, 
 expect_true(lead_agent_match_availability_selection('Wednesday at 3:30 works', $option1, $option2) === 1, 'Lead should be able to select the first option naturally.');
 expect_true(lead_agent_match_availability_selection('The second option is better', $option1, $option2) === 2, 'Lead should be able to select the second option by position.');
 expect_true(lead_agent_parse_dob('My birthday is 03/19/1999') === '1999-03-19', 'DOB should normalize only after a slot is selected.');
+expect_true(lead_agent_parse_dob('Feb 6th') === '', 'A month and day without a year must never be stored as a DOB or mistaken for an appointment date.');
+expect_true(lead_agent_classify_inbound('It is for my brother, his number is 385-230-1659') === 'needs_attention', 'A third-party referral must be handed off safely instead of asking the referring person for DOB.');
+
+$mergedPreference = lead_agent_merge_scheduling_preferences(
+    lead_agent_scheduling_preferences('Wednesday works.'),
+    lead_agent_scheduling_preferences('Afternoons are better.')
+);
+expect_true(lead_agent_scheduling_preferences_complete($mergedPreference), 'Scheduling memory must combine a previously supplied day with a later time preference.');
+expect_true($mergedPreference['day'] === 'wednesday' && $mergedPreference['period'] === 'afternoon', 'Scheduling memory must retain both historical answers.');
+
+$operatorNow = new DateTimeImmutable('2026-08-22 10:00:00', new DateTimeZone(APP_TIMEZONE));
+$operatorCommand = lead_agent_parse_operator_command('S161-ABCD 8/26 3PM, 8/27 4:30PM', $operatorNow);
+expect_true(($operatorCommand['action'] ?? '') === 'offer', 'Rod must be able to supply two appointment options by replying to the internal SMS.');
+expect_true(($operatorCommand['options'][0] ?? '') === '2026-08-26 15:00:00' && ($operatorCommand['options'][1] ?? '') === '2026-08-27 16:30:00', 'Operator appointment options must normalize in the CRM timezone.');
+expect_true((lead_agent_parse_operator_command('S161-ABCD tomorrow at 3', $operatorNow)['action'] ?? '') === 'invalid', 'An ambiguous one-option command must fail closed without sending.');
+expect_true((lead_agent_parse_operator_command('HELP', $operatorNow)['action'] ?? '') === 'help', 'The operator SMS channel must expose deterministic help.');
+$webhookSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_webhook.php');
+expect_true(
+    strpos($webhookSource, 'lead_agent_is_operator_sender($from)') < strpos($webhookSource, 'lead_comm_find_lead_by_phone($from)'),
+    'Authorized operator SMS must be intercepted before patient lookup so it can never create a false lead.'
+);
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',
@@ -52,6 +75,8 @@ $eligibleBackfill = [
     'consultation_status' => 'requested',
 ];
 expect_true(lead_agent_backfill_ineligible_reason($eligibleBackfill) === '', 'A completed first touch should be eligible for safe backfill.');
+$schedulingPipelineBackfill = array_merge($eligibleBackfill, ['status' => 'in_contact', 'last_inbound_at' => '2026-08-05 10:01:00']);
+expect_true(lead_agent_backfill_ineligible_reason($schedulingPipelineBackfill) === '', 'An unscheduled lead in the Scheduling pipeline must remain eligible for agent follow-up even after replying.');
 expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['consultation_status' => 'scheduling'])) === 'scheduling_or_consultation', 'An active scheduling record must not be enrolled.');
 expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['full_name' => 'Rodrigo Moya'])) === 'internal_or_test_record', 'The owner record must never be enrolled.');
 expect_true(lead_agent_backfill_ineligible_reason(array_merge($eligibleBackfill, ['last_inbound_at' => '2026-08-05 10:01:00'])) === 'newer_inbound_requires_review', 'A newer inbound reply must block backfill.');

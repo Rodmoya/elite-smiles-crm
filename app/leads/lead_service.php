@@ -424,13 +424,15 @@ if (!function_exists('lead_consultation_booked_internal_message')) {
             }
         }
 
+        $interest = trim((string) ($lead['procedure_interest'] ?? ''));
         return 'Consultation booked: '
             . $name
             . '. Patient phone: '
             . $phoneLabel
             . '. Consultation date: '
             . $consultationLabel
-            . '.';
+            . ($interest !== '' ? '. Interest: ' . $interest : '')
+            . '. Open: ' . base_url('leads.php?lead_id=' . (int) ($lead['id'] ?? 0));
     }
 }
 
@@ -444,18 +446,37 @@ if (!function_exists('lead_send_consultation_booked_internal_sms')) {
             return ['ok' => false, 'skipped' => true, 'message' => 'Lead id is required.'];
         }
 
-        if ($oldStage === 'consultation_booked') {
-            return ['ok' => true, 'skipped' => true, 'message' => 'Lead is already in Consultation Booked.'];
-        }
-
         $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
         if (!$lead) {
             return ['ok' => false, 'skipped' => true, 'message' => 'Lead not found.'];
         }
 
         $newStage = trim((string)($lead['status'] ?? ''));
-        if ($newStage !== 'consultation_booked') {
-            return ['ok' => true, 'skipped' => true, 'message' => 'Lead is not in Consultation Booked.'];
+        $consultationStatus = strtolower(trim((string)($lead['consultation_status'] ?? '')));
+        $consultationDate = trim((string)($lead['consultation_date'] ?? ''));
+        $isDurablyScheduled = $newStage === 'consultation_booked'
+            || in_array($consultationStatus, ['scheduled', 'booked', 'confirmed'], true)
+            || $consultationDate !== '';
+        if (!$isDurablyScheduled) {
+            return ['ok' => true, 'skipped' => true, 'message' => 'Lead does not have a confirmed consultation record.'];
+        }
+
+        // Notify once per lead + appointment time, regardless of whether the
+        // appointment was saved from the pipeline, Elite AI, or Dentrix sync.
+        $notificationKey = hash('sha256', $leadId . '|' . ($consultationDate !== '' ? $consultationDate : $newStage));
+        try {
+            $alreadySent = (int) db_value("SELECT COUNT(*) FROM lead_activities
+                WHERE lead_id = :lead_id AND type = 'consultation_booked_internal_sms'
+                  AND meta_json LIKE :notification_key", [
+                    'lead_id' => $leadId,
+                    'notification_key' => '%"notification_key":"' . $notificationKey . '"%',
+                ]);
+            if ($alreadySent > 0) {
+                return ['ok' => true, 'skipped' => true, 'message' => 'Dr. Meden was already notified for this appointment.'];
+            }
+        } catch (Throwable $e) {
+            // Older installs may not have the activity table yet; sending the
+            // operational notification is safer than silently suppressing it.
         }
 
         $recipient = lead_consultation_booked_internal_recipient();
@@ -485,6 +506,7 @@ if (!function_exists('lead_send_consultation_booked_internal_sms')) {
                     'recipient_name' => (string)($recipient['name'] ?? ''),
                     'to_number' => (string)($result['to'] ?? $recipient['phone'] ?? ''),
                     'consultation_date' => (string)($lead['consultation_date'] ?? ''),
+                    'notification_key' => $notificationKey,
                     'message_body' => $body,
                     'twilio_sid' => (string)($result['twilio_sid'] ?? ''),
                     'twilio_status' => (string)($result['twilio_status'] ?? ''),

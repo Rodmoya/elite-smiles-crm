@@ -81,6 +81,25 @@ if (!function_exists('lead_agent_ensure_schema')) {
             KEY idx_lead_agent_event_type (event_type, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+        db_query("CREATE TABLE IF NOT EXISTS lead_agent_operator_requests (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            request_code VARCHAR(24) NOT NULL,
+            lead_id INT UNSIGNED NOT NULL,
+            request_type VARCHAR(40) NOT NULL DEFAULT 'availability',
+            status VARCHAR(30) NOT NULL DEFAULT 'pending',
+            context_json LONGTEXT NULL,
+            response_body VARCHAR(500) NOT NULL DEFAULT '',
+            response_message_sid VARCHAR(80) NULL DEFAULT NULL,
+            expires_at DATETIME NULL,
+            completed_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_lead_agent_operator_code (request_code),
+            UNIQUE KEY uq_lead_agent_operator_sid (response_message_sid),
+            KEY idx_lead_agent_operator_pending (lead_id, status, expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
         db_query("CREATE TABLE IF NOT EXISTS lead_agent_runs (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             run_key VARCHAR(100) NOT NULL,
@@ -471,6 +490,10 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want)\b/i', $text)) {
             return 'pause';
         }
+        if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $text)
+            && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $text)) {
+            return 'needs_attention';
+        }
         if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
             return 'cost_redirect';
         }
@@ -537,6 +560,127 @@ if (!function_exists('lead_agent_scheduling_preferences_complete')) {
         return trim((string) ($preferences['day'] ?? '')) !== ''
             && (trim((string) ($preferences['period'] ?? '')) !== ''
                 || trim((string) ($preferences['specific_time'] ?? '')) !== '');
+    }
+}
+
+if (!function_exists('lead_agent_merge_scheduling_preferences')) {
+    function lead_agent_merge_scheduling_preferences(array $older, array $newer): array
+    {
+        foreach (['day', 'period', 'specific_time'] as $key) {
+            if (trim((string) ($newer[$key] ?? '')) === '' && trim((string) ($older[$key] ?? '')) !== '') {
+                $newer[$key] = (string) $older[$key];
+            }
+        }
+        $newer['has_preference'] = trim((string) ($newer['day'] ?? '')) !== ''
+            || trim((string) ($newer['period'] ?? '')) !== ''
+            || trim((string) ($newer['specific_time'] ?? '')) !== '';
+        $newer['ready_for_availability'] = lead_agent_scheduling_preferences_complete($newer);
+        return $newer;
+    }
+}
+
+if (!function_exists('lead_agent_historical_scheduling_preferences')) {
+    /** Recover the latest known day/time from the full inbound SMS history. */
+    function lead_agent_historical_scheduling_preferences(int $leadId): array
+    {
+        $merged = lead_agent_scheduling_preferences('');
+        if ($leadId <= 0) {
+            return $merged;
+        }
+        $rows = db_all("SELECT body FROM lead_messages WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at ASC, id ASC", ['lead_id' => $leadId]);
+        foreach ($rows as $row) {
+            $candidate = lead_agent_scheduling_preferences((string) ($row['body'] ?? ''));
+            if (!empty($candidate['has_preference'])) {
+                $merged = lead_agent_merge_scheduling_preferences($merged, $candidate);
+            }
+        }
+        return $merged;
+    }
+}
+
+if (!function_exists('lead_agent_decline_kind')) {
+    function lead_agent_decline_kind(string $body): string
+    {
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        if (preg_match('/\b(not right now|maybe later|another time|not yet|reach out later|check back)\b/i', $text)) {
+            return 'deferred';
+        }
+        if (preg_match('/\b(not interested|no longer interested|no thank you|too far|cannot travel|can\'t travel|do not want|don\'t want)\b/i', $text)) {
+            return 'declined';
+        }
+        return 'paused';
+    }
+}
+
+if (!function_exists('lead_agent_operator_phone')) {
+    function lead_agent_operator_phone(): string
+    {
+        $recipient = internal_sms_find_recipient('rod_moya');
+        return internal_sms_normalize_phone((string) ($recipient['phone'] ?? ''));
+    }
+}
+
+if (!function_exists('lead_agent_is_operator_sender')) {
+    function lead_agent_is_operator_sender(string $phone): bool
+    {
+        $operator = lead_agent_operator_phone();
+        return $operator !== '' && internal_sms_normalize_phone($phone) === $operator;
+    }
+}
+
+if (!function_exists('lead_agent_parse_operator_datetime')) {
+    function lead_agent_parse_operator_datetime(string $value, ?DateTimeImmutable $now = null): string
+    {
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?: new DateTimeImmutable('now', $timezone);
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        try {
+            $candidate = new DateTimeImmutable($value, $timezone);
+            if (!preg_match('/\b\d{4}\b/', $value)) {
+                $candidate = $candidate->setDate((int) $now->format('Y'), (int) $candidate->format('m'), (int) $candidate->format('d'));
+                if ($candidate <= $now) {
+                    $candidate = $candidate->modify('+1 year');
+                }
+            }
+        } catch (Throwable $e) {
+            return '';
+        }
+        return $candidate > $now ? $candidate->format('Y-m-d H:i:s') : '';
+    }
+}
+
+if (!function_exists('lead_agent_parse_operator_command')) {
+    /** Parse Rod's deterministic SMS command. Untrusted free text never reaches an LLM. */
+    function lead_agent_parse_operator_command(string $body, ?DateTimeImmutable $now = null): array
+    {
+        $body = trim(preg_replace('/\s+/', ' ', $body) ?? $body);
+        if (preg_match('/^(help|commands?)$/i', $body)) {
+            return ['action' => 'help', 'code' => '', 'options' => []];
+        }
+        if (!preg_match('/^(S\d+(?:-[A-Z0-9]{4,8})?)\s+(.+)$/i', $body, $matches)) {
+            return ['action' => 'invalid', 'code' => '', 'options' => []];
+        }
+        $code = strtoupper((string) $matches[1]);
+        $instruction = trim((string) $matches[2]);
+        if (preg_match('/^(wait|hold)$/i', $instruction)) {
+            return ['action' => 'wait', 'code' => $code, 'options' => []];
+        }
+        if (preg_match('/^(call|i(?:\'|’)ll call)$/i', $instruction)) {
+            return ['action' => 'call', 'code' => $code, 'options' => []];
+        }
+        $parts = preg_split('/\s*(?:,|\||\bor\b|\band\b)\s*/i', $instruction) ?: [];
+        if (count($parts) !== 2) {
+            return ['action' => 'invalid', 'code' => $code, 'options' => []];
+        }
+        $option1 = lead_agent_parse_operator_datetime((string) $parts[0], $now);
+        $option2 = lead_agent_parse_operator_datetime((string) $parts[1], $now);
+        if ($option1 === '' || $option2 === '' || $option1 === $option2) {
+            return ['action' => 'invalid', 'code' => $code, 'options' => []];
+        }
+        return ['action' => 'offer', 'code' => $code, 'options' => [$option1, $option2]];
     }
 }
 
@@ -643,11 +787,11 @@ if (!function_exists('lead_agent_parse_dob')) {
     function lead_agent_parse_dob(string $body): string
     {
         $text = trim($body);
-        $candidates = [$text];
+        $candidates = [];
         if (preg_match('/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/', $text, $matches)) {
-            array_unshift($candidates, (string) $matches[1]);
+            $candidates[] = (string) $matches[1];
         } elseif (preg_match('/\b((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4})\b/i', $text, $matches)) {
-            array_unshift($candidates, preg_replace('/(\d)(st|nd|rd|th)\b/i', '$1', (string) $matches[1]) ?? (string) $matches[1]);
+            $candidates[] = preg_replace('/(\d)(st|nd|rd|th)\b/i', '$1', (string) $matches[1]) ?? (string) $matches[1];
         }
         foreach ($candidates as $candidate) {
             $timestamp = strtotime($candidate);
@@ -796,7 +940,7 @@ if (!function_exists('lead_agent_backfill_ineligible_reason')) {
         if (lead_agent_internal_or_test_record($lead)) {
             return 'internal_or_test_record';
         }
-        if (!in_array(trim((string) ($lead['status'] ?? '')), ['contacted', 'attempted_contact'], true)) {
+        if (!in_array(trim((string) ($lead['status'] ?? '')), ['contacted', 'attempted_contact', 'in_contact'], true)) {
             return 'stage_not_first_touch';
         }
         if (trim((string) ($lead['consultation_date'] ?? '')) !== '') {
@@ -816,7 +960,8 @@ if (!function_exists('lead_agent_backfill_ineligible_reason')) {
             return 'first_touch_not_recorded';
         }
         $lastInbound = trim((string) ($lead['last_inbound_at'] ?? ''));
-        if ($lastInbound !== '' && strtotime($lastInbound) !== false && strtotime($lastInbound) >= strtotime($lastOutbound)) {
+        if (trim((string) ($lead['status'] ?? '')) !== 'in_contact'
+            && $lastInbound !== '' && strtotime($lastInbound) !== false && strtotime($lastInbound) >= strtotime($lastOutbound)) {
             return 'newer_inbound_requires_review';
         }
         if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
@@ -884,7 +1029,7 @@ if (!function_exists('lead_agent_backfill_eligible')) {
             FROM leads l
             LEFT JOIN lead_agent_states s ON s.lead_id = l.id
             WHERE s.id IS NULL
-              AND l.status IN ('contacted', 'attempted_contact')
+              AND l.status IN ('contacted', 'attempted_contact', 'in_contact')
             ORDER BY COALESCE(l.last_outbound_at, l.updated_at, l.created_at) ASC, l.id ASC
             LIMIT {$limit}");
 
@@ -940,6 +1085,9 @@ if (!function_exists('lead_agent_pause')) {
             'UPDATE lead_agent_states SET status = :status, next_action_at = NULL, pause_reason = :reason, lock_token = \'\', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id',
             ['status' => $status, 'reason' => substr($reason, 0, 190), 'lead_id' => $leadId]
         );
+        if ($status === 'opted_out') {
+            db_execute("UPDATE leads SET status = 'opted_out', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :lead_id LIMIT 1", ['lead_id' => $leadId]);
+        }
     }
 }
 
@@ -997,10 +1145,6 @@ if (!function_exists('lead_agent_release_expired_human_takeovers')) {
         $released = 0;
         foreach ($rows as $state) {
             $leadId = (int) ($state['lead_id'] ?? 0);
-            $latest = lead_agent_latest_patient_direction($leadId);
-            if ((string) ($latest['direction'] ?? '') === 'inbound') {
-                continue;
-            }
             $resume = lead_agent_align_contact_time(new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
             $released += db_execute("UPDATE lead_agent_states
                 SET status = 'active', human_takeover = 0, human_takeover_until = NULL,
@@ -1056,6 +1200,86 @@ if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
     }
 }
 
+if (!function_exists('lead_agent_operator_request')) {
+    function lead_agent_operator_request(int $leadId, string $requestType = 'availability', array $context = []): array
+    {
+        lead_agent_ensure_schema();
+        $existing = db_one("SELECT * FROM lead_agent_operator_requests
+            WHERE lead_id = :lead_id AND request_type = :request_type AND status = 'pending'
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY id DESC LIMIT 1", ['lead_id' => $leadId, 'request_type' => $requestType]);
+        if ($existing) {
+            db_execute('UPDATE lead_agent_operator_requests SET context_json = :context_json, expires_at = DATE_ADD(NOW(), INTERVAL 2 DAY), updated_at = NOW() WHERE id = :id', [
+                'context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'id' => (int) $existing['id'],
+            ]);
+            return $existing;
+        }
+        $code = 'S' . $leadId . '-' . strtoupper(substr(hash('sha256', $leadId . '|' . microtime(true) . '|' . random_int(1000, 9999)), 0, 6));
+        $id = db_insert("INSERT INTO lead_agent_operator_requests
+            (request_code, lead_id, request_type, status, context_json, expires_at, created_at, updated_at)
+            VALUES (:request_code, :lead_id, :request_type, 'pending', :context_json, DATE_ADD(NOW(), INTERVAL 2 DAY), NOW(), NOW())", [
+                'request_code' => $code,
+                'lead_id' => $leadId,
+                'request_type' => $requestType,
+                'context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]);
+        return ['id' => $id, 'request_code' => $code, 'lead_id' => $leadId, 'request_type' => $requestType, 'status' => 'pending'];
+    }
+}
+
+if (!function_exists('lead_agent_handle_operator_sms')) {
+    function lead_agent_handle_operator_sms(string $from, string $body, string $messageSid = ''): array
+    {
+        if (!lead_agent_is_operator_sender($from)) {
+            return ['handled' => false, 'reply' => ''];
+        }
+        lead_agent_ensure_schema();
+        if ($messageSid !== '') {
+            $reserved = lead_agent_event(0, 'operator-sms-' . $messageSid, 'operator_sms_received', 'sms', 'processing', 'authorized_operator_command');
+            if (!$reserved) {
+                return ['handled' => true, 'duplicate' => true, 'reply' => 'Elite AI: That instruction was already processed.'];
+            }
+        }
+        $command = lead_agent_parse_operator_command($body);
+        if (($command['action'] ?? '') === 'help') {
+            return ['handled' => true, 'reply' => 'Elite AI commands: reply with the code plus two times, for example S123-ABCD 8/26 3PM, 8/27 4:30PM. Or reply CODE WAIT / CODE CALL.'];
+        }
+        $code = (string) ($command['code'] ?? '');
+        $request = $code !== '' ? db_one("SELECT * FROM lead_agent_operator_requests WHERE request_code = :code AND status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1", ['code' => $code]) : null;
+        if (!$request) {
+            return ['handled' => true, 'reply' => 'Elite AI: I could not match that instruction to an active request. Reply HELP for the format or open the CRM.'];
+        }
+        $leadId = (int) ($request['lead_id'] ?? 0);
+        $action = (string) ($command['action'] ?? 'invalid');
+        if ($action === 'offer') {
+            $options = (array) ($command['options'] ?? []);
+            $result = lead_agent_offer_availability($leadId, (string) ($options[0] ?? ''), (string) ($options[1] ?? ''), 0);
+            if (empty($result['ok'])) {
+                return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. ' . (string) ($result['message'] ?? 'Please check the CRM.')];
+            }
+            db_execute("UPDATE lead_agent_operator_requests SET status = 'completed', response_body = :body, response_message_sid = :sid, completed_at = NOW(), updated_at = NOW() WHERE id = :id AND status = 'pending'", [
+                'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
+            ]);
+            return ['handled' => true, 'reply' => 'Elite AI: Done. I offered both times to the lead and will continue the scheduling conversation.'];
+        }
+        if ($action === 'wait') {
+            db_execute("UPDATE lead_agent_operator_requests SET expires_at = DATE_ADD(NOW(), INTERVAL 2 DAY), response_body = :body, response_message_sid = :sid, updated_at = NOW() WHERE id = :id", [
+                'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
+            ]);
+            return ['handled' => true, 'reply' => 'Elite AI: Understood. I will keep the patient conversation paused while you check availability.'];
+        }
+        if ($action === 'call') {
+            db_execute("UPDATE lead_agent_operator_requests SET status = 'human_call', response_body = :body, response_message_sid = :sid, completed_at = NOW(), updated_at = NOW() WHERE id = :id", [
+                'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
+            ]);
+            lead_agent_record_human_outbound($leadId, 'operator_sms', 'Operator chose to call the lead.');
+            return ['handled' => true, 'reply' => 'Elite AI: The lead is paused for your call today. If there is no completed appointment, I will resume tomorrow.'];
+        }
+        return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. Reply ' . $code . ' followed by two times, for example 8/26 3PM, 8/27 4:30PM; or reply ' . $code . ' WAIT / CALL.'];
+    }
+}
+
 if (!function_exists('lead_agent_internal_handoff')) {
     function lead_agent_internal_handoff(array $lead, string $kind, string $reason, array $context = []): array
     {
@@ -1077,12 +1301,20 @@ if (!function_exists('lead_agent_internal_handoff')) {
         $preference = trim((string) ($context['preference'] ?? ''));
         $selectedOption = trim((string) ($context['selected_option'] ?? ''));
         $handoffStage = trim((string) ($context['stage'] ?? 'availability'));
+        $operatorRequest = null;
+        if ($status === 'ready_to_schedule' && $handoffStage !== 'confirmation') {
+            $operatorRequest = lead_agent_operator_request($leadId, 'availability', [
+                'preference' => $preference,
+                'lead_name' => $leadName,
+            ]);
+        }
         if ($status === 'ready_to_schedule' && $handoffStage === 'confirmation') {
             $operatorMessage = $leadName . ' selected ' . ($selectedOption !== '' ? $selectedOption : 'an appointment option')
                 . '. DOB is on file. Please confirm the appointment in the CRM.';
         } elseif ($status === 'ready_to_schedule') {
+            $requestCode = trim((string) ($operatorRequest['request_code'] ?? ''));
             $operatorMessage = $leadName . ($preference !== '' ? ' prefers ' . $preference : ' is ready to schedule')
-                . '. What two appointment times should I offer?';
+                . '. Reply ' . $requestCode . ' with two times, for example: ' . $requestCode . ' 8/26 3PM, 8/27 4:30PM.';
         } else {
             $operatorMessage = 'Lead Agent needs help deciding the next response for ' . $leadName . ' and has paused.';
         }
@@ -1126,6 +1358,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
             'stage' => $handoffStage,
             'preference' => $preference,
             'selected_option' => $selectedOption,
+            'operator_request_code' => (string) ($operatorRequest['request_code'] ?? ''),
         ]);
         lead_comm_insert_activity($leadId, 'lead_agent_handoff', $status === 'ready_to_schedule'
             ? 'Lead Agent paused and handed this lead to Rod for scheduling.'
@@ -1137,6 +1370,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
                 'stage' => $handoffStage,
                 'preference' => $preference,
                 'selected_option' => $selectedOption,
+                'operator_request_code' => (string) ($operatorRequest['request_code'] ?? ''),
             ], 'Lead Agent');
 
         return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal];
@@ -1442,7 +1676,10 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
     function lead_agent_handle_scheduling_intent(array $lead, string $body, string $channel, string $eventKey): array
     {
         $leadId = (int) ($lead['id'] ?? 0);
-        $preferences = lead_agent_scheduling_preferences($body);
+        $preferences = lead_agent_merge_scheduling_preferences(
+            lead_agent_historical_scheduling_preferences($leadId),
+            lead_agent_scheduling_preferences($body)
+        );
         if (trim((string) ($preferences['day'] ?? '')) === '' && trim((string) ($lead['scheduling_preferred_day'] ?? '')) !== '') {
             $preferences['day'] = strtolower(trim((string) $lead['scheduling_preferred_day']));
         }
@@ -1683,7 +1920,12 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
         if ($intent === 'pause') {
-            lead_agent_pause($leadId, 'lead_not_ready', 'paused');
+            $declineKind = lead_agent_decline_kind($body);
+            lead_agent_pause($leadId, 'lead_' . $declineKind, 'paused');
+            if ($declineKind === 'declined') {
+                db_execute("UPDATE leads SET status = 'lost_lead', lost_reason = 'not_interested', follow_up_status = 'closed', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                lead_comm_insert_activity($leadId, 'lead_agent_explicit_decline', 'Lead Agent closed automated follow-up after the patient explicitly declined.', ['body' => mb_substr($body, 0, 250)], 'Lead Agent');
+            }
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
         if (!empty($state['human_takeover']) || in_array((string) ($state['status'] ?? ''), ['human_takeover', 'ready_to_schedule', 'needs_attention'], true)) {
@@ -1879,6 +2121,146 @@ if (!function_exists('lead_agent_recent_sms_delivery_issue')) {
         } catch (Throwable $e) {
             return false;
         }
+    }
+}
+
+if (!function_exists('lead_agent_latest_inbound_message')) {
+    function lead_agent_latest_inbound_message(int $leadId): array
+    {
+        if ($leadId <= 0) {
+            return [];
+        }
+        try {
+            return db_one("SELECT body, channel, created_at, id FROM (
+                SELECT body, 'sms' AS channel, created_at, id FROM lead_messages WHERE lead_id = :sms_lead_id AND direction = 'inbound'
+                UNION ALL
+                SELECT body, 'email' AS channel, created_at, id FROM lead_emails WHERE lead_id = :email_lead_id AND direction = 'inbound'
+            ) inbound_events ORDER BY created_at DESC, id DESC LIMIT 1", ['sms_lead_id' => $leadId, 'email_lead_id' => $leadId]) ?: [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
+if (!function_exists('lead_agent_historical_referral_contact')) {
+    function lead_agent_historical_referral_contact(int $leadId): string
+    {
+        try {
+            $rows = db_all("SELECT body FROM lead_messages WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 30", ['lead_id' => $leadId]);
+            foreach ($rows as $row) {
+                $body = trim((string) ($row['body'] ?? ''));
+                if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $body)
+                    && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $body)) {
+                    return $body;
+                }
+            }
+        } catch (Throwable $e) {
+            return '';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lead_agent_repair_scheduling_queue')) {
+    /** Reconcile the Scheduling pipeline with durable conversation state. */
+    function lead_agent_repair_scheduling_queue(int $limit = 200, bool $dryRun = false): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(500, $limit));
+        $rows = db_all("SELECT l.*, s.status AS agent_status, s.scheduling_phase, s.human_takeover, s.next_action_at AS agent_next_action
+            FROM leads l
+            LEFT JOIN lead_agent_states s ON s.lead_id = l.id
+            WHERE l.status = 'in_contact'
+              AND COALESCE(l.consultation_date, '') = ''
+              AND COALESCE(l.consultation_status, '') NOT IN ('scheduled','booked','confirmed','completed')
+            ORDER BY l.updated_at ASC, l.id ASC LIMIT {$limit}");
+        $result = ['evaluated' => count($rows), 'closed' => 0, 'preferences_saved' => 0, 'handoffs_repaired' => 0, 'followups_repaired' => 0];
+        foreach ($rows as $lead) {
+            if (lead_agent_internal_or_test_record($lead)) {
+                continue;
+            }
+            $leadId = (int) ($lead['id'] ?? 0);
+            if (lead_agent_latest_inbound_closure_reason($leadId) !== '') {
+                $result['closed']++;
+                if (!$dryRun) {
+                    lead_agent_pause($leadId, 'historical_explicit_decline', 'paused');
+                    db_execute("UPDATE leads SET status = 'lost_lead', lost_reason = 'not_interested', follow_up_status = 'closed', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                    lead_comm_insert_activity($leadId, 'lead_agent_historical_decline_repaired', 'Lead Agent removed this explicitly declined lead from Scheduling.', [], 'Lead Agent');
+                }
+                continue;
+            }
+            $referral = lead_agent_historical_referral_contact($leadId);
+            if ($referral !== '') {
+                $result['handoffs_repaired']++;
+                if (!$dryRun && trim((string) ($lead['agent_status'] ?? '')) !== 'needs_attention') {
+                    lead_agent_internal_handoff($lead, 'needs_attention', 'A third-party referral phone number needs to be transferred to the correct patient record.', [
+                        'referral_message' => mb_substr($referral, 0, 300),
+                    ]);
+                }
+                continue;
+            }
+            $preferences = lead_agent_historical_scheduling_preferences($leadId);
+            if (!empty($preferences['has_preference'])) {
+                $result['preferences_saved']++;
+                if (!$dryRun) {
+                    lead_agent_save_scheduling_preferences($leadId, $preferences);
+                }
+            }
+            $agentStatus = trim((string) ($lead['agent_status'] ?? ''));
+            if ($agentStatus === '') {
+                continue; // Safe backfill enrolls it later in the same worker run.
+            }
+            $phase = trim((string) ($lead['scheduling_phase'] ?? ''));
+            if (lead_agent_scheduling_preferences_complete($preferences)
+                && in_array($agentStatus, ['active', 'engaged', 'ready_to_schedule'], true)
+                && in_array($phase, ['', 'awaiting_preference', 'awaiting_availability'], true)) {
+                $result['handoffs_repaired']++;
+                if (!$dryRun) {
+                    $label = lead_agent_scheduling_preference_label($preferences);
+                    db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', human_takeover = 1, human_takeover_until = NULL, scheduling_phase = 'awaiting_availability', scheduling_context = :context, next_action_at = NULL, last_decision = 'historical_preference_repaired', updated_at = NOW() WHERE lead_id = :lead_id", [
+                        'context' => substr($label, 0, 500), 'lead_id' => $leadId,
+                    ]);
+                    $pending = db_one("SELECT id FROM lead_agent_operator_requests WHERE lead_id = :lead_id AND request_type = 'availability' AND status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1", ['lead_id' => $leadId]);
+                    if (!$pending) {
+                        lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Recovered scheduling preferences from the existing conversation.', ['stage' => 'availability', 'preference' => $label]);
+                    }
+                }
+                continue;
+            }
+            if ($agentStatus === 'ready_to_schedule' && in_array($phase, ['', 'awaiting_preference'], true)
+                && !lead_agent_scheduling_preferences_complete($preferences)) {
+                $result['followups_repaired']++;
+                if (!$dryRun) {
+                    $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+30 minutes'))->format('Y-m-d H:i:s');
+                    db_execute("UPDATE lead_agent_states SET status = 'engaged', human_takeover = 0, human_takeover_until = NULL, scheduling_phase = 'awaiting_preference', next_action_at = :next_action_at, pause_reason = '', last_decision = 'incomplete_scheduling_handoff_repaired', updated_at = NOW() WHERE lead_id = :lead_id", ['next_action_at' => $next, 'lead_id' => $leadId]);
+                    $agentStatus = 'engaged';
+                }
+            }
+            $latestDirection = lead_agent_latest_patient_direction($leadId);
+            if (in_array($agentStatus, ['active', 'engaged'], true) && (string) ($latestDirection['direction'] ?? '') === 'inbound') {
+                $result['followups_repaired']++;
+                if (!$dryRun) {
+                    $latestInbound = lead_agent_latest_inbound_message($leadId);
+                    if ($latestInbound) {
+                        lead_agent_handle_inbound(
+                            $leadId,
+                            (string) ($latestInbound['body'] ?? ''),
+                            (string) ($latestInbound['channel'] ?? 'sms'),
+                            'historical-' . (string) ($latestInbound['channel'] ?? 'sms') . '-' . $leadId . '-' . (string) ($latestInbound['id'] ?? 0)
+                        );
+                    }
+                }
+                continue;
+            }
+            if (in_array($agentStatus, ['active', 'engaged'], true) && trim((string) ($lead['agent_next_action'] ?? '')) === '') {
+                $result['followups_repaired']++;
+                if (!$dryRun) {
+                    $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+30 minutes'))->format('Y-m-d H:i:s');
+                    db_execute("UPDATE lead_agent_states SET status = 'engaged', scheduling_phase = IF(scheduling_phase = '', 'awaiting_preference', scheduling_phase), next_action_at = :next_action_at, last_decision = 'scheduling_followup_repaired', updated_at = NOW() WHERE lead_id = :lead_id", ['next_action_at' => $next, 'lead_id' => $leadId]);
+                }
+            }
+        }
+        return $result;
     }
 }
 
@@ -2213,10 +2595,12 @@ if (!function_exists('lead_agent_run_due')) {
         $repairedCatchup = 0;
         $recoveredDraftingExceptions = 0;
         $conversionMemoriesRefreshed = 0;
+        $schedulingRepair = [];
         $dueCount = 0;
         $results = [];
         try {
             $backfill = lead_agent_backfill_eligible(200, $dryRun);
+            $schedulingRepair = lead_agent_repair_scheduling_queue(200, $dryRun);
             $conversionMemoriesRefreshed = $dryRun ? 0 : lead_conversion_refresh_active_memories(40);
             $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
             $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
@@ -2267,7 +2651,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

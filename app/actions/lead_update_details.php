@@ -565,6 +565,30 @@ try {
         $params
     );
 
+    if ($consultationStatus === 'scheduled' && $consultationDate !== null) {
+        $bookingSets = ["status = 'consultation_booked'", 'next_follow_up_at = NULL', 'updated_at = NOW()'];
+        $bookingParams = ['id' => $leadId];
+        if (function_exists('leads_has_column') && leads_has_column('pipeline_position') && function_exists('lead_pipeline_next_position')) {
+            $bookingSets[] = 'pipeline_position = :pipeline_position';
+            $bookingParams['pipeline_position'] = lead_pipeline_next_position('consultation_booked');
+        }
+        db_execute('UPDATE leads SET ' . implode(', ', $bookingSets) . ' WHERE id = :id LIMIT 1', $bookingParams);
+        if (function_exists('lead_send_consultation_booked_internal_sms')) {
+            try {
+                $bookingUser = auth_user();
+                lead_send_consultation_booked_internal_sms($leadId, trim((string) ($leadRow['status'] ?? '')), [
+                    'source' => 'lead_update_details',
+                    'created_by' => (string) ($bookingUser['name'] ?? $bookingUser['email'] ?? 'CRM'),
+                ]);
+            } catch (Throwable $notificationError) {
+                esm_log('consultation_booked', 'Appointment saved, but Dr. Meden notification failed.', [
+                    'lead_id' => $leadId,
+                    'error' => $notificationError->getMessage(),
+                ]);
+            }
+        }
+    }
+
     try {
         if (function_exists('smile_design_ensure_schema')) {
             smile_design_ensure_schema();

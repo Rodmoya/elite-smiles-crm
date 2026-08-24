@@ -426,7 +426,7 @@ if (!function_exists('lead_email_default_first_touch')) {
                     $greeting,
                     $serviceLine,
                     'Cada sonrisa se planifica de forma personalizada. Dr. Meden revisa tus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan generico.',
-                    'La consulta es gratis y sin presion. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres ver que es posible?',
+                    'La consulta es gratis y sin presion. Puedes responder este correo si tienes alguna pregunta; Rod tambien te enviara un mensaje de texto para que continuar la conversacion sea facil.',
                     "Con gusto,\nEl equipo de Elite Smiles",
                 ]),
             ];
@@ -444,7 +444,7 @@ if (!function_exists('lead_email_default_first_touch')) {
                 $greeting,
                 $serviceLine,
                 'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
-                'The consultation is complimentary and low pressure. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible?',
+                'The consultation is complimentary and low pressure. You can reply here with any questions; Rod will also text you so it is easy to continue the conversation.',
                 "Warmly,\nThe Elite Smiles Team",
             ]),
         ];
@@ -860,31 +860,6 @@ if (!function_exists('lead_email_record_inbound')) {
                     'error' => $e->getMessage(),
                 ]);
             }
-            if (function_exists('elite_send_operator_follow_up_pushover')) {
-                try {
-                    $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
-                    $pushoverSent = elite_send_operator_follow_up_pushover($freshLead ?: $lead, [
-                        'event' => 'communication',
-                        'channel' => 'email',
-                        'summary' => 'New email reply received from patient.',
-                        'note' => mb_substr($subject . ' - ' . lead_email_new_reply_text($subject, $body), 0, 180),
-                        'quick_action_mode' => 'communication',
-                    ]);
-                    if (function_exists('lead_comm_insert_activity')) {
-                        lead_comm_insert_activity($leadId, $pushoverSent ? 'operator_pushover_sent' : 'operator_pushover_failed', $pushoverSent ? 'Pushover notification sent for inbound email.' : 'Tried to send Pushover notification for inbound email, but no delivery was reported.', [
-                            'source' => 'lead_email_record_inbound',
-                            'email_id' => $emailId,
-                            'source_id' => $sourceId,
-                        ], 'System');
-                    }
-                } catch (Throwable $e) {
-                    esm_log('lead_email', 'Inbound email Pushover notification failed.', [
-                        'lead_id' => $leadId,
-                        'email_id' => $emailId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
         }
 
         $leadAgentPath = __DIR__ . '/lead_agent.php';
@@ -1126,7 +1101,7 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                     $currentFollowUp = trim((string)($lead['next_follow_up_at'] ?? ''));
                     if ($currentFollowUp === '') {
                         $updates[] = 'next_follow_up_at = :next_follow_up_at';
-                        $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+1 day'));
+                        $params['next_follow_up_at'] = date('Y-m-d H:i:s', strtotime('+48 hours'));
                     }
                 }
                 if (lead_email_column_exists('leads', 'follow_up_status')) {

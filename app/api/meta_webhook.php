@@ -63,7 +63,11 @@ if (trim($rawBody) === '') {
     meta_webhook_json(['ok' => false, 'message' => 'Empty Meta webhook payload.'], 400);
 }
 
-if (meta_cfg_app_secret() !== '' && !meta_webhook_signature_valid($rawBody)) {
+$metaAppSecret = meta_cfg_app_secret();
+if ($metaAppSecret === '' || !meta_webhook_signature_valid($rawBody)) {
+    if ($metaAppSecret === '') {
+        esm_log('meta_webhook', 'Rejected Meta webhook because the app secret is not configured.');
+    }
     meta_webhook_json(['ok' => false, 'message' => 'Invalid Meta webhook signature.'], 403);
 }
 

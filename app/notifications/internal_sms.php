@@ -161,7 +161,14 @@ if (!function_exists('internal_sms_send')) {
             return ['ok' => false, 'message' => 'Twilio is not configured.'];
         }
 
-        $payload = ['To' => $to, 'Body' => $body];
+        $payload = [
+            'To' => $to,
+            'Body' => $body,
+            // Internal alerts need the same delivery evidence as patient SMS.
+            // The callback updates internal_sms_logs and can trigger the quiet
+            // Pushover fallback when Twilio later reports a delivery failure.
+            'StatusCallback' => rtrim(APP_URL, '/') . '/app/api/twilio_sms_status.php',
+        ];
         if (defined('TWILIO_MESSAGING_SERVICE_SID') && TWILIO_MESSAGING_SERVICE_SID !== '') {
             $payload['MessagingServiceSid'] = TWILIO_MESSAGING_SERVICE_SID;
         } else {

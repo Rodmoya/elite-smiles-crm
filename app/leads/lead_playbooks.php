@@ -18,15 +18,15 @@ if (!function_exists('lead_playbook_sms_templates')) {
             ],
             'price_objection' => [
                 'label' => 'Price Question',
-                'body' => 'Totally understand, {first_name}. Because every smile case is custom, Dr. Meden needs to see your teeth, bite, and goals before giving accurate options or pricing. The consultation is complimentary, and you will leave with a clearer idea of what actually makes sense for your smile. Would mornings or afternoons work better?',
+                'body' => 'Totally understand, {first_name}. Every smile case is custom, so Dr. Meden first needs to review your teeth, bite, and goals. The consultation is complimentary and gives you a clearer idea of what may make sense for your smile. Would you like me to help with that next step?',
             ],
             'scheduling_info' => [
                 'label' => 'Scheduling Info',
-                'body' => 'Perfect, {first_name}. I can help with that. To schedule your free consultation with Dr. Meden, what day and time usually work best for you? We will also need your date of birth for the appointment record.',
+                'body' => 'Perfect, {first_name}. I can help with that. What day usually works best for your complimentary consultation with Dr. Meden?',
             ],
             'no_answer' => [
                 'label' => 'Active Follow-Up',
-                'body' => 'No pressure, {first_name}. Most people who reach out are just trying to understand what is possible. A complimentary consultation with Dr. Meden is the easiest way to get clear, custom options instead of guessing. Would morning or afternoon be easier?',
+                'body' => 'No pressure, {first_name}. Most people who reach out are simply trying to understand what is possible. What would you most like to improve about your smile?',
             ],
             'nurture_reactivation' => [
                 'label' => 'Nurture Reactivation',

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/leads/lead_agent.php';
+require_once dirname(__DIR__) . '/app/leads/lead_ai.php';
 
 function expect_true(bool $condition, string $message): void
 {
@@ -22,6 +23,8 @@ expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_a
 expect_true(lead_agent_classify_inbound('I need an appointment because I have pain and swelling') === 'needs_attention', 'Clinical urgency must override scheduling language.');
 expect_true(lead_agent_policy_flags('Your treatment price is $500') === ['treatment_cost_language'], 'Treatment price language should be blocked.');
 expect_true(lead_agent_policy_flags('Would mornings or afternoons work better?') === [], 'Approved scheduling language should pass.');
+expect_true(lead_agent_policy_flags('Would Tuesday work? Or would Wednesday be better?') === ['multiple_questions'], 'Automated copy must never ask multiple questions at once.');
+expect_true(lead_agent_policy_flags('I have you scheduled for Tuesday at 2 PM.') === ['unverified_booking_claim'], 'Lead Agent must never claim an appointment is booked before the scheduling workflow confirms it.');
 
 $preference = lead_agent_scheduling_preferences('Tuesday afternoon works best for me.');
 expect_true($preference['day'] === 'tuesday' && $preference['period'] === 'afternoon' && !empty($preference['has_preference']), 'Scheduling preference should capture day and time of day.');
@@ -58,6 +61,33 @@ expect_true(($operatorCommand['action'] ?? '') === 'offer', 'Rod must be able to
 expect_true(($operatorCommand['options'][0] ?? '') === '2026-08-26 15:00:00' && ($operatorCommand['options'][1] ?? '') === '2026-08-27 16:30:00', 'Operator appointment options must normalize in the CRM timezone.');
 expect_true((lead_agent_parse_operator_command('S161-ABCD tomorrow at 3', $operatorNow)['action'] ?? '') === 'invalid', 'An ambiguous one-option command must fail closed without sending.');
 expect_true((lead_agent_parse_operator_command('HELP', $operatorNow)['action'] ?? '') === 'help', 'The operator SMS channel must expose deterministic help.');
+
+$windowCommand = lead_agent_parse_operator_command('S161-ABCDEF next Monday and Tuesday from 2 to 5 are open', $operatorNow);
+expect_true(($windowCommand['action'] ?? '') === 'availability_window', 'Natural operator availability must be recognized as a calendar window.');
+$windows = (array) ($windowCommand['windows'] ?? []);
+expect_true(($windows[0]['start'] ?? '') === '2026-08-24 14:00:00' && ($windows[0]['end'] ?? '') === '2026-08-24 17:00:00', 'Next Monday must resolve from the current Mountain Time date.');
+expect_true(($windows[1]['start'] ?? '') === '2026-08-25 14:00:00' && ($windows[1]['end'] ?? '') === '2026-08-25 17:00:00', 'A second weekday in the same instruction must resolve to the correct date.');
+$windowSlots = lead_agent_available_slots_for_windows($windows, [
+    ['start' => '2026-08-24 14:30:00', 'end' => '2026-08-24 15:00:00'],
+], $operatorNow);
+expect_true(count($windowSlots) === 11, 'Two three-hour windows must become twelve 30-minute starts minus the occupied calendar slot.');
+$mondaySlots = array_values(array_filter($windowSlots, static fn(string $slot): bool => str_starts_with($slot, '2026-08-24')));
+expect_true(count($mondaySlots) === 5, 'Monday from 2 to 5 with one occupied block must correctly report five open 30-minute slots.');
+$chosenWindowSlots = lead_agent_choose_offer_slots($windowSlots);
+expect_true(($chosenWindowSlots[0] ?? '') === '2026-08-24 14:00:00' && ($chosenWindowSlots[1] ?? '') === '2026-08-25 14:00:00', 'The agent should offer one simple choice from each available day first.');
+$sameDayNow = new DateTimeImmutable('2026-08-24 15:10:00', new DateTimeZone(APP_TIMEZONE));
+$sameDayWindows = lead_agent_parse_operator_availability_windows('Monday from 2 to 5 is open', $sameDayNow);
+$sameDaySlots = lead_agent_available_slots_for_windows($sameDayWindows, [], $sameDayNow);
+expect_true($sameDaySlots === ['2026-08-24 15:30:00', '2026-08-24 16:00:00', '2026-08-24 16:30:00'], 'Same-day availability must discard elapsed slots using the current Mountain Time.');
+$lateMonday = new DateTimeImmutable('2026-08-24 17:10:00', new DateTimeZone(APP_TIMEZONE));
+$nextMondayWindow = lead_agent_parse_operator_availability_windows('Monday from 2 to 5 is open', $lateMonday);
+expect_true(($nextMondayWindow[0]['start'] ?? '') === '2026-08-31 14:00:00', 'Once the stated window has ended, an unqualified weekday must resolve to the following week.');
+$tuesdayNow = new DateTimeImmutable('2026-08-25 10:00:00', new DateTimeZone(APP_TIMEZONE));
+$scopedNextWindows = lead_agent_parse_operator_availability_windows('next Monday and Tuesday from 2 to 5', $tuesdayNow);
+expect_true(($scopedNextWindows[0]['start'] ?? '') === '2026-08-31 14:00:00' && ($scopedNextWindows[1]['start'] ?? '') === '2026-09-01 14:00:00', 'Next must scope a chronological weekday list instead of resolving Tuesday to today.');
+$unalignedWindow = lead_agent_parse_operator_availability_windows('next Monday from 2:10 to 3:10', $operatorNow);
+$alignedSlots = lead_agent_available_slots_for_windows($unalignedWindow, [], $operatorNow);
+expect_true($alignedSlots === ['2026-08-24 14:30:00'], 'Non-aligned windows must round forward to a valid 30-minute appointment start without leaving the stated window.');
 $webhookSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_webhook.php');
 expect_true(
     strpos($webhookSource, 'lead_agent_is_operator_sender($from)') < strpos($webhookSource, 'lead_comm_find_lead_by_phone($from)'),
@@ -103,20 +133,26 @@ expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engage
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 
 $plan = lead_agent_cadence_plan();
-expect_true(count($plan) === 11, 'Cadence should define the twice-daily five-day sprint and the first daily follow-up.');
-expect_true($plan[1]['hours'] === 8 && $plan[1]['channel'] === 'sms', 'A second SMS must wait at least eight hours.');
-expect_true($plan[10]['hours'] === 114 && $plan[10]['phase'] === 'active_sprint', 'The active sprint should provide two follow-up opportunities per day through day five.');
-expect_true($plan[11]['hours'] === 138 && $plan[11]['phase'] === 'daily_follow_up', 'Daily follow-up should begin after the five-day sprint.');
-$dailyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 14);
-expect_true($dailyStep['hours'] === 210 && $dailyStep['phase'] === 'daily_follow_up', 'Long-term follow-up must continue every 24 hours instead of tapering to twice weekly.');
+expect_true(count($plan) === 5, 'Active follow-up should be finite before the lead enters low-frequency nurture.');
+expect_true($plan[1]['hours'] === 48 && $plan[1]['channel'] === 'sms', 'The first follow-up must give a new lead 48 hours to reply.');
+expect_true($plan[2]['hours'] === 96 && $plan[2]['channel'] === 'email' && $plan[2]['phase'] === 'education', 'Email must serve an educational role instead of duplicating the SMS CTA.');
+expect_true($plan[5]['hours'] === 720 && $plan[5]['phase'] === 'reactivation', 'The final active touch should be a gentle 30-day reactivation.');
+$monthlyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 6);
+expect_true($monthlyStep['hours'] === 1440 && $monthlyStep['phase'] === 'monthly_nurture', 'Long-term follow-up must taper to monthly nurture instead of daily pressure.');
 
 $dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
 $daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
-expect_true($dayFiveLimit === 2, 'The agent may make up to two total outreach attempts per day through day five.');
-expect_true($daySixLimit === 1, 'The agent must reduce to one outreach attempt per day after day five.');
+expect_true($dayFiveLimit === 1, 'The cadence must never send more than one automated follow-up in a day.');
+expect_true($daySixLimit === 1, 'The one-message daily cap must remain in force after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
-expect_true($incremental['at'] === '2026-08-06 08:00:00', 'An overdue catch-up must schedule the next step from the send time instead of an expired start date.');
+expect_true($incremental['at'] === '2026-08-07 17:00:00', 'An overdue catch-up must preserve the 48-hour breathing room from the actual send time.');
+
+$firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
+expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');
+expect_true(str_contains(strtolower($firstTouchSms), 'what are you hoping to improve'), 'First-touch SMS should begin a natural goal-focused conversation.');
+$firstTouchEmail = lead_email_default_first_touch(['full_name' => 'Taylor Example', 'procedure_interest' => 'Veneers']);
+expect_true(substr_count((string) $firstTouchEmail['body'], '?') === 0, 'First-touch email must add trust and education instead of duplicating the SMS question.');
 
 $sampleLead = ['full_name' => 'Taylor Example'];
 foreach ($plan as $step => $item) {

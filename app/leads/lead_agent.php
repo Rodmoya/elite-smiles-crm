@@ -17,6 +17,7 @@ require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
 require_once __DIR__ . '/lead_agent_observability.php';
 require_once __DIR__ . '/lead_conversion_intelligence.php';
+require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 
 if (!function_exists('lead_agent_enabled')) {
     function lead_agent_enabled(): bool
@@ -165,6 +166,7 @@ if (!function_exists('lead_agent_ensure_schema')) {
             'availability_option_2' => 'ALTER TABLE lead_agent_states ADD COLUMN availability_option_2 DATETIME NULL AFTER availability_option_1',
             'selected_availability' => 'ALTER TABLE lead_agent_states ADD COLUMN selected_availability DATETIME NULL AFTER availability_option_2',
             'scheduling_context' => "ALTER TABLE lead_agent_states ADD COLUMN scheduling_context VARCHAR(500) NOT NULL DEFAULT '' AFTER selected_availability",
+            'availability_pool_json' => "ALTER TABLE lead_agent_states ADD COLUMN availability_pool_json LONGTEXT NULL AFTER scheduling_context",
         ];
         foreach ($stateColumns as $column => $sql) {
             if (!db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'")) {
@@ -350,17 +352,13 @@ if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
         return [
-            1 => ['hours' => 8, 'channel' => 'sms', 'phase' => 'same_day'],
-            2 => ['hours' => 18, 'channel' => 'email', 'phase' => 'active_sprint'],
-            3 => ['hours' => 32, 'channel' => 'sms', 'phase' => 'active_sprint'],
-            4 => ['hours' => 42, 'channel' => 'email', 'phase' => 'active_sprint'],
-            5 => ['hours' => 56, 'channel' => 'sms', 'phase' => 'active_sprint'],
-            6 => ['hours' => 66, 'channel' => 'email', 'phase' => 'active_sprint'],
-            7 => ['hours' => 80, 'channel' => 'sms', 'phase' => 'active_sprint'],
-            8 => ['hours' => 90, 'channel' => 'email', 'phase' => 'active_sprint'],
-            9 => ['hours' => 104, 'channel' => 'sms', 'phase' => 'active_sprint'],
-            10 => ['hours' => 114, 'channel' => 'email', 'phase' => 'active_sprint'],
-            11 => ['hours' => 138, 'channel' => 'sms', 'phase' => 'daily_follow_up'],
+            // First touch already sends one SMS and one email. Give the lead room
+            // to reply, then alternate useful, non-duplicative follow-ups.
+            1 => ['hours' => 48, 'channel' => 'sms', 'phase' => 'active_follow_up'],
+            2 => ['hours' => 96, 'channel' => 'email', 'phase' => 'education'],
+            3 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'active_follow_up'],
+            4 => ['hours' => 336, 'channel' => 'email', 'phase' => 'trust_nurture'],
+            5 => ['hours' => 720, 'channel' => 'sms', 'phase' => 'reactivation'],
         ];
     }
 }
@@ -392,23 +390,17 @@ if (!function_exists('lead_agent_step_schedule')) {
         }
 
         $extra = max(1, $step - count($plan));
-        $hours = 138 + ($extra * 24);
+        $hours = 720 + ($extra * 720);
         $channel = $extra % 2 === 0 ? 'sms' : 'email';
         $at = lead_agent_align_contact_time($start->modify('+' . ($hours * 3600) . ' seconds'));
-        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'daily_follow_up', 'at' => $at->format('Y-m-d H:i:s')];
+        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'monthly_nurture', 'at' => $at->format('Y-m-d H:i:s')];
     }
 }
 
 if (!function_exists('lead_agent_daily_outbound_limit')) {
     function lead_agent_daily_outbound_limit(string $startedAt, ?DateTimeImmutable $now = null): int
     {
-        $zone = new DateTimeZone(APP_TIMEZONE);
-        $started = new DateTimeImmutable($startedAt !== '' ? $startedAt : 'now', $zone);
-        $current = $now ? $now->setTimezone($zone) : new DateTimeImmutable('now', $zone);
-        $startedDay = $started->setTime(0, 0);
-        $currentDay = $current->setTime(0, 0);
-        $elapsedDays = max(0, (int) $startedDay->diff($currentDay)->format('%r%a'));
-        return $elapsedDays < 5 ? 2 : 1;
+        return 1;
     }
 }
 
@@ -431,26 +423,38 @@ if (!function_exists('lead_agent_repair_compressed_catchup')) {
         lead_agent_ensure_schema();
         $rows = db_all("SELECT * FROM lead_agent_states
             WHERE status IN ('active', 'engaged')
-              AND cadence_step > 0
-              AND last_action_at IS NOT NULL
+              AND COALESCE(scheduling_phase, '') = ''
               AND next_action_at IS NOT NULL
-              AND next_action_at <= NOW()");
+            ORDER BY next_action_at ASC");
         $repaired = 0;
         foreach ($rows as $state) {
+            $completedStep = (int) ($state['cadence_step'] ?? 0);
             $lastActionAt = trim((string) ($state['last_action_at'] ?? ''));
-            if ($lastActionAt === '' || strtotime($lastActionAt) === false) {
+            $startedAt = trim((string) ($state['started_at'] ?? ''));
+            if ($completedStep > 0 && ($lastActionAt === '' || strtotime($lastActionAt) === false)) {
                 continue;
             }
-            $following = lead_agent_incremental_schedule($lastActionAt, (int) ($state['cadence_step'] ?? 0));
-            if (strtotime((string) $following['at']) <= time()) {
+            $following = $completedStep > 0
+                ? lead_agent_incremental_schedule($lastActionAt, $completedStep)
+                : lead_agent_step_schedule($startedAt !== '' ? $startedAt : now(), 1);
+            $currentTimestamp = strtotime((string) ($state['next_action_at'] ?? ''));
+            $minimumTimestamp = strtotime((string) ($following['at'] ?? ''));
+            if ($currentTimestamp === false || $minimumTimestamp === false || $minimumTimestamp <= time() || $currentTimestamp >= $minimumTimestamp) {
                 continue;
             }
-            $repaired += db_execute(
+            $changed = db_execute(
                 "UPDATE lead_agent_states
                  SET next_action_at = :next_action_at, last_decision = 'repaired_compressed_catchup', updated_at = NOW()
-                 WHERE lead_id = :lead_id AND next_action_at <= NOW()",
-                ['next_action_at' => $following['at'], 'lead_id' => (int) ($state['lead_id'] ?? 0)]
+                 WHERE lead_id = :lead_id AND next_action_at < :minimum_next_action_at",
+                ['next_action_at' => $following['at'], 'minimum_next_action_at' => $following['at'], 'lead_id' => (int) ($state['lead_id'] ?? 0)]
             );
+            $repaired += $changed;
+            if ($changed > 0) {
+                lead_agent_event((int) ($state['lead_id'] ?? 0), 'cadence-spacing-repaired-' . (int) ($state['lead_id'] ?? 0) . '-' . date('YmdHi'), 'cadence_rescheduled', '', 'recorded', 'minimum_spacing_enforced', [
+                    'previous_next_action_at' => (string) ($state['next_action_at'] ?? ''),
+                    'next_action_at' => (string) ($following['at'] ?? ''),
+                ]);
+            }
         }
         return $repaired;
     }
@@ -472,6 +476,12 @@ if (!function_exists('lead_agent_policy_flags')) {
         }
         if (preg_match('/\b(card number|social security|ssn)\b|\b\d{3}-\d{2}-\d{4}\b/i', $text)) {
             $flags[] = 'sensitive_information';
+        }
+        if (substr_count($body, '?') > 1) {
+            $flags[] = 'multiple_questions';
+        }
+        if (preg_match('/\b(?:i (?:have|got) you|you(?:\'re| are)) (?:scheduled|booked|confirmed)\b|\bappointment (?:is|has been) confirmed\b/i', $text)) {
+            $flags[] = 'unverified_booking_claim';
         }
         return array_values(array_unique($flags));
     }
@@ -660,16 +670,21 @@ if (!function_exists('lead_agent_parse_operator_command')) {
         if (preg_match('/^(help|commands?)$/i', $body)) {
             return ['action' => 'help', 'code' => '', 'options' => []];
         }
-        if (!preg_match('/^(S\d+(?:-[A-Z0-9]{4,8})?)\s+(.+)$/i', $body, $matches)) {
-            return ['action' => 'invalid', 'code' => '', 'options' => []];
+        $code = '';
+        $instruction = $body;
+        if (preg_match('/^(S\d+(?:-[A-Z0-9]{4,8})?)\s+(.+)$/i', $body, $matches)) {
+            $code = strtoupper((string) $matches[1]);
+            $instruction = trim((string) $matches[2]);
         }
-        $code = strtoupper((string) $matches[1]);
-        $instruction = trim((string) $matches[2]);
         if (preg_match('/^(wait|hold)$/i', $instruction)) {
             return ['action' => 'wait', 'code' => $code, 'options' => []];
         }
         if (preg_match('/^(call|i(?:\'|’)ll call)$/i', $instruction)) {
             return ['action' => 'call', 'code' => $code, 'options' => []];
+        }
+        $windows = lead_agent_parse_operator_availability_windows($instruction, $now);
+        if ($windows !== []) {
+            return ['action' => 'availability_window', 'code' => $code, 'options' => [], 'windows' => $windows];
         }
         $parts = preg_split('/\s*(?:,|\||\bor\b|\band\b)\s*/i', $instruction) ?: [];
         if (count($parts) !== 2) {
@@ -681,6 +696,247 @@ if (!function_exists('lead_agent_parse_operator_command')) {
             return ['action' => 'invalid', 'code' => $code, 'options' => []];
         }
         return ['action' => 'offer', 'code' => $code, 'options' => [$option1, $option2]];
+    }
+}
+
+if (!function_exists('lead_agent_office_minutes')) {
+    function lead_agent_office_minutes(): array
+    {
+        // Consultations are offered from 9:00 AM through a final 6:00 PM start.
+        return ['open' => 9 * 60, 'last_start' => 18 * 60, 'close' => 18 * 60 + 30, 'slot' => 30];
+    }
+}
+
+if (!function_exists('lead_agent_operator_time_range')) {
+    function lead_agent_operator_time_range(string $body): array
+    {
+        if (!preg_match('/(?:\bfrom\s+|\bbetween\s+)?(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|\bto\b|\buntil\b|\bthrough\b)\s*(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)?/i', $body, $matches)) {
+            return [];
+        }
+        $startHour = (int) $matches[1];
+        $startMinute = (int) ($matches[2] ?? 0);
+        $startMeridian = strtolower(str_replace('.', '', (string) ($matches[3] ?? '')));
+        $endHour = (int) $matches[4];
+        $endMinute = (int) ($matches[5] ?? 0);
+        $endMeridian = strtolower(str_replace('.', '', (string) ($matches[6] ?? '')));
+        if ($startHour < 1 || $startHour > 12 || $endHour < 1 || $endHour > 12) {
+            return [];
+        }
+        $office = lead_agent_office_minutes();
+        $hourCandidates = static function (int $hour, string $meridian): array {
+            if ($meridian !== '') {
+                $normalized = $hour % 12;
+                return [$normalized + ($meridian === 'pm' ? 12 : 0)];
+            }
+            $values = [$hour % 12, ($hour % 12) + 12];
+            return array_values(array_unique($values));
+        };
+        $candidates = [];
+        foreach ($hourCandidates($startHour, $startMeridian) as $start24) {
+            foreach ($hourCandidates($endHour, $endMeridian) as $end24) {
+                $start = $start24 * 60 + $startMinute;
+                $end = $end24 * 60 + $endMinute;
+                if ($start < $office['open'] || $start > $office['last_start'] || $end <= $start || $end > $office['close']) {
+                    continue;
+                }
+                $duration = $end - $start;
+                if ($duration < $office['slot'] || $duration > 9 * 60) {
+                    continue;
+                }
+                $candidates[] = ['start' => $start, 'end' => $end, 'duration' => $duration];
+            }
+        }
+        if ($candidates === []) {
+            return [];
+        }
+        usort($candidates, static fn(array $a, array $b): int => $a['duration'] <=> $b['duration'] ?: $a['start'] <=> $b['start']);
+        return ['start_minutes' => $candidates[0]['start'], 'end_minutes' => $candidates[0]['end']];
+    }
+}
+
+if (!function_exists('lead_agent_parse_operator_availability_windows')) {
+    /** Resolve natural availability windows in the practice timezone. */
+    function lead_agent_parse_operator_availability_windows(string $body, ?DateTimeImmutable $now = null): array
+    {
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = ($now ?: new DateTimeImmutable('now', $timezone))->setTimezone($timezone);
+        $body = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        $range = lead_agent_operator_time_range($body);
+        if ($range === []) {
+            return [];
+        }
+        $weekdayMap = ['sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3, 'thursday' => 4, 'friday' => 5, 'saturday' => 6];
+        $dates = [];
+        $previousWeekdayDate = null;
+        if (preg_match_all('/\b(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i', $body, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $targetDow = $weekdayMap[strtolower((string) $match[2])];
+                $daysAhead = ($targetDow - (int) $now->format('w') + 7) % 7;
+                $explicitNext = trim((string) ($match[1] ?? '')) !== '';
+                $windowEndToday = (int) $range['end_minutes'];
+                $nowMinutes = (int) $now->format('G') * 60 + (int) $now->format('i');
+                if ($daysAhead === 0 && ($explicitNext || $nowMinutes >= $windowEndToday)) {
+                    $daysAhead = 7;
+                }
+                $date = $now->setTime(0, 0)->modify('+' . $daysAhead . ' days');
+                if ($previousWeekdayDate instanceof DateTimeImmutable && $date <= $previousWeekdayDate) {
+                    $date = $date->modify('+7 days');
+                }
+                $dates[$date->format('Y-m-d')] = $date;
+                $previousWeekdayDate = $date;
+            }
+        }
+        if (preg_match_all('/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/', $body, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $year = isset($match[3]) && $match[3] !== '' ? (int) $match[3] : (int) $now->format('Y');
+                if ($year < 100) {
+                    $year += 2000;
+                }
+                if (!checkdate((int) $match[1], (int) $match[2], $year)) {
+                    continue;
+                }
+                $date = $now->setDate($year, (int) $match[1], (int) $match[2])->setTime(0, 0);
+                if ($date->setTime(23, 59) < $now) {
+                    $date = $date->modify('+1 year');
+                }
+                $dates[$date->format('Y-m-d')] = $date;
+            }
+        }
+        if ($dates === []) {
+            return [];
+        }
+        ksort($dates);
+        $windows = [];
+        foreach ($dates as $date) {
+            $start = $date->setTime(intdiv((int) $range['start_minutes'], 60), (int) $range['start_minutes'] % 60);
+            $end = $date->setTime(intdiv((int) $range['end_minutes'], 60), (int) $range['end_minutes'] % 60);
+            if ($end <= $now) {
+                continue;
+            }
+            $windows[] = ['start' => $start->format('Y-m-d H:i:s'), 'end' => $end->format('Y-m-d H:i:s')];
+        }
+        return $windows;
+    }
+}
+
+if (!function_exists('lead_agent_available_slots_for_windows')) {
+    function lead_agent_available_slots_for_windows(array $windows, array $occupiedIntervals = [], ?DateTimeImmutable $now = null): array
+    {
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = ($now ?: new DateTimeImmutable('now', $timezone))->setTimezone($timezone);
+        $office = lead_agent_office_minutes();
+        $slots = [];
+        foreach ($windows as $window) {
+            try {
+                $cursor = new DateTimeImmutable((string) ($window['start'] ?? ''), $timezone);
+                $end = new DateTimeImmutable((string) ($window['end'] ?? ''), $timezone);
+            } catch (Throwable $e) {
+                continue;
+            }
+            $minute = (int) $cursor->format('i');
+            if ($minute % $office['slot'] !== 0) {
+                $cursor = $cursor->modify('+' . ($office['slot'] - ($minute % $office['slot'])) . ' minutes');
+                $cursor = $cursor->setTime((int) $cursor->format('G'), (int) $cursor->format('i'), 0);
+            }
+            while ($cursor->modify('+' . $office['slot'] . ' minutes') <= $end) {
+                $slotEnd = $cursor->modify('+' . $office['slot'] . ' minutes');
+                if ($cursor <= $now) {
+                    $cursor = $slotEnd;
+                    continue;
+                }
+                $blocked = false;
+                foreach ($occupiedIntervals as $occupied) {
+                    try {
+                        $occupiedStart = new DateTimeImmutable((string) ($occupied['start'] ?? ''), $timezone);
+                        $occupiedEnd = new DateTimeImmutable((string) ($occupied['end'] ?? ''), $timezone);
+                    } catch (Throwable $e) {
+                        continue;
+                    }
+                    if ($cursor < $occupiedEnd && $slotEnd > $occupiedStart) {
+                        $blocked = true;
+                        break;
+                    }
+                }
+                if (!$blocked) {
+                    $slots[] = $cursor->format('Y-m-d H:i:s');
+                }
+                $cursor = $slotEnd;
+            }
+        }
+        return array_values(array_unique($slots));
+    }
+}
+
+if (!function_exists('lead_agent_calendar_occupied_intervals')) {
+    function lead_agent_calendar_occupied_intervals(array $windows): array
+    {
+        if ($windows === []) {
+            return [];
+        }
+        $starts = array_column($windows, 'start');
+        $ends = array_column($windows, 'end');
+        sort($starts);
+        rsort($ends);
+        $from = (string) ($starts[0] ?? '');
+        $to = (string) ($ends[0] ?? '');
+        if ($from === '' || $to === '') {
+            return [];
+        }
+        $intervals = [];
+        $crmRows = db_all("SELECT consultation_date AS start_at, DATE_ADD(consultation_date, INTERVAL 30 MINUTE) AS end_at
+            FROM leads
+            WHERE consultation_date IS NOT NULL AND consultation_date < :to_date
+              AND DATE_ADD(consultation_date, INTERVAL 30 MINUTE) > :from_date
+              AND status NOT IN ('lost_lead','opted_out','no_answer')", ['from_date' => $from, 'to_date' => $to]);
+        foreach ($crmRows as $row) {
+            $intervals[] = ['start' => (string) ($row['start_at'] ?? ''), 'end' => (string) ($row['end_at'] ?? '')];
+        }
+        dentrix_bridge_ensure_schema();
+        $dentrixRows = db_all("SELECT start_at, end_at FROM dentrix_occupied_slots
+            WHERE start_at < :to_date AND end_at > :from_date", ['from_date' => $from, 'to_date' => $to]);
+        foreach ($dentrixRows as $row) {
+            $intervals[] = ['start' => (string) ($row['start_at'] ?? ''), 'end' => (string) ($row['end_at'] ?? '')];
+        }
+        return $intervals;
+    }
+}
+
+if (!function_exists('lead_agent_choose_offer_slots')) {
+    /** Prefer one option per day so the patient receives a useful, simple choice. */
+    function lead_agent_choose_offer_slots(array $slots): array
+    {
+        sort($slots);
+        $chosen = [];
+        $seenDates = [];
+        foreach ($slots as $slot) {
+            $date = substr((string) $slot, 0, 10);
+            if ($date === '' || isset($seenDates[$date])) {
+                continue;
+            }
+            $chosen[] = (string) $slot;
+            $seenDates[$date] = true;
+            if (count($chosen) === 2) {
+                return $chosen;
+            }
+        }
+        foreach ($slots as $slot) {
+            if (!in_array((string) $slot, $chosen, true)) {
+                $chosen[] = (string) $slot;
+            }
+            if (count($chosen) === 2) {
+                break;
+            }
+        }
+        return $chosen;
+    }
+}
+
+if (!function_exists('lead_agent_slots_for_operator_windows')) {
+    function lead_agent_slots_for_operator_windows(array $windows, ?DateTimeImmutable $now = null): array
+    {
+        $occupied = lead_agent_calendar_occupied_intervals($windows);
+        $available = lead_agent_available_slots_for_windows($windows, $occupied, $now);
+        return ['available' => $available, 'chosen' => lead_agent_choose_offer_slots($available), 'occupied_count' => count($occupied)];
     }
 }
 
@@ -1243,18 +1499,62 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
         }
         $command = lead_agent_parse_operator_command($body);
         if (($command['action'] ?? '') === 'help') {
-            return ['handled' => true, 'reply' => 'Elite AI commands: reply with the code plus two times, for example S123-ABCD 8/26 3PM, 8/27 4:30PM. Or reply CODE WAIT / CODE CALL.'];
+            return ['handled' => true, 'reply' => 'Elite AI commands: reply with a window such as S123-ABCDEF next Monday and Tuesday from 2 to 5, or two exact times. You can also reply CODE WAIT or CODE CALL.'];
         }
         $code = (string) ($command['code'] ?? '');
         $request = $code !== '' ? db_one("SELECT * FROM lead_agent_operator_requests WHERE request_code = :code AND status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1", ['code' => $code]) : null;
+        if (!$request && $code === '') {
+            $pendingRequests = db_all("SELECT * FROM lead_agent_operator_requests WHERE status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY id DESC LIMIT 3");
+            if (count($pendingRequests) === 1) {
+                $request = $pendingRequests[0];
+                $code = (string) ($request['request_code'] ?? '');
+            } elseif (count($pendingRequests) > 1) {
+                return ['handled' => true, 'reply' => 'Elite AI: More than one lead is waiting for availability, so I did not send anything. Please include the request code from my message.'];
+            }
+        }
         if (!$request) {
             return ['handled' => true, 'reply' => 'Elite AI: I could not match that instruction to an active request. Reply HELP for the format or open the CRM.'];
         }
         $leadId = (int) ($request['lead_id'] ?? 0);
         $action = (string) ($command['action'] ?? 'invalid');
+        if ($action === 'availability_window') {
+            $windows = (array) ($command['windows'] ?? []);
+            $slotResult = lead_agent_slots_for_operator_windows($windows);
+            $available = (array) ($slotResult['available'] ?? []);
+            $chosen = (array) ($slotResult['chosen'] ?? []);
+            if (count($chosen) < 2) {
+                $count = count($available);
+                return ['handled' => true, 'reply' => 'Elite AI: I checked the CRM and Dentrix calendar and found ' . $count . ' open 30-minute slot' . ($count === 1 ? '' : 's') . '. I did not send anything because I need at least two choices. Please send another window.'];
+            }
+            $result = lead_agent_offer_availability($leadId, (string) $chosen[0], (string) $chosen[1], 0, $available);
+            if (empty($result['ok'])) {
+                return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. ' . (string) ($result['message'] ?? 'Please check the CRM.')];
+            }
+            $context = json_decode((string) ($request['context_json'] ?? ''), true);
+            $context = is_array($context) ? $context : [];
+            $context['operator_windows'] = $windows;
+            $context['available_slots'] = $available;
+            $context['offered_slots'] = $chosen;
+            db_execute("UPDATE lead_agent_operator_requests SET status = 'completed', context_json = :context_json, response_body = :body, response_message_sid = :sid, completed_at = NOW(), updated_at = NOW() WHERE id = :id AND status = 'pending'", [
+                'context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
+            ]);
+            return ['handled' => true, 'reply' => 'Elite AI: Calendar checked. I found ' . count($available) . ' open 30-minute slots and offered ' . lead_agent_format_availability((string) $chosen[0]) . ' and ' . lead_agent_format_availability((string) $chosen[1]) . '.'];
+        }
         if ($action === 'offer') {
             $options = (array) ($command['options'] ?? []);
-            $result = lead_agent_offer_availability($leadId, (string) ($options[0] ?? ''), (string) ($options[1] ?? ''), 0);
+            $optionWindows = [];
+            foreach ($options as $option) {
+                $timestamp = strtotime((string) $option);
+                if ($timestamp !== false) {
+                    $optionWindows[] = ['start' => date('Y-m-d H:i:s', $timestamp), 'end' => date('Y-m-d H:i:s', $timestamp + 1800)];
+                }
+            }
+            $checked = lead_agent_slots_for_operator_windows($optionWindows);
+            if (count((array) ($checked['available'] ?? [])) !== 2) {
+                return ['handled' => true, 'reply' => 'Elite AI: I checked the CRM and Dentrix calendar and at least one of those times is occupied. I did not send anything. Please choose two open times or send a wider window.'];
+            }
+            $result = lead_agent_offer_availability($leadId, (string) ($options[0] ?? ''), (string) ($options[1] ?? ''), 0, $options);
             if (empty($result['ok'])) {
                 return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. ' . (string) ($result['message'] ?? 'Please check the CRM.')];
             }
@@ -1276,7 +1576,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
             lead_agent_record_human_outbound($leadId, 'operator_sms', 'Operator chose to call the lead.');
             return ['handled' => true, 'reply' => 'Elite AI: The lead is paused for your call today. If there is no completed appointment, I will resume tomorrow.'];
         }
-        return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. Reply ' . $code . ' followed by two times, for example 8/26 3PM, 8/27 4:30PM; or reply ' . $code . ' WAIT / CALL.'];
+        return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. Reply ' . $code . ' with a window such as next Monday and Tuesday from 2 to 5, two exact times, WAIT, or CALL.'];
     }
 }
 
@@ -1314,7 +1614,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         } elseif ($status === 'ready_to_schedule') {
             $requestCode = trim((string) ($operatorRequest['request_code'] ?? ''));
             $operatorMessage = $leadName . ($preference !== '' ? ' prefers ' . $preference : ' is ready to schedule')
-                . '. Reply ' . $requestCode . ' with two times, for example: ' . $requestCode . ' 8/26 3PM, 8/27 4:30PM.';
+                . '. Reply with a window, for example: ' . $requestCode . ' next Monday and Tuesday from 2 to 5. I will check the calendar and offer the best two open 30-minute slots.';
         } else {
             $operatorMessage = 'Lead Agent needs help deciding the next response for ' . $leadName . ' and has paused.';
         }
@@ -1348,6 +1648,18 @@ if (!function_exists('lead_agent_internal_handoff')) {
             );
         }
 
+        // Twilio is the primary operator channel. Pushover is intentionally a
+        // quiet fallback and must not duplicate a successful Twilio handoff.
+        $pushoverFallbackSent = false;
+        if (empty($internal['ok']) && function_exists('elite_send_pushover_notification')) {
+            $pushoverFallbackSent = elite_send_pushover_notification(
+                'Elite AI handoff — SMS failed',
+                $operatorMessage,
+                base_url('leads.php?lead_id=' . $leadId),
+                'Open ' . $leadName
+            );
+        }
+
         db_execute('UPDATE lead_agent_states SET handoff_notified_at = NOW(), last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id', [
             'decision' => $status,
             'lead_id' => $leadId,
@@ -1355,6 +1667,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         lead_agent_event($leadId, 'handoff-' . $status . '-' . $leadId . '-' . time(), 'handoff', '', 'recorded', $reason, [
             'elite_ai_push_sent' => !empty($push['sent']),
             'internal_sms_sent' => !empty($internal['ok']),
+            'pushover_fallback_sent' => $pushoverFallbackSent,
             'stage' => $handoffStage,
             'preference' => $preference,
             'selected_option' => $selectedOption,
@@ -1367,13 +1680,14 @@ if (!function_exists('lead_agent_internal_handoff')) {
                 'reason' => $reason,
                 'elite_ai_push_sent' => !empty($push['sent']),
                 'internal_sms_sent' => !empty($internal['ok']),
+                'pushover_fallback_sent' => $pushoverFallbackSent,
                 'stage' => $handoffStage,
                 'preference' => $preference,
                 'selected_option' => $selectedOption,
                 'operator_request_code' => (string) ($operatorRequest['request_code'] ?? ''),
             ], 'Lead Agent');
 
-        return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal];
+        return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal, 'pushover_fallback_sent' => $pushoverFallbackSent];
     }
 }
 
@@ -1474,25 +1788,21 @@ if (!function_exists('lead_agent_approved_followup')) {
         $first = lead_agent_first_name($lead);
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
         $sms = [
-            1 => $hello . ' Hi, thanks for staying in touch. What is the one thing you want to improve about your smile first?',
-            3 => $hello . ' if a brighter, more even smile is still your goal, I can help you arrange a complimentary consultation with Dr. Meden. Do mornings or afternoons usually work better for you?',
-            5 => $hello . ' I want to make sure I have what you shared right. What would make the next step feel easier for you?',
-            7 => $hello . ' I am still here for your smile goals. If you are ready, I can help get your complimentary consultation in motion—let me know if you want that.',
-            9 => $hello . ' checking in from Elite Smiles. If you are still exploring your options, a complimentary consultation is the easiest next step. What feels best for you, mornings or afternoons?',
-            11 => $hello . ' thanks for keeping this moving. Your smile consultation is here whenever you are ready. Reply with your preferred day, and I can ask Rod to check availability.',
-            13 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply when you are ready and we will help you move forward.',
+            1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else?',
+            3 => $hello . ' no pressure at all. If you are still exploring your smile options, would a complimentary conversation with Dr. Meden be helpful?',
+            5 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply whenever the timing feels right. Reply STOP to opt out.',
         ];
         if ($channel === 'sms') {
             $body = $sms[$step] ?? $hello . ' Elite Smiles checking in. Is improving your smile still something you would like help with? Reply STOP to opt out.';
             return ['subject' => '', 'body' => $body];
         }
 
-        $subject = $step <= 4 ? 'Your smile goals' : 'Still thinking about your smile?';
+        $subject = $step <= 2 ? 'What to expect at Elite Smiles' : 'A low-pressure next step';
         $body = $hello . "\n\n"
-            . ($step <= 4
-                ? 'I wanted to make sure you have an easy way to continue the conversation. Dr. Meden can review your goals during a complimentary consultation and explain which options fit your smile.'
-                : 'Whenever you are ready, Elite Smiles can help you understand what is possible for your smile through a complimentary consultation with Dr. Meden.')
-            . "\n\nWould mornings or afternoons usually be easier for you?\n\nElite Smiles";
+            . ($step <= 2
+                ? 'Every smile is different. During a complimentary consultation, Dr. Meden reviews your teeth, bite, photos, and goals before explaining which options may fit. It is a chance to get clear information without pressure.'
+                : 'There is no need to decide anything before your consultation. The goal is simply to understand what may be possible for your smile and what a personalized next step would look like.')
+            . "\n\nYou can reply here whenever a question comes up.\n\nElite Smiles";
         return ['subject' => $subject, 'body' => $body];
     }
 }
@@ -1566,9 +1876,9 @@ if (!function_exists('lead_agent_strategy_followup_draft')) {
                 $body = $hello . "\n\nNo pressure at all — we are here whenever you are ready. If you want, we can keep this simple and start with a complimentary consult with Dr. Meden.\n\nElite Smiles";
                 break;
             default:
-                $sms = $hello . ' this is a quick note from Elite Smiles. If improving your smile is still important, we can use a complimentary consultation as a clear next step. Would mornings or afternoons be easier for you?';
-                $subject = 'What is the next step for you?';
-                $body = $hello . "\n\nIf your timing is moving forward, we can keep it simple with a complimentary consultation with Dr. Meden.\n\nWould mornings or afternoons be easier to start with?\n\nElite Smiles";
+                $sms = $hello . ' this is a quick note from Elite Smiles. If improving your smile is still important, what would be most helpful for you to understand next?';
+                $subject = 'Here when you are ready';
+                $body = $hello . "\n\nIf improving your smile is still a goal, we are here to help you understand your options without pressure. You can reply with any question whenever the timing feels right.\n\nElite Smiles";
                 break;
         }
 
@@ -1709,7 +2019,7 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
 
         $preferenceLabel = lead_agent_scheduling_preference_label($preferences);
         if (empty($preferences['ready_for_availability'])) {
-            $nextPreferenceFollowup = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+8 hours'))->format('Y-m-d H:i:s');
+            $nextPreferenceFollowup = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+36 hours'))->format('Y-m-d H:i:s');
             db_execute("UPDATE lead_agent_states SET status = 'engaged', human_takeover = 0, human_takeover_until = NULL, scheduling_phase = 'awaiting_preference', scheduling_context = :context, next_action_at = :next_action_at, last_action_at = NOW(), last_decision = 'asked_for_missing_scheduling_preference', updated_at = NOW() WHERE lead_id = :lead_id", [
                 'context' => substr($preferenceLabel, 0, 500),
                 'next_action_at' => $nextPreferenceFollowup,
@@ -1737,7 +2047,7 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
 }
 
 if (!function_exists('lead_agent_offer_availability')) {
-    function lead_agent_offer_availability(int $leadId, string $option1, string $option2, int $actorUserId = 0): array
+    function lead_agent_offer_availability(int $leadId, string $option1, string $option2, int $actorUserId = 0, array $availabilityPool = []): array
     {
         lead_agent_ensure_schema();
         $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
@@ -1774,9 +2084,17 @@ if (!function_exists('lead_agent_offer_availability')) {
         if (!empty($send['shadow'])) {
             return ['ok' => true, 'message' => 'Shadow mode: the two options were prepared but not sent.', 'shadow' => true, 'channel' => $channel];
         }
-        db_execute("UPDATE lead_agent_states SET status = 'awaiting_slot_selection', scheduling_phase = 'awaiting_slot_selection', availability_option_1 = :option1, availability_option_2 = :option2, selected_availability = NULL, human_takeover = 0, human_takeover_until = NULL, pause_reason = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_offered', updated_at = NOW() WHERE lead_id = :lead_id", [
+        $normalizedPool = array_values(array_unique(array_filter(array_map(static function ($value): string {
+            $timestamp = strtotime((string) $value);
+            return $timestamp !== false ? date('Y-m-d H:i:s', $timestamp) : '';
+        }, $availabilityPool))));
+        if ($normalizedPool === []) {
+            $normalizedPool = [$normalized1, $normalized2];
+        }
+        db_execute("UPDATE lead_agent_states SET status = 'awaiting_slot_selection', scheduling_phase = 'awaiting_slot_selection', availability_option_1 = :option1, availability_option_2 = :option2, availability_pool_json = :availability_pool_json, selected_availability = NULL, human_takeover = 0, human_takeover_until = NULL, pause_reason = '', next_action_at = NULL, last_action_at = NOW(), last_decision = 'availability_offered', updated_at = NOW() WHERE lead_id = :lead_id", [
             'option1' => $normalized1,
             'option2' => $normalized2,
+            'availability_pool_json' => json_encode($normalizedPool, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'lead_id' => $leadId,
         ]);
         if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
@@ -1804,6 +2122,34 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
         $option2 = (string) ($state['availability_option_2'] ?? '');
         $selectedNumber = lead_agent_match_availability_selection($body, $option1, $option2);
         if ($selectedNumber === 0) {
+            $asksForDifferentTime = (bool) preg_match('/\b(neither|none|other|later|earlier|different|do not work|don\'t work|does not work|doesn\'t work|not work)\b/i', $body);
+            if ($asksForDifferentTime) {
+                $pool = json_decode((string) ($state['availability_pool_json'] ?? ''), true);
+                $pool = is_array($pool) ? array_values(array_diff($pool, [$option1, $option2])) : [];
+                $poolWindows = [];
+                foreach ($pool as $poolSlot) {
+                    $timestamp = strtotime((string) $poolSlot);
+                    if ($timestamp !== false) {
+                        $poolWindows[] = ['start' => date('Y-m-d H:i:s', $timestamp), 'end' => date('Y-m-d H:i:s', $timestamp + 1800)];
+                    }
+                }
+                $freshPool = $poolWindows !== [] ? lead_agent_slots_for_operator_windows($poolWindows) : ['available' => [], 'chosen' => []];
+                $freshAvailable = (array) ($freshPool['available'] ?? []);
+                $nextChoices = (array) ($freshPool['chosen'] ?? []);
+                if (count($nextChoices) >= 2) {
+                    db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'awaiting_availability', human_takeover = 1, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+                    $offer = lead_agent_offer_availability($leadId, (string) $nextChoices[0], (string) $nextChoices[1], 0, $freshAvailable);
+                    return ['ok' => !empty($offer['ok']), 'handled' => true, 'intent' => 'alternate_slots_offered', 'sent' => !empty($offer['ok']), 'status' => 'awaiting_slot_selection'];
+                }
+                $message = 'No problem—let me check a different time window for you.';
+                $draft = $channel === 'email' ? ['subject' => 'Your consultation time', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+                $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-alternatives-needed-' . $eventKey, 'alternate_slots_needed');
+                db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'awaiting_availability', availability_option_1 = NULL, availability_option_2 = NULL, availability_pool_json = NULL, human_takeover = 1, next_action_at = NULL, last_decision = 'alternate_window_needed', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+                return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'The lead declined the available pool and needs a different time window.', [
+                    'stage' => 'availability',
+                    'preference' => trim((string) ($state['scheduling_context'] ?? '')),
+                ]) + ['handled' => true, 'intent' => 'alternate_slots_needed', 'sent' => !empty($send['sent'])];
+            }
             $message = 'Of course—which works better for you: ' . lead_agent_format_availability($option1) . ' or ' . lead_agent_format_availability($option2) . '?';
             $draft = $channel === 'email' ? ['subject' => 'Your consultation time', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-clarify-' . $eventKey, 'slot_clarification');
@@ -1812,6 +2158,21 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
 
         $selected = $selectedNumber === 1 ? $option1 : $option2;
         $formatted = lead_agent_format_availability($selected);
+        $selectedTimestamp = strtotime($selected);
+        $selectedWindow = $selectedTimestamp !== false
+            ? [['start' => date('Y-m-d H:i:s', $selectedTimestamp), 'end' => date('Y-m-d H:i:s', $selectedTimestamp + 1800)]]
+            : [];
+        $availabilityCheck = $selectedWindow !== [] ? lead_agent_slots_for_operator_windows($selectedWindow) : ['available' => []];
+        if (!in_array($selected, (array) ($availabilityCheck['available'] ?? []), true)) {
+            $message = 'That time just became unavailable. Let me check two fresh options for you.';
+            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-no-longer-open-' . $eventKey, 'availability_changed');
+            db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'awaiting_availability', availability_option_1 = NULL, availability_option_2 = NULL, selected_availability = NULL, human_takeover = 1, human_takeover_until = NULL, next_action_at = NULL, last_decision = 'selected_slot_no_longer_available', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+            return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'The selected calendar slot became occupied and needs two replacement options.', [
+                'stage' => 'availability',
+                'preference' => trim((string) ($state['scheduling_context'] ?? '')),
+            ]) + ['handled' => true, 'intent' => 'availability_changed', 'sent' => !empty($send['sent'])];
+        }
         $hasDob = trim((string) ($lead['date_of_birth'] ?? '')) !== '';
         $message = $hasDob
             ? 'Perfect—I have ' . $formatted . ' as your choice. Rod will confirm it shortly.'
@@ -2025,7 +2386,7 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Approved response could not be delivered.') + ['intent' => $intent, 'handled' => true];
         }
 
-        $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+24 hours'));
+        $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+48 hours'));
         db_execute("UPDATE lead_agent_states SET status = 'engaged', last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
             'next_action_at' => $next->format('Y-m-d H:i:s'),
             'lead_id' => $leadId,
@@ -2311,6 +2672,7 @@ if (!function_exists('lead_agent_contextual_followup')) {
         }
         $instruction = 'Lead Agent instruction: Write the next natural follow-up after reading the complete patient_conversation. '
             . 'Continue from what was actually discussed; do not repeat a question already answered or introduce a fresh conversation. '
+            . 'Ask no more than one question. Do not ask for a preferred day or time until the lead has expressed interest in scheduling. '
             . 'If the agent is waiting for a missing scheduling preference, ask only for the missing day or morning/afternoon preference. '
             . 'If the latest patient message still needs an answer, confirmed availability is being checked, appointment options were offered, or a staff member owns the thread, do not send.';
         $leadForAi = $lead;
@@ -2382,11 +2744,12 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
             return 'all_channels_opted_out';
         }
-        $hour = (int) date('G');
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $hour = (int) $now->format('G');
         if ($hour < 8 || $hour >= 21) {
             return 'quiet_hours';
         }
-        $today = date('Y-m-d');
+        $today = $now->format('Y-m-d');
         $max = lead_agent_daily_outbound_limit((string) ($state['started_at'] ?? ''));
         if (lead_agent_daily_outbound_count((int) $lead['id'], $today) >= $max) {
             return 'daily_cap';

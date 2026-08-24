@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `leads` (
   `financing_needed`   VARCHAR(20)   NOT NULL DEFAULT 'unsure',
   `financing_option`   VARCHAR(100)  NOT NULL DEFAULT 'none',
   `lead_value`         DECIMAL(10,2) NOT NULL DEFAULT 10000.00,
-  `external_lead_id`   VARCHAR(255)  NOT NULL DEFAULT '',
+  `external_lead_id`   VARCHAR(255)  NULL DEFAULT NULL,
   `notes`              TEXT          NOT NULL DEFAULT '',
   `is_active`          TINYINT(1)    NOT NULL DEFAULT 1,
   `created_by`         INT UNSIGNED           DEFAULT NULL,
@@ -97,7 +97,8 @@ CREATE TABLE IF NOT EXISTS `leads` (
   KEY `idx_status`       (`status`),
   KEY `idx_source`       (`source`),
   KEY `idx_landing_page` (`landing_page`),
-  KEY `idx_created_at`   (`created_at`)
+  KEY `idx_created_at`   (`created_at`),
+  UNIQUE KEY `uq_leads_external_lead_id` (`external_lead_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------

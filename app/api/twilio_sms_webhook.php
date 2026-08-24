@@ -66,6 +66,28 @@ if (lead_agent_is_operator_sender($from)) {
     exit;
 }
 
+lead_comm_ensure_schema();
+$sidLockName = '';
+if ($messageSid !== '') {
+    $sidLockName = 'elite_sms_' . substr(hash('sha256', $messageSid), 0, 48);
+    $sidLocked = (int) db_value('SELECT GET_LOCK(:lock_name, 5)', ['lock_name' => $sidLockName]);
+    if ($sidLocked !== 1) {
+        http_response_code(503);
+        echo '<Response></Response>';
+        exit;
+    }
+    $existingInbound = db_one('SELECT id FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1', ['sid' => $messageSid]);
+    if ($existingInbound) {
+        esm_log('twilio_inbound', 'Ignored duplicate inbound SMS webhook.', [
+            'sid' => $messageSid,
+            'message_id' => (int) ($existingInbound['id'] ?? 0),
+        ]);
+        db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
+        echo '<Response></Response>';
+        exit;
+    }
+}
+
 $lead = lead_comm_find_lead_by_phone($from);
 if (!$lead) {
     $lead = lead_comm_create_inbound_lead($from, $body);
@@ -77,6 +99,9 @@ if (!$lead) {
         'to' => $to,
         'sid' => $messageSid,
     ]);
+    if ($sidLockName !== '') {
+        db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
+    }
     echo '<Response></Response>';
     exit;
 }
@@ -93,6 +118,28 @@ $messageId = lead_comm_insert_message([
     'twilio_status' => $status,
     'is_read' => 0,
 ]);
+if ($messageId <= 0) {
+    $existingInbound = $messageSid !== ''
+        ? db_one('SELECT id FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1', ['sid' => $messageSid])
+        : null;
+    if ($existingInbound) {
+        esm_log('twilio_inbound', 'Concurrent duplicate inbound SMS webhook was safely ignored.', ['sid' => $messageSid]);
+        if ($sidLockName !== '') {
+            db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
+        }
+        echo '<Response></Response>';
+        exit;
+    }
+    if ($sidLockName !== '') {
+        db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
+    }
+    http_response_code(503);
+    echo '<Response></Response>';
+    exit;
+}
+if ($sidLockName !== '') {
+    db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
+}
 
 lead_comm_insert_activity($leadId, 'sms_inbound', 'Patient replied by SMS: ' . mb_substr($body, 0, 500), [
     'message_id' => $messageId,
@@ -167,30 +214,6 @@ try {
         'message_id' => $messageId,
         'error' => $e->getMessage(),
     ]);
-}
-
-if (function_exists('elite_send_operator_follow_up_pushover')) {
-    try {
-        $freshLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
-        $pushoverSent = elite_send_operator_follow_up_pushover($freshLead ?: $lead, [
-            'event' => 'communication',
-            'channel' => 'sms',
-            'summary' => 'New SMS reply received from patient.',
-            'note' => mb_substr($body, 0, 180),
-            'quick_action_mode' => 'communication',
-        ]);
-        lead_comm_insert_activity($leadId, $pushoverSent ? 'operator_pushover_sent' : 'operator_pushover_failed', $pushoverSent ? 'Pushover notification sent for inbound SMS.' : 'Tried to send Pushover notification for inbound SMS, but no delivery was reported.', [
-            'source' => 'twilio_sms_webhook',
-            'message_id' => $messageId,
-            'twilio_sid' => $messageSid,
-        ], 'System');
-    } catch (Throwable $e) {
-        esm_log('twilio_inbound', 'Inbound SMS Pushover notification failed.', [
-            'lead_id' => $leadId,
-            'message_id' => $messageId,
-            'error' => $e->getMessage(),
-        ]);
-    }
 }
 
 esm_log('twilio_inbound', 'Inbound SMS saved.', [

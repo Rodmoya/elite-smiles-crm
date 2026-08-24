@@ -392,14 +392,14 @@ if (!function_exists('lead_agent_maybe_alert_stale_run')) {
         $message = $failed
             ? 'The latest Lead Agent run failed. Open the CRM operations screen to review the error and queue.'
             : 'No successful Lead Agent run has completed within ' . ELITE_LEAD_AGENT_STALE_MINUTES . ' minutes. Open the CRM operations screen to review.';
-        $push = function_exists('elite_send_pushover_notification')
-            ? elite_send_pushover_notification($title, $message, base_url('lead-agent-operations.php'), 'Open Lead Agent')
-            : false;
         $sms = ['ok' => false];
         $recipient = function_exists('internal_sms_find_recipient') ? internal_sms_find_recipient('rod_moya') : null;
         if (is_array($recipient)) {
             $sms = internal_sms_send($recipient, $message, 0);
         }
+        $push = empty($sms['ok']) && function_exists('elite_send_pushover_notification')
+            ? elite_send_pushover_notification($title . ' — SMS failed', $message, base_url('lead-agent-operations.php'), 'Open Lead Agent')
+            : false;
         crm_settings_set_json('lead_agent_last_stale_incident', $incidentKey, 0);
         return ['sent' => $push || !empty($sms['ok']), 'push' => $push, 'sms' => !empty($sms['ok'])];
     }

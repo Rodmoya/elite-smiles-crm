@@ -236,7 +236,7 @@ if (request_method() !== 'POST') {
 $secret = meta_leads_config_secret();
 $requestSecret = meta_leads_request_secret();
 
-if ($secret !== '' && $requestSecret !== $secret) {
+if ($secret === '' || $requestSecret === '' || !hash_equals($secret, $requestSecret)) {
     meta_leads_json_response([
         'ok' => false,
         'message' => 'Unauthorized webhook request.',

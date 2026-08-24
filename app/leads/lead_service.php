@@ -235,6 +235,8 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
             return;
         }
 
+        lead_identity_ensure_schema();
+
         $column = lead_pipeline_position_column();
 
         if (!leads_has_column($column)) {
@@ -288,6 +290,44 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
         }
 
         lead_pipeline_ensure_status_values();
+    }
+}
+
+if (!function_exists('lead_identity_ensure_schema')) {
+    /** Add the safe provider-ID constraint without assuming phone/email are unique per household. */
+    function lead_identity_ensure_schema(): void
+    {
+        static $done = false;
+        if ($done || !leads_table_exists() || !leads_has_column('external_lead_id')) {
+            return;
+        }
+        $done = true;
+        try {
+            $column = db_one("SHOW COLUMNS FROM leads LIKE 'external_lead_id'");
+            if (strtoupper((string) ($column['Null'] ?? '')) !== 'YES') {
+                db_query('ALTER TABLE leads MODIFY COLUMN external_lead_id VARCHAR(255) NULL DEFAULT NULL');
+                leads_table_columns(true);
+            }
+            $index = db_one("SHOW INDEX FROM leads WHERE Key_name = 'uq_leads_external_lead_id' LIMIT 1");
+            if ($index) {
+                return;
+            }
+            db_query("UPDATE leads SET external_lead_id = NULL WHERE TRIM(COALESCE(external_lead_id, '')) = ''");
+            $duplicateCount = (int) db_value("SELECT COUNT(*) FROM (
+                SELECT external_lead_id FROM leads
+                WHERE external_lead_id IS NOT NULL AND external_lead_id <> ''
+                GROUP BY external_lead_id HAVING COUNT(*) > 1
+            ) duplicate_external_ids");
+            if ($duplicateCount > 0) {
+                esm_log('lead_duplicates', 'Skipped external lead ID unique index because historical duplicates require review.', [
+                    'duplicate_external_ids' => $duplicateCount,
+                ]);
+                return;
+            }
+            db_query('ALTER TABLE leads ADD UNIQUE INDEX uq_leads_external_lead_id (external_lead_id)');
+        } catch (Throwable $e) {
+            esm_log('lead_duplicates', 'Could not ensure external lead ID uniqueness.', ['message' => $e->getMessage()]);
+        }
     }
 }
 
@@ -1626,6 +1666,60 @@ if (!function_exists('lead_duplicate_normalize_phone')) {
     }
 }
 
+if (!function_exists('lead_identity_lock_names')) {
+    /** Return deterministic advisory locks for every supplied identity, sorted to prevent deadlocks. */
+    function lead_identity_lock_names(array $data): array
+    {
+        $identities = [];
+        $externalId = trim((string) ($data['external_lead_id'] ?? ''));
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $phone = lead_duplicate_normalize_phone((string) ($data['phone'] ?? ''));
+        if ($externalId !== '') {
+            $identities[] = 'external:' . $externalId;
+        }
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $identities[] = 'email:' . $email;
+        }
+        if (strlen($phone) >= 10) {
+            $identities[] = 'phone:' . $phone;
+        }
+        $locks = array_map(
+            static fn(string $identity): string => 'elite_lead_' . substr(hash('sha256', $identity), 0, 48),
+            array_unique($identities)
+        );
+        sort($locks);
+        return $locks;
+    }
+
+    function lead_identity_acquire_locks(array $data, int $timeoutSeconds = 5): array
+    {
+        $acquired = [];
+        foreach (lead_identity_lock_names($data) as $lockName) {
+            $locked = (int) db_value('SELECT GET_LOCK(:lock_name, :timeout_seconds)', [
+                'lock_name' => $lockName,
+                'timeout_seconds' => max(0, $timeoutSeconds),
+            ]);
+            if ($locked !== 1) {
+                lead_identity_release_locks($acquired);
+                return ['ok' => false, 'locks' => []];
+            }
+            $acquired[] = $lockName;
+        }
+        return ['ok' => true, 'locks' => $acquired];
+    }
+
+    function lead_identity_release_locks(array $locks): void
+    {
+        foreach (array_reverse($locks) as $lockName) {
+            try {
+                db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => (string) $lockName]);
+            } catch (Throwable $e) {
+                esm_log('lead_duplicates', 'Could not release lead identity lock.', ['lock_name' => (string) $lockName]);
+            }
+        }
+    }
+}
+
 if (!function_exists('lead_find_duplicate')) {
     function lead_find_duplicate(array $data, int $excludeLeadId = 0): ?array
     {
@@ -2296,8 +2390,33 @@ if (!function_exists('lead_create_minimal')) {
         }
 
         try {
-            $sql = "INSERT INTO leads (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
-            $leadId = (int) db_insert($sql, $params);
+            $identityLocks = [];
+            try {
+                if (empty($data['allow_duplicate'])) {
+                    $lockResult = lead_identity_acquire_locks($data);
+                    if (empty($lockResult['ok'])) {
+                        return ['ok' => false, 'message' => 'Temporary database lead identity lock timeout. Please retry.', 'lead_id' => 0];
+                    }
+                    $identityLocks = (array) ($lockResult['locks'] ?? []);
+                    // Recheck while identity locks are held. This closes the gap
+                    // between the earlier friendly duplicate check and INSERT.
+                    $racingDuplicate = lead_find_duplicate($data);
+                    if ($racingDuplicate) {
+                        return [
+                            'ok' => true,
+                            'message' => lead_duplicate_message($racingDuplicate),
+                            'lead_id' => (int) ($racingDuplicate['id'] ?? 0),
+                            'duplicate_found' => true,
+                            'duplicate_match_type' => (string) ($racingDuplicate['duplicate_match_type'] ?? ''),
+                            'duplicate_lead' => $racingDuplicate,
+                        ];
+                    }
+                }
+                $sql = "INSERT INTO leads (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
+                $leadId = (int) db_insert($sql, $params);
+            } finally {
+                lead_identity_release_locks($identityLocks);
+            }
 
             if ($leadId > 0) {
                 $alertLead = $data;

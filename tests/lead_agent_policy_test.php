@@ -34,6 +34,12 @@ $spanishPreference = lead_agent_scheduling_preferences('El martes por la tarde m
 expect_true($spanishPreference['day'] === 'tuesday' && $spanishPreference['period'] === 'afternoon', 'Spanish day and time-of-day preferences should remain in the scheduling flow.');
 $nextWeekPreference = lead_agent_scheduling_preferences('Next week works for me.');
 expect_true($nextWeekPreference['day'] === 'next week' && !empty($nextWeekPreference['has_preference']), 'A next-week preference must not trigger the same scheduling question again.');
+$rejectedNextWeek = lead_agent_scheduling_preferences("I'm interested. The next week is bad for me.");
+expect_true($rejectedNextWeek['day'] === '', 'A rejected next-week window must not be saved as a positive scheduling preference.');
+$positiveNextWeek = lead_agent_scheduling_preferences("I can't do this week, so next week works.");
+expect_true($positiveNextWeek['day'] === 'next week', 'A positive next-week alternative must survive unrelated negative wording.');
+$followingWeek = lead_agent_scheduling_preferences('The following week would be better.');
+expect_true($followingWeek['day'] === 'following week', 'The following week must be understood as a scheduling preference.');
 $acknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], $preference);
 expect_true(str_contains($acknowledgment, 'Let me check whether that is available') && substr_count($acknowledgment, '?') === 0, 'A complete preference should receive a natural acknowledgment without another question.');
 $preferenceQuestion = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], lead_agent_scheduling_preferences('I want to schedule.'));
@@ -93,6 +99,10 @@ expect_true(
     strpos($webhookSource, 'lead_agent_is_operator_sender($from)') < strpos($webhookSource, 'lead_comm_find_lead_by_phone($from)'),
     'Authorized operator SMS must be intercepted before patient lookup so it can never create a false lead.'
 );
+$agentSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_agent.php');
+expect_true(!str_contains($agentSource, 'I checked the CRM and Dentrix calendar'), 'The agent must never claim it queried Dentrix directly.');
+$aiSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_ai.php');
+expect_true(!str_contains($aiSource, 'ask for the preferred day and DOB'), 'The AI prompt must not collect DOB before a patient selects a confirmed slot.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',

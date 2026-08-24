@@ -521,6 +521,13 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
     function lead_agent_scheduling_preferences(string $body): array
     {
         $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        // Preserve positive alternatives while removing only a specifically
+        // rejected "next week" window from preference extraction.
+        $dayText = preg_replace([
+            '/\bnext\s+week\s+(?:is|will\s+be|would\s+be|looks?)?\s*(?:bad|not\s+good|impossible|unavailable|busy|does(?:n\'t|\s+not)\s+work|won(?:\'t|\s+not)\s+work|is(?:n\'t|\s+not)\s+possible)(?:\s+for\s+me)?\b/i',
+            '/\b(?:i\s+)?(?:can(?:\'t|not)|won(?:\'t|not)|will\s+not|do(?:n\'t|\s+not))\s+(?:do|make|come|schedule)?\s*(?:it\s+)?next\s+week\b/i',
+            '/\bnot\s+next\s+week\b/i',
+        ], ' ', $text) ?? $text;
         $period = '';
         if (preg_match('/\b(morning|mornings|mornign|mañana|mañanas)\b/ui', $text)) {
             $period = 'morning';
@@ -543,8 +550,9 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
             'sunday' => 'sunday', 'domingo' => 'sunday',
             'today' => 'today', 'hoy' => 'today',
             'tomorrow' => 'tomorrow', 'next week' => 'next week',
+            'following week' => 'following week', 'week after next' => 'following week',
         ];
-        if (preg_match('/\b(next\s+week|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $text, $matches)) {
+        if (preg_match('/\b(following\s+week|week\s+after\s+next|next\s+week|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy)\b/ui', $dayText, $matches)) {
             $day = $dayAliases[strtolower((string) $matches[1])] ?? '';
         }
 
@@ -891,12 +899,9 @@ if (!function_exists('lead_agent_calendar_occupied_intervals')) {
         foreach ($crmRows as $row) {
             $intervals[] = ['start' => (string) ($row['start_at'] ?? ''), 'end' => (string) ($row['end_at'] ?? '')];
         }
-        dentrix_bridge_ensure_schema();
-        $dentrixRows = db_all("SELECT start_at, end_at FROM dentrix_occupied_slots
-            WHERE start_at < :to_date AND end_at > :from_date", ['from_date' => $from, 'to_date' => $to]);
-        foreach ($dentrixRows as $row) {
-            $intervals[] = ['start' => (string) ($row['start_at'] ?? ''), 'end' => (string) ($row['end_at'] ?? '')];
-        }
+        // Dentrix is not connected to a live availability API. Rod's Twilio
+        // reply is the authoritative Dentrix-checked window. This pass only
+        // prevents conflicts with appointments already saved in the CRM.
         return $intervals;
     }
 }
@@ -1524,7 +1529,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
             $chosen = (array) ($slotResult['chosen'] ?? []);
             if (count($chosen) < 2) {
                 $count = count($available);
-                return ['handled' => true, 'reply' => 'Elite AI: I checked the CRM and Dentrix calendar and found ' . $count . ' open 30-minute slot' . ($count === 1 ? '' : 's') . '. I did not send anything because I need at least two choices. Please send another window.'];
+                return ['handled' => true, 'reply' => 'Elite AI: I used the Dentrix-confirmed window you provided and checked CRM conflicts. I found ' . $count . ' open 30-minute slot' . ($count === 1 ? '' : 's') . '. I did not send anything because I need at least two choices. Please send another window.'];
             }
             $result = lead_agent_offer_availability($leadId, (string) $chosen[0], (string) $chosen[1], 0, $available);
             if (empty($result['ok'])) {
@@ -1539,7 +1544,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
                 'context_json' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
             ]);
-            return ['handled' => true, 'reply' => 'Elite AI: Calendar checked. I found ' . count($available) . ' open 30-minute slots and offered ' . lead_agent_format_availability((string) $chosen[0]) . ' and ' . lead_agent_format_availability((string) $chosen[1]) . '.'];
+            return ['handled' => true, 'reply' => 'Elite AI: I used your Dentrix-confirmed window, checked CRM conflicts, found ' . count($available) . ' open 30-minute slots, and offered ' . lead_agent_format_availability((string) $chosen[0]) . ' and ' . lead_agent_format_availability((string) $chosen[1]) . '.'];
         }
         if ($action === 'offer') {
             $options = (array) ($command['options'] ?? []);
@@ -1552,7 +1557,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
             }
             $checked = lead_agent_slots_for_operator_windows($optionWindows);
             if (count((array) ($checked['available'] ?? [])) !== 2) {
-                return ['handled' => true, 'reply' => 'Elite AI: I checked the CRM and Dentrix calendar and at least one of those times is occupied. I did not send anything. Please choose two open times or send a wider window.'];
+                return ['handled' => true, 'reply' => 'Elite AI: I treated the times you provided as Dentrix-confirmed, but at least one conflicts with an appointment already saved in CRM. I did not send anything. Please choose two other times or send a wider window.'];
             }
             $result = lead_agent_offer_availability($leadId, (string) ($options[0] ?? ''), (string) ($options[1] ?? ''), 0, $options);
             if (empty($result['ok'])) {
@@ -1614,7 +1619,11 @@ if (!function_exists('lead_agent_internal_handoff')) {
         } elseif ($status === 'ready_to_schedule') {
             $requestCode = trim((string) ($operatorRequest['request_code'] ?? ''));
             $operatorMessage = $leadName . ($preference !== '' ? ' prefers ' . $preference : ' is ready to schedule')
-                . '. Reply with a window, for example: ' . $requestCode . ' next Monday and Tuesday from 2 to 5. I will check the calendar and offer the best two open 30-minute slots.';
+                . '. Check Dentrix, then reply with a confirmed window, for example: ' . $requestCode . ' next Monday and Tuesday from 2 to 5. I will check CRM conflicts and offer the best two open 30-minute slots.';
+        } elseif ($handoffStage === 'call_requested') {
+            $operatorMessage = $leadName . ' asked for a phone call. Please call this lead today; the agent will resume tomorrow if no appointment is completed.';
+        } elseif ($handoffStage === 'third_party_referral') {
+            $operatorMessage = $leadName . ' provided contact information for another patient. Please create or link the correct patient record before outreach.';
         } else {
             $operatorMessage = 'Lead Agent needs help deciding the next response for ' . $leadName . ' and has paused.';
         }
@@ -2299,7 +2308,18 @@ if (!function_exists('lead_agent_handle_inbound')) {
         }
         if ($intent === 'needs_attention') {
             lead_agent_record_learning($intent, $channel, 'human_review');
-            return lead_agent_internal_handoff($lead, 'needs_attention', 'Inbound message requires human judgment.') + ['intent' => $intent, 'handled' => true];
+            $normalizedBody = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+            $handoffContext = [];
+            $handoffReason = 'Inbound message requires human judgment.';
+            if (preg_match('/\b(call me|please call|can you call|give me a call)\b/i', $normalizedBody)) {
+                $handoffContext['stage'] = 'call_requested';
+                $handoffReason = 'The lead explicitly requested a phone call.';
+            } elseif (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $normalizedBody)
+                && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $normalizedBody)) {
+                $handoffContext['stage'] = 'third_party_referral';
+                $handoffReason = 'A third-party referral must be transferred to the correct patient record.';
+            }
+            return lead_agent_internal_handoff($lead, 'needs_attention', $handoffReason, $handoffContext) + ['intent' => $intent, 'handled' => true];
         }
         $schedulingPhase = (string) ($state['scheduling_phase'] ?? '');
         if ($schedulingPhase !== '' && $intent === 'cost_redirect') {
@@ -2436,33 +2456,42 @@ if (!function_exists('lead_agent_latest_patient_direction')) {
 }
 
 if (!function_exists('lead_agent_latest_inbound_closure_reason')) {
-    /** Respect explicit declines even when the pipeline stage was not updated. */
+    /** Respect unresolved explicit declines even when a later courtesy reply exists. */
     function lead_agent_latest_inbound_closure_reason(int $leadId): string
     {
         if ($leadId <= 0) {
             return '';
         }
         try {
-            $row = db_one(
+            $rows = db_all(
                 "SELECT body FROM (
                     SELECT body, created_at, id FROM lead_messages WHERE lead_id = :sms_lead_id AND direction = 'inbound'
                     UNION ALL
                     SELECT body, created_at, id FROM lead_emails WHERE lead_id = :email_lead_id AND direction = 'inbound'
-                 ) inbound_events
-                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                  ) inbound_events
+                 ORDER BY created_at DESC, id DESC LIMIT 50",
                 ['sms_lead_id' => $leadId, 'email_lead_id' => $leadId]
             );
-            $body = strtolower(trim(preg_replace('/\s+/', ' ', substr((string) ($row['body'] ?? ''), 0, 1200)) ?? ''));
-            if ($body === '') {
-                return '';
+            // Walk oldest to newest. A later explicit scheduling request can
+            // reopen a declined thread; "thanks" and "you too" cannot.
+            $closed = false;
+            foreach (array_reverse($rows) as $row) {
+                $body = strtolower(trim(preg_replace('/\s+/', ' ', substr((string) ($row['body'] ?? ''), 0, 1200)) ?? ''));
+                if ($body === '') {
+                    continue;
+                }
+                if (preg_match('/\b(not interested|no longer interested|no thank you|do not want|don\'t want|too far|farther than|cannot travel|can\'t travel|please stop|do not contact|don\'t contact|wrong number)\b/i', $body)) {
+                    $closed = true;
+                    continue;
+                }
+                if (preg_match('/\b(i am|i\'m|im)\s+(still\s+)?interested\b|\b(?:yes|ready|want|would like|i\'d like)\b.{0,50}\b(?:schedule|book|consult|appointment|veneers?|implants?)\b|\b(?:schedule|book)\s+(?:me|it|a|an|the)\b/i', $body)) {
+                    $closed = false;
+                }
             }
-            if (preg_match('/\b(not interested|no longer interested|no thank you|do not want|don\'t want|too far|farther than|cannot travel|can\'t travel|please stop|do not contact|don\'t contact|wrong number)\b/i', $body)) {
-                return 'explicit_decline_or_distance';
-            }
+            return $closed ? 'explicit_decline_or_distance' : '';
         } catch (Throwable $e) {
             return '';
         }
-        return '';
     }
 }
 
@@ -2507,12 +2536,15 @@ if (!function_exists('lead_agent_historical_referral_contact')) {
     function lead_agent_historical_referral_contact(int $leadId): string
     {
         try {
-            $rows = db_all("SELECT body FROM lead_messages WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 30", ['lead_id' => $leadId]);
+            $rows = db_all("SELECT body FROM lead_messages WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at ASC, id ASC LIMIT 30", ['lead_id' => $leadId]);
+            $referralContext = '';
             foreach ($rows as $row) {
                 $body = trim((string) ($row['body'] ?? ''));
-                if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $body)
-                    && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $body)) {
-                    return $body;
+                if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $body)) {
+                    $referralContext = $body;
+                }
+                if ($referralContext !== '' && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $body)) {
+                    return trim($referralContext . ($body !== $referralContext ? ' | ' . $body : ''));
                 }
             }
         } catch (Throwable $e) {

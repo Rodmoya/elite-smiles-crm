@@ -46,6 +46,37 @@ if ($sid === '') {
 lead_comm_ensure_schema();
 
 try {
+    // Internal notifications use the same callback endpoint. Update their
+    // delivery audit first because they are not stored in lead_messages.
+    $internalMessage = null;
+    try {
+        $internalMessage = db_one('SELECT * FROM internal_sms_logs WHERE twilio_sid = :sid LIMIT 1', ['sid' => $sid]);
+    } catch (Throwable $e) {
+        // The internal alert table may not exist on older deployments yet.
+    }
+    if (is_array($internalMessage)) {
+        $previousInternalStatus = strtolower(trim((string) ($internalMessage['twilio_status'] ?? '')));
+        db_execute(
+            'UPDATE internal_sms_logs SET twilio_status = :status, error_message = :error_message WHERE id = :id LIMIT 1',
+            [
+                'id' => (int) ($internalMessage['id'] ?? 0),
+                'status' => $status,
+                'error_message' => $errorMessage !== '' ? $errorMessage : null,
+            ]
+        );
+        if (in_array($status, ['failed', 'undelivered'], true) && $previousInternalStatus !== $status
+            && function_exists('elite_send_pushover_notification')) {
+            $recipientName = trim((string) ($internalMessage['recipient_name'] ?? 'internal recipient'));
+            elite_send_pushover_notification(
+                'Internal SMS delivery failed',
+                'Twilio could not deliver an Elite Smiles internal alert to ' . $recipientName
+                    . ($errorCode !== '' ? ' (' . $errorCode . ')' : '') . '. Open the CRM notification log.',
+                base_url('crm-settings.php'),
+                'Open notification settings'
+            );
+        }
+    }
+
     $message = db_one('SELECT * FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1', ['sid' => $sid]);
     if ($message) {
         $previousStatus = strtolower(trim((string) ($message['twilio_status'] ?? '')));
@@ -85,25 +116,6 @@ try {
                 'automatic_retry' => 'alternate_channel_due',
             ], 'Twilio');
 
-            if (function_exists('elite_send_operator_follow_up_pushover')) {
-                $lead = db_one(
-                    'SELECT id, full_name, phone, email, preferred_contact, procedure_interest, source, status
-                     FROM leads
-                     WHERE id = :id
-                     LIMIT 1',
-                    ['id' => $leadId]
-                );
-                if (is_array($lead)) {
-                    elite_send_operator_follow_up_pushover($lead, [
-                        'event' => 'sms_delivery_issue',
-                        'channel' => 'sms',
-                        'delivery_status' => $status,
-                        'error_code' => $errorCode,
-                        'error_message' => $errorMessage,
-                        'quick_action_mode' => 'communication',
-                    ]);
-                }
-            }
         }
     }
 } catch (Throwable $e) {

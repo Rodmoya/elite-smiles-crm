@@ -1648,6 +1648,18 @@ if (!function_exists('lead_agent_internal_handoff')) {
             );
         }
 
+        // Twilio is the primary operator channel. Pushover is intentionally a
+        // quiet fallback and must not duplicate a successful Twilio handoff.
+        $pushoverFallbackSent = false;
+        if (empty($internal['ok']) && function_exists('elite_send_pushover_notification')) {
+            $pushoverFallbackSent = elite_send_pushover_notification(
+                'Elite AI handoff — SMS failed',
+                $operatorMessage,
+                base_url('leads.php?lead_id=' . $leadId),
+                'Open ' . $leadName
+            );
+        }
+
         db_execute('UPDATE lead_agent_states SET handoff_notified_at = NOW(), last_decision = :decision, updated_at = NOW() WHERE lead_id = :lead_id', [
             'decision' => $status,
             'lead_id' => $leadId,
@@ -1655,6 +1667,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
         lead_agent_event($leadId, 'handoff-' . $status . '-' . $leadId . '-' . time(), 'handoff', '', 'recorded', $reason, [
             'elite_ai_push_sent' => !empty($push['sent']),
             'internal_sms_sent' => !empty($internal['ok']),
+            'pushover_fallback_sent' => $pushoverFallbackSent,
             'stage' => $handoffStage,
             'preference' => $preference,
             'selected_option' => $selectedOption,
@@ -1667,13 +1680,14 @@ if (!function_exists('lead_agent_internal_handoff')) {
                 'reason' => $reason,
                 'elite_ai_push_sent' => !empty($push['sent']),
                 'internal_sms_sent' => !empty($internal['ok']),
+                'pushover_fallback_sent' => $pushoverFallbackSent,
                 'stage' => $handoffStage,
                 'preference' => $preference,
                 'selected_option' => $selectedOption,
                 'operator_request_code' => (string) ($operatorRequest['request_code'] ?? ''),
             ], 'Lead Agent');
 
-        return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal];
+        return ['ok' => true, 'status' => $status, 'push' => $push, 'internal_sms' => $internal, 'pushover_fallback_sent' => $pushoverFallbackSent];
     }
 }
 

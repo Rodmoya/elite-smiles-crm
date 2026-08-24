@@ -2744,11 +2744,12 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
             return 'all_channels_opted_out';
         }
-        $hour = (int) date('G');
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $hour = (int) $now->format('G');
         if ($hour < 8 || $hour >= 21) {
             return 'quiet_hours';
         }
-        $today = date('Y-m-d');
+        $today = $now->format('Y-m-d');
         $max = lead_agent_daily_outbound_limit((string) ($state['started_at'] ?? ''));
         if (lead_agent_daily_outbound_count((int) $lead['id'], $today) >= $max) {
             return 'daily_cap';

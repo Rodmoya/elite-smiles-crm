@@ -157,6 +157,7 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'Resolved-history rule: thread_state.last_inbound_resolved is authoritative. If true, a later team message already answered that inbound. Do not present it as new, recent, unanswered, or newly noticed. Never reuse an acknowledged emoji reaction or thumbs-up as the opening reason for another follow-up.',
             'Conversion intelligence: use conversion_memory as durable context. Follow its recommended_action unless the newest patient message changes the situation. Select one strategy_key, explain the choice in strategy_reason, and return the updated conversation_state, known_goal, known_objection, and next_best_action.',
             'Do not repeat either of the two recent strategies unless the latest patient message makes that strategy necessary. Ask at most one easy patient-facing question.',
             'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
@@ -211,6 +212,7 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling data collection: collect the missing details naturally. Need preferred day/date, morning/afternoon or preferred time, and DOB before the Dentrix-ready scheduling package is complete.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
+            'Resolved-history rule: thread_state.last_inbound_resolved is authoritative. If true, a later team message already answered that inbound. Do not present it as new, recent, unanswered, or newly noticed. Never reuse an acknowledged emoji reaction or thumbs-up as the opening reason for another follow-up.',
             'Conversion intelligence: use conversion_memory as durable context. Follow its recommended_action unless the newest patient message changes the situation. Select one strategy_key, explain the choice in strategy_reason, and return the updated conversation_state, known_goal, known_objection, and next_best_action.',
             'Do not repeat either of the two recent strategies unless the latest patient message makes that strategy necessary. Keep the email focused on one clear next step.',
             'For follow-up mode, do not send a generic check-in when the latest patient message is unanswered or scheduling is in progress. Set needs_human_review true and should_send false instead.',
@@ -470,13 +472,17 @@ if (!function_exists('lead_ai_thread_state')) {
         $lastInbound = null;
         $lastOutbound = null;
         $lastEvent = null;
+        $lastInboundPosition = -1;
+        $lastOutboundPosition = -1;
 
-        foreach ($events as $event) {
+        foreach ($events as $position => $event) {
             $direction = (string)($event['direction'] ?? '');
             if ($direction === 'inbound') {
                 $lastInbound = $event;
+                $lastInboundPosition = (int) $position;
             } elseif ($direction === 'outbound') {
                 $lastOutbound = $event;
+                $lastOutboundPosition = (int) $position;
             }
             $lastEvent = $event;
         }
@@ -514,6 +520,8 @@ if (!function_exists('lead_ai_thread_state')) {
             $summaryParts[] = 'No prior thread history found.';
         }
 
+        $lastInboundResolved = $lastInboundPosition >= 0 && $lastOutboundPosition > $lastInboundPosition;
+
         return [
             'has_history' => $hasHistory,
             'conversation_mode' => $conversationMode,
@@ -521,6 +529,12 @@ if (!function_exists('lead_ai_thread_state')) {
             'suppress_greeting' => $activeThread,
             'summary' => implode(' ', $summaryParts),
             'latest_event_at' => $latestEventAt !== null && $latestEventAt > 0 ? date(DATE_ATOM, $latestEventAt) : null,
+            'last_inbound_resolved' => $lastInboundResolved,
+            'active_inbound' => !$lastInboundResolved && $lastInbound !== null ? [
+                'channel' => (string) ($lastInbound['channel'] ?? ''),
+                'body' => lead_ai_text_preview((string) ($lastInbound['body'] ?? ''), 220),
+                'created_at' => (string) ($lastInbound['created_at'] ?? ''),
+            ] : null,
             'last_inbound' => $lastInbound !== null ? [
                 'channel' => (string)($lastInbound['channel'] ?? ''),
                 'body' => lead_ai_text_preview((string)($lastInbound['body'] ?? ''), 220),
@@ -542,6 +556,22 @@ if (!function_exists('lead_ai_thread_state')) {
             'event_count' => count($events),
             'mode' => $mode,
         ];
+    }
+}
+
+if (!function_exists('lead_ai_reuses_resolved_reaction')) {
+    function lead_ai_reuses_resolved_reaction(string $text, array $threadState): bool
+    {
+        if (empty($threadState['last_inbound_resolved'])) {
+            return false;
+        }
+        $lastInbound = strtolower((string) ($threadState['last_inbound']['body'] ?? ''));
+        $wasReaction = str_contains($lastInbound, '👍')
+            || (bool) preg_match('/\b(?:thumbs?[- ]?up|reacted|liked|loved)\b/i', $lastInbound);
+        if (!$wasReaction) {
+            return false;
+        }
+        return (bool) preg_match('/\b(?:thumbs?[- ]?up|reaction|reacted|liked|loved|noticed\s+you)\b/i', $text);
     }
 }
 
@@ -941,6 +971,11 @@ if (!function_exists('lead_ai_generate_reply')) {
             lead_ai_first_name($lead),
             (bool)($threadState['suppress_greeting'] ?? false)
         );
+        if (lead_ai_reuses_resolved_reaction($data['reply'], $threadState)) {
+            $data['should_send'] = false;
+            $data['needs_human_review'] = true;
+            $data['note'] = trim($data['note'] . ' Draft blocked because it reused an already-answered reaction as fresh context.');
+        }
 
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
@@ -1034,6 +1069,11 @@ if (!function_exists('lead_ai_generate_email')) {
             lead_ai_first_name($lead),
             (bool)($threadState['suppress_greeting'] ?? false)
         );
+        if (lead_ai_reuses_resolved_reaction($data['body'], $threadState)) {
+            $data['should_send'] = false;
+            $data['needs_human_review'] = true;
+            $data['note'] = trim($data['note'] . ' Draft blocked because it reused an already-answered reaction as fresh context.');
+        }
 
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));

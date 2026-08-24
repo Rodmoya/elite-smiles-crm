@@ -96,7 +96,7 @@ if (!function_exists('lead_comm_ensure_schema')) {
                     from_number VARCHAR(50) NOT NULL DEFAULT '',
                     to_number VARCHAR(50) NOT NULL DEFAULT '',
                     body TEXT NOT NULL,
-                    twilio_message_sid VARCHAR(100) NOT NULL DEFAULT '',
+                    twilio_message_sid VARCHAR(100) NULL DEFAULT NULL,
                     twilio_status VARCHAR(50) NOT NULL DEFAULT '',
                     twilio_error_code VARCHAR(50) NOT NULL DEFAULT '',
                     twilio_error_message TEXT NULL,
@@ -106,7 +106,7 @@ if (!function_exists('lead_comm_ensure_schema')) {
                     read_at DATETIME NULL,
                     PRIMARY KEY (id),
                     KEY idx_lead_created (lead_id, created_at),
-                    KEY idx_sid (twilio_message_sid),
+                    UNIQUE KEY uq_twilio_message_sid (twilio_message_sid),
                     KEY idx_unread (lead_id, direction, is_read)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
@@ -115,6 +115,29 @@ if (!function_exists('lead_comm_ensure_schema')) {
                 'error' => $e->getMessage(),
             ]);
             return;
+        }
+
+        try {
+            $sidColumn = db_one("SHOW COLUMNS FROM lead_messages LIKE 'twilio_message_sid'");
+            if (strtoupper((string) ($sidColumn['Null'] ?? '')) !== 'YES') {
+                db_query('ALTER TABLE lead_messages MODIFY COLUMN twilio_message_sid VARCHAR(100) NULL DEFAULT NULL');
+            }
+            $sidIndex = db_one("SHOW INDEX FROM lead_messages WHERE Key_name = 'uq_twilio_message_sid' LIMIT 1");
+            if (!$sidIndex) {
+                db_query("UPDATE lead_messages SET twilio_message_sid = NULL WHERE TRIM(COALESCE(twilio_message_sid, '')) = ''");
+                $duplicateSids = (int) db_value("SELECT COUNT(*) FROM (
+                    SELECT twilio_message_sid FROM lead_messages
+                    WHERE twilio_message_sid IS NOT NULL AND twilio_message_sid <> ''
+                    GROUP BY twilio_message_sid HAVING COUNT(*) > 1
+                ) duplicate_sids");
+                if ($duplicateSids === 0) {
+                    db_query('ALTER TABLE lead_messages ADD UNIQUE INDEX uq_twilio_message_sid (twilio_message_sid)');
+                } else {
+                    esm_log('lead_communications', 'Skipped Twilio SID unique index because historical duplicates require review.', ['duplicate_sids' => $duplicateSids]);
+                }
+            }
+        } catch (Throwable $e) {
+            esm_log('lead_communications', 'Could not ensure Twilio SID idempotency index.', ['error' => $e->getMessage()]);
         }
 
         lead_comm_add_leads_column('sms_opt_status', "VARCHAR(30) NOT NULL DEFAULT 'unknown'");
@@ -228,7 +251,7 @@ if (!function_exists('lead_comm_insert_message')) {
                     'from_number' => lead_comm_normalize_phone((string)($message['from_number'] ?? '')) ?: (string)($message['from_number'] ?? ''),
                     'to_number' => lead_comm_normalize_phone((string)($message['to_number'] ?? '')) ?: (string)($message['to_number'] ?? ''),
                     'body' => $body,
-                    'twilio_message_sid' => (string)($message['twilio_message_sid'] ?? ''),
+                    'twilio_message_sid' => trim((string)($message['twilio_message_sid'] ?? '')) !== '' ? trim((string)$message['twilio_message_sid']) : null,
                     'twilio_status' => (string)($message['twilio_status'] ?? ''),
                     'twilio_error_code' => (string)($message['twilio_error_code'] ?? ''),
                     'twilio_error_message' => ($message['twilio_error_message'] ?? null) !== null ? (string)$message['twilio_error_message'] : null,

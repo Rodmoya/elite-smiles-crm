@@ -186,6 +186,49 @@ try {
     ]);
     integration_expect(lead_agent_latest_inbound_closure_reason($leadId) === 'explicit_decline_or_distance', 'Conversation-level declines must override a stale active CRM stage.');
 
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'You too, thank you.',
+        'is_read' => 1,
+    ]);
+    integration_expect(lead_agent_latest_inbound_closure_reason($leadId) === 'explicit_decline_or_distance', 'A courtesy reply after a decline must not reopen automated follow-up.');
+
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'I am interested again and want to schedule a consultation.',
+        'is_read' => 1,
+    ]);
+    integration_expect(lead_agent_latest_inbound_closure_reason($leadId) === '', 'A later explicit scheduling request must reopen a previously declined conversation.');
+
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'The veneers are for my brother Elkin.',
+        'is_read' => 1,
+    ]);
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
+        'body' => 'His number is 385-230-1659.',
+        'is_read' => 1,
+    ]);
+    $referralContact = lead_agent_historical_referral_contact($leadId);
+    integration_expect(str_contains($referralContact, 'brother Elkin') && str_contains($referralContact, '385-230-1659'), 'Referral relationship and phone number must be linked across consecutive inbound messages.');
+
     db_rollBack();
     echo "Lead Agent integration test passed.\n";
 } catch (Throwable $e) {

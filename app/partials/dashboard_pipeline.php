@@ -2957,9 +2957,11 @@ $consultationOptions = [
         today.setHours(0, 0, 0, 0);
         return today;
     })();
-    const calendarOpenHour = 8;
-    const calendarCloseHour = 19;
+    const calendarOpenHour = 9;
+    // End-exclusive boundary keeps 6:00 PM available as the final 30-minute start.
+    const calendarCloseHour = 18.5;
     const calendarSlotMinutes = 30;
+    const calendarHoursLabel = '9:00 AM-6:00 PM';
 
 
     const csrfToken = <?= json_encode(csrf_token()) ?>;
@@ -3813,7 +3815,7 @@ $consultationOptions = [
     function calendarSlotMinutesIndex(date, dayStart) {
         const time = date.getHours() * 60 + date.getMinutes();
         const start = (dayStart || calendarOpenHour) * 60;
-        const end = (calendarCloseHour || 19) * 60;
+        const end = calendarCloseHour * 60;
         if (time < start || time >= end) return null;
         return Math.floor((time - start) / calendarSlotMinutes);
     }
@@ -4020,7 +4022,7 @@ $consultationOptions = [
             const toDate = new Date(weekDays[6].date);
             const weekNow = new Date(safeNow ? `${safeNow}T00:00:00` : now.toISOString());
             setCalendarRangeLabel(fromDate, toDate, 'week');
-            if (calendarSubtitle) calendarSubtitle.textContent = `Week view | 30-minute blocks (${calendarOpenHour}:00-${calendarCloseHour}:00)`;
+            if (calendarSubtitle) calendarSubtitle.textContent = `Week view | 30-minute blocks (${calendarHoursLabel})`;
 
             calendarViewRoot.innerHTML = `
                 <div class="overflow-x-auto">
@@ -4061,7 +4063,7 @@ $consultationOptions = [
         const todayDate = calendarDayStart(calendarAnchorDate);
         const todayEntries = appointmentsByDate.get(toDateKey(todayDate)) || [];
         setCalendarRangeLabel(todayDate, null, 'day');
-        if (calendarSubtitle) calendarSubtitle.textContent = `Day view | ${todayDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} (${calendarOpenHour}:00-${calendarCloseHour}:00)`;
+        if (calendarSubtitle) calendarSubtitle.textContent = `Day view | ${todayDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} (${calendarHoursLabel})`;
         calendarViewRoot.innerHTML = `
             <div class="space-y-2">
                 ${slots.map((slot) => {

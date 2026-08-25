@@ -17,6 +17,7 @@ require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
 require_once __DIR__ . '/lead_agent_observability.php';
 require_once __DIR__ . '/lead_conversion_intelligence.php';
+require_once __DIR__ . '/lead_agent_instructions.php';
 require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
 
 if (!function_exists('lead_agent_enabled')) {
@@ -2364,6 +2365,10 @@ if (!function_exists('lead_agent_handle_inbound')) {
                 require_once $leadAiPath;
             }
             $leadForAi = $lead;
+            $operatorGuidance = lead_agent_instruction_guidance($lead, $channel);
+            if ($operatorGuidance !== '') {
+                $leadForAi['notes'] = trim((string) ($leadForAi['notes'] ?? '') . "\n\n" . $operatorGuidance);
+            }
             $learned = lead_agent_learned_guidance($intent, 3);
             if ($learned !== []) {
                 $guidance = array_map(static fn(array $item): string => (string) ($item['guidance'] ?? ''), $learned);
@@ -2709,6 +2714,10 @@ if (!function_exists('lead_agent_contextual_followup')) {
             . 'If the latest patient message still needs an answer, confirmed availability is being checked, appointment options were offered, or a staff member owns the thread, do not send.';
         $leadForAi = $lead;
         $leadForAi['notes'] = trim((string) ($lead['notes'] ?? '') . "\n\n" . $instruction);
+        $operatorGuidance = lead_agent_instruction_guidance($lead, $channel);
+        if ($operatorGuidance !== '') {
+            $leadForAi['notes'] .= "\n\n" . $operatorGuidance;
+        }
         if ($conversionMemory !== []) {
             $leadForAi['notes'] .= "\n\nConversion decision (never mention this internal analysis):\n"
                 . 'Strategy: ' . (string) ($conversionMemory['strategy_key'] ?? '') . "\n"

@@ -47,6 +47,27 @@ if (!function_exists('elite_ai_tool_registry')) {
                 'surfaces' => ['desktop', 'mobile'],
                 'approval_required' => false,
             ],
+            'lead_agent.instruction_preview' => [
+                'label' => 'Preview Lead Agent instruction',
+                'description' => 'Normalize an operator instruction and show scope, timing, and policy warnings without activating it.',
+                'mode' => 'read', 'surfaces' => ['desktop', 'mobile'], 'approval_required' => false,
+            ],
+            'lead_agent.instruction_create' => [
+                'label' => 'Activate Lead Agent instruction',
+                'description' => 'Create a structured instruction for Lead Agent. Global, stage, and campaign instructions require operator approval.',
+                'mode' => 'write', 'surfaces' => ['desktop', 'mobile'], 'approval_required' => true,
+                'approval' => 'lead_agent_instruction_approved',
+            ],
+            'lead_agent.instruction_list' => [
+                'label' => 'List Lead Agent instructions',
+                'description' => 'List active structured instructions that apply to Lead Agent.',
+                'mode' => 'read', 'surfaces' => ['desktop', 'mobile'], 'approval_required' => false,
+            ],
+            'lead_agent.instruction_pause' => [
+                'label' => 'Pause Lead Agent instruction',
+                'description' => 'Pause one structured Lead Agent instruction.',
+                'mode' => 'write', 'surfaces' => ['desktop', 'mobile'], 'approval_required' => false,
+            ],
             'lead.draft_sms' => [
                 'label' => 'Draft SMS',
                 'description' => 'Create an SMS draft in the human approval queue. Does not send.',
@@ -211,6 +232,29 @@ if (!function_exists('elite_ai_tool_run')) {
                         'memory_id' => $memoryId,
                         'message' => $memoryId > 0 ? 'Saved to Elite AI learned memory.' : 'Nothing was saved to memory.',
                     ];
+
+                case 'lead_agent.instruction_preview':
+                case 'lead_agent.instruction_create':
+                case 'lead_agent.instruction_list':
+                case 'lead_agent.instruction_pause':
+                    $instructionPath = dirname(__DIR__) . '/leads/lead_agent_instructions.php';
+                    if (is_file($instructionPath)) {
+                        require_once $instructionPath;
+                    }
+                    if ($toolName === 'lead_agent.instruction_preview') {
+                        return ['tool' => $toolName] + lead_agent_instruction_preview($input + $context);
+                    }
+                    if ($toolName === 'lead_agent.instruction_create') {
+                        if (empty($input['approved'])) {
+                            return ['ok' => false, 'tool' => $toolName, 'approval_required' => true, 'approval' => 'lead_agent_instruction_approved', 'preview' => lead_agent_instruction_preview($input + $context), 'message' => 'Confirm this instruction before Lead Agent uses it.'];
+                        }
+                        return ['tool' => $toolName] + lead_agent_instruction_create($input + $context, $user);
+                    }
+                    if ($toolName === 'lead_agent.instruction_pause') {
+                        return ['tool' => $toolName] + lead_agent_instruction_set_status((int) ($input['instruction_id'] ?? 0), 'paused');
+                    }
+                    lead_agent_instruction_ensure_schema();
+                    return ['ok' => true, 'tool' => $toolName, 'instructions' => db_all("SELECT * FROM lead_agent_instructions WHERE status = 'active' ORDER BY id DESC LIMIT 50"), 'message' => 'Active Lead Agent instructions loaded.'];
 
                 case 'lead.move_stage':
                     if (!function_exists('elite_ai_handle_move_stage_action')) {

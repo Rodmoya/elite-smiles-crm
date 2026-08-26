@@ -1249,6 +1249,30 @@ if (!function_exists('lead_operator_text_contains')) {
     }
 }
 
+if (!function_exists('lead_call_consent_requested')) {
+    /**
+     * A call is human-only and requires an explicit request or an affirmative
+     * acceptance of a previously offered call. Merely mentioning a phone or a
+     * call is not consent.
+     */
+    function lead_call_consent_requested(string $body): bool
+    {
+        $text = strtolower(trim(preg_replace('/\s+/u', ' ', $body) ?? $body));
+        if ($text === '') {
+            return false;
+        }
+
+        if (preg_match('/\b(?:do not|don[’\']t|please don[’\']t|no)\s+(?:phone\s+)?calls?\b|\b(?:text|email)\s+(?:me\s+)?(?:only|instead)\b|\bprefer\s+(?:text|email)\b/u', $text)) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\b(?:call\s+me|please\s+call|can\s+you\s+call|could\s+you\s+call|would\s+you\s+call|give\s+me\s+a\s+call|phone\s+me|can\s+we\s+(?:talk|speak)\s+(?:by|on\s+the)\s+phone|feel\s+free\s+to\s+call|you\s+can\s+call|(?:a\s+)?(?:call|phone\s+call)\s+(?:is|would\s+be|sounds?)\s+(?:easier|better|good|fine)|(?:yes|sure|okay|ok|sounds\s+good|that\s+works).{0,35}\b(?:call|phone)\b|(?:call|phone).{0,35}\b(?:works|is\s+easier|is\s+better)|ll[aá]mame|puedes\s+llamarme|prefiero\s+(?:una\s+)?llamada)\b/iu',
+            $text
+        );
+    }
+}
+
 if (!function_exists('lead_operator_recent_thread_signals')) {
     function lead_operator_recent_thread_signals(int $leadId): array
     {
@@ -1283,7 +1307,9 @@ if (!function_exists('lead_operator_recent_thread_signals')) {
 
         foreach ($messages as $message) {
             if ((string)($message['direction'] ?? '') !== 'inbound') {
-                continue;
+                // Ordered newest first: an outbound response resolves any
+                // older call request for queue purposes.
+                break;
             }
 
             $body = trim((string)($message['body'] ?? ''));
@@ -1291,13 +1317,7 @@ if (!function_exists('lead_operator_recent_thread_signals')) {
                 continue;
             }
 
-            if (lead_operator_text_contains($body, [
-                '/\bcall\b/i',
-                '/\bphone\b/i',
-                '/\bll[aá]mame\b/i',
-                '/\bllamar\b/i',
-                '/\btalk\s+on\s+the\s+phone\b/i',
-            ])) {
+            if (lead_call_consent_requested($body)) {
                 $signals['call_requested'] = true;
                 break;
             }
@@ -2119,6 +2139,34 @@ if (!function_exists('lead_dispatch_operator_intake_alerts')) {
     }
 }
 
+if (!function_exists('lead_mark_sms_failure_needs_attention')) {
+    /** Route every lead SMS failure into the authoritative human-attention state. */
+    function lead_mark_sms_failure_needs_attention(
+        int $leadId,
+        string $status,
+        string $errorCode = '',
+        string $errorMessage = '',
+        array $context = []
+    ): array {
+        if ($leadId <= 0) {
+            return ['ok' => false, 'attention' => false, 'message' => 'Lead not found.'];
+        }
+
+        if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
+            $leadAgentPath = __DIR__ . '/lead_agent.php';
+            if (is_file($leadAgentPath)) {
+                require_once $leadAgentPath;
+            }
+        }
+
+        if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
+            return ['ok' => false, 'attention' => false, 'message' => 'Lead Agent attention handler is unavailable.'];
+        }
+
+        return lead_agent_mark_sms_delivery_attention($leadId, $status, $errorCode, $errorMessage, $context);
+    }
+}
+
 if (!function_exists('lead_force_send_first_touch_sms')) {
     function lead_force_send_first_touch_sms(int $leadId): array
     {
@@ -2149,6 +2197,16 @@ if (!function_exists('lead_force_send_first_touch_sms')) {
         }
 
         if (!elite_phone_is_valid_us((string)($lead['phone'] ?? ''))) {
+            lead_mark_sms_failure_needs_attention(
+                $leadId,
+                'invalid_number',
+                'LOCAL_INVALID_PHONE',
+                'Lead phone number is not a valid US mobile destination.',
+                [
+                    'event_key' => 'new-lead-first-touch-invalid-phone-' . $leadId,
+                    'source' => 'new_lead_required_first_touch_sms',
+                ]
+            );
             return [
                 'attempted' => false,
                 'sent' => false,
@@ -2195,6 +2253,16 @@ if (!function_exists('lead_force_send_first_touch_sms')) {
         ]);
 
         if (empty($sendResult['ok'])) {
+            lead_mark_sms_failure_needs_attention(
+                $leadId,
+                'failed',
+                (string)($sendResult['twilio_code'] ?? ''),
+                (string)($sendResult['message'] ?? 'Required first-touch SMS failed.'),
+                [
+                    'event_key' => 'new-lead-first-touch-send-failed-' . $leadId,
+                    'source' => 'new_lead_required_first_touch_sms',
+                ]
+            );
             return [
                 'attempted' => true,
                 'sent' => false,

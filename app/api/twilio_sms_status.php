@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/leads/lead_agent.php';
 require_once dirname(__DIR__) . '/leads/lead_agent_observability.php';
 
 header('Content-Type: text/plain; charset=utf-8');
@@ -101,21 +102,11 @@ try {
 
         $leadId = (int)($message['lead_id'] ?? 0);
         if ($leadId > 0 && in_array($status, ['failed', 'undelivered'], true) && $previousStatus !== $status) {
-            db_execute(
-                "UPDATE lead_agent_states
-                 SET next_action_at = NOW(), last_decision = 'sms_delivery_failed_switch_channel', lock_token = '', locked_at = NULL, updated_at = NOW()
-                 WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0
-                   AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))",
-                ['lead_id' => $leadId]
-            );
-            lead_comm_insert_activity($leadId, 'sms_delivery_issue', 'Twilio SMS delivery issue: ' . $status . ($errorCode !== '' ? ' (' . $errorCode . ')' : ''), [
+            lead_agent_mark_sms_delivery_attention($leadId, $status, $errorCode, $errorMessage, [
+                'event_key' => 'twilio-status-' . $sid . '-' . $status,
+                'source' => 'twilio_status_callback',
                 'twilio_sid' => $sid,
-                'status' => $status,
-                'error_code' => $errorCode,
-                'error_message' => $errorMessage,
-                'automatic_retry' => 'alternate_channel_due',
-            ], 'Twilio');
-
+            ]);
         }
     }
 } catch (Throwable $e) {

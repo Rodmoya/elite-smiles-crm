@@ -160,19 +160,23 @@ expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engage
 
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 5, 'Active follow-up should be finite before the lead enters low-frequency nurture.');
-expect_true($plan[1]['hours'] === 48 && $plan[1]['channel'] === 'sms', 'The first follow-up must give a new lead 48 hours to reply.');
+expect_true($plan[1]['hours'] === 3 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_follow_up', 'The first follow-up must re-engage an unanswered lead during the first-day intent window.');
 expect_true($plan[2]['hours'] === 96 && $plan[2]['channel'] === 'email' && $plan[2]['phase'] === 'education', 'Email must serve an educational role instead of duplicating the SMS CTA.');
 expect_true($plan[5]['hours'] === 720 && $plan[5]['phase'] === 'reactivation', 'The final active touch should be a gentle 30-day reactivation.');
+$sameDayStep = lead_agent_step_schedule('2026-08-26 12:02:00', 1);
+expect_true($sameDayStep['at'] === '2026-08-26 15:02:00', 'A midday first touch must schedule the second engagement three hours later.');
 $monthlyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 6);
 expect_true($monthlyStep['hours'] === 1440 && $monthlyStep['phase'] === 'monthly_nurture', 'Long-term follow-up must taper to monthly nurture instead of daily pressure.');
 
+$dayZeroLimit = lead_agent_daily_outbound_limit('2026-08-26 12:02:00', new DateTimeImmutable('2026-08-26 15:02:00', new DateTimeZone(APP_TIMEZONE)));
 $dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
 $daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
+expect_true($dayZeroLimit === 3, 'Day one must allow the SMS/email first-touch bundle plus exactly one same-day follow-up.');
 expect_true($dayFiveLimit === 1, 'The cadence must never send more than one automated follow-up in a day.');
 expect_true($daySixLimit === 1, 'The one-message daily cap must remain in force after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
-expect_true($incremental['at'] === '2026-08-07 17:00:00', 'An overdue catch-up must preserve the 48-hour breathing room from the actual send time.');
+expect_true($incremental['at'] === '2026-08-09 14:00:00', 'After the same-day touch, an overdue catch-up must preserve the slower education interval from the actual send time.');
 
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
 expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');

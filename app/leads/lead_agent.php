@@ -353,9 +353,10 @@ if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
         return [
-            // First touch already sends one SMS and one email. Give the lead room
-            // to reply, then alternate useful, non-duplicative follow-ups.
-            1 => ['hours' => 48, 'channel' => 'sms', 'phase' => 'active_follow_up'],
+            // The first day is the highest-intent window. First touch already
+            // sends one SMS and one email; follow once more by SMS after three
+            // hours when there is still no reply, then slow the cadence down.
+            1 => ['hours' => 3, 'channel' => 'sms', 'phase' => 'same_day_follow_up'],
             2 => ['hours' => 96, 'channel' => 'email', 'phase' => 'education'],
             3 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'active_follow_up'],
             4 => ['hours' => 336, 'channel' => 'email', 'phase' => 'trust_nurture'],
@@ -401,7 +402,20 @@ if (!function_exists('lead_agent_step_schedule')) {
 if (!function_exists('lead_agent_daily_outbound_limit')) {
     function lead_agent_daily_outbound_limit(string $startedAt, ?DateTimeImmutable $now = null): int
     {
-        return 1;
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?? new DateTimeImmutable('now', $timezone);
+        if (trim($startedAt) === '' || strtotime($startedAt) === false) {
+            return 1;
+        }
+        try {
+            $started = new DateTimeImmutable($startedAt, $timezone);
+        } catch (Throwable $e) {
+            return 1;
+        }
+
+        // The immediate first-touch bundle is one SMS plus one email. Allow
+        // exactly one additional same-day follow-up; later days stay at one.
+        return $started->format('Y-m-d') === $now->setTimezone($timezone)->format('Y-m-d') ? 3 : 1;
     }
 }
 
@@ -456,6 +470,71 @@ if (!function_exists('lead_agent_repair_compressed_catchup')) {
                     'next_action_at' => (string) ($following['at'] ?? ''),
                 ]);
             }
+        }
+        return $repaired;
+    }
+}
+
+if (!function_exists('lead_agent_repair_first_day_schedule')) {
+    /** Accelerate only newly enrolled, unanswered leads still on the old 48-hour schedule. */
+    function lead_agent_repair_first_day_schedule(int $limit = 200): int
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(500, $limit));
+        $rows = db_all("SELECT s.lead_id, s.started_at, s.next_action_at,
+                l.last_outbound_at, l.last_inbound_at
+            FROM lead_agent_states s
+            INNER JOIN leads l ON l.id = s.lead_id
+            WHERE s.status IN ('active', 'engaged')
+              AND s.human_takeover = 0
+              AND s.cadence_step = 0
+              AND s.next_action_at IS NOT NULL
+              AND s.started_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+            ORDER BY s.started_at ASC
+            LIMIT {$limit}");
+        $repaired = 0;
+
+        foreach ($rows as $row) {
+            $startedAt = trim((string) ($row['started_at'] ?? ''));
+            $currentAt = trim((string) ($row['next_action_at'] ?? ''));
+            $lastOutboundAt = trim((string) ($row['last_outbound_at'] ?? ''));
+            $lastInboundAt = trim((string) ($row['last_inbound_at'] ?? ''));
+            if ($startedAt === '' || $currentAt === '' || strtotime($startedAt) === false || strtotime($currentAt) === false) {
+                continue;
+            }
+            if ($lastInboundAt !== '' && strtotime($lastInboundAt) !== false
+                && ($lastOutboundAt === '' || strtotime($lastInboundAt) >= strtotime($lastOutboundAt))) {
+                continue;
+            }
+
+            $sameDay = lead_agent_step_schedule($startedAt, 1);
+            $sameDayAt = trim((string) ($sameDay['at'] ?? ''));
+            if ($sameDayAt === '' || strtotime($sameDayAt) === false || strtotime($sameDayAt) >= strtotime($currentAt)) {
+                continue;
+            }
+
+            $changed = db_execute(
+                "UPDATE lead_agent_states
+                 SET next_action_at = :next_action_at, last_decision = 'first_day_schedule_repaired', updated_at = NOW()
+                 WHERE lead_id = :lead_id AND cadence_step = 0 AND human_takeover = 0
+                   AND next_action_at > :next_action_compare",
+                [
+                    'next_action_at' => $sameDayAt,
+                    'next_action_compare' => $sameDayAt,
+                    'lead_id' => (int) ($row['lead_id'] ?? 0),
+                ]
+            );
+            $repaired += $changed;
+            if ($changed > 0) {
+                lead_agent_event((int) ($row['lead_id'] ?? 0), 'first-day-schedule-repaired-' . (int) ($row['lead_id'] ?? 0), 'cadence_rescheduled', 'sms', 'recorded', 'first_day_engagement_window', [
+                    'previous_next_action_at' => $currentAt,
+                    'next_action_at' => $sameDayAt,
+                ]);
+            }
+        }
+
+        if ($repaired > 0) {
+            lead_agent_sync_crm_followup_schedule();
         }
         return $repaired;
     }
@@ -3014,6 +3093,7 @@ if (!function_exists('lead_agent_run_due')) {
         $run = lead_agent_run_start($dryRun);
         $backfill = [];
         $repairedCatchup = 0;
+        $repairedFirstDay = 0;
         $recoveredDraftingExceptions = 0;
         $conversionMemoriesRefreshed = 0;
         $schedulingRepair = [];
@@ -3024,6 +3104,7 @@ if (!function_exists('lead_agent_run_due')) {
             $schedulingRepair = lead_agent_repair_scheduling_queue(200, $dryRun);
             $conversionMemoriesRefreshed = $dryRun ? 0 : lead_conversion_refresh_active_memories(40);
             $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
+            $repairedFirstDay = $dryRun ? 0 : lead_agent_repair_first_day_schedule(200);
             $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
             $rows = db_all("SELECT * FROM lead_agent_states
                 WHERE status IN ('active', 'engaged')
@@ -3057,9 +3138,9 @@ if (!function_exists('lead_agent_run_due')) {
             if (!$dryRun) {
                 lead_agent_sync_crm_followup_schedule();
             }
-            lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup);
+            lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay);
         } catch (Throwable $e) {
-            lead_agent_run_finish($run, 'failed', $dueCount, $results, $backfill, $repairedCatchup, $e->getMessage());
+            lead_agent_run_finish($run, 'failed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay, $e->getMessage());
             throw $e;
         }
         try {
@@ -3072,7 +3153,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

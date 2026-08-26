@@ -35,6 +35,8 @@ if (!function_exists('lead_pipeline_version_snapshot')) {
             . 'FROM leads ' . lead_pipeline_visibility_sql('WHERE')
         ) ?? [];
         $attentionRow = [];
+        $attentionDueTotal = 0;
+        $attentionDeliveryPendingTotal = 0;
         try {
             $attentionRow = db_one(
                 "SELECT COUNT(*) AS total, COALESCE(MAX(updated_at), '') AS latest_update
@@ -45,6 +47,29 @@ if (!function_exists('lead_pipeline_version_snapshot')) {
             // The attention table may not exist during initial setup. The
             // regular page bootstrap creates it before rendering the board.
         }
+        try {
+            $attentionDueTotal = (int) db_value(
+                "SELECT COUNT(*) FROM leads
+                 WHERE next_follow_up_at IS NOT NULL
+                   AND next_follow_up_at <= NOW()
+                   AND (last_outbound_at IS NULL OR last_outbound_at < next_follow_up_at)"
+            );
+            $attentionDeliveryPendingTotal = (int) db_value(
+                "SELECT COUNT(*)
+                 FROM lead_messages latest_message
+                 INNER JOIN (
+                    SELECT lead_id, MAX(id) AS latest_id
+                    FROM lead_messages
+                    WHERE direction = 'outbound' AND channel = 'sms'
+                    GROUP BY lead_id
+                 ) latest_sms ON latest_sms.latest_id = latest_message.id
+                 WHERE LOWER(COALESCE(latest_message.twilio_status, '')) IN ('accepted', 'queued', 'sending', 'scheduled')
+                   AND latest_message.created_at <= DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
+            );
+        } catch (Throwable) {
+            // Attention timing still works after the communication schema is
+            // created; keep the pipeline usable during an initial install.
+        }
         $state = [
             'total' => (int)($row['total'] ?? 0),
             'max_id' => (int)($row['max_id'] ?? 0),
@@ -52,6 +77,8 @@ if (!function_exists('lead_pipeline_version_snapshot')) {
             'unread_total' => (int)($row['unread_total'] ?? 0),
             'attention_total' => (int)($attentionRow['total'] ?? 0),
             'attention_latest_update' => (string)($attentionRow['latest_update'] ?? ''),
+            'attention_due_total' => $attentionDueTotal,
+            'attention_delivery_pending_total' => $attentionDeliveryPendingTotal,
         ];
         $state['version'] = hash('sha256', json_encode($state, JSON_UNESCAPED_SLASHES));
         return $state;
@@ -117,7 +144,7 @@ $stageMap = function_exists('lead_pipeline_display_stage_map') ? lead_pipeline_d
 $pipelineCounts = lead_pipeline_counts();
 $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
-$actionQueueRows = lead_agent_exception_rows(100);
+$actionQueueRows = lead_attention_rows(100);
 $leadAttentionIds = [];
 foreach ($actionQueueRows as $attentionLead) {
     $attentionLeadId = (int)($attentionLead['id'] ?? 0);

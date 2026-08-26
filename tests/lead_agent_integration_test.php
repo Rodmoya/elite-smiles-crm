@@ -30,6 +30,17 @@ try {
 
     $enrollment = lead_agent_enroll($leadId, ['source' => 'integration_test']);
     integration_expect(!empty($enrollment['enrolled']), 'Synthetic lead was not enrolled.');
+    $enrolledState = db_one('SELECT started_at, next_action_at FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+    $expectedFirstDayAt = (string) (lead_agent_step_schedule((string) ($enrolledState['started_at'] ?? ''), 1)['at'] ?? '');
+    integration_expect((string) ($enrollment['next_action_at'] ?? '') === $expectedFirstDayAt, 'Enrollment must use the guarded three-hour first-day schedule.');
+
+    db_execute("UPDATE lead_agent_states SET next_action_at = DATE_ADD(started_at, INTERVAL 48 HOUR) WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+    integration_expect(lead_agent_repair_first_day_schedule(20) === 1, 'Existing first-day leads on the old 48-hour schedule must be accelerated once.');
+    $repairedState = db_one('SELECT started_at, next_action_at FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+    integration_expect(
+        (string) ($repairedState['next_action_at'] ?? '') === (string) (lead_agent_step_schedule((string) ($repairedState['started_at'] ?? ''), 1)['at'] ?? ''),
+        'The first-day schedule repair must restore the guarded three-hour schedule.'
+    );
 
     db_execute("UPDATE lead_agent_states SET next_action_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
     $run = lead_agent_run_due(5, true);

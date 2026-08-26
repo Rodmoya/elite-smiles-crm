@@ -1654,6 +1654,7 @@ if (!function_exists('lead_agent_cycle_rows')) {
     function lead_agent_cycle_rows(int $limit = 1000): array
     {
         lead_agent_ensure_schema();
+        lead_comm_ensure_schema();
         $limit = max(1, min(2000, $limit));
         return db_all("SELECT l.*,
                 s.id AS agent_state_id,
@@ -1665,7 +1666,14 @@ if (!function_exists('lead_agent_cycle_rows')) {
                 s.last_decision AS agent_last_decision,
                 s.human_takeover AS agent_human_takeover,
                 s.scheduling_phase AS agent_scheduling_phase,
-                s.pause_reason AS agent_pause_reason
+                s.pause_reason AS agent_pause_reason,
+                EXISTS(
+                    SELECT 1 FROM lead_messages delivery_message
+                    WHERE delivery_message.lead_id = l.id
+                      AND delivery_message.direction = 'outbound'
+                      AND delivery_message.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                      AND LOWER(COALESCE(delivery_message.twilio_status, '')) IN ('failed','undelivered')
+                ) AS agent_recent_sms_delivery_issue
             FROM leads l
             LEFT JOIN lead_agent_states s ON s.lead_id = l.id
             ORDER BY l.id ASC
@@ -1769,8 +1777,10 @@ if (!function_exists('lead_agent_cycle_coverage')) {
         foreach ($rows as $lead) {
             $leadId = (int)($lead['id'] ?? 0);
             $state = lead_agent_cycle_state_from_row($lead);
-            $smsIssue = $leadId > 0 && lead_agent_recent_sms_delivery_issue($leadId);
-            $closureReason = $leadId > 0 ? lead_agent_latest_inbound_closure_reason($leadId) : '';
+            $smsIssue = !empty($lead['agent_recent_sms_delivery_issue']);
+            $closureReason = $leadId > 0 && trim((string)($lead['last_inbound_at'] ?? '')) !== ''
+                ? lead_agent_latest_inbound_closure_reason($leadId)
+                : '';
             $assessment = lead_agent_cycle_assessment($lead, $state, $smsIssue, $closureReason);
             $category = (string)($assessment['category'] ?? 'protected');
             $reason = (string)($assessment['reason'] ?? 'unknown');
@@ -1853,8 +1863,10 @@ if (!function_exists('lead_agent_repair_cycle_coverage')) {
                 continue;
             }
             $state = lead_agent_cycle_state_from_row($lead);
-            $smsIssue = lead_agent_recent_sms_delivery_issue($leadId);
-            $closureReason = lead_agent_latest_inbound_closure_reason($leadId);
+            $smsIssue = !empty($lead['agent_recent_sms_delivery_issue']);
+            $closureReason = trim((string)($lead['last_inbound_at'] ?? '')) !== ''
+                ? lead_agent_latest_inbound_closure_reason($leadId)
+                : '';
             $assessment = lead_agent_cycle_assessment($lead, $state, $smsIssue, $closureReason);
             $deliveryOnlyState = (string)($state['last_decision'] ?? '') === 'sms_delivery_failed_needs_attention';
 

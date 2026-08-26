@@ -129,6 +129,8 @@ expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dry
 expect_true(str_contains($agentSource, 'lead_agent_repair_cycle_coverage(500, $dryRun)'), 'Every Lead Agent run must repair uncovered active and Nurture cycle records.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
 expect_true(!str_contains($agentSource, "'send_pushover_fallback' => true"), 'Automated Lead Agent SMS failure must not create a Pushover interruption.');
+$operationsSource = (string) file_get_contents(dirname(__DIR__) . '/lead-agent-operations.php');
+expect_true(str_contains($operationsSource, 'id="cycle-coverage"') && str_contains($operationsSource, 'id="cycle-coverage-data"'), 'Authenticated Lead Agent Operations must expose live cycle coverage and its exact audit payload.');
 expect_true(!lead_attention_is_actionable(['_action_queue' => ['action_key' => 'delivery_issue']]), 'A non-actionable SMS delivery failure must not create a red human-attention halo.');
 expect_true(lead_attention_is_actionable(['_action_queue' => ['action_key' => 'reply_needed']]), 'A patient reply that needs an answer must remain in the human-attention queue.');
 

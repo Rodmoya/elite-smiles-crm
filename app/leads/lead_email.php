@@ -612,6 +612,7 @@ if (!function_exists('lead_email_record_bounce')) {
 
         $emailId = (int)($email['id'] ?? 0);
         $alreadyBounced = (string)($email['status'] ?? '') === 'bounced';
+        $agentWoken = 0;
         $providerNote = trim(implode("\n\n", array_filter([
             $sourceId !== '' ? 'Bounce source: ' . $sourceId : '',
             trim($subject) !== '' ? 'Bounce subject: ' . trim($subject) : '',
@@ -629,7 +630,7 @@ if (!function_exists('lead_email_record_bounce')) {
             );
             lead_agent_update_touchpoint_delivery('email', $emailId, 'bounced', $sourceId);
 
-            db_execute(
+            $agentWoken = db_execute(
                 "UPDATE lead_agent_states
                  SET next_action_at = NOW(), last_decision = 'email_bounced_switch_channel', lock_token = '', locked_at = NULL, updated_at = NOW()
                  WHERE lead_id = :lead_id AND status IN ('active', 'engaged') AND human_takeover = 0
@@ -650,6 +651,10 @@ if (!function_exists('lead_email_record_bounce')) {
             $params = ['id' => $leadId, 'now' => now()];
             if (lead_email_column_exists('leads', 'follow_up_status')) {
                 $sets[] = "follow_up_status = 'needs_follow_up'";
+            }
+            if (!empty($agentWoken) && lead_email_column_exists('leads', 'next_follow_up_at')) {
+                $sets[] = 'next_follow_up_at = :next_follow_up_at';
+                $params['next_follow_up_at'] = now();
             }
             db_execute('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', $params);
         } catch (Throwable $e) {

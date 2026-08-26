@@ -1467,6 +1467,45 @@ if (!function_exists('lead_operator_has_sms_cleanup_issue')) {
     }
 }
 
+if (!function_exists('lead_operator_has_stale_sms_delivery')) {
+    /** A Twilio send should not remain accepted/queued without a callback for this long. */
+    function lead_operator_has_stale_sms_delivery(array $lead, int $minutes = 30): bool
+    {
+        static $cache = [];
+
+        $leadId = (int) ($lead['id'] ?? 0);
+        $minutes = max(15, min(180, $minutes));
+        $cacheKey = $leadId . ':' . $minutes;
+        if ($leadId <= 0 || !lead_related_table_exists('lead_messages')) {
+            return false;
+        }
+        if (array_key_exists($cacheKey, $cache)) {
+            return $cache[$cacheKey];
+        }
+
+        try {
+            $latest = db_one(
+                "SELECT twilio_status, created_at
+                 FROM lead_messages
+                 WHERE lead_id = :lead_id AND direction = 'outbound' AND channel = 'sms'
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1",
+                ['lead_id' => $leadId]
+            ) ?: [];
+            $status = strtolower(trim((string) ($latest['twilio_status'] ?? '')));
+            $createdAt = trim((string) ($latest['created_at'] ?? ''));
+            $createdTimestamp = $createdAt !== '' ? strtotime($createdAt) : false;
+            $cache[$cacheKey] = in_array($status, ['accepted', 'queued', 'sending', 'scheduled'], true)
+                && $createdTimestamp !== false
+                && $createdTimestamp <= time() - ($minutes * 60);
+        } catch (Throwable $e) {
+            $cache[$cacheKey] = false;
+        }
+
+        return $cache[$cacheKey];
+    }
+}
+
 if (!function_exists('lead_action_queue_reason')) {
     function lead_action_queue_reason(array $lead, array $summary): string
     {
@@ -1589,14 +1628,19 @@ if (!function_exists('lead_action_queue_rows')) {
                     $actionLabel = 'Lead Agent follow-up';
                     $actionTone = 'amber';
                     $reason = 'First touch was sent at least 3.5 hours ago without a reply. The Lead Agent cadence is due.';
-                } elseif (lead_operator_has_sms_cleanup_issue($lead)) {
+                } elseif (lead_operator_has_sms_cleanup_issue($lead) || lead_operator_has_stale_sms_delivery($lead)) {
+                    $deliveryPending = lead_operator_has_stale_sms_delivery($lead);
                     $priority = 70;
                     $actionKey = 'delivery_issue';
-                    $actionLabel = trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd' ? 'Email only' : 'Delivery issue';
+                    $actionLabel = $deliveryPending
+                        ? 'Delivery pending'
+                        : (trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd' ? 'Email only' : 'Delivery issue');
                     $actionTone = 'rose';
-                    $reason = trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd'
-                        ? 'SMS failed before and this lead is now DND for texting. Keep follow-up on email unless the number is corrected.'
-                        : 'Recent SMS delivery issue still needs phone verification or an email fallback.';
+                    $reason = $deliveryPending
+                        ? 'The latest SMS is still queued after 30 minutes. Verify the Twilio callback and delivery before treating the contact as complete.'
+                        : (trim((string)($lead['sms_opt_status'] ?? '')) === 'dnd'
+                            ? 'SMS failed before and this lead is now DND for texting. Keep follow-up on email unless the number is corrected.'
+                            : 'Recent SMS delivery issue still needs phone verification or an email fallback.');
                 } elseif ($isDue && !$recentlyContacted && in_array($actionKey, ['second_follow_up', 'overdue_follow_up', 'wait_for_reply', 'reschedule', 'ask_dob', 'offer_dates', 'nurture_reactivate'], true)) {
                     $priority = in_array($actionKey, ['ask_dob', 'reschedule'], true) ? 60 : 75;
                     if ($actionKey === 'offer_dates') {
@@ -1637,6 +1681,41 @@ if (!function_exists('lead_action_queue_rows')) {
                 return $priorityDiff;
             }
             return (int)($bQueue['sort_at'] ?? 0) <=> (int)($aQueue['sort_at'] ?? 0);
+        });
+
+        return array_slice($rows, 0, $limit);
+    }
+}
+
+if (!function_exists('lead_attention_rows')) {
+    /** Combine explicit agent exceptions with ordinary work that is due now. */
+    function lead_attention_rows(int $limit = 100): array
+    {
+        $limit = max(1, min(100, $limit));
+        $combined = [];
+        $dueRows = lead_action_queue_rows($limit);
+        $exceptionRows = function_exists('lead_agent_exception_rows')
+            ? lead_agent_exception_rows($limit)
+            : [];
+
+        // Exceptions are applied last so their human-review reason and higher
+        // priority replace a routine due action for the same lead.
+        foreach (array_merge($dueRows, $exceptionRows) as $lead) {
+            $leadId = (int) ($lead['id'] ?? 0);
+            if ($leadId > 0) {
+                $combined[$leadId] = $lead;
+            }
+        }
+
+        $rows = array_values($combined);
+        usort($rows, static function (array $a, array $b): int {
+            $aQueue = (array) ($a['_action_queue'] ?? []);
+            $bQueue = (array) ($b['_action_queue'] ?? []);
+            $priorityDiff = (int) ($bQueue['priority'] ?? 0) <=> (int) ($aQueue['priority'] ?? 0);
+            if ($priorityDiff !== 0) {
+                return $priorityDiff;
+            }
+            return (int) ($bQueue['sort_at'] ?? 0) <=> (int) ($aQueue['sort_at'] ?? 0);
         });
 
         return array_slice($rows, 0, $limit);

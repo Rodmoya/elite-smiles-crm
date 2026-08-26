@@ -15,6 +15,9 @@ $requiredLeadRefreshTokens = [
     "headers: { 'Accept': 'text/html' }",
     "snapshot.getElementById('lead-pipeline-board')",
     'window.elitePipelineApplySnapshot(incomingBoard)',
+    "FROM lead_agent_states",
+    "WHERE status = 'needs_attention'",
+    "'attention_latest_update'",
 ];
 
 foreach ($requiredLeadRefreshTokens as $token) {
@@ -46,4 +49,3 @@ if (str_contains($leadsSource, 'const reloadPipeline = () =>')) {
 }
 
 echo "Pipeline silent refresh tests passed.\n";
-

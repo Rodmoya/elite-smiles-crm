@@ -34,11 +34,24 @@ if (!function_exists('lead_pipeline_version_snapshot')) {
             "SELECT COUNT(*) AS total, COALESCE(MAX(id), 0) AS max_id, {$updatedExpr} AS latest_update, {$unreadExpr} AS unread_total "
             . 'FROM leads ' . lead_pipeline_visibility_sql('WHERE')
         ) ?? [];
+        $attentionRow = [];
+        try {
+            $attentionRow = db_one(
+                "SELECT COUNT(*) AS total, COALESCE(MAX(updated_at), '') AS latest_update
+                 FROM lead_agent_states
+                 WHERE status = 'needs_attention'"
+            ) ?? [];
+        } catch (Throwable) {
+            // The attention table may not exist during initial setup. The
+            // regular page bootstrap creates it before rendering the board.
+        }
         $state = [
             'total' => (int)($row['total'] ?? 0),
             'max_id' => (int)($row['max_id'] ?? 0),
             'latest_update' => (string)($row['latest_update'] ?? ''),
             'unread_total' => (int)($row['unread_total'] ?? 0),
+            'attention_total' => (int)($attentionRow['total'] ?? 0),
+            'attention_latest_update' => (string)($attentionRow['latest_update'] ?? ''),
         ];
         $state['version'] = hash('sha256', json_encode($state, JSON_UNESCAPED_SLASHES));
         return $state;
@@ -104,7 +117,14 @@ $stageMap = function_exists('lead_pipeline_display_stage_map') ? lead_pipeline_d
 $pipelineCounts = lead_pipeline_counts();
 $pipelineValues = lead_pipeline_stage_values();
 $pipelineRows = lead_pipeline_rows(250);
-$actionQueueRows = lead_agent_exception_rows(50);
+$actionQueueRows = lead_agent_exception_rows(100);
+$leadAttentionIds = [];
+foreach ($actionQueueRows as $attentionLead) {
+    $attentionLeadId = (int)($attentionLead['id'] ?? 0);
+    if ($attentionLeadId > 0) {
+        $leadAttentionIds[$attentionLeadId] = true;
+    }
+}
 $actionQueueSummary = lead_action_queue_summary($actionQueueRows);
 $leadAgentHeaderDate = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d');
 $leadAgentHeaderReport = lead_agent_refresh_daily_report($leadAgentHeaderDate, false);
@@ -386,4 +406,3 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
     </script>
 </body>
 </html>
-

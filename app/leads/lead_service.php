@@ -2167,7 +2167,7 @@ if (!function_exists('lead_dispatch_operator_intake_alerts')) {
 }
 
 if (!function_exists('lead_mark_sms_failure_needs_attention')) {
-    /** Route every lead SMS failure into the authoritative human-attention state. */
+    /** Audit each SMS failure and let the Lead Agent route to email or unreachable Nurture. */
     function lead_mark_sms_failure_needs_attention(
         int $leadId,
         string $status,
@@ -2274,7 +2274,7 @@ if (!function_exists('lead_force_send_first_touch_sms')) {
         $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), $body, [
             'lead_id' => $leadId,
             'lead' => $lead,
-            'send_pushover_fallback' => true,
+            'send_pushover_fallback' => false,
             'fallback_summary' => 'Twilio could not send the required first-touch SMS. Open lead actions to retry manually.',
             'original_body' => $body,
         ]);

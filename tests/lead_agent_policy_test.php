@@ -21,8 +21,15 @@ expect_true(lead_agent_decline_kind('Maybe later') === 'deferred', 'A timing def
 expect_true(lead_agent_classify_inbound('That is too far for me to travel') === 'pause', 'A distance-based decline must stop automated follow-up.');
 expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_attention', 'Clinical concern should require human review.');
 expect_true(lead_agent_classify_inbound('I need an appointment because I have pain and swelling') === 'needs_attention', 'Clinical urgency must override scheduling language.');
+expect_true(lead_call_consent_requested('Yes, a call would be easier for me.'), 'An affirmative acceptance of an offered call must count as call consent.');
+expect_true(lead_call_consent_requested('Can you please call me tomorrow?'), 'A direct call request must count as call consent.');
+expect_true(!lead_call_consent_requested("Please don't call; text me instead."), 'A text-only preference must never be mistaken for call consent.');
+expect_true(!lead_call_consent_requested('What is your phone number?'), 'Mentioning a phone without requesting a call is not call consent.');
+expect_true(lead_agent_classify_inbound('A call would be easier for me.') === 'needs_attention', 'Accepting a call offer must route to human attention.');
 expect_true(lead_agent_policy_flags('Your treatment price is $500') === ['treatment_cost_language'], 'Treatment price language should be blocked.');
 expect_true(lead_agent_policy_flags('Would mornings or afternoons work better?') === [], 'Approved scheduling language should pass.');
+expect_true(lead_agent_policy_flags('If a call is easier, tell me a good time.') === [], 'The agent may offer a call without promising one.');
+expect_true(lead_agent_policy_flags('I will call you this afternoon.') === ['unapproved_call_commitment'], 'The agent must not commit to an unrequested call.');
 expect_true(lead_agent_policy_flags('Would Tuesday work? Or would Wednesday be better?') === ['multiple_questions'], 'Automated copy must never ask multiple questions at once.');
 expect_true(lead_agent_policy_flags('I have you scheduled for Tuesday at 2 PM.') === ['unverified_booking_claim'], 'Lead Agent must never claim an appointment is booked before the scheduling workflow confirms it.');
 
@@ -67,6 +74,7 @@ expect_true(($operatorCommand['action'] ?? '') === 'offer', 'Rod must be able to
 expect_true(($operatorCommand['options'][0] ?? '') === '2026-08-26 15:00:00' && ($operatorCommand['options'][1] ?? '') === '2026-08-27 16:30:00', 'Operator appointment options must normalize in the CRM timezone.');
 expect_true((lead_agent_parse_operator_command('S161-ABCD tomorrow at 3', $operatorNow)['action'] ?? '') === 'invalid', 'An ambiguous one-option command must fail closed without sending.');
 expect_true((lead_agent_parse_operator_command('HELP', $operatorNow)['action'] ?? '') === 'help', 'The operator SMS channel must expose deterministic help.');
+expect_true((lead_agent_parse_operator_command('S161-ABCD CALL', $operatorNow)['action'] ?? '') === 'invalid', 'A generic operator CALL command must not create an unrequested call workflow.');
 
 $windowCommand = lead_agent_parse_operator_command('S161-ABCDEF next Monday and Tuesday from 2 to 5 are open', $operatorNow);
 expect_true(($windowCommand['action'] ?? '') === 'availability_window', 'Natural operator availability must be recognized as a calendar window.');
@@ -101,11 +109,16 @@ expect_true(
 );
 $agentSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_agent.php');
 expect_true(!str_contains($agentSource, 'I checked the CRM and Dentrix calendar'), 'The agent must never claim it queried Dentrix directly.');
+expect_true(!str_contains($agentSource, 'CODE CALL'), 'Operator help must not offer calls when the lead did not request one.');
 $pushSource = (string) file_get_contents(dirname(__DIR__) . '/app/core/mobile_ai_push.php');
 expect_true(str_contains($agentSource, "'type' => 'handoff'"), 'Scheduling handoffs must not use the patient-reply push type.');
 expect_true(str_contains($pushSource, 'scheduling follow-up needed for'), 'Scheduling handoff pushes must be labeled as follow-up work, not as a new patient message.');
 $aiSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_ai.php');
 expect_true(!str_contains($aiSource, 'ask for the preferred day and DOB'), 'The AI prompt must not collect DOB before a patient selects a confirmed slot.');
+expect_true(str_contains($aiSource, 'Call-channel boundary'), 'AI drafting must carry the explicit call-consent boundary.');
+expect_true(str_contains($agentSource, 'sms_delivery_failed_needs_attention'), 'A failed SMS must persist the authoritative Needs Attention state.');
+$statusCallbackSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_status.php');
+expect_true(str_contains($statusCallbackSource, 'lead_agent_mark_sms_delivery_attention'), 'Twilio failed and undelivered callbacks must mark the lead Needs Attention.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',

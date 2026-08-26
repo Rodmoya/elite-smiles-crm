@@ -154,6 +154,7 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling sequence: first collect the preferred day/date and morning/afternoon or preferred time. Rod checks Dentrix and supplies confirmed availability. Offer exactly two confirmed options. Ask for DOB only after the patient selects one option; never combine a scheduling-preference question with a DOB request.',
             'One-question SMS rule: keep SMS easy to answer and ask only one direct question per message.',
+            'Call-channel boundary: never announce, schedule, or initiate a phone call unless the lead explicitly requested one or clearly accepted an optional call offer. You may say that a call is available if it would be easier, but texting and email remain the default.',
             'Directions: give clear address if needed.',
             'Do not include any phone number in the patient-facing SMS unless the operator explicitly instructs you to include one.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
@@ -183,6 +184,7 @@ if (!function_exists('lead_ai_improve_system_prompt')) {
             'Fix grammar, spelling, capitalization, tone, clarity, and professional polish.',
             'If the text is already a reply in an active conversation, do not add a fresh greeting or reintroduce Rod/Elite Smiles.',
             'Do not add phone numbers, pricing, financing promises, medical advice, appointment times, or clinical claims.',
+            'Do not turn an optional call offer into a promised or scheduled call. A call requires the lead to explicitly request or accept it.',
             'Keep SMS concise. Keep email as plain text with short paragraphs.',
             $format,
             'Return only JSON matching the schema.',
@@ -211,6 +213,7 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Availability safety: never claim a slot is open unless the operator supplied that exact current availability. If an old offered time is now past, say Rod will check fresh availability and ask for the patient’s current day/time preference.',
             'Scheduling intent: if the patient says yes, wants to schedule, asks for availability, or gives a day/time, classify schedule_ready and recommend in_contact unless a booked appointment is already confirmed.',
             'Scheduling sequence: first collect the preferred day/date and morning/afternoon or preferred time. Rod checks Dentrix and supplies confirmed availability. Offer exactly two confirmed options. Ask for DOB only after the patient selects one option; never combine a scheduling-preference question with a DOB request.',
+            'Call-channel boundary: never announce, schedule, or initiate a phone call unless the lead explicitly requested one or clearly accepted an optional call offer. You may offer a call as an easier alternative, but email and text remain the default.',
             'Read patient_conversation from beginning to end before writing. Treat manual staff messages as authoritative. Never ask for a preference, answer, DOB, or appointment detail already present, and never undo or contradict a time already offered or accepted.',
             'Resolved-history rule: thread_state.last_inbound_resolved is authoritative. If true, a later team message already answered that inbound. Do not present it as new, recent, unanswered, or newly noticed. Never reuse an acknowledged emoji reaction or thumbs-up as the opening reason for another follow-up.',
             'Conversion intelligence: use conversion_memory as durable context. Follow its recommended_action unless the newest patient message changes the situation. Select one strategy_key, explain the choice in strategy_reason, and return the updated conversation_state, known_goal, known_objection, and next_best_action.',
@@ -1275,6 +1278,18 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
         }
 
         if (!elite_phone_is_valid_us((string)($lead['phone'] ?? ''))) {
+            if (function_exists('lead_mark_sms_failure_needs_attention')) {
+                lead_mark_sms_failure_needs_attention(
+                    $leadId,
+                    'invalid_number',
+                    'LOCAL_INVALID_PHONE',
+                    'Lead phone number is not a valid US mobile destination.',
+                    [
+                        'event_key' => 'new-lead-first-touch-invalid-phone-' . $leadId,
+                        'source' => 'new_lead_auto_first_touch',
+                    ]
+                );
+            }
             return [
                 'attempted' => false,
                 'sent' => false,
@@ -1302,6 +1317,18 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
         ]);
 
         if (empty($sendResult['ok'])) {
+            if (function_exists('lead_mark_sms_failure_needs_attention')) {
+                lead_mark_sms_failure_needs_attention(
+                    $leadId,
+                    'failed',
+                    (string)($sendResult['twilio_code'] ?? ''),
+                    (string)($sendResult['message'] ?? 'Auto SMS failed.'),
+                    [
+                        'event_key' => 'new-lead-first-touch-send-failed-' . $leadId,
+                        'source' => 'new_lead_auto_first_touch',
+                    ]
+                );
+            }
             if (function_exists('esm_log')) {
                 esm_log('openai', 'New lead first-touch SMS failed.', [
                     'lead_id' => $leadId,

@@ -557,6 +557,9 @@ if (!function_exists('lead_agent_policy_flags')) {
         if (preg_match('/\b(card number|social security|ssn)\b|\b\d{3}-\d{2}-\d{4}\b/i', $text)) {
             $flags[] = 'sensitive_information';
         }
+        if (preg_match('/\b(?:(?:i|we|rod|our team)\s+(?:will|[’\']ll|am going to|are going to|plan to)\s+(?:give\s+you\s+a\s+)?call|expect\s+(?:my|our|a)\s+call|(?:i|we)\s+(?:just\s+)?tried\s+(?:calling|to\s+call))\b/iu', $text)) {
+            $flags[] = 'unapproved_call_commitment';
+        }
         if (substr_count($body, '?') > 1) {
             $flags[] = 'multiple_questions';
         }
@@ -587,7 +590,8 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
             return 'cost_redirect';
         }
-        if (preg_match('/\b(call me|please call|can you call|complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
+        if (lead_call_consent_requested($text)
+            || preg_match('/\b(complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
             return 'needs_attention';
         }
         if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|mornings|mornign|afternoon|afternoons|evening|weekday|weekend|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
@@ -766,9 +770,6 @@ if (!function_exists('lead_agent_parse_operator_command')) {
         }
         if (preg_match('/^(wait|hold)$/i', $instruction)) {
             return ['action' => 'wait', 'code' => $code, 'options' => []];
-        }
-        if (preg_match('/^(call|i(?:\'|’)ll call)$/i', $instruction)) {
-            return ['action' => 'call', 'code' => $code, 'options' => []];
         }
         $windows = lead_agent_parse_operator_availability_windows($instruction, $now);
         if ($windows !== []) {
@@ -1584,7 +1585,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
         }
         $command = lead_agent_parse_operator_command($body);
         if (($command['action'] ?? '') === 'help') {
-            return ['handled' => true, 'reply' => 'Elite AI commands: reply with a window such as S123-ABCDEF next Monday and Tuesday from 2 to 5, or two exact times. You can also reply CODE WAIT or CODE CALL.'];
+            return ['handled' => true, 'reply' => 'Elite AI commands: reply with a window such as S123-ABCDEF next Monday and Tuesday from 2 to 5, or two exact times. You can also reply CODE WAIT.'];
         }
         $code = (string) ($command['code'] ?? '');
         $request = $code !== '' ? db_one("SELECT * FROM lead_agent_operator_requests WHERE request_code = :code AND status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1", ['code' => $code]) : null;
@@ -1654,14 +1655,7 @@ if (!function_exists('lead_agent_handle_operator_sms')) {
             ]);
             return ['handled' => true, 'reply' => 'Elite AI: Understood. I will keep the patient conversation paused while you check availability.'];
         }
-        if ($action === 'call') {
-            db_execute("UPDATE lead_agent_operator_requests SET status = 'human_call', response_body = :body, response_message_sid = :sid, completed_at = NOW(), updated_at = NOW() WHERE id = :id", [
-                'body' => substr($body, 0, 500), 'sid' => $messageSid !== '' ? $messageSid : null, 'id' => (int) $request['id'],
-            ]);
-            lead_agent_record_human_outbound($leadId, 'operator_sms', 'Operator chose to call the lead.');
-            return ['handled' => true, 'reply' => 'Elite AI: The lead is paused for your call today. If there is no completed appointment, I will resume tomorrow.'];
-        }
-        return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. Reply ' . $code . ' with a window such as next Monday and Tuesday from 2 to 5, two exact times, WAIT, or CALL.'];
+        return ['handled' => true, 'reply' => 'Elite AI: I did not send anything. Reply ' . $code . ' with a window such as next Monday and Tuesday from 2 to 5, two exact times, or WAIT.'];
     }
 }
 
@@ -1780,6 +1774,115 @@ if (!function_exists('lead_agent_internal_handoff')) {
     }
 }
 
+if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
+    /**
+     * A failed/undelivered SMS cannot be repaired by another automated text.
+     * Pause automation and expose the lead through the authoritative Needs
+     * Attention state until a person verifies the number or chooses email.
+     */
+    function lead_agent_mark_sms_delivery_attention(
+        int $leadId,
+        string $status,
+        string $errorCode = '',
+        string $errorMessage = '',
+        array $context = []
+    ): array {
+        if ($leadId <= 0) {
+            return ['ok' => false, 'attention' => false, 'message' => 'Lead not found.'];
+        }
+
+        lead_agent_ensure_schema();
+        lead_comm_ensure_schema();
+        $lead = db_one('SELECT id, created_at FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'attention' => false, 'message' => 'Lead not found.'];
+        }
+
+        $status = strtolower(trim($status)) ?: 'failed';
+        $errorCode = trim($errorCode);
+        $errorMessage = trim($errorMessage);
+        $source = trim((string)($context['source'] ?? 'sms_delivery')) ?: 'sms_delivery';
+        $eventKey = trim((string)($context['event_key'] ?? ''));
+        if ($eventKey === '') {
+            $eventKey = 'sms-delivery-attention-' . $leadId . '-' . hash('sha256', $status . '|' . $errorCode . '|' . $errorMessage . '|' . $source);
+        }
+        $eventKey = substr(preg_replace('/[^a-zA-Z0-9_.:\-]/', '-', $eventKey) ?: '', 0, 190);
+
+        $statusLabel = $status === 'invalid_number' ? 'invalid phone number' : $status;
+        $reason = 'SMS delivery failed (' . $statusLabel
+            . ($errorCode !== '' ? ', ' . $errorCode : '')
+            . '). Verify or correct the phone number before SMS resumes.';
+        $reason = mb_substr($reason, 0, 190);
+        $startedAt = trim((string)($lead['created_at'] ?? ''));
+        if ($startedAt === '' || strtotime($startedAt) === false) {
+            $startedAt = now();
+        }
+
+        db_query(
+            "INSERT INTO lead_agent_states
+                (lead_id, status, cadence_step, started_at, next_action_at, last_action_at, last_decision,
+                 human_takeover, human_takeover_until, pause_reason, lock_token, locked_at, created_at, updated_at)
+             VALUES
+                (:lead_id, 'needs_attention', 0, :started_at, NULL, NULL, 'sms_delivery_failed_needs_attention',
+                 1, NULL, :pause_reason, '', NULL, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                status = 'needs_attention', human_takeover = 1, human_takeover_until = NULL,
+                next_action_at = NULL, last_decision = 'sms_delivery_failed_needs_attention',
+                pause_reason = VALUES(pause_reason), lock_token = '', locked_at = NULL, updated_at = NOW()",
+            [
+                'lead_id' => $leadId,
+                'started_at' => $startedAt,
+                'pause_reason' => $reason,
+            ]
+        );
+
+        if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+            $sets = ["follow_up_status = 'needs_attention'", 'updated_at = NOW()'];
+            if (leads_has_column('next_follow_up_at')) {
+                $sets[] = 'next_follow_up_at = NULL';
+            }
+            db_execute('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        }
+
+        $alreadyRecorded = false;
+        try {
+            $alreadyRecorded = (int)db_value(
+                "SELECT COUNT(*) FROM lead_activities
+                 WHERE lead_id = :lead_id AND type = 'sms_delivery_issue' AND meta_json LIKE :event_key",
+                [
+                    'lead_id' => $leadId,
+                    'event_key' => '%\"event_key\":\"' . $eventKey . '\"%',
+                ]
+            ) > 0;
+        } catch (Throwable $e) {
+            $alreadyRecorded = false;
+        }
+
+        if (!$alreadyRecorded) {
+            $activityBody = 'SMS delivery failed and needs attention: ' . $statusLabel
+                . ($errorCode !== '' ? ' (' . $errorCode . ')' : '')
+                . '. Verify the phone number or continue through email.';
+            lead_comm_insert_activity($leadId, 'sms_delivery_issue', $activityBody, [
+                'event_key' => $eventKey,
+                'status' => $status,
+                'error_code' => $errorCode,
+                'error_message' => mb_substr($errorMessage, 0, 500),
+                'source' => $source,
+                'twilio_sid' => substr(trim((string)($context['twilio_sid'] ?? '')), 0, 120),
+                'automatic_retry' => 'blocked_pending_human_review',
+                'resolution' => 'verify_phone_or_use_email',
+            ], 'Twilio');
+        }
+
+        return [
+            'ok' => true,
+            'attention' => true,
+            'reason' => $reason,
+            'event_key' => $eventKey,
+        ];
+    }
+}
+
 if (!function_exists('lead_agent_sms_send')) {
     function lead_agent_sms_send(array $lead, string $body, string $eventKey): array
     {
@@ -1796,7 +1899,17 @@ if (!function_exists('lead_agent_sms_send')) {
             'original_body' => $body,
         ]);
         if (empty($result['ok'])) {
-            return $result;
+            $attention = lead_agent_mark_sms_delivery_attention(
+                $leadId,
+                'failed',
+                (string)($result['twilio_code'] ?? ''),
+                (string)($result['message'] ?? 'Lead Agent SMS failed.'),
+                [
+                    'event_key' => $eventKey . '-sms-failed',
+                    'source' => 'lead_agent_sms',
+                ]
+            );
+            return $result + ['requires_attention' => !empty($attention['attention'])];
         }
         $sentBody = (string) ($result['body'] ?? $body);
         $messageId = lead_comm_insert_message([
@@ -1877,7 +1990,7 @@ if (!function_exists('lead_agent_approved_followup')) {
         $first = lead_agent_first_name($lead);
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
         $sms = [
-            1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else?',
+            1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else? If a call is easier, tell me a good time.',
             3 => $hello . ' no pressure at all. If you are still exploring your smile options, would a complimentary conversation with Dr. Meden be helpful?',
             5 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply whenever the timing feels right. Reply STOP to opt out.',
         ];
@@ -2391,9 +2504,9 @@ if (!function_exists('lead_agent_handle_inbound')) {
             $normalizedBody = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
             $handoffContext = [];
             $handoffReason = 'Inbound message requires human judgment.';
-            if (preg_match('/\b(call me|please call|can you call|give me a call)\b/i', $normalizedBody)) {
+            if (lead_call_consent_requested($normalizedBody)) {
                 $handoffContext['stage'] = 'call_requested';
-                $handoffReason = 'The lead explicitly requested a phone call.';
+                $handoffReason = 'The lead explicitly requested or accepted a phone call.';
             } elseif (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $normalizedBody)
                 && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $normalizedBody)) {
                 $handoffContext['stage'] = 'third_party_referral';
@@ -3019,6 +3132,9 @@ if (!function_exists('lead_agent_process_state')) {
         $send = $channel === 'email'
             ? lead_agent_email_send($lead, (string) $draft['subject'], (string) $draft['body'], $eventKey)
             : lead_agent_sms_send($lead, (string) $draft['body'], $eventKey);
+        $smsFailureNeedsAttention = $channel === 'sms'
+            && empty($send['ok'])
+            && !empty($send['requires_attention']);
         if (empty($send['ok'])) {
             db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
                 'reason' => substr((string) ($send['message'] ?? 'delivery_failed'), 0, 190), 'event_key' => $eventKey,
@@ -3054,6 +3170,20 @@ if (!function_exists('lead_agent_process_state')) {
                 lead_agent_internal_handoff($lead, 'needs_attention', 'Automated follow-up failed on every consented delivery channel.');
                 return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'delivery_failed_all_channels'];
             }
+        }
+
+        if ($smsFailureNeedsAttention) {
+            db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'provider_failover_needs_attention' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+            lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send + lead_agent_draft_conversion_meta($draft));
+            lead_agent_record_learning('cadence_followup', $channel, 'provider_failover_sent');
+            lead_agent_sync_crm_followup_schedule($leadId);
+            return [
+                'lead_id' => $leadId,
+                'action' => 'handoff',
+                'reason' => 'sms_delivery_failed_needs_attention',
+                'fallback_channel' => $channel,
+                'step' => $nextStep,
+            ] + lead_agent_draft_conversion_meta($draft);
         }
 
         $following = lead_agent_step_schedule((string) $state['started_at'], $nextStep + 1);
@@ -3398,10 +3528,11 @@ if (!function_exists('lead_agent_exception_rows')) {
             ORDER BY COALESCE(s.handoff_notified_at, s.updated_at) DESC LIMIT {$limit}");
         foreach ($rows as &$lead) {
             $reason = trim((string) ($lead['agent_attention_reason'] ?? '')) ?: 'Lead Agent cannot safely determine the next step.';
+            $isSmsDeliveryFailure = str_contains(strtolower($reason), 'sms delivery failed');
             $lead['_action_queue'] = [
                 'priority' => 100,
-                'action_key' => 'agent_exception',
-                'action_label' => 'Agent needs help',
+                'action_key' => $isSmsDeliveryFailure ? 'delivery_issue' : 'agent_exception',
+                'action_label' => $isSmsDeliveryFailure ? 'SMS delivery failed' : 'Agent needs help',
                 'action_tone' => 'rose',
                 'stage_key' => (string) ($lead['status'] ?? ''),
                 'stage_label' => 'Human review',

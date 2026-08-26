@@ -19,6 +19,14 @@ try {
 }
 $user = auth_user();
 
+if (get('format') === 'cycle_coverage_json') {
+    if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
+        json_response(['ok' => false, 'message' => 'Forbidden.'], 403);
+    }
+    header('Cache-Control: no-store');
+    json_response(lead_agent_cycle_coverage(2000, true));
+}
+
 if (is_post() && post('action') === 'logout') {
     require_csrf();
     auth_logout();

@@ -1176,7 +1176,7 @@ if (!function_exists('lead_ai_send_reply_if_safe')) {
         $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$data['reply'], [
             'lead_id' => $leadId,
             'lead' => $lead,
-            'send_pushover_fallback' => true,
+            'send_pushover_fallback' => false,
             'fallback_summary' => 'Twilio could not send the automatic SMS. Open lead actions to continue manually.',
             'original_body' => (string)$data['reply'],
         ]);
@@ -1311,7 +1311,7 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
         $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), $body, [
             'lead_id' => $leadId,
             'lead' => $lead,
-            'send_pushover_fallback' => true,
+            'send_pushover_fallback' => false,
             'fallback_summary' => 'Twilio could not send the automatic first-touch SMS. Open lead actions to retry manually.',
             'original_body' => $body,
         ]);

@@ -1471,7 +1471,7 @@ if (!function_exists('lead_agent_sms_blocked')) {
 if (!function_exists('lead_agent_email_blocked')) {
     function lead_agent_email_blocked(array $lead): bool
     {
-        return strtolower(trim((string) ($lead['email_opt_status'] ?? ''))) === 'unsubscribed'
+        return in_array(strtolower(trim((string) ($lead['email_opt_status'] ?? ''))), ['unsubscribed', 'opted_out'], true)
             || !filter_var(trim((string) ($lead['email'] ?? '')), FILTER_VALIDATE_EMAIL);
     }
 }
@@ -1627,6 +1627,326 @@ if (!function_exists('lead_agent_backfill_eligible')) {
             'dry_run' => $dryRun,
             'candidates' => $candidates,
         ];
+    }
+}
+
+if (!function_exists('lead_agent_cycle_state_from_row')) {
+    /** Extract the aliased agent-state fields returned by the coverage query. */
+    function lead_agent_cycle_state_from_row(array $row): array
+    {
+        return [
+            'id' => (int)($row['agent_state_id'] ?? 0),
+            'status' => trim((string)($row['agent_state_status'] ?? '')),
+            'cadence_step' => (int)($row['agent_cadence_step'] ?? 0),
+            'started_at' => trim((string)($row['agent_started_at'] ?? '')),
+            'next_action_at' => trim((string)($row['agent_next_action_at'] ?? '')),
+            'last_action_at' => trim((string)($row['agent_last_action_at'] ?? '')),
+            'last_decision' => trim((string)($row['agent_last_decision'] ?? '')),
+            'human_takeover' => (int)($row['agent_human_takeover'] ?? 0),
+            'scheduling_phase' => trim((string)($row['agent_scheduling_phase'] ?? '')),
+            'pause_reason' => trim((string)($row['agent_pause_reason'] ?? '')),
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_cycle_rows')) {
+    /** Exact, consent-aware source rows for the production cycle audit. */
+    function lead_agent_cycle_rows(int $limit = 1000): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(2000, $limit));
+        return db_all("SELECT l.*,
+                s.id AS agent_state_id,
+                s.status AS agent_state_status,
+                s.cadence_step AS agent_cadence_step,
+                s.started_at AS agent_started_at,
+                s.next_action_at AS agent_next_action_at,
+                s.last_action_at AS agent_last_action_at,
+                s.last_decision AS agent_last_decision,
+                s.human_takeover AS agent_human_takeover,
+                s.scheduling_phase AS agent_scheduling_phase,
+                s.pause_reason AS agent_pause_reason
+            FROM leads l
+            LEFT JOIN lead_agent_states s ON s.lead_id = l.id
+            ORDER BY l.id ASC
+            LIMIT {$limit}");
+    }
+}
+
+if (!function_exists('lead_agent_cycle_assessment')) {
+    /**
+     * Pure coverage classification. It deliberately separates automation gaps,
+     * human replies, protected stages, and unreachable records.
+     */
+    function lead_agent_cycle_assessment(
+        array $lead,
+        array $state = [],
+        bool $recentSmsDeliveryIssue = false,
+        string $closureReason = ''
+    ): array {
+        $status = trim((string)($lead['status'] ?? ''));
+        $stateStatus = trim((string)($state['status'] ?? ''));
+        $lastDecision = trim((string)($state['last_decision'] ?? ''));
+        $deliveryOnlyState = $lastDecision === 'sms_delivery_failed_needs_attention';
+        $base = [
+            'eligible' => false,
+            'covered' => false,
+            'category' => 'protected',
+            'reason' => '',
+            'channel' => '',
+        ];
+
+        if (lead_agent_internal_or_test_record($lead)) {
+            return array_merge($base, ['reason' => 'internal_or_test_record']);
+        }
+        if (!in_array($status, ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer'], true)) {
+            return array_merge($base, ['reason' => 'protected_lifecycle_stage']);
+        }
+        if (trim((string)($lead['consultation_date'] ?? '')) !== ''
+            || in_array(strtolower(trim((string)($lead['consultation_status'] ?? ''))), ['scheduling', 'scheduled', 'booked', 'confirmed', 'completed'], true)) {
+            return array_merge($base, ['reason' => 'scheduling_or_consultation']);
+        }
+        if ($closureReason !== '') {
+            return array_merge($base, ['reason' => 'conversation_closed']);
+        }
+
+        $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+        $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
+        if ($lastInbound !== '' && strtotime($lastInbound) !== false
+            && ($lastOutbound === '' || strtotime($lastOutbound) === false || strtotime($lastInbound) >= strtotime($lastOutbound))) {
+            return array_merge($base, ['category' => 'human_action', 'reason' => 'newer_inbound_requires_reply']);
+        }
+        if ($lastOutbound === '' || strtotime($lastOutbound) === false) {
+            return array_merge($base, ['category' => 'first_touch_pending', 'reason' => 'first_touch_not_recorded']);
+        }
+
+        $smsAvailable = !lead_agent_sms_blocked($lead) && !$recentSmsDeliveryIssue;
+        $emailAvailable = !lead_agent_email_blocked($lead);
+        if (!$smsAvailable && !$emailAvailable) {
+            return array_merge($base, ['category' => 'unreachable', 'reason' => 'no_consented_delivery_channel']);
+        }
+        $channel = $smsAvailable && $emailAvailable ? 'sms+email' : ($smsAvailable ? 'sms' : 'email');
+
+        if (!$deliveryOnlyState && (!empty($state['human_takeover'])
+            || in_array($stateStatus, ['human_takeover', 'ready_to_schedule', 'needs_attention', 'paused', 'opted_out'], true)
+            || trim((string)($state['scheduling_phase'] ?? '')) !== ''
+            || in_array(trim((string)($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true))) {
+            return array_merge($base, ['category' => 'human_action', 'reason' => 'human_owned_or_attention', 'channel' => $channel]);
+        }
+
+        $covered = in_array($stateStatus, ['active', 'engaged', 'nurture'], true)
+            && empty($state['human_takeover'])
+            && trim((string)($state['next_action_at'] ?? '')) !== '';
+        return [
+            'eligible' => true,
+            'covered' => $covered,
+            'category' => $covered ? 'covered' : 'gap',
+            'reason' => $covered ? 'scheduled_in_cycle' : ($deliveryOnlyState ? 'delivery_route_stalled' : 'missing_cycle_schedule'),
+            'channel' => $channel,
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_cycle_coverage')) {
+    /** Authenticated operations audit; no message bodies are returned. */
+    function lead_agent_cycle_coverage(int $limit = 1000, bool $includeRows = true): array
+    {
+        $rows = lead_agent_cycle_rows($limit);
+        $summary = [
+            'total' => count($rows),
+            'eligible' => 0,
+            'covered' => 0,
+            'gaps' => 0,
+            'human_action' => 0,
+            'first_touch_pending' => 0,
+            'unreachable' => 0,
+            'protected' => 0,
+        ];
+        $byReason = [];
+        $byStage = [];
+        $details = [];
+
+        foreach ($rows as $lead) {
+            $leadId = (int)($lead['id'] ?? 0);
+            $state = lead_agent_cycle_state_from_row($lead);
+            $smsIssue = $leadId > 0 && lead_agent_recent_sms_delivery_issue($leadId);
+            $closureReason = $leadId > 0 ? lead_agent_latest_inbound_closure_reason($leadId) : '';
+            $assessment = lead_agent_cycle_assessment($lead, $state, $smsIssue, $closureReason);
+            $category = (string)($assessment['category'] ?? 'protected');
+            $reason = (string)($assessment['reason'] ?? 'unknown');
+            $stage = trim((string)($lead['status'] ?? '')) ?: 'unknown';
+            $summaryKey = $category === 'gap' ? 'gaps' : $category;
+            $summary[$summaryKey] = (int)($summary[$summaryKey] ?? 0) + 1;
+            if (!empty($assessment['eligible'])) {
+                $summary['eligible']++;
+            }
+            $byReason[$reason] = (int)($byReason[$reason] ?? 0) + 1;
+            $byStage[$stage] = (int)($byStage[$stage] ?? 0) + 1;
+            if ($includeRows && in_array($category, ['gap', 'human_action', 'first_touch_pending', 'unreachable'], true)) {
+                $details[] = [
+                    'lead_id' => $leadId,
+                    'full_name' => trim((string)($lead['full_name'] ?? '')),
+                    'stage' => $stage,
+                    'category' => $category,
+                    'reason' => $reason,
+                    'channel' => (string)($assessment['channel'] ?? ''),
+                    'agent_status' => (string)($state['status'] ?? ''),
+                    'cadence_step' => (int)($state['cadence_step'] ?? 0),
+                    'next_action_at' => (string)($state['next_action_at'] ?? ''),
+                    'last_outbound_at' => trim((string)($lead['last_outbound_at'] ?? '')),
+                    'last_inbound_at' => trim((string)($lead['last_inbound_at'] ?? '')),
+                ];
+            }
+        }
+        ksort($byReason);
+        ksort($byStage);
+        return [
+            'ok' => true,
+            'generated_at' => now(),
+            'summary' => $summary,
+            'repairs_24h' => [
+                'cycle_enrolled' => (int)db_value("SELECT COUNT(*) FROM lead_agent_events WHERE event_type = 'cycle_enrolled' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)"),
+                'unreachable_closed' => (int)db_value("SELECT COUNT(*) FROM lead_agent_events WHERE event_type = 'cycle_closed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)"),
+            ],
+            'by_reason' => $byReason,
+            'by_stage' => $byStage,
+            'rows' => $details,
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_legacy_nurture_schedule')) {
+    /** Deterministically spread old Nurture contacts across the next month. */
+    function lead_agent_legacy_nurture_schedule(int $leadId, bool $alreadyDue = false, ?DateTimeImmutable $now = null): string
+    {
+        $now = $now ?? new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $days = $alreadyDue ? 1 + ($leadId % 3) : 1 + ($leadId % 30);
+        $hour = 9 + ($leadId % 8);
+        $minute = ($leadId * 7) % 60;
+        return $now->modify('+' . $days . ' days')->setTime($hour, $minute)->format('Y-m-d H:i:s');
+    }
+}
+
+if (!function_exists('lead_agent_repair_cycle_coverage')) {
+    /**
+     * Enroll uncovered active/Nurture leads without sending immediately.
+     * Explicit replies, scheduling, consent blocks, and human-owned threads
+     * are never changed. Delivery-only failures continue by email when possible.
+     */
+    function lead_agent_repair_cycle_coverage(int $limit = 500, bool $dryRun = false): array
+    {
+        $rows = lead_agent_cycle_rows($limit);
+        $result = [
+            'evaluated' => count($rows),
+            'dry_run' => $dryRun,
+            'enrolled_active' => 0,
+            'enrolled_nurture' => 0,
+            'delivery_routed_to_email' => 0,
+            'unreachable_moved_to_nurture' => 0,
+            'candidates' => [],
+        ];
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+
+        foreach ($rows as $lead) {
+            $leadId = (int)($lead['id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $state = lead_agent_cycle_state_from_row($lead);
+            $smsIssue = lead_agent_recent_sms_delivery_issue($leadId);
+            $closureReason = lead_agent_latest_inbound_closure_reason($leadId);
+            $assessment = lead_agent_cycle_assessment($lead, $state, $smsIssue, $closureReason);
+            $deliveryOnlyState = (string)($state['last_decision'] ?? '') === 'sms_delivery_failed_needs_attention';
+
+            if ((string)($assessment['category'] ?? '') === 'unreachable' && $deliveryOnlyState) {
+                $result['unreachable_moved_to_nurture']++;
+                $result['candidates'][] = ['lead_id' => $leadId, 'action' => 'pause_unreachable', 'channel' => ''];
+                if ($dryRun) {
+                    continue;
+                }
+                db_execute("UPDATE lead_agent_states SET status = 'paused', human_takeover = 0,
+                        human_takeover_until = NULL, next_action_at = NULL,
+                        last_decision = 'unreachable_no_delivery_channel',
+                        pause_reason = 'No consented, deliverable SMS or email channel remains.',
+                        lock_token = '', locked_at = NULL, updated_at = NOW()
+                    WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+                lead_lifecycle_transition_status(
+                    $leadId,
+                    'no_answer',
+                    'No deliverable contact channel remains; lead moved to Nurture without another send.',
+                    'lead_agent_cycle_repair',
+                    ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
+                );
+                db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                lead_agent_event($leadId, 'cycle-unreachable-' . $leadId, 'cycle_closed', '', 'recorded', 'no_consented_delivery_channel');
+                continue;
+            }
+
+            if ((string)($assessment['category'] ?? '') !== 'gap') {
+                continue;
+            }
+            $isNurture = trim((string)($lead['status'] ?? '')) === 'no_answer';
+            $startedAt = trim((string)($state['started_at'] ?? ''));
+            if ($startedAt === '' || strtotime($startedAt) === false) {
+                $startedAt = trim((string)($lead['last_outbound_at'] ?? ''));
+            }
+            if ($startedAt === '' || strtotime($startedAt) === false) {
+                $startedAt = now();
+            }
+            $alreadyDue = trim((string)($lead['follow_up_status'] ?? '')) === 'needs_follow_up';
+            $nextActionAt = $isNurture
+                ? lead_agent_legacy_nurture_schedule($leadId, $alreadyDue, $now)
+                : lead_agent_align_contact_time($now->modify('+5 minutes'))->format('Y-m-d H:i:s');
+            $agentStatus = $isNurture ? 'nurture' : 'active';
+            $cadenceStep = $isNurture ? max(5, (int)($state['cadence_step'] ?? 0)) : max(0, (int)($state['cadence_step'] ?? 0));
+            $decision = $isNurture ? 'legacy_nurture_cycle_enrolled' : 'active_cycle_coverage_repaired';
+            $result[$isNurture ? 'enrolled_nurture' : 'enrolled_active']++;
+            if ($deliveryOnlyState && (string)($assessment['channel'] ?? '') === 'email') {
+                $result['delivery_routed_to_email']++;
+                $decision = 'sms_unreachable_email_cycle_resumed';
+            }
+            $result['candidates'][] = [
+                'lead_id' => $leadId,
+                'action' => $agentStatus,
+                'channel' => (string)($assessment['channel'] ?? ''),
+                'next_action_at' => $nextActionAt,
+            ];
+            if ($dryRun) {
+                continue;
+            }
+
+            db_query("INSERT INTO lead_agent_states
+                    (lead_id, status, cadence_step, started_at, next_action_at, last_action_at,
+                     last_decision, human_takeover, human_takeover_until, pause_reason,
+                     lock_token, locked_at, created_at, updated_at)
+                VALUES
+                    (:lead_id, :status, :cadence_step, :started_at, :next_action_at, :last_action_at,
+                     :last_decision, 0, NULL, '', '', NULL, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    status = VALUES(status), cadence_step = VALUES(cadence_step),
+                    next_action_at = VALUES(next_action_at),
+                    human_takeover = 0, human_takeover_until = NULL,
+                    pause_reason = '', last_decision = VALUES(last_decision),
+                    lock_token = '', locked_at = NULL, updated_at = NOW()", [
+                'lead_id' => $leadId,
+                'status' => $agentStatus,
+                'cadence_step' => $cadenceStep,
+                'started_at' => $startedAt,
+                'next_action_at' => $nextActionAt,
+                'last_action_at' => trim((string)($state['last_action_at'] ?? '')) ?: $startedAt,
+                'last_decision' => $decision,
+            ]);
+            db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = :next_action_at, updated_at = NOW() WHERE id = :id LIMIT 1", [
+                'next_action_at' => $nextActionAt,
+                'id' => $leadId,
+            ]);
+            lead_agent_event($leadId, 'cycle-enrolled-' . $leadId, 'cycle_enrolled', (string)($assessment['channel'] ?? ''), 'recorded', $decision, [
+                'next_action_at' => $nextActionAt,
+                'cadence_step' => $cadenceStep,
+            ]);
+        }
+
+        return $result;
     }
 }
 
@@ -1988,8 +2308,9 @@ if (!function_exists('lead_agent_internal_handoff')) {
 if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
     /**
      * A failed/undelivered SMS cannot be repaired by another automated text.
-     * Pause automation and expose the lead through the authoritative Needs
-     * Attention state until a person verifies the number or chooses email.
+     * Keep the failure in the audit trail, route the cycle to email when one is
+     * consented, and quietly park unreachable leads in Nurture. Provider
+     * failures are not operator work and must not create a red halo.
      */
     function lead_agent_mark_sms_delivery_attention(
         int $leadId,
@@ -2004,7 +2325,7 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
 
         lead_agent_ensure_schema();
         lead_comm_ensure_schema();
-        $lead = db_one('SELECT id, created_at FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
         if (!$lead) {
             return ['ok' => false, 'attention' => false, 'message' => 'Lead not found.'];
         }
@@ -2022,37 +2343,90 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
         $statusLabel = $status === 'invalid_number' ? 'invalid phone number' : $status;
         $reason = 'SMS delivery failed (' . $statusLabel
             . ($errorCode !== '' ? ', ' . $errorCode : '')
-            . '). Verify or correct the phone number before SMS resumes.';
+            . '). Automatic SMS retry is blocked.';
         $reason = mb_substr($reason, 0, 190);
         $startedAt = trim((string)($lead['created_at'] ?? ''));
         if ($startedAt === '' || strtotime($startedAt) === false) {
             $startedAt = now();
         }
+        $emailAvailable = !lead_agent_email_blocked($lead);
+        $existing = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]) ?: [];
+        $existingStatus = trim((string)($existing['status'] ?? ''));
+        $leadStatus = trim((string)($lead['status'] ?? ''));
+        $lastInboundAt = trim((string)($lead['last_inbound_at'] ?? ''));
+        $lastOutboundAt = trim((string)($lead['last_outbound_at'] ?? ''));
+        $newerInbound = $lastInboundAt !== '' && strtotime($lastInboundAt) !== false
+            && ($lastOutboundAt === '' || strtotime($lastOutboundAt) === false || strtotime($lastInboundAt) >= strtotime($lastOutboundAt));
+        $protectedLeadStage = in_array($leadStatus, ['opted_out', 'lost_lead', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed'], true)
+            || trim((string)($lead['consultation_date'] ?? '')) !== ''
+            || in_array(strtolower(trim((string)($lead['consultation_status'] ?? ''))), ['scheduling', 'scheduled', 'booked', 'confirmed', 'completed'], true);
+        $preserveHumanState = (string)($existing['last_decision'] ?? '') !== 'sms_delivery_failed_needs_attention'
+            && ($newerInbound
+                || $protectedLeadStage
+                || !empty($existing['human_takeover'])
+                || in_array($existingStatus, ['human_takeover', 'ready_to_schedule', 'needs_attention', 'paused', 'opted_out'], true)
+                || trim((string)($existing['scheduling_phase'] ?? '')) !== '');
+        $cycleStatus = $existingStatus === 'nurture' || $leadStatus === 'no_answer'
+            ? 'nurture'
+            : 'active';
+        $cadenceStep = $cycleStatus === 'nurture'
+            ? max(5, (int)($existing['cadence_step'] ?? 0))
+            : max(0, (int)($existing['cadence_step'] ?? 0));
+        $nextActionAt = trim((string)($existing['next_action_at'] ?? ''));
+        if ($emailAvailable && ($nextActionAt === '' || strtotime($nextActionAt) === false)) {
+            $nextActionAt = $cycleStatus === 'nurture'
+                ? lead_agent_legacy_nurture_schedule($leadId)
+                : lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+30 minutes'))->format('Y-m-d H:i:s');
+        }
+        $decision = $emailAvailable ? 'sms_unreachable_email_cycle_resumed' : 'unreachable_no_delivery_channel';
+        $pauseReason = $emailAvailable
+            ? $reason . ' The Lead Agent will continue through email.'
+            : $reason . ' No consented email channel remains.';
 
-        db_query(
+        if (!$preserveHumanState) {
+            db_query(
             "INSERT INTO lead_agent_states
                 (lead_id, status, cadence_step, started_at, next_action_at, last_action_at, last_decision,
                  human_takeover, human_takeover_until, pause_reason, lock_token, locked_at, created_at, updated_at)
              VALUES
-                (:lead_id, 'needs_attention', 0, :started_at, NULL, NULL, 'sms_delivery_failed_needs_attention',
-                 1, NULL, :pause_reason, '', NULL, NOW(), NOW())
+                (:lead_id, :status, :cadence_step, :started_at, :next_action_at, NULL, :last_decision,
+                 0, NULL, :pause_reason, '', NULL, NOW(), NOW())
              ON DUPLICATE KEY UPDATE
-                status = 'needs_attention', human_takeover = 1, human_takeover_until = NULL,
-                next_action_at = NULL, last_decision = 'sms_delivery_failed_needs_attention',
+                status = VALUES(status), cadence_step = VALUES(cadence_step),
+                human_takeover = 0, human_takeover_until = NULL,
+                next_action_at = VALUES(next_action_at), last_decision = VALUES(last_decision),
                 pause_reason = VALUES(pause_reason), lock_token = '', locked_at = NULL, updated_at = NOW()",
             [
                 'lead_id' => $leadId,
+                'status' => $emailAvailable ? $cycleStatus : 'paused',
+                'cadence_step' => $cadenceStep,
                 'started_at' => $startedAt,
-                'pause_reason' => $reason,
+                'next_action_at' => $emailAvailable ? $nextActionAt : null,
+                'last_decision' => $decision,
+                'pause_reason' => mb_substr($pauseReason, 0, 190),
             ]
-        );
+            );
 
-        if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
-            $sets = ["follow_up_status = 'needs_attention'", 'updated_at = NOW()'];
-            if (leads_has_column('next_follow_up_at')) {
-                $sets[] = 'next_follow_up_at = NULL';
+            if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
+                $sets = ["follow_up_status = 'ok'", 'updated_at = NOW()'];
+                if (leads_has_column('next_follow_up_at')) {
+                    $sets[] = $emailAvailable ? 'next_follow_up_at = :next_follow_up_at' : 'next_follow_up_at = NULL';
+                }
+                $leadParams = ['id' => $leadId];
+                if ($emailAvailable && leads_has_column('next_follow_up_at')) {
+                    $leadParams['next_follow_up_at'] = $nextActionAt;
+                }
+                db_execute('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', $leadParams);
             }
-            db_execute('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', ['id' => $leadId]);
+            if (!$emailAvailable) {
+                lead_lifecycle_transition_status(
+                    $leadId,
+                    'no_answer',
+                    'No deliverable contact channel remains; lead moved to Nurture without another send.',
+                    'sms_delivery_failure',
+                    ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
+                );
+            }
         }
 
         $alreadyRecorded = false;
@@ -2070,9 +2444,13 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
         }
 
         if (!$alreadyRecorded) {
-            $activityBody = 'SMS delivery failed and needs attention: ' . $statusLabel
+            $activityBody = 'SMS delivery failed: ' . $statusLabel
                 . ($errorCode !== '' ? ' (' . $errorCode . ')' : '')
-                . '. Verify the phone number or continue through email.';
+                . ($preserveHumanState
+                    ? '. The existing human-owned conversation state was preserved.'
+                    : ($emailAvailable
+                    ? '. Automatic SMS retry is blocked; the Lead Agent will continue through email.'
+                    : '. No deliverable channel remains; the lead was moved to Nurture without another send.'));
             lead_comm_insert_activity($leadId, 'sms_delivery_issue', $activityBody, [
                 'event_key' => $eventKey,
                 'status' => $status,
@@ -2080,16 +2458,17 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
                 'error_message' => mb_substr($errorMessage, 0, 500),
                 'source' => $source,
                 'twilio_sid' => substr(trim((string)($context['twilio_sid'] ?? '')), 0, 120),
-                'automatic_retry' => 'blocked_pending_human_review',
-                'resolution' => 'verify_phone_or_use_email',
+                'automatic_retry' => 'sms_blocked',
+                'resolution' => $preserveHumanState ? 'preserve_human_owned_state' : ($emailAvailable ? 'continue_by_email' : 'nurture_unreachable'),
             ], 'Twilio');
         }
 
         return [
             'ok' => true,
-            'attention' => true,
+            'attention' => false,
             'reason' => $reason,
             'event_key' => $eventKey,
+            'route' => $preserveHumanState ? 'human_owned_audit_only' : ($emailAvailable ? 'email' : 'nurture_unreachable'),
         ];
     }
 }
@@ -2105,7 +2484,7 @@ if (!function_exists('lead_agent_sms_send')) {
         $result = elite_twilio_send_sms((string) ($lead['phone'] ?? ''), $body, [
             'lead_id' => $leadId,
             'lead' => $lead,
-            'send_pushover_fallback' => true,
+            'send_pushover_fallback' => false,
             'fallback_summary' => 'Lead Agent SMS could not be delivered. Open the CRM to review.',
             'original_body' => $body,
         ]);
@@ -3207,7 +3586,9 @@ if (!function_exists('lead_agent_guardrail_reason')) {
             return 'consultation_date_present';
         }
         if (lead_agent_sms_blocked($lead) && lead_agent_email_blocked($lead)) {
-            return 'all_channels_opted_out';
+            $smsExplicitlyBlocked = in_array(strtolower(trim((string)($lead['sms_opt_status'] ?? ''))), ['dnd', 'opted_out'], true);
+            $emailExplicitlyBlocked = in_array(strtolower(trim((string)($lead['email_opt_status'] ?? ''))), ['unsubscribed', 'opted_out'], true);
+            return $smsExplicitlyBlocked && $emailExplicitlyBlocked ? 'all_channels_opted_out' : 'no_delivery_channel';
         }
         $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
         $hour = (int) $now->format('G');
@@ -3288,7 +3669,18 @@ if (!function_exists('lead_agent_process_state')) {
         if ($reason !== '') {
             $decisionType = 'deferred';
             $nextActionAt = null;
-            if (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'conversation_closed', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
+            if ($reason === 'no_delivery_channel') {
+                lead_agent_pause($leadId, $reason, 'paused');
+                lead_lifecycle_transition_status(
+                    $leadId,
+                    'no_answer',
+                    'No deliverable contact channel remains; lead moved to Nurture without another send.',
+                    'lead_agent_guardrail',
+                    ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
+                );
+                db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                $decisionType = 'paused';
+            } elseif (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'conversation_closed', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
                 $decisionType = 'paused';
             } else {
@@ -3302,16 +3694,28 @@ if (!function_exists('lead_agent_process_state')) {
             return ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => $reason];
         }
 
+        $smsUnavailable = lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue($leadId);
+        $emailUnavailable = lead_agent_email_blocked($lead);
+        if ($smsUnavailable && $emailUnavailable) {
+            lead_agent_pause($leadId, 'no_delivery_channel', 'paused');
+            lead_lifecycle_transition_status(
+                $leadId,
+                'no_answer',
+                'No deliverable contact channel remains; lead moved to Nurture without another send.',
+                'lead_agent_delivery_route',
+                ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
+            );
+            db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+            lead_agent_event($leadId, 'cycle-unreachable-' . $leadId, 'cycle_closed', '', 'recorded', 'no_consented_delivery_channel');
+            return ['lead_id' => $leadId, 'action' => 'paused', 'reason' => 'no_delivery_channel'];
+        }
+
         $channel = (string) $schedule['channel'];
-        if ($channel === 'sms' && (lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue($leadId))) {
+        if ($channel === 'sms' && $smsUnavailable) {
             $channel = 'email';
         }
-        if ($channel === 'email' && lead_agent_email_blocked($lead)) {
+        if ($channel === 'email' && $emailUnavailable) {
             $channel = 'sms';
-        }
-        if (($channel === 'sms' && lead_agent_sms_blocked($lead)) || ($channel === 'email' && lead_agent_email_blocked($lead))) {
-            lead_agent_internal_handoff($lead, 'needs_attention', 'No consented, deliverable contact channel remains.');
-            return ['lead_id' => $leadId, 'action' => 'handoff', 'reason' => 'no_delivery_channel'];
         }
 
         $eventKey = 'cadence-' . $leadId . '-' . $nextStep;
@@ -3449,6 +3853,7 @@ if (!function_exists('lead_agent_run_due')) {
         $run = lead_agent_run_start($dryRun);
         $lifecycle = [];
         $backfill = [];
+        $coverageRepair = [];
         $repairedCatchup = 0;
         $repairedFirstDay = 0;
         $repairedSlowSprint = 0;
@@ -3460,6 +3865,7 @@ if (!function_exists('lead_agent_run_due')) {
         try {
             $lifecycle = lead_agent_reconcile_lifecycle(500, $dryRun);
             $backfill = lead_agent_backfill_eligible(200, $dryRun);
+            $coverageRepair = lead_agent_repair_cycle_coverage(500, $dryRun);
             $schedulingRepair = lead_agent_repair_scheduling_queue(200, $dryRun);
             $conversionMemoriesRefreshed = $dryRun ? 0 : lead_conversion_refresh_active_memories(40);
             $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
@@ -3513,7 +3919,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'coverage_repair' => $coverageRepair, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

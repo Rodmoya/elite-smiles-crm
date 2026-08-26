@@ -116,16 +116,19 @@ expect_true(str_contains($pushSource, 'scheduling follow-up needed for'), 'Sched
 $aiSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_ai.php');
 expect_true(!str_contains($aiSource, 'ask for the preferred day and DOB'), 'The AI prompt must not collect DOB before a patient selects a confirmed slot.');
 expect_true(str_contains($aiSource, 'Call-channel boundary'), 'AI drafting must carry the explicit call-consent boundary.');
-expect_true(str_contains($agentSource, 'sms_delivery_failed_needs_attention'), 'A failed SMS must persist the authoritative Needs Attention state.');
+expect_true(str_contains($agentSource, 'sms_unreachable_email_cycle_resumed'), 'A failed SMS with consented email must resume through email.');
+expect_true(str_contains($agentSource, 'unreachable_no_delivery_channel'), 'A lead with no deliverable channel must be parked without another send.');
 $statusCallbackSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_status.php');
-expect_true(str_contains($statusCallbackSource, 'lead_agent_mark_sms_delivery_attention'), 'Twilio failed and undelivered callbacks must mark the lead Needs Attention.');
+expect_true(str_contains($statusCallbackSource, 'lead_agent_mark_sms_delivery_attention'), 'Twilio failed and undelivered callbacks must enter the centralized delivery router.');
 $leadServiceSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_service.php');
 expect_true(!str_contains($leadServiceSource, 'Automatically moved new lead from New Lead to Contacted'), 'Successful first touch must no longer empty the New Lead stage.');
 expect_true(str_contains($webhookSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'twilio_sms_webhook')"), 'Inbound SMS must reopen New Lead or Nurture through the central lifecycle transition.');
 $emailSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_email.php');
 expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'lead_email_inbound')"), 'Inbound email must reopen New Lead or Nurture through the central lifecycle transition.');
 expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dryRun)'), 'Every Lead Agent run must perform the dry-run capable lifecycle reconciliation.');
+expect_true(str_contains($agentSource, 'lead_agent_repair_cycle_coverage(500, $dryRun)'), 'Every Lead Agent run must repair uncovered active and Nurture cycle records.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
+expect_true(!str_contains($agentSource, "'send_pushover_fallback' => true"), 'Automated Lead Agent SMS failure must not create a Pushover interruption.');
 expect_true(!lead_attention_is_actionable(['_action_queue' => ['action_key' => 'delivery_issue']]), 'A non-actionable SMS delivery failure must not create a red human-attention halo.');
 expect_true(lead_attention_is_actionable(['_action_queue' => ['action_key' => 'reply_needed']]), 'A patient reply that needs an answer must remain in the human-attention queue.');
 
@@ -156,6 +159,32 @@ expect_true(lead_agent_backfill_ineligible_reason(array_merge($invalidPhoneBackf
 $noChannelBackfill = $emailOnlyBackfill;
 $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
+
+$legacyNurture = array_merge($eligibleBackfill, ['status' => 'no_answer']);
+$nurtureGap = lead_agent_cycle_assessment($legacyNurture, [], false, '');
+expect_true((string)($nurtureGap['category'] ?? '') === 'gap' && empty($nurtureGap['covered']), 'A contactable legacy Nurture lead without agent state must be detected as a cycle gap.');
+$nurtureCovered = lead_agent_cycle_assessment($legacyNurture, [
+    'status' => 'nurture',
+    'human_takeover' => 0,
+    'next_action_at' => '2026-09-05 10:00:00',
+], false, '');
+expect_true((string)($nurtureCovered['category'] ?? '') === 'covered' && !empty($nurtureCovered['covered']), 'A scheduled Nurture state must count as covered.');
+$deliveryEmailRoute = lead_agent_cycle_assessment($legacyNurture, [
+    'status' => 'needs_attention',
+    'human_takeover' => 1,
+    'last_decision' => 'sms_delivery_failed_needs_attention',
+], true, '');
+expect_true((string)($deliveryEmailRoute['category'] ?? '') === 'gap' && (string)($deliveryEmailRoute['channel'] ?? '') === 'email', 'A delivery-only stall with consented email must become an email-cycle repair, not human work.');
+$replyAssessment = lead_agent_cycle_assessment(array_merge($eligibleBackfill, [
+    'last_inbound_at' => '2026-08-05 10:01:00',
+]), [], false, '');
+expect_true((string)($replyAssessment['category'] ?? '') === 'human_action', 'A newer patient reply must stay out of automated cycle repair.');
+$unreachableAssessment = lead_agent_cycle_assessment(array_merge($invalidPhoneBackfill, [
+    'email_opt_status' => 'unsubscribed',
+]), [], true, '');
+expect_true((string)($unreachableAssessment['category'] ?? '') === 'unreachable', 'A lead without a deliverable SMS or email route must be classified as unreachable.');
+$scheduledNurtureAt = lead_agent_legacy_nurture_schedule(37, false, new DateTimeImmutable('2026-08-26 12:00:00', new DateTimeZone(APP_TIMEZONE)));
+expect_true($scheduledNurtureAt === '2026-09-03 14:19:00', 'Legacy Nurture reactivation must be deterministically staggered instead of sent as a batch.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_to_schedule']) === 'conversation_owned_or_paused', 'Follow-up must stay silent after a scheduling handoff.');
 expect_true(lead_agent_recovered_scheduling_handoff_is_active([
     'agent_status' => 'ready_to_schedule',

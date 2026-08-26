@@ -34,6 +34,31 @@ try {
     $expectedFirstDayAt = (string) (lead_agent_step_schedule((string) ($enrolledState['started_at'] ?? ''), 1)['at'] ?? '');
     integration_expect((string) ($enrollment['next_action_at'] ?? '') === $expectedFirstDayAt, 'Enrollment must use the guarded 30-minute first-day schedule.');
 
+    db_execute("UPDATE lead_agent_states SET status = 'needs_attention', human_takeover = 1,
+        next_action_at = NULL, last_decision = 'sms_delivery_failed_needs_attention'
+        WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+    $deliveryRoute = lead_agent_mark_sms_delivery_attention($leadId, 'undelivered', '30003', 'Synthetic unreachable handset.', [
+        'event_key' => 'integration-delivery-route-' . $leadId,
+        'source' => 'integration_test',
+    ]);
+    $routedState = db_one('SELECT status, human_takeover, next_action_at, last_decision FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+    integration_expect(empty($deliveryRoute['attention']) && (string)($deliveryRoute['route'] ?? '') === 'email', 'A failed SMS with consented email must route without creating human attention.');
+    integration_expect((string)($routedState['status'] ?? '') === 'active' && empty($routedState['human_takeover']) && !empty($routedState['next_action_at']), 'The email fallback cycle must remain active and scheduled.');
+
+    $unreachableLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Coverage Fixture', '80155512', 'coverage@example.invalid', 'contacted', 'unknown', 'unsubscribed', NOW(), NOW())"
+    );
+    $unreachableRoute = lead_agent_mark_sms_delivery_attention($unreachableLeadId, 'invalid_number', 'LOCAL_INVALID_PHONE', 'Synthetic invalid number.', [
+        'event_key' => 'integration-unreachable-route-' . $unreachableLeadId,
+        'source' => 'integration_test',
+    ]);
+    $unreachableLead = db_one('SELECT status, follow_up_status, next_follow_up_at FROM leads WHERE id = :id LIMIT 1', ['id' => $unreachableLeadId]);
+    $unreachableState = db_one('SELECT status, human_takeover, next_action_at, last_decision FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $unreachableLeadId]);
+    integration_expect((string)($unreachableRoute['route'] ?? '') === 'nurture_unreachable', 'A lead without any deliverable channel must enter unreachable Nurture.');
+    integration_expect((string)($unreachableLead['status'] ?? '') === 'no_answer' && empty($unreachableLead['next_follow_up_at']), 'Unreachable leads must leave the active pipeline without scheduling another send.');
+    integration_expect((string)($unreachableState['status'] ?? '') === 'paused' && empty($unreachableState['human_takeover']) && empty($unreachableState['next_action_at']), 'Unreachable state must be parked without a human-attention halo.');
+
     db_execute("UPDATE lead_agent_states SET next_action_at = DATE_ADD(started_at, INTERVAL 48 HOUR) WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
     integration_expect(lead_agent_repair_first_day_schedule(20) === 1, 'Existing first-day leads on the old 48-hour schedule must be accelerated once.');
     $repairedState = db_one('SELECT started_at, next_action_at FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);

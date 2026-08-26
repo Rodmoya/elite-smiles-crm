@@ -1638,7 +1638,7 @@ if (!function_exists('lead_agent_internal_handoff')) {
             if (function_exists('mobile_ai_send_lead_event_push')) {
                 $push = mobile_ai_send_lead_event_push($lead, [
                     'lead_id' => $leadId,
-                    'type' => 'reply',
+                    'type' => 'handoff',
                     'message' => $operatorMessage,
                     'notification_id' => 'lead-agent-' . $status . '-' . $leadId . '-' . time(),
                 ]);
@@ -2559,6 +2559,16 @@ if (!function_exists('lead_agent_historical_referral_contact')) {
     }
 }
 
+if (!function_exists('lead_agent_recovered_scheduling_handoff_is_active')) {
+    /** A recovered scheduling handoff is a state transition, not a recurring reminder. */
+    function lead_agent_recovered_scheduling_handoff_is_active(array $lead): bool
+    {
+        return trim((string) ($lead['agent_status'] ?? '')) === 'ready_to_schedule'
+            && trim((string) ($lead['scheduling_phase'] ?? '')) === 'awaiting_availability'
+            && !empty($lead['human_takeover']);
+    }
+}
+
 if (!function_exists('lead_agent_repair_scheduling_queue')) {
     /** Reconcile the Scheduling pipeline with durable conversation state. */
     function lead_agent_repair_scheduling_queue(int $limit = 200, bool $dryRun = false): array
@@ -2614,12 +2624,19 @@ if (!function_exists('lead_agent_repair_scheduling_queue')) {
                 && in_array($phase, ['', 'awaiting_preference', 'awaiting_availability'], true)) {
                 $result['handoffs_repaired']++;
                 if (!$dryRun) {
+                    $handoffAlreadyActive = lead_agent_recovered_scheduling_handoff_is_active($lead);
                     $label = lead_agent_scheduling_preference_label($preferences);
                     db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', human_takeover = 1, human_takeover_until = NULL, scheduling_phase = 'awaiting_availability', scheduling_context = :context, next_action_at = NULL, last_decision = 'historical_preference_repaired', updated_at = NOW() WHERE lead_id = :lead_id", [
                         'context' => substr($label, 0, 500), 'lead_id' => $leadId,
                     ]);
-                    $pending = db_one("SELECT id FROM lead_agent_operator_requests WHERE lead_id = :lead_id AND request_type = 'availability' AND status = 'pending' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1", ['lead_id' => $leadId]);
-                    if (!$pending) {
+                    if ($handoffAlreadyActive) {
+                        // Keep the original operator request usable without
+                        // re-sending the same SMS and push every two days.
+                        db_execute("UPDATE lead_agent_operator_requests
+                            SET expires_at = DATE_ADD(NOW(), INTERVAL 2 DAY), updated_at = NOW()
+                            WHERE lead_id = :lead_id AND request_type = 'availability' AND status = 'pending'
+                            ORDER BY id DESC LIMIT 1", ['lead_id' => $leadId]);
+                    } else {
                         lead_agent_internal_handoff($lead, 'ready_to_schedule', 'Recovered scheduling preferences from the existing conversation.', ['stage' => 'availability', 'preference' => $label]);
                     }
                 }

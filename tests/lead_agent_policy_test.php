@@ -101,6 +101,9 @@ expect_true(
 );
 $agentSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_agent.php');
 expect_true(!str_contains($agentSource, 'I checked the CRM and Dentrix calendar'), 'The agent must never claim it queried Dentrix directly.');
+$pushSource = (string) file_get_contents(dirname(__DIR__) . '/app/core/mobile_ai_push.php');
+expect_true(str_contains($agentSource, "'type' => 'handoff'"), 'Scheduling handoffs must not use the patient-reply push type.');
+expect_true(str_contains($pushSource, 'scheduling follow-up needed for'), 'Scheduling handoff pushes must be labeled as follow-up work, not as a new patient message.');
 $aiSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_ai.php');
 expect_true(!str_contains($aiSource, 'ask for the preferred day and DOB'), 'The AI prompt must not collect DOB before a patient selects a confirmed slot.');
 
@@ -129,6 +132,16 @@ $noChannelBackfill = $emailOnlyBackfill;
 $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'ready_to_schedule']) === 'conversation_owned_or_paused', 'Follow-up must stay silent after a scheduling handoff.');
+expect_true(lead_agent_recovered_scheduling_handoff_is_active([
+    'agent_status' => 'ready_to_schedule',
+    'scheduling_phase' => 'awaiting_availability',
+    'human_takeover' => 1,
+]), 'An active recovered scheduling handoff must not notify Rod again when its operator request reaches the two-day expiry.');
+expect_true(!lead_agent_recovered_scheduling_handoff_is_active([
+    'agent_status' => 'engaged',
+    'scheduling_phase' => 'awaiting_preference',
+    'human_takeover' => 0,
+]), 'A real transition into scheduling must still create the first handoff notification.');
 expect_true(lead_agent_followup_context_reason(['id' => 1], ['status' => 'human_takeover', 'human_takeover' => 1]) === 'conversation_owned_or_paused', 'Follow-up must stay silent while a human owns the conversation.');
 expect_true(lead_agent_lead_is_already_scheduled(['status' => 'consultation_booked']), 'A booked pipeline stage must close the scheduling handoff.');
 expect_true(lead_agent_lead_is_already_scheduled(['status' => 'contacted', 'consultation_status' => 'scheduled']), 'A scheduled consultation status must close the scheduling handoff.');

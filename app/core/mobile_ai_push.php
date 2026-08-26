@@ -180,6 +180,9 @@ if (!function_exists('mobile_ai_send_lead_event_push')) {
                 . ($firstTouchSent ? 'First message sent.' : 'First message needs review.');
         } elseif ($type === 'stop') {
             $body = 'Rod, ' . $leadName . ' replied STOP. SMS is blocked. Open Elite AI and tell me what to do.';
+        } elseif ($type === 'handoff') {
+            $excerpt = mb_substr(preg_replace('/\s+/', ' ', $message) ?? $message, 0, 130);
+            $body = 'Rod, scheduling follow-up needed for ' . $leadName . ($excerpt !== '' ? ': "' . $excerpt . '"' : '.');
         } else {
             $excerpt = mb_substr(preg_replace('/\s+/', ' ', $message) ?? $message, 0, 130);
             $body = 'Rod, new message from ' . $leadName . ($excerpt !== '' ? ': "' . $excerpt . '"' : '.');

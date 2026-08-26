@@ -221,7 +221,7 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
                     aria-pressed="false"
                 >
                     Needs Attention Today
-                    <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                    <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800" data-lead-attention-count>
                         <?= e((string)$leadAttentionVisibleCount) ?>
                     </span>
                 </button>
@@ -340,6 +340,17 @@ $pipelineVersion = (string)(lead_pipeline_version_snapshot()['version'] ?? '');
             const incomingBoard = snapshot.getElementById('lead-pipeline-board');
             if (!incomingBoard || typeof window.elitePipelineApplySnapshot !== 'function') {
                 return false;
+            }
+
+            const currentAttentionSection = document.querySelector('[data-lead-view-panel="attention"] [data-action-queue-section="1"]');
+            const incomingAttentionSection = snapshot.querySelector('[data-lead-view-panel="attention"] [data-action-queue-section="1"]');
+            if (currentAttentionSection && incomingAttentionSection) {
+                currentAttentionSection.replaceWith(incomingAttentionSection.cloneNode(true));
+            }
+            const currentAttentionCount = document.querySelector('[data-lead-attention-count]');
+            const incomingAttentionCount = snapshot.querySelector('[data-lead-attention-count]');
+            if (currentAttentionCount && incomingAttentionCount) {
+                currentAttentionCount.textContent = incomingAttentionCount.textContent;
             }
 
             return window.elitePipelineApplySnapshot(incomingBoard) === true;

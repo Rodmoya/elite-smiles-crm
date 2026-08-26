@@ -15,6 +15,8 @@ if ($leadsSource === false || $pipelineSource === false || $leadServiceSource ==
 $requiredAttentionTokens = [
     'lead_operator_has_stale_sms_delivery',
     "['accepted', 'queued', 'sending', 'scheduled']",
+    "['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead']",
+    '$leadCreatedTimestamp < time() - 86400',
     'lead_attention_rows',
     'array_merge($dueRows, $exceptionRows)',
 ];
@@ -35,6 +37,8 @@ $requiredLeadRefreshTokens = [
     'refreshPipelineSilently',
     "headers: { 'Accept': 'text/html' }",
     "snapshot.getElementById('lead-pipeline-board')",
+    "currentAttentionSection.replaceWith(incomingAttentionSection.cloneNode(true))",
+    "currentAttentionCount.textContent = incomingAttentionCount.textContent",
     'window.elitePipelineApplySnapshot(incomingBoard)',
     "FROM lead_agent_states",
     "WHERE status = 'needs_attention'",

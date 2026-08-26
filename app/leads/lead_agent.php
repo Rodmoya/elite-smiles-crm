@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/notifications/internal_sms.php';
+require_once __DIR__ . '/lead_meta.php';
 require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
 require_once __DIR__ . '/lead_agent_observability.php';
@@ -353,14 +354,14 @@ if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
         return [
-            // The first day is the highest-intent window. First touch already
-            // sends one SMS and one email; follow once more by SMS after three
-            // hours when there is still no reply, then slow the cadence down.
-            1 => ['hours' => 3, 'channel' => 'sms', 'phase' => 'same_day_follow_up'],
-            2 => ['hours' => 96, 'channel' => 'email', 'phase' => 'education'],
-            3 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'active_follow_up'],
-            4 => ['hours' => 336, 'channel' => 'email', 'phase' => 'trust_nurture'],
-            5 => ['hours' => 720, 'channel' => 'sms', 'phase' => 'reactivation'],
+            // First touch already sends one SMS and one email. The unanswered
+            // first day gets a quick delivery check, a later close-loop, and a
+            // fresh next-day re-engagement before the cadence slows down.
+            1 => ['hours' => 0.5, 'channel' => 'sms', 'phase' => 'same_day_delivery_check'],
+            2 => ['hours' => 7, 'channel' => 'sms', 'phase' => 'same_day_close_loop'],
+            3 => ['hours' => 20, 'channel' => 'sms', 'phase' => 'next_day_reengagement'],
+            4 => ['hours' => 72, 'channel' => 'email', 'phase' => 'education'],
+            5 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'active_sprint_close'],
         ];
     }
 }
@@ -372,7 +373,7 @@ if (!function_exists('lead_agent_align_contact_time')) {
         if ($hour < 8) {
             return $candidate->setTime(8, 0);
         }
-        if ($hour >= 21) {
+        if ($hour >= 20) {
             return $candidate->modify('+1 day')->setTime(8, 0);
         }
         return $candidate;
@@ -392,7 +393,7 @@ if (!function_exists('lead_agent_step_schedule')) {
         }
 
         $extra = max(1, $step - count($plan));
-        $hours = 720 + ($extra * 720);
+        $hours = 720 + (($extra - 1) * 720);
         $channel = $extra % 2 === 0 ? 'sms' : 'email';
         $at = lead_agent_align_contact_time($start->modify('+' . ($hours * 3600) . ' seconds'));
         return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'monthly_nurture', 'at' => $at->format('Y-m-d H:i:s')];
@@ -414,8 +415,8 @@ if (!function_exists('lead_agent_daily_outbound_limit')) {
         }
 
         // The immediate first-touch bundle is one SMS plus one email. Allow
-        // exactly one additional same-day follow-up; later days stay at one.
-        return $started->format('Y-m-d') === $now->setTimezone($timezone)->format('Y-m-d') ? 3 : 1;
+        // the delivery check and close-loop on day one; later days stay at one.
+        return $started->format('Y-m-d') === $now->setTimezone($timezone)->format('Y-m-d') ? 4 : 1;
     }
 }
 
@@ -437,7 +438,7 @@ if (!function_exists('lead_agent_repair_compressed_catchup')) {
     {
         lead_agent_ensure_schema();
         $rows = db_all("SELECT * FROM lead_agent_states
-            WHERE status IN ('active', 'engaged')
+            WHERE status IN ('active', 'engaged', 'nurture')
               AND COALESCE(scheduling_phase, '') = ''
               AND next_action_at IS NOT NULL
             ORDER BY next_action_at ASC");
@@ -476,18 +477,18 @@ if (!function_exists('lead_agent_repair_compressed_catchup')) {
 }
 
 if (!function_exists('lead_agent_repair_first_day_schedule')) {
-    /** Accelerate only newly enrolled, unanswered leads still on the old 48-hour schedule. */
+    /** Accelerate unanswered first-day leads still carrying an older, slower schedule. */
     function lead_agent_repair_first_day_schedule(int $limit = 200): int
     {
         lead_agent_ensure_schema();
         $limit = max(1, min(500, $limit));
-        $rows = db_all("SELECT s.lead_id, s.started_at, s.next_action_at,
+        $rows = db_all("SELECT s.lead_id, s.started_at, s.next_action_at, s.cadence_step,
                 l.last_outbound_at, l.last_inbound_at
             FROM lead_agent_states s
             INNER JOIN leads l ON l.id = s.lead_id
             WHERE s.status IN ('active', 'engaged')
               AND s.human_takeover = 0
-              AND s.cadence_step = 0
+              AND s.cadence_step IN (0,1,2)
               AND s.next_action_at IS NOT NULL
               AND s.started_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
             ORDER BY s.started_at ASC
@@ -507,7 +508,8 @@ if (!function_exists('lead_agent_repair_first_day_schedule')) {
                 continue;
             }
 
-            $sameDay = lead_agent_step_schedule($startedAt, 1);
+            $completedStep = (int)($row['cadence_step'] ?? 0);
+            $sameDay = lead_agent_step_schedule($startedAt, $completedStep + 1);
             $sameDayAt = trim((string) ($sameDay['at'] ?? ''));
             if ($sameDayAt === '' || strtotime($sameDayAt) === false || strtotime($sameDayAt) >= strtotime($currentAt)) {
                 continue;
@@ -516,17 +518,18 @@ if (!function_exists('lead_agent_repair_first_day_schedule')) {
             $changed = db_execute(
                 "UPDATE lead_agent_states
                  SET next_action_at = :next_action_at, last_decision = 'first_day_schedule_repaired', updated_at = NOW()
-                 WHERE lead_id = :lead_id AND cadence_step = 0 AND human_takeover = 0
+                 WHERE lead_id = :lead_id AND cadence_step = :cadence_step AND human_takeover = 0
                    AND next_action_at > :next_action_compare",
                 [
                     'next_action_at' => $sameDayAt,
                     'next_action_compare' => $sameDayAt,
                     'lead_id' => (int) ($row['lead_id'] ?? 0),
+                    'cadence_step' => $completedStep,
                 ]
             );
             $repaired += $changed;
             if ($changed > 0) {
-                lead_agent_event((int) ($row['lead_id'] ?? 0), 'first-day-schedule-repaired-' . (int) ($row['lead_id'] ?? 0), 'cadence_rescheduled', 'sms', 'recorded', 'first_day_engagement_window', [
+                lead_agent_event((int) ($row['lead_id'] ?? 0), 'first-day-schedule-repaired-' . (int) ($row['lead_id'] ?? 0) . '-' . $completedStep, 'cadence_rescheduled', 'sms', 'recorded', 'first_day_engagement_window', [
                     'previous_next_action_at' => $currentAt,
                     'next_action_at' => $sameDayAt,
                 ]);
@@ -537,6 +540,214 @@ if (!function_exists('lead_agent_repair_first_day_schedule')) {
             lead_agent_sync_crm_followup_schedule();
         }
         return $repaired;
+    }
+}
+
+if (!function_exists('lead_agent_repair_slow_active_sprint')) {
+    /** One-way migration from the former 3/4/7/14/30-day plan to the seven-day sprint. */
+    function lead_agent_repair_slow_active_sprint(int $limit = 500): int
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(1000, $limit));
+        $rows = db_all("SELECT s.lead_id, s.started_at, s.next_action_at, s.cadence_step,
+                l.last_inbound_at, l.last_outbound_at, l.follow_up_status
+            FROM lead_agent_states s
+            INNER JOIN leads l ON l.id = s.lead_id
+            WHERE s.status IN ('active','engaged')
+              AND s.human_takeover = 0
+              AND s.cadence_step < 5
+              AND COALESCE(s.scheduling_phase, '') = ''
+              AND s.next_action_at IS NOT NULL
+              AND l.status NOT IN ('opted_out','lost_lead','consultation_booked','consult_completed','treatment_accepted','treatment_completed')
+            ORDER BY s.next_action_at ASC
+            LIMIT {$limit}");
+        $repaired = 0;
+        foreach ($rows as $row) {
+            if (in_array(trim((string)($row['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)) {
+                continue;
+            }
+            $lastInbound = trim((string)($row['last_inbound_at'] ?? ''));
+            $lastOutbound = trim((string)($row['last_outbound_at'] ?? ''));
+            if ($lastInbound !== '' && strtotime($lastInbound) !== false
+                && ($lastOutbound === '' || strtotime($lastInbound) >= strtotime($lastOutbound))) {
+                continue;
+            }
+            $startedAt = trim((string)($row['started_at'] ?? ''));
+            $currentAt = trim((string)($row['next_action_at'] ?? ''));
+            if ($startedAt === '' || $currentAt === '' || strtotime($startedAt) === false || strtotime($currentAt) === false) {
+                continue;
+            }
+            $completedStep = (int)($row['cadence_step'] ?? 0);
+            $expected = lead_agent_step_schedule($startedAt, $completedStep + 1);
+            $targetAt = (string)($expected['at'] ?? '');
+            if ($targetAt === '' || strtotime($targetAt) === false || strtotime($targetAt) >= strtotime($currentAt)) {
+                continue;
+            }
+            if (strtotime($targetAt) <= time()) {
+                $targetAt = lead_agent_align_contact_time(new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
+            }
+            $changed = db_execute("UPDATE lead_agent_states
+                SET next_action_at = :next_action_at, last_decision = 'slow_active_sprint_repaired', updated_at = NOW()
+                WHERE lead_id = :lead_id AND cadence_step = :cadence_step AND human_takeover = 0
+                  AND next_action_at > :next_action_compare", [
+                'next_action_at' => $targetAt,
+                'next_action_compare' => $targetAt,
+                'lead_id' => (int)$row['lead_id'],
+                'cadence_step' => $completedStep,
+            ]);
+            $repaired += $changed;
+            if ($changed > 0) {
+                lead_agent_event((int)$row['lead_id'], 'active-sprint-repaired-' . (int)$row['lead_id'] . '-' . $completedStep, 'cadence_rescheduled', (string)($expected['channel'] ?? ''), 'recorded', 'seven_day_active_sprint', [
+                    'previous_next_action_at' => $currentAt,
+                    'next_action_at' => $targetAt,
+                ]);
+            }
+        }
+        if ($repaired > 0) {
+            lead_agent_sync_crm_followup_schedule();
+        }
+        return $repaired;
+    }
+}
+
+if (!function_exists('lead_agent_lifecycle_decision')) {
+    /** Pure lifecycle decision used by the cron reconciler and policy tests. */
+    function lead_agent_lifecycle_decision(
+        array $lead,
+        array $state = [],
+        int $reengagementAttempts = 0,
+        ?DateTimeImmutable $now = null
+    ): string {
+        $status = trim((string)($lead['status'] ?? ''));
+        if (in_array($status, ['no_answer', 'lost_lead', 'opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed'], true)) {
+            return '';
+        }
+        if (!empty($state['human_takeover'])
+            || in_array(trim((string)($state['status'] ?? '')), ['human_takeover', 'ready_to_schedule', 'needs_attention', 'paused', 'opted_out'], true)
+            || in_array(trim((string)($lead['follow_up_status'] ?? '')), ['ready_to_schedule', 'needs_attention'], true)
+            || lead_conversion_has_future_consult($lead)
+            || lead_conversion_has_scheduling_context($lead)) {
+            return '';
+        }
+
+        $now = $now ?? new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $lastInbound = lead_conversion_datetime($lead['last_inbound_at'] ?? '');
+        $lastOutbound = lead_conversion_datetime($lead['last_outbound_at'] ?? '');
+        if ($lastInbound !== null) {
+            // Never advance while a patient message is waiting for a response.
+            if ($lastOutbound === null || $lastOutbound <= $lastInbound) {
+                return '';
+            }
+            if ($lastInbound <= $now->modify('-72 hours') && $reengagementAttempts >= 2) {
+                return 'nurture';
+            }
+            return $lastOutbound <= $now->modify('-2 hours') ? 'active_follow_up' : '';
+        }
+
+        if ((int)($state['cadence_step'] ?? 0) >= 5) {
+            return 'nurture';
+        }
+        if ($lastOutbound !== null && !lead_conversion_is_first_24_hours($lead, $now)) {
+            return 'active_follow_up';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lead_agent_enter_nurture')) {
+    function lead_agent_enter_nurture(int $leadId, string $reason): array
+    {
+        $transition = lead_lifecycle_transition_status(
+            $leadId,
+            'no_answer',
+            'Active follow-up completed; lead moved to low-frequency Nurture.',
+            'lead_agent_lifecycle',
+            ['new_lead', 'attempted_contact', 'contacted', 'in_contact', '']
+        );
+        if (empty($transition['ok'])) {
+            return $transition;
+        }
+        $nextActionAt = null;
+        $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        if ($state) {
+            $following = lead_agent_step_schedule((string)($state['started_at'] ?? now()), max(6, (int)($state['cadence_step'] ?? 0) + 1));
+            if (strtotime((string)($following['at'] ?? '')) <= time()) {
+                $following['at'] = lead_agent_align_contact_time(
+                    (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+30 days')
+                )->format('Y-m-d H:i:s');
+            }
+            db_execute("UPDATE lead_agent_states
+                SET status = 'nurture', next_action_at = :next_action_at, last_decision = :decision,
+                    lock_token = '', locked_at = NULL, updated_at = NOW()
+                WHERE lead_id = :lead_id AND human_takeover = 0", [
+                'next_action_at' => $following['at'],
+                'decision' => substr('entered_nurture_' . $reason, 0, 80),
+                'lead_id' => $leadId,
+            ]);
+            $nextActionAt = (string)$following['at'];
+            lead_agent_sync_crm_followup_schedule($leadId);
+        }
+        lead_agent_event($leadId, 'lifecycle-nurture-' . $leadId, 'lifecycle_transition', '', 'recorded', $reason);
+        return $transition + ['next_action_at' => $nextActionAt];
+    }
+}
+
+if (!function_exists('lead_agent_reconcile_lifecycle')) {
+    /** Dry-run capable, idempotent bridge from timestamps/cadence into durable stages. */
+    function lead_agent_reconcile_lifecycle(int $limit = 500, bool $dryRun = false): array
+    {
+        lead_agent_ensure_schema();
+        $limit = max(1, min(1000, $limit));
+        $rows = db_all("SELECT l.*, s.status AS agent_status, s.cadence_step, s.started_at,
+                s.human_takeover, s.scheduling_phase AS agent_scheduling_phase,
+                (SELECT COUNT(*) FROM lead_agent_events e
+                 WHERE e.lead_id = l.id AND e.event_type = 'cadence_sent'
+                   AND l.last_inbound_at IS NOT NULL AND e.created_at > l.last_inbound_at) AS reengagement_attempts
+            FROM leads l
+            LEFT JOIN lead_agent_states s ON s.lead_id = l.id
+            WHERE l.status IN ('new_lead','attempted_contact','contacted','in_contact')
+            ORDER BY COALESCE(l.last_inbound_at, l.created_at) ASC, l.id ASC
+            LIMIT {$limit}");
+        $result = [
+            'evaluated' => count($rows),
+            'dry_run' => $dryRun,
+            'activated' => 0,
+            'nurtured' => 0,
+            'candidates' => [],
+        ];
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        foreach ($rows as $lead) {
+            $state = [
+                'status' => (string)($lead['agent_status'] ?? ''),
+                'cadence_step' => (int)($lead['cadence_step'] ?? 0),
+                'started_at' => (string)($lead['started_at'] ?? ''),
+                'human_takeover' => (int)($lead['human_takeover'] ?? 0),
+            ];
+            $decision = lead_agent_lifecycle_decision($lead, $state, (int)($lead['reengagement_attempts'] ?? 0), $now);
+            $current = trim((string)($lead['status'] ?? ''));
+            if ($decision === 'active_follow_up' && $current !== 'contacted') {
+                $result['activated']++;
+                $result['candidates'][] = ['lead_id' => (int)$lead['id'], 'from' => $current, 'to' => 'contacted', 'reason' => 'active_follow_up'];
+                if (!$dryRun) {
+                    lead_lifecycle_transition_status(
+                        (int)$lead['id'],
+                        'contacted',
+                        $current === 'new_lead'
+                            ? 'The 24-hour New Lead window ended without a reply; Active Follow-Up started.'
+                            : 'The answered conversation became quiet; Active Follow-Up started.',
+                        'lead_agent_lifecycle',
+                        ['new_lead', 'attempted_contact', 'in_contact', '']
+                    );
+                }
+            } elseif ($decision === 'nurture') {
+                $result['nurtured']++;
+                $result['candidates'][] = ['lead_id' => (int)$lead['id'], 'from' => $current, 'to' => 'no_answer', 'reason' => 'active_sprint_exhausted'];
+                if (!$dryRun) {
+                    lead_agent_enter_nurture((int)$lead['id'], 'active_sprint_exhausted');
+                }
+            }
+        }
+        return $result;
     }
 }
 
@@ -1526,7 +1737,7 @@ if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
                 && !empty($state['human_takeover'])
                 && trim((string) ($state['human_takeover_until'] ?? '')) !== '';
             $nextAt = null;
-            if (in_array($status, ['active', 'engaged'], true) && empty($state['human_takeover'])) {
+            if (in_array($status, ['active', 'engaged', 'nurture'], true) && empty($state['human_takeover'])) {
                 $nextAt = trim((string) ($state['next_action_at'] ?? '')) ?: null;
             } elseif ($temporaryTakeover) {
                 $nextAt = trim((string) ($state['human_takeover_until'] ?? '')) ?: null;
@@ -1991,8 +2202,9 @@ if (!function_exists('lead_agent_approved_followup')) {
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
         $sms = [
             1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else? If a call is easier, tell me a good time.',
-            3 => $hello . ' no pressure at all. If you are still exploring your smile options, would a complimentary conversation with Dr. Meden be helpful?',
-            5 => $hello . ' just keeping the door open. If improving your smile is still a goal, reply whenever the timing feels right. Reply STOP to opt out.',
+            2 => $hello . ' I’ll let you get back to your day. Is it okay if I follow up tomorrow about your smile goals?',
+            3 => $hello . ' picking this back up today. What question would be most helpful for us to answer about your smile options?',
+            5 => $hello . ' I’ll move this out of active follow-up for now. If improving your smile is still a goal, reply anytime and we’ll pick it back up. Reply STOP to opt out.',
         ];
         if ($channel === 'sms') {
             $body = $sms[$step] ?? $hello . ' Elite Smiles checking in. Is improving your smile still something you would like help with? Reply STOP to opt out.';
@@ -2208,6 +2420,7 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
             || trim((string) ($preferences['specific_time'] ?? '')) !== '';
         $preferences['ready_for_availability'] = lead_agent_scheduling_preferences_complete($preferences);
         lead_agent_save_scheduling_preferences($leadId, $preferences);
+        lead_lifecycle_mark_scheduling($leadId, 'lead_agent_scheduling_intent');
         $message = lead_agent_scheduling_acknowledgment($lead, $preferences);
         $draft = $channel === 'email'
             ? ['subject' => 'Your Elite Smiles consultation', 'body' => $message . "\n\nElite Smiles"]
@@ -2603,9 +2816,11 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return lead_agent_internal_handoff($lead, 'needs_attention', 'Approved response could not be delivered.') + ['intent' => $intent, 'handled' => true];
         }
 
-        $next = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify('+48 hours'));
-        db_execute("UPDATE lead_agent_states SET status = 'engaged', last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
-            'next_action_at' => $next->format('Y-m-d H:i:s'),
+        $engagedAt = now();
+        $next = lead_agent_step_schedule($engagedAt, 3);
+        db_execute("UPDATE lead_agent_states SET status = 'engaged', cadence_step = 2, started_at = :started_at, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
+            'started_at' => $engagedAt,
+            'next_action_at' => $next['at'],
             'lead_id' => $leadId,
         ]);
         lead_agent_event($leadId, $sendKey, 'automatic_reply', $channel, 'sent', $intent);
@@ -2876,7 +3091,7 @@ if (!function_exists('lead_agent_followup_context_reason')) {
     function lead_agent_followup_context_reason(array $lead, array $state): string
     {
         $status = trim((string) ($state['status'] ?? ''));
-        if (!in_array($status, ['active', 'engaged'], true)) {
+        if (!in_array($status, ['active', 'engaged', 'nurture'], true)) {
             return 'conversation_owned_or_paused';
         }
         $schedulingPhase = trim((string) ($state['scheduling_phase'] ?? ''));
@@ -2996,7 +3211,7 @@ if (!function_exists('lead_agent_guardrail_reason')) {
         }
         $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
         $hour = (int) $now->format('G');
-        if ($hour < 8 || $hour >= 21) {
+        if ($hour < 8 || $hour >= 20) {
             return 'quiet_hours';
         }
         $today = $now->format('Y-m-d');
@@ -3190,17 +3405,28 @@ if (!function_exists('lead_agent_process_state')) {
         if (strtotime((string) $following['at']) <= time()) {
             $following = lead_agent_incremental_schedule(now(), $nextStep);
         }
-        db_execute("UPDATE lead_agent_states SET status = 'active', cadence_step = :step, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = :decision, lock_token = '', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", [
+        $nextStateStatus = $nextStep >= 5 || (string)($state['status'] ?? '') === 'nurture' ? 'nurture' : 'active';
+        db_execute("UPDATE lead_agent_states SET status = :status, cadence_step = :step, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = :decision, lock_token = '', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", [
+            'status' => $nextStateStatus,
             'step' => $nextStep,
             'next_action_at' => $following['at'],
             'decision' => 'sent_step_' . $nextStep,
             'lead_id' => $leadId,
         ]);
-        lead_agent_sync_crm_followup_schedule($leadId);
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
         lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send + lead_agent_draft_conversion_meta($draft));
         lead_agent_record_learning('cadence_followup', $channel, $draftSource . '_sent');
-        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at'], 'draft_source' => $draftSource] + lead_agent_draft_conversion_meta($draft);
+        if ($nextStep >= 5) {
+            lead_lifecycle_transition_status(
+                $leadId,
+                'no_answer',
+                'The seven-day active follow-up sprint ended without a reply; the lead moved to Nurture.',
+                'lead_agent_cadence',
+                ['new_lead', 'attempted_contact', 'contacted', 'in_contact', '']
+            );
+        }
+        lead_agent_sync_crm_followup_schedule($leadId);
+        return ['lead_id' => $leadId, 'action' => 'sent', 'channel' => $channel, 'step' => $nextStep, 'next_action_at' => $following['at'], 'draft_source' => $draftSource, 'lifecycle_stage' => $nextStateStatus === 'nurture' ? 'nurture' : 'active_follow_up'] + lead_agent_draft_conversion_meta($draft);
     }
 }
 
@@ -3221,23 +3447,27 @@ if (!function_exists('lead_agent_run_due')) {
         }
         $limit = max(1, min(50, $limit));
         $run = lead_agent_run_start($dryRun);
+        $lifecycle = [];
         $backfill = [];
         $repairedCatchup = 0;
         $repairedFirstDay = 0;
+        $repairedSlowSprint = 0;
         $recoveredDraftingExceptions = 0;
         $conversionMemoriesRefreshed = 0;
         $schedulingRepair = [];
         $dueCount = 0;
         $results = [];
         try {
+            $lifecycle = lead_agent_reconcile_lifecycle(500, $dryRun);
             $backfill = lead_agent_backfill_eligible(200, $dryRun);
             $schedulingRepair = lead_agent_repair_scheduling_queue(200, $dryRun);
             $conversionMemoriesRefreshed = $dryRun ? 0 : lead_conversion_refresh_active_memories(40);
             $recoveredDraftingExceptions = $dryRun ? 0 : lead_agent_recover_drafting_exceptions(100);
             $repairedFirstDay = $dryRun ? 0 : lead_agent_repair_first_day_schedule(200);
+            $repairedSlowSprint = $dryRun ? 0 : lead_agent_repair_slow_active_sprint(500);
             $repairedCatchup = $dryRun ? 0 : lead_agent_repair_compressed_catchup();
             $rows = db_all("SELECT * FROM lead_agent_states
-                WHERE status IN ('active', 'engaged')
+                WHERE status IN ('active', 'engaged', 'nurture')
                   AND human_takeover = 0
                   AND next_action_at IS NOT NULL
                   AND next_action_at <= NOW()
@@ -3268,9 +3498,9 @@ if (!function_exists('lead_agent_run_due')) {
             if (!$dryRun) {
                 lead_agent_sync_crm_followup_schedule();
             }
-            lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay);
+            lead_agent_run_finish($run, 'completed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay + $repairedSlowSprint);
         } catch (Throwable $e) {
-            lead_agent_run_finish($run, 'failed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay, $e->getMessage());
+            lead_agent_run_finish($run, 'failed', $dueCount, $results, $backfill, $repairedCatchup + $repairedFirstDay + $repairedSlowSprint, $e->getMessage());
             throw $e;
         }
         try {
@@ -3283,7 +3513,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 

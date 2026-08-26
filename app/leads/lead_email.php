@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/smtp.php';
+require_once __DIR__ . '/lead_meta.php';
 require_once __DIR__ . '/lead_agent_observability.php';
 
 if (!function_exists('lead_email_ensure_schema')) {
@@ -809,17 +810,6 @@ if (!function_exists('lead_email_record_inbound')) {
         try {
             $sets = ['updated_at = :now'];
             $params = ['id' => $leadId, 'now' => now()];
-            $currentStage = trim((string)($lead['status'] ?? ''));
-            if (
-                lead_email_column_exists('leads', 'status')
-                && in_array($currentStage, ['new_lead', 'attempted_contact', 'contacted', ''], true)
-            ) {
-                $sets[] = "status = 'in_contact'";
-                if (lead_email_column_exists('leads', 'pipeline_position') && function_exists('lead_pipeline_next_position')) {
-                    $sets[] = 'pipeline_position = :pipeline_position';
-                    $params['pipeline_position'] = lead_pipeline_next_position('in_contact');
-                }
-            }
             if (lead_email_column_exists('leads', 'last_inbound_at')) {
                 $sets[] = 'last_inbound_at = :now';
             }
@@ -828,6 +818,9 @@ if (!function_exists('lead_email_record_inbound')) {
                 $params['follow_up_status'] = $isUnsubscribe ? 'not_interested' : 'needs_follow_up';
             }
             db_execute('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = :id LIMIT 1', $params);
+            if (!$isUnsubscribe) {
+                lead_lifecycle_mark_inbound_answer($leadId, 'lead_email_inbound');
+            }
         } catch (Throwable $e) {
             esm_log('lead_email', 'Could not update lead after inbound email.', [
                 'lead_id' => $leadId,
@@ -1036,13 +1029,17 @@ if (!function_exists('lead_email_unsubscribe')) {
                 'email_opted_out_at = :now',
                 'updated_at = :now',
             ];
-            if (function_exists('leads_has_column') && leads_has_column('status')) {
-                $setParts[] = "status = 'opted_out'";
-            }
 
             db_execute(
                 'UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1',
                 ['now' => now(), 'id' => $leadId]
+            );
+            lead_lifecycle_transition_status(
+                $leadId,
+                'opted_out',
+                'Lead revoked email consent.',
+                'lead_email_unsubscribe',
+                []
             );
             if (function_exists('lead_comm_insert_activity')) {
                 lead_comm_insert_activity($leadId, 'email_unsubscribe', 'Patient unsubscribed from email follow-up.', [

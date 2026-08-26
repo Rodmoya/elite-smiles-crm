@@ -493,16 +493,20 @@ if (!function_exists('codex_api_conversion_stage_key_from_label')) {
         $normalized = str_replace(['-', ' '], '_', $value);
         $normalized = (string) preg_replace('/[^a-z0-9_]+/', '', $normalized);
         $aliases = [
-            'first_touch' => 'first_touch_sent',
-            'first_touch_sent' => 'first_touch_sent',
-            'contacted' => 'first_touch_sent',
+            'first_touch' => 'new_lead',
+            'first_touch_sent' => 'new_lead',
+            'contacted' => 'active_follow_up',
+            'answered' => 'lead_answered',
+            'lead_answered' => 'lead_answered',
             'active_followup' => 'active_follow_up',
             'active_follow_up' => 'active_follow_up',
-            'nurture' => 'nurture_lost',
-            'no_answer' => 'nurture_lost',
-            'no_answer_nurture' => 'nurture_lost',
-            'lost_nurture' => 'nurture_lost',
-            'nurture_lost' => 'nurture_lost',
+            'nurture' => 'nurture',
+            'no_answer' => 'nurture',
+            'no_answer_nurture' => 'nurture',
+            'lost_nurture' => 'nurture',
+            'nurture_lost' => 'nurture',
+            'lost' => 'lost',
+            'opted_out' => 'opted_out',
         ];
         if (isset($aliases[$normalized])) {
             return $aliases[$normalized];
@@ -1249,8 +1253,8 @@ if (!function_exists('codex_api_crm_operator_command_center')) {
                 $firstTouchDue = false;
                 $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
                 if ($lastOutbound !== '' && ($lastOutboundTs = strtotime($lastOutbound)) !== false) {
-                    $recentlyContacted = ($now - $lastOutboundTs) < 3.5 * 3600;
-                    $firstTouchDue = $stageKey === 'first_touch_sent' && !$recentlyContacted;
+                    $recentlyContacted = ($now - $lastOutboundTs) < 0.5 * 3600;
+                    $firstTouchDue = $stageKey === 'new_lead' && ($isDue || !$recentlyContacted);
                 }
                 $smsIssue = codex_api_lead_has_sms_delivery_issue($leadId);
                 $signals = codex_api_operator_recent_thread_signals($leadId);
@@ -1301,7 +1305,7 @@ if (!function_exists('codex_api_crm_operator_command_center')) {
 
                 if ($firstTouchDue) {
                     $buckets['do_now'][] = codex_api_operator_action_bucket(
-                        codex_api_operator_action_card($lead, 'send_follow_up', 75, 'First touch was sent at least 3.5 hours ago without a reply.', 'Let the Lead Agent send the approved next cadence step.'),
+                        codex_api_operator_action_card($lead, 'send_follow_up', 75, 'First touch was sent at least 30 minutes ago without a reply.', 'Let the Lead Agent send the approved next cadence step.'),
                         'do_now'
                     );
                     continue;
@@ -1316,7 +1320,7 @@ if (!function_exists('codex_api_crm_operator_command_center')) {
                     continue;
                 }
 
-                if ($stageKey === 'nurture_lost' || $actionKey === 'nurture_reactivate') {
+                if ($stageKey === 'nurture' || $actionKey === 'nurture_reactivate') {
                     if ($mode === 'daily') {
                         $buckets['nurture_candidates'][] = codex_api_operator_action_bucket(
                             codex_api_operator_action_card($lead, 'nurture_reactivation', 40, 'Lead is in nurture/no-answer and may be worth a soft reactivation.', 'Review context before sending a low-pressure reactivation.'),
@@ -1476,7 +1480,7 @@ if (!function_exists('codex_api_crm_operator_brief')) {
                     }
                     continue;
                 }
-                if ($stageKey === 'nurture_lost' || $actionKey === 'nurture_reactivate') {
+                if ($stageKey === 'nurture' || $actionKey === 'nurture_reactivate') {
                     $counts['nurture_candidates']++;
                     if ($mode === 'daily' && !isset($seen[$leadId])) {
                         $actions[] = codex_api_operator_action_card($lead, 'nurture_candidate', 45, 'Lead is in nurture/no-answer and may be worth a soft reactivation.', 'Review context before sending a low-pressure reactivation message.');

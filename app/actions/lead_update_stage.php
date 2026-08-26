@@ -76,8 +76,9 @@ if (!leads_table_exists()) {
     exit;
 }
 
-$leadId = (int) post('lead_id');
+$leadId = (int) post('lead_id');
 $newStage = trim((string) post('status'));
+$displayStage = trim((string) post('display_stage'));
 $orderedIds = $_POST['ordered_ids'] ?? [];
 $sourceOrderedIds = $_POST['source_ordered_ids'] ?? [];
 
@@ -99,7 +100,7 @@ if ($newStage === '' || $newStage === '_blank') {
     exit;
 }
 
-$allowedStages = lead_stage_labels();
+$allowedStages = lead_stage_labels();
 if (!isset($allowedStages[$newStage])) {
     http_response_code(422);
     echo json_encode([
@@ -123,6 +124,20 @@ try {
         'message' => 'Could not verify lead.',
     ]);
     exit;
+}
+$displayStages = function_exists('lead_conversion_stage_labels') ? lead_conversion_stage_labels() : [];
+if ($displayStage !== '') {
+    $expectedLegacyStage = function_exists('lead_conversion_stage_legacy_target')
+        ? lead_conversion_stage_legacy_target($displayStage)
+        : $displayStage;
+    if (!isset($displayStages[$displayStage]) || $expectedLegacyStage !== $newStage) {
+        http_response_code(422);
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Display stage is not allowed.',
+        ]);
+        exit;
+    }
 }
 
 if (!$existingLead) {
@@ -162,6 +177,16 @@ if (leads_has_column('pipeline_position')) {
     $params['pipeline_position'] = $pipelinePosition;
 }
 
+if ($displayStage === 'scheduling' && leads_has_column('consultation_status')) {
+    $setParts[] = "consultation_status = 'scheduling'";
+} elseif ($displayStage !== ''
+    && in_array($displayStage, ['new_lead', 'lead_answered', 'active_follow_up', 'nurture', 'lost', 'opted_out'], true)
+    && leads_has_column('consultation_status')
+    && trim((string)($existingLead['consultation_status'] ?? '')) === 'scheduling'
+    && trim((string)($existingLead['consultation_date'] ?? '')) === '') {
+    $setParts[] = "consultation_status = 'requested'";
+}
+
 if (empty($setParts)) {
     http_response_code(500);
     echo json_encode([
@@ -178,14 +203,21 @@ try {
     );
 
     $oldStage = trim((string)($existingLead['status'] ?? ''));
-    if ($oldStage !== $newStage) {
+    $oldDisplayStage = function_exists('lead_conversion_stage_key') ? lead_conversion_stage_key($existingLead) : $oldStage;
+    if ($oldStage !== $newStage || ($displayStage !== '' && $oldDisplayStage !== $displayStage)) {
+        $fromLabel = $displayStages[$oldDisplayStage] ?? ($allowedStages[$oldStage] ?? ($oldStage !== '' ? $oldStage : 'Unstaged'));
+        $toLabel = $displayStage !== ''
+            ? ($displayStages[$displayStage] ?? $displayStage)
+            : ($allowedStages[$newStage] ?? $newStage);
         lead_comm_insert_activity(
             $leadId,
             'stage_change',
-            'Moved stage from ' . ($allowedStages[$oldStage] ?? ($oldStage !== '' ? $oldStage : 'Unstaged')) . ' to ' . ($allowedStages[$newStage] ?? $newStage) . '.',
+            'Moved stage from ' . $fromLabel . ' to ' . $toLabel . '.',
             [
                 'from' => $oldStage,
                 'to' => $newStage,
+                'display_from' => $oldDisplayStage,
+                'display_to' => $displayStage,
             ]
         );
 
@@ -251,8 +283,10 @@ try {
         'ok' => true,
         'message' => 'Lead stage updated.',
         'lead_id' => $leadId,
-        'status' => $newStage,
-        'status_label' => $allowedStages[$newStage] ?? $newStage,
+        'status' => $newStage,
+        'status_label' => $displayStage !== '' ? ($displayStages[$displayStage] ?? $displayStage) : ($allowedStages[$newStage] ?? $newStage),
+        'display_stage' => $displayStage,
+        'display_stage_label' => $displayStage !== '' ? ($displayStages[$displayStage] ?? $displayStage) : '',
     ]);
     exit;
 } catch (Throwable $e) {

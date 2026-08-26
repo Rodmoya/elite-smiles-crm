@@ -63,14 +63,18 @@ if (!function_exists('elite_ai_knowledge_base')) {
                 'in_contact' => 'In Communication leads should be reviewed for the latest reply and next response timing.',
                 'consultation_booked' => 'Consultation Booked leads should be protected from No Answer review.',
                 'sale_closed' => 'Closed sales are not active follow-up candidates.',
-                'no_answer' => 'No Answer is a protected review stage and should never be auto-set by the assistant.',
+                'no_answer' => 'No Answer is the durable low-frequency Nurture stage after the guarded active follow-up sprint is exhausted.',
             ],
             'conversion_stage_rules' => [
                 'compatibility' => 'Derived conversion stages are read-only compatibility labels layered over legacy lead.status values until the final migration pass.',
-                'first_touch_sent' => 'First Touch Sent means the lead has received outreach but has not clearly replied yet.',
-                'scheduling' => 'Scheduling means the lead appears engaged and the next goal is to collect requirements or offer appointment dates.',
+                'new_lead' => 'New Lead lasts for the first 24 hours even after first touch; First Touch Sent is a badge, not a stage.',
+                'lead_answered' => 'Lead Answered means the lead replied and the conversation is still open.',
+                'active_follow_up' => 'Active Follow-Up means the first 24 hours ended without a reply or an answered conversation became quiet.',
+                'scheduling' => 'Scheduling requires explicit appointment intent, availability, or a saved scheduling preference.',
                 'consult_completed' => 'Consult Completed is derived from past consultation dates and should be treated as a manual-review signal, not an automatic stage move.',
-                'nurture_lost' => 'Nurture / Lost collects no-answer, lost, opted-out, and bad-data records while preserving the underlying legacy status.',
+                'nurture' => 'Nurture is low-frequency follow-up after the active sprint; it is separate from Lost and Opted Out.',
+                'lost' => 'Lost is reserved for explicit decline or permanent closure.',
+                'opted_out' => 'Opted Out must stop automated outreach immediately.',
             ],
         ];
     }

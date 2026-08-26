@@ -823,13 +823,19 @@ if (!function_exists('lead_pipeline_counts')) {
                 'next_follow_up_at',
                 'consultation_status',
                 'consultation_date',
+                'scheduling_preferred_day',
+                'scheduling_preferred_time',
                 'date_of_birth',
+                'follow_up_status',
                 'created_at',
                 'updated_at',
             ] as $field) {
                 if (leads_has_column($field)) {
                     $selectFields[] = $field;
                 }
+            }
+            if (lead_related_table_exists('lead_agent_states')) {
+                $selectFields[] = "(SELECT las.scheduling_phase FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_scheduling_phase";
             }
 
             $rows = db_all("
@@ -885,13 +891,19 @@ if (!function_exists('lead_pipeline_stage_values')) {
                 'next_follow_up_at',
                 'consultation_status',
                 'consultation_date',
+                'scheduling_preferred_day',
+                'scheduling_preferred_time',
                 'date_of_birth',
+                'follow_up_status',
                 'created_at',
                 'updated_at',
             ] as $field) {
                 if (leads_has_column($field)) {
                     $selectFields[] = $field;
                 }
+            }
+            if (lead_related_table_exists('lead_agent_states')) {
+                $selectFields[] = "(SELECT las.scheduling_phase FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_scheduling_phase";
             }
 
             $rows = db_all("
@@ -990,6 +1002,9 @@ if (!function_exists('lead_pipeline_rows')) {
             if (leads_has_column($field)) {
                 $selectFields[] = $field;
             }
+        }
+        if (lead_related_table_exists('lead_agent_states')) {
+            $selectFields[] = "(SELECT las.scheduling_phase FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_scheduling_phase";
         }
 
         $limit = max(1, min(1000, $limit));
@@ -1640,8 +1655,8 @@ if (!function_exists('lead_action_queue_rows')) {
                 $recentlyContacted = false;
                 $firstTouchDue = false;
                 if ($lastOutboundAt !== '' && ($lastOutboundTs = strtotime($lastOutboundAt)) !== false) {
-                    $recentlyContacted = ($now - $lastOutboundTs) < 3.5 * 3600;
-                    $firstTouchDue = $stageKey === 'first_touch_sent' && !$recentlyContacted;
+                    $recentlyContacted = ($now - $lastOutboundTs) < 0.5 * 3600;
+                    $firstTouchDue = $stageKey === 'new_lead' && ($isDue || !$recentlyContacted);
                 }
 
                 if ($status === 'treatment_completed' || $stageKey === 'treatment_completed') {
@@ -1665,7 +1680,7 @@ if (!function_exists('lead_action_queue_rows')) {
                     $actionKey = 'second_follow_up';
                     $actionLabel = 'Lead Agent follow-up';
                     $actionTone = 'amber';
-                    $reason = 'First touch was sent at least 3.5 hours ago without a reply. The Lead Agent cadence is due.';
+                    $reason = 'First touch was sent at least 30 minutes ago without a reply. The Lead Agent cadence is due.';
                 } elseif (lead_operator_has_sms_cleanup_issue($lead) || lead_operator_has_stale_sms_delivery($lead)) {
                     $deliveryPending = lead_operator_has_stale_sms_delivery($lead);
                     $priority = 70;
@@ -2709,41 +2724,7 @@ if (!function_exists('lead_create_minimal')) {
                         ], 'System');
                     }
 
-                    $freshStageLead = db_one('SELECT id, status FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
-                    $freshStage = trim((string)($freshStageLead['status'] ?? ''));
                     $firstTouchSent = !empty($firstTouchEmail['sent']) || !empty($firstTouchSms['sent']);
-                    if ($firstTouchSent && ($freshStage === '' || $freshStage === lead_default_stage())) {
-                        $contactedStage = 'contacted';
-                        $pipelinePosition = function_exists('lead_pipeline_next_position')
-                            ? lead_pipeline_next_position($contactedStage)
-                            : 0;
-                        $updateParts = [];
-                        $updateParams = ['id' => $leadId];
-
-                        if (leads_has_column('status')) {
-                            $updateParts[] = 'status = :status';
-                            $updateParams['status'] = $contactedStage;
-                        }
-                        if (leads_has_column('pipeline_position')) {
-                            $updateParts[] = 'pipeline_position = :pipeline_position';
-                            $updateParams['pipeline_position'] = $pipelinePosition;
-                        }
-                        if (leads_has_column('updated_at')) {
-                            $updateParts[] = 'updated_at = :updated_at';
-                            $updateParams['updated_at'] = now();
-                        }
-
-                        if (!empty($updateParts)) {
-                            db_execute('UPDATE leads SET ' . implode(', ', $updateParts) . ' WHERE id = :id LIMIT 1', $updateParams);
-                            if (function_exists('lead_comm_insert_activity')) {
-                                lead_comm_insert_activity($leadId, 'stage_change', 'Automatically moved new lead from New Lead to Contacted after first-touch outreach.', [
-                                    'from' => $freshStage !== '' ? $freshStage : lead_default_stage(),
-                                    'to' => $contactedStage,
-                                    'source' => 'lead_create_minimal_auto_workflow',
-                                ], 'System');
-                            }
-                        }
-                    }
 
                     $mobilePushPath = dirname(__DIR__) . '/core/mobile_ai_push.php';
                     if (is_file($mobilePushPath)) {

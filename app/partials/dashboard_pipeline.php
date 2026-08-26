@@ -20,6 +20,8 @@ declare(strict_types=1);
 
  * - $pipelineRows (array)
 
+ * - $leadAttentionIds (array<int, bool>)
+
  */
 
 
@@ -31,6 +33,7 @@ $legacyStageMap = function_exists('lead_stage_map_ordered') ? lead_stage_map_ord
 $pipelineCounts = $pipelineCounts ?? [];
 
 $pipelineRows = $pipelineRows ?? [];
+$leadAttentionIds = $leadAttentionIds ?? [];
 $defaultMobileStageFilter = key($stageMap) ?: 'new_lead';
 
 $lostReasonOptions = function_exists('lead_lost_reason_options') ? lead_lost_reason_options() : [];
@@ -146,6 +149,14 @@ $consultationOptions = [
 ?>
 
 <style>
+.lead-card-needs-attention {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, .55), 0 0 18px rgba(220, 38, 38, .28), 0 10px 22px rgba(127, 29, 29, .10) !important;
+}
+.lead-card-needs-attention:hover {
+    border-color: #dc2626 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, .68), 0 0 22px rgba(220, 38, 38, .34), 0 12px 26px rgba(127, 29, 29, .14) !important;
+}
 @media (max-width: 767px) {
     .pipeline-mobile-priority { margin-bottom: 1rem; border: 0; border-radius: 0; padding: 0; box-shadow: none; background: transparent; }
     #pipeline-board-viewport { border: 0; border-radius: 0; padding-bottom: 0; background: transparent; overflow: visible; }

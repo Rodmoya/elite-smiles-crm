@@ -139,6 +139,15 @@ if (!function_exists('lead_card_appointment_datetime')) {
     }
 }
 
+if (!function_exists('lead_card_needs_attention')) {
+    /** @param array<int, bool> $attentionIds */
+    function lead_card_needs_attention(array $lead, array $attentionIds): bool
+    {
+        $leadId = (int)($lead['id'] ?? 0);
+        return $leadId > 0 && !empty($attentionIds[$leadId]);
+    }
+}
+
 $leadId = (int)($lead['id'] ?? 0);
 
 $leadName = lead_card_value($lead, 'full_name');
@@ -223,6 +232,7 @@ $leadDateOfBirth = lead_card_value($lead, 'date_of_birth');
 $leadSchedulingPreferredDay = lead_card_value($lead, 'scheduling_preferred_day');
 $leadSchedulingPreferredTime = lead_card_value($lead, 'scheduling_preferred_time');
 $leadFollowUpStatus = lead_card_value($lead, 'follow_up_status', 'not_checked');
+$leadNeedsAttention = lead_card_needs_attention($lead, $leadAttentionIds ?? []);
 $leadLastFollowUpCheckAt = lead_card_value($lead, 'last_follow_up_check_at');
 $leadDentrixSyncStatus = lead_card_value($lead, 'dentrix_sync_status');
 $leadDentrixPatientKey = lead_card_value($lead, 'dentrix_patient_key');
@@ -283,12 +293,16 @@ $contactLine = implode(' / ', $contactLineParts);
 $serviceLabel = $leadProcedure !== '' ? $leadProcedure : 'Service not set';
 
 $createdLabel = '';
+$createdDatetime = '';
 if ($leadCreated !== '') {
+    $createdTimestamp = strtotime($leadCreated);
     if (function_exists('format_datetime')) {
-        $createdLabel = format_datetime($leadCreated, 'M j');
+        $createdLabel = format_datetime($leadCreated, 'M j, Y · g:i A');
     } else {
-        $ts = strtotime($leadCreated);
-        $createdLabel = $ts ? date('M j', $ts) : $leadCreated;
+        $createdLabel = $createdTimestamp ? date('M j, Y · g:i A', $createdTimestamp) : $leadCreated;
+    }
+    if ($createdTimestamp) {
+        $createdDatetime = date(DATE_ATOM, $createdTimestamp);
     }
 }
 
@@ -353,7 +367,7 @@ if ($leadHasBadPhone) {
 ?>
 
 <div
-    class="lead-card rounded-lg border <?= e($isIncomplete && !$leadHasBadPhone ? 'border-amber-200 bg-white' : $cardStateClass) ?> p-2.5 shadow-sm transition hover:-translate-y-[1px] hover:border-blue-200 hover:shadow-md cursor-pointer"
+    class="lead-card<?= $leadNeedsAttention ? ' lead-card-needs-attention' : '' ?> rounded-lg border <?= e($isIncomplete && !$leadHasBadPhone ? 'border-amber-200 bg-white' : $cardStateClass) ?> p-2.5 shadow-sm transition hover:-translate-y-[1px] hover:border-blue-200 hover:shadow-md cursor-pointer"
     draggable="true"
     data-open-lead-modal="1"
     data-open-tab="communications"
@@ -408,6 +422,7 @@ if ($leadHasBadPhone) {
     data-lead-scheduling-preferred-day="<?= e($leadSchedulingPreferredDay) ?>"
     data-lead-scheduling-preferred-time="<?= e($leadSchedulingPreferredTime) ?>"
     data-lead-follow-up-status="<?= e($leadFollowUpStatus) ?>"
+    data-lead-needs-attention="<?= $leadNeedsAttention ? '1' : '0' ?>"
     data-lead-last-follow-up-check-at="<?= e($leadLastFollowUpCheckAt) ?>"
     data-lead-dentrix-sync-status="<?= e($leadDentrixSyncStatus) ?>"
     data-lead-dentrix-patient-key="<?= e($leadDentrixPatientKey) ?>"
@@ -418,6 +433,9 @@ if ($leadHasBadPhone) {
     data-lead-external-calendar-block="<?= e($leadExternalCalendarBlock) ?>"
     data-lead-search-index="<?= e($leadSearchIndex) ?>"
 >
+    <?php if ($leadNeedsAttention): ?>
+        <span class="sr-only">Needs attention</span>
+    <?php endif; ?>
     <div class="border-b border-slate-100 pb-2">
         <div class="flex min-w-0 items-start gap-2">
             <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-emerald-100 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200">
@@ -575,4 +593,14 @@ if ($leadHasBadPhone) {
             </svg>
         </button>
     </div>
+
+    <?php if ($createdLabel !== ''): ?>
+        <div class="lead-card-created-at mt-2 flex items-center justify-end border-t border-slate-100 pt-1.5 text-right">
+            <time
+                class="text-[10px] font-medium tabular-nums text-slate-400"
+                <?= $createdDatetime !== '' ? 'datetime="' . e($createdDatetime) . '"' : '' ?>
+                title="Lead received <?= e($createdLabel) ?>"
+            >Received <?= e($createdLabel) ?></time>
+        </div>
+    <?php endif; ?>
 </div>

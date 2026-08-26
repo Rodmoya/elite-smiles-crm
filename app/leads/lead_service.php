@@ -1479,6 +1479,23 @@ if (!function_exists('lead_operator_has_stale_sms_delivery')) {
         if ($leadId <= 0 || !lead_related_table_exists('lead_messages')) {
             return false;
         }
+        $leadStatus = strtolower(trim((string) ($lead['status'] ?? '')));
+        $consultationStatus = strtolower(trim((string) ($lead['consultation_status'] ?? '')));
+        if (in_array($leadStatus, ['opted_out', 'consultation_booked', 'consult_completed', 'treatment_accepted', 'treatment_completed', 'lost_lead'], true)
+            || in_array($consultationStatus, ['scheduled', 'booked', 'confirmed', 'completed'], true)
+            || trim((string) ($lead['consultation_date'] ?? '')) !== '') {
+            return false;
+        }
+        $leadCreatedTimestamp = strtotime(trim((string) ($lead['created_at'] ?? '')));
+        if ($leadCreatedTimestamp === false || $leadCreatedTimestamp < time() - 86400) {
+            return false;
+        }
+        $lastInboundTimestamp = strtotime(trim((string) ($lead['last_inbound_at'] ?? '')));
+        $lastOutboundTimestamp = strtotime(trim((string) ($lead['last_outbound_at'] ?? '')));
+        if ($lastInboundTimestamp !== false
+            && ($lastOutboundTimestamp === false || $lastInboundTimestamp >= $lastOutboundTimestamp)) {
+            return false;
+        }
         if (array_key_exists($cacheKey, $cache)) {
             return $cache[$cacheKey];
         }
@@ -1497,6 +1514,7 @@ if (!function_exists('lead_operator_has_stale_sms_delivery')) {
             $createdTimestamp = $createdAt !== '' ? strtotime($createdAt) : false;
             $cache[$cacheKey] = in_array($status, ['accepted', 'queued', 'sending', 'scheduled'], true)
                 && $createdTimestamp !== false
+                && $createdTimestamp >= time() - 86400
                 && $createdTimestamp <= time() - ($minutes * 60);
         } catch (Throwable $e) {
             $cache[$cacheKey] = false;

@@ -2939,7 +2939,7 @@ if (!function_exists('elite_ai_stage_bulk_follow_up_payload')) {
                 'cards' => [[
                     'title' => 'Need a target',
                     'items' => [
-                        'Example: follow up with First Touch Sent leads that need a message today.',
+                        'Example: follow up with New Lead or Active Follow-Up leads that need a message today.',
                         'Example: draft SMS for those leads.',
                     ],
                 ]],
@@ -6802,5 +6802,4 @@ function elite_ai_handle_request(array $user, array $request): array
         ];
     }
 }
-
 

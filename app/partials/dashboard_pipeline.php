@@ -546,7 +546,7 @@ $consultationOptions = [
 
 
 
-                                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-medium <?= e($stageBadgeClass) ?>" title="Display stage. Drag/drop still saves as <?= e($legacyDropStageLabel) ?>.">
+                                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-medium <?= e($stageBadgeClass) ?>" title="Relationship stage. First touch and attention remain separate badges.">
 
                                     <?= e($stageLabel) ?>
 
@@ -8226,6 +8226,9 @@ function applyCommunicationViewportFit() {
         formData.append('lead_id', leadId);
 
         formData.append('status', newStageKey);
+        if (options.displayStageKey) {
+            formData.append('display_stage', options.displayStageKey);
+        }
         (Array.isArray(options.orderedIds) ? options.orderedIds : []).forEach((orderedId) => {
             formData.append('ordered_ids[]', orderedId);
         });
@@ -8255,6 +8258,10 @@ function applyCommunicationViewportFit() {
 
 
         card.dataset.stageKey = data.status || newStageKey;
+        if (data.display_stage || options.displayStageKey) {
+            card.dataset.leadConversionStage = data.display_stage || options.displayStageKey;
+            card.dataset.leadConversionStageLabel = data.display_stage_label || newStageLabel;
+        }
 
         card.dataset.leadStageLabel = data.status_label || newStageLabel;
 
@@ -8873,14 +8880,18 @@ function applyCommunicationViewportFit() {
 
 
             const oldStageKey = draggedCard.dataset.stageKey || '';
+            const oldDisplayStageKey = draggedCard.dataset.leadConversionStage
+                || sourceDropzone.closest('.pipeline-column')?.dataset.displayStageKey
+                || oldStageKey;
 
             const newStageKey = column.dataset.stageKey || '';
+            const newDisplayStageKey = column.dataset.displayStageKey || newStageKey;
 
-            const newStageLabel = column.dataset.stageLabel || newStageKey;
+            const newStageLabel = column.dataset.displayStageLabel || column.dataset.stageLabel || newDisplayStageKey;
 
 
 
-            if (!newStageKey || oldStageKey === newStageKey) return;
+            if (!newStageKey || (oldStageKey === newStageKey && oldDisplayStageKey === newDisplayStageKey)) return;
 
             const sourceOrderBeforeMove = getDropzoneLeadIds(sourceDropzone);
 
@@ -8900,6 +8911,7 @@ function applyCommunicationViewportFit() {
             try {
 
                 await saveLeadStage(draggedCard, newStageKey, newStageLabel, {
+                    displayStageKey: newDisplayStageKey,
                     orderedIds: getDropzoneLeadIds(dropzone),
                     sourceOrderedIds: sourceOrderBeforeMove.filter((id) => id !== (draggedCard.dataset.leadId || '')),
                 });

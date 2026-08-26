@@ -119,6 +119,13 @@ expect_true(str_contains($aiSource, 'Call-channel boundary'), 'AI drafting must 
 expect_true(str_contains($agentSource, 'sms_delivery_failed_needs_attention'), 'A failed SMS must persist the authoritative Needs Attention state.');
 $statusCallbackSource = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_status.php');
 expect_true(str_contains($statusCallbackSource, 'lead_agent_mark_sms_delivery_attention'), 'Twilio failed and undelivered callbacks must mark the lead Needs Attention.');
+$leadServiceSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_service.php');
+expect_true(!str_contains($leadServiceSource, 'Automatically moved new lead from New Lead to Contacted'), 'Successful first touch must no longer empty the New Lead stage.');
+expect_true(str_contains($webhookSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'twilio_sms_webhook')"), 'Inbound SMS must reopen New Lead or Nurture through the central lifecycle transition.');
+$emailSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_email.php');
+expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'lead_email_inbound')"), 'Inbound email must reopen New Lead or Nurture through the central lifecycle transition.');
+expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dryRun)'), 'Every Lead Agent run must perform the dry-run capable lifecycle reconciliation.');
+expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',
@@ -173,23 +180,67 @@ expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engage
 
 $plan = lead_agent_cadence_plan();
 expect_true(count($plan) === 5, 'Active follow-up should be finite before the lead enters low-frequency nurture.');
-expect_true($plan[1]['hours'] === 3 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_follow_up', 'The first follow-up must re-engage an unanswered lead during the first-day intent window.');
-expect_true($plan[2]['hours'] === 96 && $plan[2]['channel'] === 'email' && $plan[2]['phase'] === 'education', 'Email must serve an educational role instead of duplicating the SMS CTA.');
-expect_true($plan[5]['hours'] === 720 && $plan[5]['phase'] === 'reactivation', 'The final active touch should be a gentle 30-day reactivation.');
+expect_true($plan[1]['hours'] === 0.5 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_delivery_check', 'The first follow-up must re-engage an unanswered lead after 30 minutes.');
+expect_true($plan[2]['hours'] === 7 && $plan[2]['phase'] === 'same_day_close_loop', 'The second cadence step must close the loop later on day one.');
+expect_true($plan[3]['hours'] === 20 && $plan[3]['phase'] === 'next_day_reengagement', 'The conversation must restart the next day while intent is still fresh.');
+expect_true($plan[4]['hours'] === 72 && $plan[4]['channel'] === 'email' && $plan[4]['phase'] === 'education', 'Email must serve an educational role instead of duplicating the SMS CTA.');
+expect_true($plan[5]['hours'] === 168 && $plan[5]['phase'] === 'active_sprint_close', 'The final active touch must close the seven-day sprint before Nurture.');
 $sameDayStep = lead_agent_step_schedule('2026-08-26 12:02:00', 1);
-expect_true($sameDayStep['at'] === '2026-08-26 15:02:00', 'A midday first touch must schedule the second engagement three hours later.');
+expect_true($sameDayStep['at'] === '2026-08-26 12:32:00', 'A midday first touch must schedule the second engagement 30 minutes later.');
 $monthlyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 6);
-expect_true($monthlyStep['hours'] === 1440 && $monthlyStep['phase'] === 'monthly_nurture', 'Long-term follow-up must taper to monthly nurture instead of daily pressure.');
+expect_true($monthlyStep['hours'] === 720 && $monthlyStep['phase'] === 'monthly_nurture', 'Long-term follow-up must taper to monthly nurture instead of daily pressure.');
 
 $dayZeroLimit = lead_agent_daily_outbound_limit('2026-08-26 12:02:00', new DateTimeImmutable('2026-08-26 15:02:00', new DateTimeZone(APP_TIMEZONE)));
 $dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
 $daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
-expect_true($dayZeroLimit === 3, 'Day one must allow the SMS/email first-touch bundle plus exactly one same-day follow-up.');
+expect_true($dayZeroLimit === 4, 'Day one must allow the first-touch bundle plus the delivery check and close-loop.');
 expect_true($dayFiveLimit === 1, 'The cadence must never send more than one automated follow-up in a day.');
 expect_true($daySixLimit === 1, 'The one-message daily cap must remain in force after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
-expect_true($incremental['at'] === '2026-08-09 14:00:00', 'After the same-day touch, an overdue catch-up must preserve the slower education interval from the actual send time.');
+expect_true($incremental['at'] === '2026-08-06 08:00:00', 'An overdue first-day catch-up must preserve spacing and quiet hours from the actual send time.');
+
+$lifecycleNow = new DateTimeImmutable('2026-08-26 15:00:00', new DateTimeZone(APP_TIMEZONE));
+$firstDayLead = [
+    'status' => 'contacted',
+    'created_at' => '2026-08-26 09:00:00',
+    'last_outbound_at' => '2026-08-26 09:02:00',
+    'last_inbound_at' => '',
+    'consultation_status' => 'requested',
+];
+expect_true(lead_conversion_stage_key($firstDayLead, $lifecycleNow) === 'new_lead', 'First touch must not remove a lead from New Lead during the first 24 hours.');
+$olderUnanswered = $firstDayLead;
+$olderUnanswered['created_at'] = '2026-08-25 08:00:00';
+expect_true(lead_conversion_stage_key($olderUnanswered, $lifecycleNow) === 'active_follow_up', 'An unanswered lead must enter Active Follow-Up after 24 hours.');
+$openConversation = $olderUnanswered + ['phone' => '+18015550199'];
+$openConversation['status'] = 'in_contact';
+$openConversation['last_inbound_at'] = '2026-08-26 14:30:00';
+$openConversation['last_outbound_at'] = '2026-08-26 14:00:00';
+expect_true(lead_conversion_stage_key($openConversation, $lifecycleNow) === 'lead_answered', 'A newer inbound response must display as Lead Answered, not Scheduling.');
+$recentAnswer = $openConversation;
+$recentAnswer['last_inbound_at'] = '2026-08-26 12:00:00';
+$recentAnswer['last_outbound_at'] = '2026-08-26 14:30:00';
+expect_true(lead_conversion_stage_key($recentAnswer, $lifecycleNow) === 'lead_answered', 'A recently answered conversation must stay open before the stall threshold.');
+$stalledAnswer = $recentAnswer;
+$stalledAnswer['last_outbound_at'] = '2026-08-26 12:30:00';
+expect_true(lead_conversion_stage_key($stalledAnswer, $lifecycleNow) === 'active_follow_up', 'A conversation quiet for two hours after our answer must enter Active Follow-Up.');
+$schedulingLead = $openConversation;
+$schedulingLead['consultation_status'] = 'scheduling';
+expect_true(lead_conversion_stage_key($schedulingLead, $lifecycleNow) === 'scheduling', 'Only explicit scheduling context should display in Scheduling.');
+expect_true(lead_conversion_stage_key(['status' => 'no_answer'], $lifecycleNow) === 'nurture', 'No Answer must display as Nurture.');
+expect_true(lead_conversion_stage_key(['status' => 'lost_lead'], $lifecycleNow) === 'lost', 'Lost must remain separate from Nurture.');
+expect_true(lead_conversion_stage_key(['status' => 'opted_out'], $lifecycleNow) === 'opted_out', 'Opted Out must remain separate from Nurture.');
+
+expect_true(lead_agent_lifecycle_decision($stalledAnswer, ['status' => 'engaged', 'cadence_step' => 2], 0, $lifecycleNow) === 'active_follow_up', 'The reconciler must persist a stalled answered conversation as Active Follow-Up.');
+$longStalled = $stalledAnswer;
+$longStalled['last_inbound_at'] = '2026-08-23 12:00:00';
+$longStalled['last_outbound_at'] = '2026-08-26 12:00:00';
+expect_true(lead_agent_lifecycle_decision($longStalled, ['status' => 'engaged', 'cadence_step' => 4], 2, $lifecycleNow) === 'nurture', 'Two re-engagement attempts over 72 hours must move a stopped conversation to Nurture.');
+$unansweredInbound = $longStalled;
+$unansweredInbound['last_outbound_at'] = '2026-08-23 11:00:00';
+expect_true(lead_agent_lifecycle_decision($unansweredInbound, ['status' => 'engaged', 'cadence_step' => 4], 2, $lifecycleNow) === '', 'An unanswered inbound message must never be moved to Nurture.');
+expect_true(lead_agent_lifecycle_decision($olderUnanswered, ['status' => 'active', 'cadence_step' => 5], 0, $lifecycleNow) === 'nurture', 'A never-answered lead must enter Nurture after the five-step active sprint.');
+expect_true(lead_conversion_stage_legacy_target('lead_answered') === 'in_contact' && lead_conversion_stage_legacy_target('nurture') === 'no_answer', 'New display stages must retain legacy database compatibility.');
 
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
 expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');

@@ -151,46 +151,26 @@ lead_comm_insert_activity($leadId, 'sms_inbound', 'Patient replied by SMS: ' . m
 $command = lead_comm_opt_command($body);
 if ($command === 'opt_out') {
     lead_comm_set_sms_opt_status($leadId, 'opted_out');
-    if (function_exists('leads_has_column') && leads_has_column('status')) {
-        $setParts = ["status = 'opted_out'"];
-        $params = ['id' => $leadId];
-        if (leads_has_column('updated_at')) {
-            $setParts[] = 'updated_at = :updated_at';
-            $params['updated_at'] = now();
-        }
-        db_execute(
-            'UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1',
-            $params
-        );
-    }
+    lead_lifecycle_transition_status(
+        $leadId,
+        'opted_out',
+        'Lead revoked SMS consent.',
+        'twilio_sms_webhook',
+        []
+    );
     lead_comm_insert_activity($leadId, 'sms_opt_out', 'SMS opt-out captured from patient reply. Do not text this lead unless they opt back in.', [
         'source' => 'twilio_sms_webhook',
         'body' => $body,
     ], 'Twilio');
 } elseif ($command === 'opt_in') {
     lead_comm_set_sms_opt_status($leadId, 'opted_in');
+    lead_lifecycle_mark_inbound_answer($leadId, 'twilio_sms_webhook_opt_in', true);
     lead_comm_insert_activity($leadId, 'sms_opt_in', 'SMS opt-in captured from patient reply.', [
         'source' => 'twilio_sms_webhook',
         'body' => $body,
     ], 'Twilio');
 } else {
-    $currentStage = trim((string)($lead['status'] ?? ''));
-    if (in_array($currentStage, ['new_lead', 'attempted_contact', 'contacted', ''], true) && function_exists('leads_has_column') && leads_has_column('status')) {
-        $setParts = ["status = 'in_contact'"];
-        $params = ['id' => $leadId];
-        if (leads_has_column('pipeline_position') && function_exists('lead_pipeline_next_position')) {
-            $setParts[] = 'pipeline_position = :pipeline_position';
-            $params['pipeline_position'] = lead_pipeline_next_position('in_contact');
-        }
-        if (leads_has_column('updated_at')) {
-            $setParts[] = 'updated_at = :updated_at';
-            $params['updated_at'] = now();
-        }
-        db_execute(
-            'UPDATE leads SET ' . implode(', ', $setParts) . ' WHERE id = :id LIMIT 1',
-            $params
-        );
-    }
+    lead_lifecycle_mark_inbound_answer($leadId, 'twilio_sms_webhook');
 }
 
 lead_comm_update_rollup($leadId);

@@ -126,6 +126,8 @@ $emailSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_em
 expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'lead_email_inbound')"), 'Inbound email must reopen New Lead or Nurture through the central lifecycle transition.');
 expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dryRun)'), 'Every Lead Agent run must perform the dry-run capable lifecycle reconciliation.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
+expect_true(!lead_attention_is_actionable(['_action_queue' => ['action_key' => 'delivery_issue']]), 'A non-actionable SMS delivery failure must not create a red human-attention halo.');
+expect_true(lead_attention_is_actionable(['_action_queue' => ['action_key' => 'reply_needed']]), 'A patient reply that needs an answer must remain in the human-attention queue.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',

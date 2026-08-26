@@ -3579,7 +3579,9 @@ if (!function_exists('lead_agent_daily_metrics')) {
                 INNER JOIN leads l ON l.id = s.lead_id
                 WHERE s.status = 'ready_to_schedule'
                   AND NOT " . lead_agent_scheduled_sql_condition('l')),
-            'needs_attention_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status = 'needs_attention'"),
+            'needs_attention_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states
+                WHERE status = 'needs_attention'
+                  AND COALESCE(last_decision, '') <> 'sms_delivery_failed_needs_attention'"),
             'overdue_now' => (int) db_value("SELECT COUNT(*) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),
             'oldest_overdue_minutes' => (int) db_value("SELECT COALESCE(MAX(TIMESTAMPDIFF(MINUTE, next_action_at, NOW())), 0) FROM lead_agent_states WHERE status IN ('active', 'engaged') AND human_takeover = 0 AND next_action_at IS NOT NULL AND next_action_at < NOW()"),
         ];
@@ -3755,6 +3757,7 @@ if (!function_exists('lead_agent_exception_rows')) {
             FROM lead_agent_states s
             INNER JOIN leads l ON l.id = s.lead_id
             WHERE s.status = 'needs_attention'
+              AND COALESCE(s.last_decision, '') <> 'sms_delivery_failed_needs_attention'
             ORDER BY COALESCE(s.handoff_notified_at, s.updated_at) DESC LIMIT {$limit}");
         foreach ($rows as &$lead) {
             $reason = trim((string) ($lead['agent_attention_reason'] ?? '')) ?: 'Lead Agent cannot safely determine the next step.';

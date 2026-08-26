@@ -1740,6 +1740,15 @@ if (!function_exists('lead_action_queue_rows')) {
     }
 }
 
+if (!function_exists('lead_attention_is_actionable')) {
+    /** Non-actionable provider failures remain audited and SMS-blocked, but do not become operator work. */
+    function lead_attention_is_actionable(array $lead): bool
+    {
+        $queue = (array)($lead['_action_queue'] ?? []);
+        return trim((string)($queue['action_key'] ?? '')) !== 'delivery_issue';
+    }
+}
+
 if (!function_exists('lead_attention_rows')) {
     /** Combine explicit agent exceptions with ordinary work that is due now. */
     function lead_attention_rows(int $limit = 100): array
@@ -1754,6 +1763,9 @@ if (!function_exists('lead_attention_rows')) {
         // Exceptions are applied last so their human-review reason and higher
         // priority replace a routine due action for the same lead.
         foreach (array_merge($dueRows, $exceptionRows) as $lead) {
+            if (!lead_attention_is_actionable($lead)) {
+                continue;
+            }
             $leadId = (int) ($lead['id'] ?? 0);
             if ($leadId > 0) {
                 $combined[$leadId] = $lead;

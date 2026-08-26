@@ -19,6 +19,10 @@ public/uploads/
 ._*
 
 # Dev/test scratch files
+/.claude/settings.local.json
+/tmp/
+__pycache__/
+*.py[cod]
 landing.php.bak*
 landing-live-backup.php
 landingtest.php

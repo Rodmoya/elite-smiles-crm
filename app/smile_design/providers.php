@@ -35,12 +35,15 @@ if (!function_exists('smile_design_lip_repositioning_surgical_prompt')) {
         }
         $qaFeedback = trim((string)$qaFeedback);
         $isRetry = !empty($context['is_retry']);
+        $maskProvided = !empty($context['mask_provided']);
 
         return implode(' ', array_values(array_filter([
             'You are creating a surgical lip repositioning simulation for Elite Smiles.',
             'This is NOT a cosmetic smile design, NOT veneers, NOT whitening, NOT orthodontics, and NOT a portrait retouch.',
             'Use the first image as the source of truth for the patient, teeth, face, lighting, crop, camera angle, and expression.',
-            'Additional images, if present, are only context references; do not copy tooth redesign, beauty retouching, or facial changes from them.',
+            $maskProvided
+                ? 'One of the additional images is a marked reference overlay: the doctor drew exactly where the new lower border of the upper lip should land. Treat that marked line as the authoritative target position for the upper lip lower edge, taking precedence over the general verbal placement guidance below if they ever conflict. Do not copy tooth redesign, beauty retouching, or any other facial change from that or any other additional image — use it only for the marked lip-line position.'
+                : 'Additional images, if present, are only context references; do not copy tooth redesign, beauty retouching, or facial changes from them.',
             'Requested procedure: ' . $procedure . '.',
             'Target source angle for this generation: ' . $targetPhotoLabel . ' (' . $targetPhotoType . ').',
             'Edit the first image as the ' . $targetPhotoLabel . ' after preview and keep the same angle, pose, framing, aspect ratio, and lighting.',
@@ -645,6 +648,7 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
                 'reference_notes' => $referenceNotes,
                 'qa_feedback' => $options['lip_qa_feedback'] ?? '',
                 'is_retry' => !empty($options['lip_surgical_retry']),
+                'mask_provided' => $brushMaskPath !== '',
             ])];
         }
 
@@ -765,10 +769,21 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
         $toothOffsets = trim((string)($options['tooth_offsets'] ?? '{}'));
         $toothAdjustments = trim((string)($options['tooth_adjustments'] ?? '{}'));
         $anchorPointsRaw = trim((string)($options['anchor_points'] ?? ($options['precision_controls']['anchor_points'] ?? '')));
+        // Was previously referenced below (createSmileEditMask call) without ever being
+        // declared in this class — a live TypeError under strict_types for any request
+        // that reached that call. The Gemini provider already declares this correctly.
+        $contourPointsRaw = trim((string)($options['contour_points'] ?? ($options['precision_controls']['contour_points'] ?? '')));
         $internalNotes = trim((string)($options['notes'] ?? ''));
         $targetPhotoLabel = trim((string)($options['target_photo_label'] ?? 'Front'));
         $targetPhotoType = trim((string)($options['target_photo_type'] ?? $options['photo_type'] ?? 'front'));
         $cameraMetadataSummary = trim((string)($options['camera_metadata_summary'] ?? ''));
+        // Cheap early signal for whether an edit mask will actually be attached for this
+        // request (veneer or lip-reposition mode with anchor/contour placement data). Used
+        // to tell the lip-reposition prompt whether to treat the attached mask as ground
+        // truth. The real mask image is still built once, later, right before the request.
+        $maskWillBeProvided = ($isVeneerSimulation || $isLipRepositionOnly)
+            && $primarySourcePath !== ''
+            && ($anchorPointsRaw !== '' || $contourPointsRaw !== '');
         $includeLower = !empty($options['include_lower_teeth']);
         $analysis = is_array($options['case_analysis'] ?? null) ? $options['case_analysis'] : [];
         $analysisSummary = trim((string)($options['analysis_summary'] ?? ($analysis['summary'] ?? '')));
@@ -958,12 +973,16 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
                 'reference_notes' => $referenceNotes,
                 'qa_feedback' => $options['lip_qa_feedback'] ?? '',
                 'is_retry' => !empty($options['lip_surgical_retry']),
+                'mask_provided' => $maskWillBeProvided,
             ])];
         }
 
         $prompt = implode(' ', $promptParts);
         $editSize = $this->imageEditSizeForSource($primarySourcePath);
-        $maskPath = $isVeneerSimulation && $primarySourcePath !== ''
+        // Lip repositioning shares the same anchor/contour edit mask as veneer mode so a
+        // doctor can mark exactly where the new lower lip border should land instead of
+        // relying on text description alone (mirrors the Gemini provider's brush-mask path).
+        $maskPath = ($isVeneerSimulation || $isLipRepositionOnly) && $primarySourcePath !== ''
             ? $this->createSmileEditMask($primarySourcePath, $targetPhotoType, $anchorPointsRaw, $contourPointsRaw)
             : '';
         try {

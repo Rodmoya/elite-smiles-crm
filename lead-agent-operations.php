@@ -125,6 +125,10 @@ $agentReadyTotal = (int) db_value("SELECT COUNT(*) FROM lead_agent_states s
 $pipelineCounts = lead_pipeline_counts();
 $pipelineSchedulingTotal = (int)($pipelineCounts['scheduling'] ?? 0);
 $attentionRows = lead_agent_exception_rows(8);
+$cycleCoverage = lead_agent_cycle_coverage(2000, true);
+$cycleSummary = (array)($cycleCoverage['summary'] ?? []);
+$cycleReviewRows = array_slice((array)($cycleCoverage['rows'] ?? []), 0, 12);
+$cycleHasGaps = (int)($cycleSummary['gaps'] ?? 0) > 0;
 
 $logoUrl = base_url('assets/img/ES-Logo-Stack-500-x-150-px.png');
 $currentPage = 'lead_agent_operations';
@@ -244,6 +248,47 @@ $eventLabels = [
                     <p class="mt-2 text-xs leading-5 text-slate-500"><?= e($hint) ?></p>
                 </article>
             <?php endforeach; ?>
+        </section>
+
+        <section id="cycle-coverage" aria-labelledby="cycle-coverage-heading" class="rounded-[2rem] border <?= $cycleHasGaps ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50' ?> p-6 shadow-sm lg:p-7" data-total="<?= e((string)((int)($cycleSummary['total'] ?? 0))) ?>" data-eligible="<?= e((string)((int)($cycleSummary['eligible'] ?? 0))) ?>" data-covered="<?= e((string)((int)($cycleSummary['covered'] ?? 0))) ?>" data-gaps="<?= e((string)((int)($cycleSummary['gaps'] ?? 0))) ?>" data-human-action="<?= e((string)((int)($cycleSummary['human_action'] ?? 0))) ?>" data-first-touch-pending="<?= e((string)((int)($cycleSummary['first_touch_pending'] ?? 0))) ?>" data-unreachable="<?= e((string)((int)($cycleSummary['unreachable'] ?? 0))) ?>">
+            <script id="cycle-coverage-data" type="application/json"><?= json_encode($cycleCoverage, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] <?= $cycleHasGaps ? 'text-rose-700' : 'text-emerald-700' ?>">Conversion cycle coverage</p>
+                    <h2 id="cycle-coverage-heading" class="mt-2 text-xl font-semibold text-slate-950"><?= $cycleHasGaps ? 'Some eligible leads still need enrollment' : 'Every eligible lead is scheduled' ?></h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-700">Consent, delivery health, replies, appointments, protected stages, and durable Lead Agent state are reconciled on every worker run.</p>
+                </div>
+                <span class="rounded-full px-3 py-1.5 text-xs font-bold <?= $cycleHasGaps ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800' ?>"><?= e((string)((int)($cycleSummary['covered'] ?? 0))) ?> / <?= e((string)((int)($cycleSummary['eligible'] ?? 0))) ?> covered</span>
+            </div>
+            <dl class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-label="Conversion cycle coverage totals">
+                <?php foreach ([
+                    ['All leads', 'total', 'Every CRM lead reviewed'],
+                    ['In cycle', 'covered', 'Eligible and scheduled'],
+                    ['Cycle gaps', 'gaps', 'Eligible but unscheduled'],
+                    ['Human action', 'human_action', 'Reply or owned thread'],
+                    ['First touch', 'first_touch_pending', 'No outbound recorded'],
+                    ['Unreachable', 'unreachable', 'No deliverable channel'],
+                ] as [$label, $key, $hint]): ?>
+                    <div class="rounded-2xl border border-white/80 bg-white/80 p-4">
+                        <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"><?= e($label) ?></dt>
+                        <dd class="mt-2 text-2xl font-semibold tabular-nums text-slate-950"><?= e((string)((int)($cycleSummary[$key] ?? 0))) ?></dd>
+                        <p class="mt-1 text-xs leading-5 text-slate-500"><?= e($hint) ?></p>
+                    </div>
+                <?php endforeach; ?>
+            </dl>
+            <?php if ($cycleReviewRows !== []): ?>
+                <details class="mt-5 rounded-2xl border border-white/80 bg-white/80 p-4">
+                    <summary class="cursor-pointer text-sm font-semibold text-slate-800">Review non-cycle records</summary>
+                    <div class="mt-4 grid gap-2 md:grid-cols-2">
+                        <?php foreach ($cycleReviewRows as $row): ?>
+                            <a href="<?= e(base_url('leads.php?lead_id=' . (int)($row['lead_id'] ?? 0))) ?>" class="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm transition hover:border-blue-300 hover:bg-blue-50">
+                                <span class="font-semibold text-slate-900"><?= e((string)($row['full_name'] ?? 'Lead')) ?></span>
+                                <span class="mt-1 block text-xs text-slate-500"><?= e(ucwords(str_replace('_', ' ', (string)($row['category'] ?? 'review')))) ?> · <?= e(ucwords(str_replace('_', ' ', (string)($row['reason'] ?? '')))) ?></span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            <?php endif; ?>
         </section>
 
         <section aria-labelledby="performance-heading" class="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-7">

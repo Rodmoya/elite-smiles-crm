@@ -165,12 +165,21 @@ expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_co
 $legacyNurture = array_merge($eligibleBackfill, ['status' => 'no_answer']);
 $nurtureGap = lead_agent_cycle_assessment($legacyNurture, [], false, '');
 expect_true((string)($nurtureGap['category'] ?? '') === 'gap' && empty($nurtureGap['covered']), 'A contactable legacy Nurture lead without agent state must be detected as a cycle gap.');
+$legacyNurtureWithoutHistory = array_merge($legacyNurture, ['last_outbound_at' => '']);
+$historyGap = lead_agent_cycle_assessment($legacyNurtureWithoutHistory, [], false, '');
+expect_true((string)($historyGap['category'] ?? '') === 'gap' && (string)($historyGap['reason'] ?? '') === 'legacy_nurture_without_local_touch_history', 'A contactable Nurture record must join the staggered cycle even when old outbound history was not imported.');
 $nurtureCovered = lead_agent_cycle_assessment($legacyNurture, [
     'status' => 'nurture',
     'human_takeover' => 0,
     'next_action_at' => '2026-09-05 10:00:00',
 ], false, '');
 expect_true((string)($nurtureCovered['category'] ?? '') === 'covered' && !empty($nurtureCovered['covered']), 'A scheduled Nurture state must count as covered.');
+$coveredWithoutRollup = lead_agent_cycle_assessment(array_merge($eligibleBackfill, ['last_outbound_at' => '']), [
+    'status' => 'active',
+    'human_takeover' => 0,
+    'next_action_at' => '2026-08-27 09:00:00',
+], false, '');
+expect_true((string)($coveredWithoutRollup['category'] ?? '') === 'covered', 'A durable active schedule must remain covered when a communication rollup timestamp is missing.');
 $deliveryEmailRoute = lead_agent_cycle_assessment($legacyNurture, [
     'status' => 'needs_attention',
     'human_takeover' => 1,

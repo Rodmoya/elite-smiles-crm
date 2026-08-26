@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS `leads` (
   `last_name`          VARCHAR(120)  NOT NULL DEFAULT '',
   `email`              VARCHAR(255)  NOT NULL DEFAULT '',
   `phone`              VARCHAR(50)   NOT NULL DEFAULT '',
+  `phone_raw`          VARCHAR(120)           DEFAULT NULL,
+  `phone_validation_status` VARCHAR(30) NOT NULL DEFAULT 'unknown',
   `procedure_interest` VARCHAR(255)  NOT NULL DEFAULT '',
   `source`             VARCHAR(100)  NOT NULL DEFAULT 'website',
   `source_medium`      VARCHAR(100)  NOT NULL DEFAULT 'landing',

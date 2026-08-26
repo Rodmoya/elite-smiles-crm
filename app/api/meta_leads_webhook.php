@@ -285,6 +285,7 @@ $phone = only_digits($phoneRaw);
 if ($phoneRaw !== '' && $phone === '') {
     $phone = trim($phoneRaw);
 }
+$phoneAnalysis = elite_phone_us_analysis($phoneRaw);
 
 $procedureInterest = meta_leads_procedure_from_payload($payload);
 if ($procedureInterest === '') {
@@ -346,6 +347,8 @@ $notes = meta_leads_build_notes($payload);
 $input = [
     'full_name' => $fullName,
     'phone' => $phone,
+    'phone_raw' => $phoneRaw,
+    'phone_validation_status' => (string)$phoneAnalysis['status'],
     'email' => $email,
     'procedure_interest' => $procedureInterest,
     'source' => 'meta_lead_form',

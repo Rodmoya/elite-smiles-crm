@@ -199,6 +199,86 @@ if (!function_exists('format_date')) {
     }
 }
 
+if (!function_exists('elite_phone_us_analysis')) {
+    /**
+     * Normalize and validate a US/NANP phone number without discarding the
+     * original value. A valid destination must have a 10-digit national
+     * number whose area code and exchange both begin with 2-9.
+     *
+     * @return array{raw:string,digits:string,national:string,e164:string,status:string,reason:string,valid:bool}
+     */
+    function elite_phone_us_analysis(?string $phone): array
+    {
+        $raw = trim((string)$phone);
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+        $national = $digits;
+
+        if (strlen($national) === 11 && str_starts_with($national, '1')) {
+            $national = substr($national, 1);
+        }
+
+        $status = 'invalid';
+        $reason = 'invalid_length';
+        $valid = false;
+
+        if ($raw === '') {
+            $status = 'missing';
+            $reason = 'missing';
+            $national = '';
+        } elseif (strlen($national) === 10) {
+            if (!preg_match('/^[2-9]\d{2}[2-9]\d{6}$/', $national)) {
+                $reason = 'invalid_nanp_prefix';
+            } elseif (preg_match('/^(\d)\1{9}$/', $national)) {
+                $reason = 'placeholder';
+            } else {
+                $status = 'valid';
+                $reason = '';
+                $valid = true;
+            }
+        }
+
+        return [
+            'raw' => $raw,
+            'digits' => $digits,
+            'national' => $national,
+            'e164' => $valid ? '+1' . $national : '',
+            'status' => $status,
+            'reason' => $reason,
+            'valid' => $valid,
+        ];
+    }
+}
+
+if (!function_exists('elite_phone_is_valid_us')) {
+    function elite_phone_is_valid_us(?string $phone): bool
+    {
+        $analysis = elite_phone_us_analysis($phone);
+        return !empty($analysis['valid']);
+    }
+}
+
+if (!function_exists('elite_phone_normalize_us')) {
+    function elite_phone_normalize_us(?string $phone, bool $e164 = false): string
+    {
+        $analysis = elite_phone_us_analysis($phone);
+        if (empty($analysis['valid'])) {
+            return '';
+        }
+        return (string)($e164 ? $analysis['e164'] : $analysis['national']);
+    }
+}
+
+if (!function_exists('elite_phone_storage_value')) {
+    function elite_phone_storage_value(?string $phone): string
+    {
+        $analysis = elite_phone_us_analysis($phone);
+        if (!empty($analysis['valid'])) {
+            return (string)$analysis['national'];
+        }
+        return (string)($analysis['digits'] !== '' ? $analysis['digits'] : $analysis['raw']);
+    }
+}
+
 if (!function_exists('format_phone_us')) {
     function format_phone_us(?string $phone): string
     {

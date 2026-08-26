@@ -1274,12 +1274,12 @@ if (!function_exists('lead_ai_maybe_send_new_lead_sms')) {
             ];
         }
 
-        if (trim((string)($lead['phone'] ?? '')) === '') {
+        if (!elite_phone_is_valid_us((string)($lead['phone'] ?? ''))) {
             return [
                 'attempted' => false,
                 'sent' => false,
                 'body' => '',
-                'status_label' => 'Lead has no phone number.',
+                'status_label' => 'Lead has no valid US phone number.',
             ];
         }
 

@@ -402,6 +402,7 @@ if (!function_exists('codex_api_public_lead_fields')) {
     {
         return [
             'id', 'full_name', 'first_name', 'last_name', 'email', 'phone',
+            'phone_raw', 'phone_validation_status',
             'preferred_contact', 'procedure_interest', 'source', 'source_medium',
             'source_type', 'landing_page', 'campaign', 'source_campaign',
             'source_ad_set', 'source_ad_name', 'source_post_id', 'source_post_label',
@@ -2635,6 +2636,18 @@ if (!function_exists('codex_api_update_lead')) {
             $update['email'] = strtolower((string)$update['email']);
             if ($update['email'] !== '' && !filter_var($update['email'], FILTER_VALIDATE_EMAIL)) {
                 codex_api_response(['ok' => false, 'message' => 'Please provide a valid email address.'], 422);
+            }
+        }
+
+        if (array_key_exists('phone', $update)) {
+            $phoneRaw = trim((string)$update['phone']);
+            $phoneAnalysis = elite_phone_us_analysis($phoneRaw);
+            $update['phone'] = elite_phone_storage_value($phoneRaw);
+            if (leads_has_column('phone_raw')) {
+                $update['phone_raw'] = $phoneRaw !== '' ? $phoneRaw : null;
+            }
+            if (leads_has_column('phone_validation_status')) {
+                $update['phone_validation_status'] = (string)$phoneAnalysis['status'];
             }
         }
 

@@ -1,13 +1,15 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Elite Smiles CRM
+/**
+ * Elite Smiles CRM
  * File: /app/leads/lead_meta.php
  *
  * Marketing / lead-gen pipeline only.
- * Practice-side stages are intentionally excluded.
- */
+ * Practice-side stages are intentionally excluded.
+ */
+
+require_once dirname(__DIR__) . '/core/helpers.php';
 
 if (!function_exists('lead_stage_labels')) {
     function lead_stage_labels(): array
@@ -267,6 +269,8 @@ if (!function_exists('lead_empty_record')) {
         return [
             'full_name'          => '',
             'phone'              => '',
+            'phone_raw'          => '',
+            'phone_validation_status' => 'missing',
             'email'              => '',
             'procedure_interest' => '',
             'source'             => 'manual',
@@ -397,17 +401,7 @@ if (!function_exists('lead_conversion_phone_digits')) {
 if (!function_exists('lead_conversion_bad_phone')) {
     function lead_conversion_bad_phone(array $lead): bool
     {
-        $digits = lead_conversion_phone_digits((string)($lead['phone'] ?? ''));
-        if (strlen($digits) < 10) {
-            return true;
-        }
-        if (preg_match('/^0+$/', $digits)) {
-            return true;
-        }
-        if (preg_match('/^0{6,}\d+$/', $digits)) {
-            return true;
-        }
-        return false;
+        return !elite_phone_is_valid_us((string)($lead['phone'] ?? ''));
     }
 }
 

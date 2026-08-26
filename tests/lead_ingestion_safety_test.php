@@ -23,6 +23,19 @@ $sortedLocks = $locks;
 sort($sortedLocks);
 ingestion_safety_expect($locks === $sortedLocks, 'Lead identity locks must be sorted to prevent deadlocks.');
 
+$metaFormattedPhone = elite_phone_us_analysis('p:+1 (801) 555-1212');
+ingestion_safety_expect(!empty($metaFormattedPhone['valid']), 'A valid Meta-formatted US number must remain SMS eligible.');
+ingestion_safety_expect($metaFormattedPhone['national'] === '8015551212', 'US normalization must remove formatting and only the country code.');
+ingestion_safety_expect($metaFormattedPhone['e164'] === '+18015551212', 'A valid US number must normalize to E.164 for Twilio.');
+
+$incompletePhone = elite_phone_us_analysis('801555121');
+ingestion_safety_expect(empty($incompletePhone['valid']) && $incompletePhone['status'] === 'invalid', 'A nine-digit number must be marked invalid.');
+ingestion_safety_expect(elite_phone_storage_value('801555121') === '801555121', 'An incomplete number must remain visible for manual correction.');
+ingestion_safety_expect(elite_twilio_normalize_us_number('801555121') === '', 'An incomplete number must never reach Twilio.');
+
+$placeholderPhone = elite_phone_us_analysis('0000001001');
+ingestion_safety_expect(empty($placeholderPhone['valid']), 'A placeholder with an impossible NANP prefix must be blocked.');
+
 $resolvedReaction = [
     'last_inbound_resolved' => true,
     'last_inbound' => ['body' => '👍 to the previous message'],
@@ -45,6 +58,16 @@ $legacyMetaWebhook = (string) file_get_contents(dirname(__DIR__) . '/app/api/met
 ingestion_safety_expect(
     str_contains($legacyMetaWebhook, "\$secret === '' || \$requestSecret === '' || !hash_equals(\$secret, \$requestSecret)"),
     'The direct Meta intake endpoint must also fail closed and compare its secret safely.'
+);
+ingestion_safety_expect(
+    str_contains($legacyMetaWebhook, "'phone_raw' => \$phoneRaw"),
+    'The direct Meta intake endpoint must preserve the unnormalized phone value.'
+);
+$metaLeadService = (string) file_get_contents(dirname(__DIR__) . '/app/meta/meta_lead_service.php');
+ingestion_safety_expect(
+    str_contains($metaLeadService, "'phone_raw' => \$phoneRaw")
+        && str_contains($metaLeadService, "'phone_validation_status' => (string)\$phoneAnalysis['status']"),
+    'The native Meta Graph intake path must preserve raw phone provenance and validation status.'
 );
 
 $twilioWebhook = (string) file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_webhook.php');

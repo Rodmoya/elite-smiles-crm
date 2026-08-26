@@ -173,12 +173,7 @@ if (!function_exists('meta_lead_value')) {
 if (!function_exists('meta_lead_normalize_phone')) {
     function meta_lead_normalize_phone(?string $phone): string
     {
-        $digits = preg_replace('/\D+/', '', (string)$phone);
-        $digits = is_string($digits) ? $digits : '';
-        if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
-            $digits = substr($digits, 1);
-        }
-        return $digits;
+        return elite_phone_storage_value($phone);
     }
 }
 
@@ -364,7 +359,9 @@ if (!function_exists('meta_lead_prepare_input')) {
             }
         }
 
-        $phone = meta_lead_normalize_phone(meta_lead_value($normalized, ['phone_number', 'phone', 'mobile_phone']));
+        $phoneRaw = meta_lead_value($normalized, ['phone_number', 'phone', 'mobile_phone']);
+        $phoneAnalysis = elite_phone_us_analysis($phoneRaw);
+        $phone = meta_lead_normalize_phone($phoneRaw);
         $email = strtolower(trim((string)meta_lead_value($normalized, ['email', 'email_address'])));
 
         $howSoon = trim((string)meta_lead_value($normalized, ['how_soon', 'timeline', 'timeframe', 'preferred_timeline']));
@@ -396,6 +393,8 @@ if (!function_exists('meta_lead_prepare_input')) {
             'last_name' => $lastName,
             'full_name' => $fullName !== '' ? $fullName : ($firstName !== '' ? trim($firstName . ' ' . $lastName) : ''),
             'phone' => $phone,
+            'phone_raw' => $phoneRaw,
+            'phone_validation_status' => (string)$phoneAnalysis['status'],
             'email' => $email,
             'procedure_interest' => $procedure,
             'source' => $leadSource,
@@ -417,6 +416,10 @@ if (!function_exists('meta_lead_prepare_input')) {
         $leadInput['lead_source_metadata'] = [
             'first_name' => $firstName,
             'last_name' => $lastName,
+            'phone_raw' => $phoneRaw,
+            'phone_normalized' => $phone,
+            'phone_validation_status' => (string)$phoneAnalysis['status'],
+            'phone_validation_reason' => (string)$phoneAnalysis['reason'],
             'how_soon' => $howSoon,
             'leadgen_id' => trim((string)meta_lead_value($normalized, ['leadgen_id', 'lead_id', 'meta_lead_id', 'id'])),
             'form_id' => trim((string)($normalized['form_id'] ?? '')),

@@ -237,6 +237,26 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
 
         lead_identity_ensure_schema();
 
+        foreach ([
+            'phone_raw' => 'VARCHAR(120) NULL DEFAULT NULL',
+            'phone_validation_status' => "VARCHAR(30) NOT NULL DEFAULT 'unknown'",
+        ] as $phoneColumn => $definition) {
+            if (leads_has_column($phoneColumn)) {
+                continue;
+            }
+            try {
+                db_query("ALTER TABLE leads ADD COLUMN {$phoneColumn} {$definition}");
+                leads_table_columns(true);
+            } catch (Throwable $e) {
+                if (function_exists('esm_log')) {
+                    esm_log('lead_pipeline', 'Could not add phone provenance column.', [
+                        'column' => $phoneColumn,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         $column = lead_pipeline_position_column();
 
         if (!leads_has_column($column)) {
@@ -917,6 +937,8 @@ if (!function_exists('lead_pipeline_rows')) {
         foreach ([
             'full_name',
             'phone',
+            'phone_raw',
+            'phone_validation_status',
             'email',
             'preferred_contact',
             'procedure_interest',
@@ -2029,12 +2051,12 @@ if (!function_exists('lead_force_send_first_touch_sms')) {
             ];
         }
 
-        if (trim((string)($lead['phone'] ?? '')) === '') {
+        if (!elite_phone_is_valid_us((string)($lead['phone'] ?? ''))) {
             return [
                 'attempted' => false,
                 'sent' => false,
                 'body' => '',
-                'status_label' => 'Lead has no phone number.',
+                'status_label' => 'Lead has no valid US phone number.',
             ];
         }
 
@@ -2182,7 +2204,13 @@ if (!function_exists('lead_create_minimal')) {
         } else {
             $data['full_name'] = trim((string)($data['full_name'] ?? ''));
         }
-        $data['phone'] = trim((string)($data['phone'] ?? ''));
+        $phoneRaw = array_key_exists('phone_raw', $input)
+            ? trim((string)$input['phone_raw'])
+            : trim((string)($data['phone'] ?? ''));
+        $phoneAnalysis = elite_phone_us_analysis($phoneRaw);
+        $data['phone_raw'] = $phoneRaw;
+        $data['phone'] = elite_phone_storage_value($phoneRaw);
+        $data['phone_validation_status'] = (string)$phoneAnalysis['status'];
         $data['email'] = strtolower(trim((string)($data['email'] ?? '')));
         $data['source'] = trim((string)($data['source'] ?? 'manual'));
         $data['source_medium'] = trim((string)($data['source_medium'] ?? ''));
@@ -2351,6 +2379,8 @@ if (!function_exists('lead_create_minimal')) {
         $candidateValues = [
             'full_name' => $data['full_name'],
             'phone' => $data['phone'],
+            'phone_raw' => $data['phone_raw'] !== '' ? $data['phone_raw'] : null,
+            'phone_validation_status' => $data['phone_validation_status'],
             'email' => $data['email'],
             'procedure_interest' => $data['procedure_interest'],
             'source' => $data['source'] !== '' ? $data['source'] : 'manual',
@@ -2720,9 +2750,15 @@ if (!function_exists('lead_import_meta_row_to_input')) {
             $notesParts[] = 'Created: ' . $createdTime . '.';
         }
 
+        $phoneRaw = lead_import_meta_value($row, ['phone_number', 'phone']);
+        $phoneWithoutMetaPrefix = preg_replace('/^p:/i', '', $phoneRaw) ?? $phoneRaw;
+        $phoneAnalysis = elite_phone_us_analysis($phoneWithoutMetaPrefix);
+
         return [
             'full_name' => lead_import_meta_value($row, ['full_name', 'name']),
-            'phone' => preg_replace('/^p:/i', '', lead_import_meta_value($row, ['phone_number', 'phone'])),
+            'phone' => elite_phone_storage_value($phoneWithoutMetaPrefix),
+            'phone_raw' => $phoneRaw,
+            'phone_validation_status' => (string)$phoneAnalysis['status'],
             'email' => lead_import_meta_value($row, ['email']),
             'procedure_interest' => lead_import_meta_value($row, ['procedure_interest', 'service_needed']) ?: 'Veneers',
             'preferred_contact' => lead_import_meta_value($row, ['preferred_contact']) ?: 'Text',

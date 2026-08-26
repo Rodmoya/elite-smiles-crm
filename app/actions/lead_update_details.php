@@ -205,7 +205,11 @@ if (!function_exists('leads_table_exists') || !leads_table_exists()) {
     ]);
 }
 
-$leadId = (int) post('lead_id');
+if (function_exists('lead_pipeline_ensure_schema')) {
+    lead_pipeline_ensure_schema();
+}
+
+$leadId = (int) post('lead_id');
 
 $fullName = trim((string) post('full_name'));
 $phone = trim((string) post('phone'));
@@ -256,14 +260,19 @@ try {
     ]);
 }
 
-if (!$leadRow) {
+if (!$leadRow) {
     lead_update_json_response(404, [
         'ok' => false,
         'message' => 'Lead not found.',
     ]);
-}
-
-$preferredContactOptions = [
+}
+
+$phoneRawInput = $phone;
+$phoneAnalysis = elite_phone_us_analysis($phoneRawInput);
+$phone = elite_phone_storage_value($phoneRawInput);
+$phoneChanged = $phone !== trim((string)($leadRow['phone'] ?? ''));
+
+$preferredContactOptions = [
     '',
     'call',
     'text',
@@ -431,12 +440,22 @@ if (function_exists('leads_has_column') && leads_has_column('full_name')) {
     $params['full_name'] = $fullName;
 }
 
-if (function_exists('leads_has_column') && leads_has_column('phone')) {
-    $setParts[] = "phone = :phone";
-    $params['phone'] = ($phone !== '' ? $phone : null);
-}
-
-if (function_exists('leads_has_column') && leads_has_column('email')) {
+if (function_exists('leads_has_column') && leads_has_column('phone')) {
+    $setParts[] = "phone = :phone";
+    $params['phone'] = ($phone !== '' ? $phone : null);
+}
+
+if ($phoneChanged && function_exists('leads_has_column') && leads_has_column('phone_raw')) {
+    $setParts[] = "phone_raw = :phone_raw";
+    $params['phone_raw'] = ($phoneRawInput !== '' ? $phoneRawInput : null);
+}
+
+if (function_exists('leads_has_column') && leads_has_column('phone_validation_status')) {
+    $setParts[] = "phone_validation_status = :phone_validation_status";
+    $params['phone_validation_status'] = (string)$phoneAnalysis['status'];
+}
+
+if (function_exists('leads_has_column') && leads_has_column('email')) {
     $setParts[] = "email = :email";
     $params['email'] = ($email !== '' ? $email : null);
 }

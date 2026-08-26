@@ -1173,7 +1173,7 @@ if (!function_exists('lead_agent_sms_blocked')) {
     function lead_agent_sms_blocked(array $lead): bool
     {
         return in_array(strtolower(trim((string) ($lead['sms_opt_status'] ?? ''))), ['dnd', 'opted_out'], true)
-            || trim((string) ($lead['phone'] ?? '')) === '';
+            || !elite_phone_is_valid_us((string) ($lead['phone'] ?? ''));
     }
 }
 

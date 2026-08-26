@@ -8,26 +8,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/mailer.php';
 
 if (!function_exists('elite_twilio_normalize_us_number')) {
     function elite_twilio_normalize_us_number(string $phone): string
     {
-        $digits = preg_replace('/\D+/', '', $phone) ?? '';
-
-        if (strlen($digits) === 10) {
-            return '+1' . $digits;
-        }
-
-        if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
-            return '+' . $digits;
-        }
-
-        if (str_starts_with(trim($phone), '+') && strlen($digits) >= 10) {
-            return '+' . $digits;
-        }
-
-        return '';
+        return elite_phone_normalize_us($phone, true);
     }
 }
 
@@ -238,7 +225,7 @@ if (!function_exists('elite_twilio_send_sms')) {
         if ($to === '') {
             return [
                 'ok' => false,
-                'message' => 'Lead phone number is not a valid US mobile number.',
+                'message' => 'Lead phone number is not a valid US phone number.',
                 'status_code' => 0,
                 'body' => $body,
             ];

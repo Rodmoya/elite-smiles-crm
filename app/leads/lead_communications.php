@@ -159,17 +159,7 @@ if (!function_exists('lead_comm_ensure_schema')) {
 if (!function_exists('lead_comm_normalize_phone')) {
     function lead_comm_normalize_phone(string $phone): string
     {
-        $digits = preg_replace('/\D+/', '', $phone) ?? '';
-        if (strlen($digits) === 10) {
-            return '+1' . $digits;
-        }
-        if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
-            return '+' . $digits;
-        }
-        if (str_starts_with(trim($phone), '+') && strlen($digits) >= 10) {
-            return '+' . $digits;
-        }
-        return '';
+        return elite_phone_normalize_us($phone, true);
     }
 }
 

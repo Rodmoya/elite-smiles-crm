@@ -250,6 +250,17 @@ try {
         'channel' => 'sms',
         'from_number' => '+18015550199',
         'to_number' => '+18015550100',
+        'body' => 'Nope. Thanks',
+        'is_read' => 1,
+    ]);
+    integration_expect(lead_agent_latest_inbound_closure_reason($leadId) === 'explicit_decline_or_distance', 'A short no/nope reply must close the conversation instead of creating follow-up work.');
+
+    lead_comm_insert_message([
+        'lead_id' => $leadId,
+        'direction' => 'inbound',
+        'channel' => 'sms',
+        'from_number' => '+18015550199',
+        'to_number' => '+18015550100',
         'body' => 'The veneers are for my brother Elkin.',
         'is_read' => 1,
     ]);

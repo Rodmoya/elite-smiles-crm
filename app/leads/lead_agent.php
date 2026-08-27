@@ -1724,9 +1724,6 @@ if (!function_exists('lead_agent_cycle_assessment')) {
             && ($lastOutbound === '' || strtotime($lastOutbound) === false || strtotime($lastInbound) >= strtotime($lastOutbound))) {
             return array_merge($base, ['category' => 'human_action', 'reason' => 'newer_inbound_requires_reply']);
         }
-        if ($lastOutbound === '' || strtotime($lastOutbound) === false) {
-            return array_merge($base, ['category' => 'first_touch_pending', 'reason' => 'first_touch_not_recorded']);
-        }
 
         $smsAvailable = !lead_agent_sms_blocked($lead) && !$recentSmsDeliveryIssue;
         $emailAvailable = !lead_agent_email_blocked($lead);
@@ -1745,11 +1742,32 @@ if (!function_exists('lead_agent_cycle_assessment')) {
         $covered = in_array($stateStatus, ['active', 'engaged', 'nurture'], true)
             && empty($state['human_takeover'])
             && trim((string)($state['next_action_at'] ?? '')) !== '';
+        if ($covered) {
+            return [
+                'eligible' => true,
+                'covered' => true,
+                'category' => 'covered',
+                'reason' => 'scheduled_in_cycle',
+                'channel' => $channel,
+            ];
+        }
+        if ($lastOutbound === '' || strtotime($lastOutbound) === false) {
+            if ($status === 'no_answer') {
+                return [
+                    'eligible' => true,
+                    'covered' => false,
+                    'category' => 'gap',
+                    'reason' => 'legacy_nurture_without_local_touch_history',
+                    'channel' => $channel,
+                ];
+            }
+            return array_merge($base, ['category' => 'first_touch_pending', 'reason' => 'first_touch_not_recorded', 'channel' => $channel]);
+        }
         return [
             'eligible' => true,
-            'covered' => $covered,
-            'category' => $covered ? 'covered' : 'gap',
-            'reason' => $covered ? 'scheduled_in_cycle' : ($deliveryOnlyState ? 'delivery_route_stalled' : 'missing_cycle_schedule'),
+            'covered' => false,
+            'category' => 'gap',
+            'reason' => $deliveryOnlyState ? 'delivery_route_stalled' : 'missing_cycle_schedule',
             'channel' => $channel,
         ];
     }
@@ -1803,6 +1821,10 @@ if (!function_exists('lead_agent_cycle_coverage')) {
                     'agent_status' => (string)($state['status'] ?? ''),
                     'cadence_step' => (int)($state['cadence_step'] ?? 0),
                     'next_action_at' => (string)($state['next_action_at'] ?? ''),
+                    'last_decision' => (string)($state['last_decision'] ?? ''),
+                    'pause_reason' => (string)($state['pause_reason'] ?? ''),
+                    'scheduling_phase' => (string)($state['scheduling_phase'] ?? ''),
+                    'follow_up_status' => trim((string)($lead['follow_up_status'] ?? '')),
                     'last_outbound_at' => trim((string)($lead['last_outbound_at'] ?? '')),
                     'last_inbound_at' => trim((string)($lead['last_inbound_at'] ?? '')),
                 ];
@@ -3283,7 +3305,8 @@ if (!function_exists('lead_agent_latest_inbound_closure_reason')) {
                 if ($body === '') {
                     continue;
                 }
-                if (preg_match('/\b(not interested|no longer interested|no thank you|do not want|don\'t want|too far|farther than|cannot travel|can\'t travel|please stop|do not contact|don\'t contact|wrong number)\b/i', $body)) {
+                if (preg_match('/\b(not interested|no longer interested|no thank you|do not want|don\'t want|too far|farther than|cannot travel|can\'t travel|please stop|do not contact|don\'t contact|wrong number)\b/i', $body)
+                    || preg_match('/^(?:no|nope|nah)(?:[.! ,]+(?:thanks|thank you))?[.! ]*$/i', $body)) {
                     $closed = true;
                     continue;
                 }

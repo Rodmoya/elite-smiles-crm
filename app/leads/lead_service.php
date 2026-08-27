@@ -1614,6 +1614,14 @@ if (!function_exists('lead_action_queue_tab')) {
     }
 }
 
+if (!function_exists('lead_first_touch_requires_attention')) {
+    function lead_first_touch_requires_attention(string $stageKey, bool $isDue, bool $recentlyContacted, ?int $nextFollowUpTimestamp): bool
+    {
+        return $stageKey === 'new_lead'
+            && ($isDue || (!$recentlyContacted && $nextFollowUpTimestamp === null));
+    }
+}
+
 if (!function_exists('lead_action_queue_rows')) {
     function lead_action_queue_rows(int $limit = 12): array
     {
@@ -1666,7 +1674,7 @@ if (!function_exists('lead_action_queue_rows')) {
                 $firstTouchDue = false;
                 if ($lastOutboundAt !== '' && ($lastOutboundTs = strtotime($lastOutboundAt)) !== false) {
                     $recentlyContacted = ($now - $lastOutboundTs) < 0.5 * 3600;
-                    $firstTouchDue = $stageKey === 'new_lead' && ($isDue || !$recentlyContacted);
+                    $firstTouchDue = lead_first_touch_requires_attention($stageKey, $isDue, $recentlyContacted, $nextFollowUpTs);
                 }
 
                 if ($status === 'treatment_completed' || $stageKey === 'treatment_completed') {

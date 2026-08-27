@@ -2702,6 +2702,7 @@ if (!function_exists('lead_create_minimal')) {
             }
 
             $suppressFirstTouchEmail = !empty($data['suppress_first_touch_email']);
+            $suppressFirstTouchSms = !empty($data['suppress_first_touch_sms']);
             $firstTouchEmail = [
                 'attempted' => false,
                 'sent' => false,
@@ -2711,7 +2712,7 @@ if (!function_exists('lead_create_minimal')) {
             ];
             if (!$suppressFirstTouchEmail && $leadId > 0 && function_exists('lead_email_maybe_send_first_touch')) {
                 try {
-                    $firstTouchEmail = lead_email_maybe_send_first_touch($leadId);
+                    $firstTouchEmail = lead_email_maybe_send_first_touch($leadId, !$suppressFirstTouchSms);
                 } catch (Throwable $e) {
                     if (function_exists('esm_log')) {
                         esm_log('lead_email', 'Automatic first-touch email hook failed.', [
@@ -2722,7 +2723,6 @@ if (!function_exists('lead_create_minimal')) {
                 }
             }
 
-            $suppressFirstTouchSms = !empty($data['suppress_first_touch_sms']);
             $firstTouchSms = [
                 'attempted' => false,
                 'sent' => false,

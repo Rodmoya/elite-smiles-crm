@@ -355,14 +355,22 @@ if (!function_exists('lead_agent_cadence_plan')) {
     function lead_agent_cadence_plan(): array
     {
         return [
-            // First touch already sends one SMS and one email. The unanswered
-            // first day gets a quick delivery check, a later close-loop, and a
-            // fresh next-day re-engagement before the cadence slows down.
+            // First touch sends SMS immediately; its email waits until the
+            // lead remains unanswered. SMS stays primary during the first two
+            // days, with at least two SMS touches per day when deliverable.
+            // The daily cap remains authoritative when quiet-hours alignment
+            // moves two target windows onto the same calendar day.
             1 => ['hours' => 0.5, 'channel' => 'sms', 'phase' => 'same_day_delivery_check'],
-            2 => ['hours' => 7, 'channel' => 'sms', 'phase' => 'same_day_close_loop'],
-            3 => ['hours' => 20, 'channel' => 'sms', 'phase' => 'next_day_reengagement'],
-            4 => ['hours' => 72, 'channel' => 'email', 'phase' => 'education'],
-            5 => ['hours' => 168, 'channel' => 'sms', 'phase' => 'active_sprint_close'],
+            2 => ['hours' => 2, 'channel' => 'sms', 'phase' => 'same_day_goal_followup'],
+            3 => ['hours' => 5, 'channel' => 'email', 'phase' => 'same_day_requested_information'],
+            4 => ['hours' => 20, 'channel' => 'sms', 'phase' => 'next_day_early_reengagement'],
+            5 => ['hours' => 24, 'channel' => 'sms', 'phase' => 'next_day_reengagement'],
+            6 => ['hours' => 32, 'channel' => 'email', 'phase' => 'next_day_education'],
+            7 => ['hours' => 48, 'channel' => 'sms', 'phase' => 'day_three_followup'],
+            8 => ['hours' => 60, 'channel' => 'email', 'phase' => 'day_four_education'],
+            9 => ['hours' => 96, 'channel' => 'sms', 'phase' => 'day_five_followup'],
+            10 => ['hours' => 120, 'channel' => 'email', 'phase' => 'day_six_education'],
+            11 => ['hours' => 144, 'channel' => 'sms', 'phase' => 'active_sprint_close'],
         ];
     }
 }
@@ -371,11 +379,11 @@ if (!function_exists('lead_agent_align_contact_time')) {
     function lead_agent_align_contact_time(DateTimeImmutable $candidate): DateTimeImmutable
     {
         $hour = (int) $candidate->format('G');
-        if ($hour < 8) {
-            return $candidate->setTime(8, 0);
+        if ($hour < 9) {
+            return $candidate->setTime(9, 0);
         }
         if ($hour >= 20) {
-            return $candidate->modify('+1 day')->setTime(8, 0);
+            return $candidate->modify('+1 day')->setTime(9, 0);
         }
         return $candidate;
     }
@@ -394,10 +402,14 @@ if (!function_exists('lead_agent_step_schedule')) {
         }
 
         $extra = max(1, $step - count($plan));
-        $hours = 720 + (($extra - 1) * 720);
-        $channel = $extra % 2 === 0 ? 'sms' : 'email';
+        $lastPlanItem = end($plan) ?: ['hours' => 144, 'channel' => 'sms'];
+        $lastPlanHours = (int) round((float) ($lastPlanItem['hours'] ?? 144));
+        // Two touches per week after the active sprint: three days, then four
+        // days, alternating email and SMS without ever creating a burst.
+        $hours = $lastPlanHours + (intdiv($extra, 2) * 168) + ($extra % 2 === 1 ? 72 : 0);
+        $channel = $extra % 2 === 1 ? 'email' : 'sms';
         $at = lead_agent_align_contact_time($start->modify('+' . ($hours * 3600) . ' seconds'));
-        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'monthly_nurture', 'at' => $at->format('Y-m-d H:i:s')];
+        return ['step' => $step, 'hours' => $hours, 'channel' => $channel, 'phase' => 'twice_weekly_nurture', 'at' => $at->format('Y-m-d H:i:s')];
     }
 }
 
@@ -415,9 +427,48 @@ if (!function_exists('lead_agent_daily_outbound_limit')) {
             return 1;
         }
 
-        // The immediate first-touch bundle is one SMS plus one email. Allow
-        // the delivery check and close-loop on day one; later days stay at one.
-        return $started->format('Y-m-d') === $now->setTimezone($timezone)->format('Y-m-d') ? 4 : 1;
+        // Immediate first touch is SMS. Day one allows the 30-minute and
+        // two-hour SMS plus one delayed email; day two allows two SMS plus
+        // one email. Later days stay at one total automated touch.
+        $startedDay = $started->setTimezone($timezone)->setTime(0, 0);
+        $currentDay = $now->setTimezone($timezone)->setTime(0, 0);
+        $elapsedDays = (int) $startedDay->diff($currentDay)->format('%r%a');
+        if ($elapsedDays <= 0) {
+            return 4;
+        }
+        return $elapsedDays === 1 ? 3 : 1;
+    }
+}
+
+if (!function_exists('lead_agent_prioritize_first_two_day_sms')) {
+    /** Keep SMS ahead for two days and keep answered SMS conversations on SMS. */
+    function lead_agent_prioritize_first_two_day_sms(
+        string $plannedChannel,
+        string $startedAt,
+        int $smsSentToday,
+        bool $smsUnavailable,
+        ?DateTimeImmutable $now = null,
+        bool $latestReplyIsSms = false
+    ): string {
+        $plannedChannel = $plannedChannel === 'email' ? 'email' : 'sms';
+        if ($plannedChannel !== 'email' || $smsUnavailable) {
+            return $plannedChannel;
+        }
+        if ($latestReplyIsSms) {
+            return 'sms';
+        }
+        if ($smsSentToday >= 2) {
+            return $plannedChannel;
+        }
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?? new DateTimeImmutable('now', $timezone);
+        try {
+            $started = new DateTimeImmutable($startedAt !== '' ? $startedAt : 'now', $timezone);
+        } catch (Throwable $e) {
+            return $plannedChannel;
+        }
+        $elapsedDays = (int)$started->setTime(0, 0)->diff($now->setTimezone($timezone)->setTime(0, 0))->format('%r%a');
+        return $elapsedDays >= 0 && $elapsedDays <= 1 ? 'sms' : $plannedChannel;
     }
 }
 
@@ -426,11 +477,22 @@ if (!function_exists('lead_agent_incremental_schedule')) {
     {
         $current = lead_agent_step_schedule($baseAt, $completedStep);
         $following = lead_agent_step_schedule($baseAt, $completedStep + 1);
-        $delayHours = max(6, (float) ($following['hours'] ?? 0) - (float) ($current['hours'] ?? 0));
+        $delayHours = max(2, (float) ($following['hours'] ?? 0) - (float) ($current['hours'] ?? 0));
         $base = new DateTimeImmutable($baseAt !== '' ? $baseAt : 'now', new DateTimeZone(APP_TIMEZONE));
         $at = lead_agent_align_contact_time($base->modify('+' . (int) round($delayHours * 3600) . ' seconds'));
         $following['at'] = $at->format('Y-m-d H:i:s');
         return $following;
+    }
+}
+
+if (!function_exists('lead_agent_post_reply_resume_step')) {
+    /**
+     * A text reply ends the unanswered email path. Resume with the next SMS
+     * engagement step so an email is not sent after the lead answers by SMS.
+     */
+    function lead_agent_post_reply_resume_step(string $channel): int
+    {
+        return strtolower(trim($channel)) === 'sms' ? 3 : 2;
     }
 }
 
@@ -545,18 +607,19 @@ if (!function_exists('lead_agent_repair_first_day_schedule')) {
 }
 
 if (!function_exists('lead_agent_repair_slow_active_sprint')) {
-    /** One-way migration from the former 3/4/7/14/30-day plan to the seven-day sprint. */
+    /** One-way migration from older, slower plans to the current six-day sprint. */
     function lead_agent_repair_slow_active_sprint(int $limit = 500): int
     {
         lead_agent_ensure_schema();
         $limit = max(1, min(1000, $limit));
+        $activeStepCount = count(lead_agent_cadence_plan());
         $rows = db_all("SELECT s.lead_id, s.started_at, s.next_action_at, s.cadence_step,
                 l.last_inbound_at, l.last_outbound_at, l.follow_up_status
             FROM lead_agent_states s
             INNER JOIN leads l ON l.id = s.lead_id
             WHERE s.status IN ('active','engaged')
               AND s.human_takeover = 0
-              AND s.cadence_step < 5
+              AND s.cadence_step < {$activeStepCount}
               AND COALESCE(s.scheduling_phase, '') = ''
               AND s.next_action_at IS NOT NULL
               AND l.status NOT IN ('opted_out','lost_lead','consultation_booked','consult_completed','treatment_accepted','treatment_completed')
@@ -598,7 +661,7 @@ if (!function_exists('lead_agent_repair_slow_active_sprint')) {
             ]);
             $repaired += $changed;
             if ($changed > 0) {
-                lead_agent_event((int)$row['lead_id'], 'active-sprint-repaired-' . (int)$row['lead_id'] . '-' . $completedStep, 'cadence_rescheduled', (string)($expected['channel'] ?? ''), 'recorded', 'seven_day_active_sprint', [
+                lead_agent_event((int)$row['lead_id'], 'active-sprint-repaired-' . (int)$row['lead_id'] . '-' . $completedStep, 'cadence_rescheduled', (string)($expected['channel'] ?? ''), 'recorded', 'six_day_active_sprint', [
                     'previous_next_action_at' => $currentAt,
                     'next_action_at' => $targetAt,
                 ]);
@@ -645,7 +708,7 @@ if (!function_exists('lead_agent_lifecycle_decision')) {
             return $lastOutbound <= $now->modify('-2 hours') ? 'active_follow_up' : '';
         }
 
-        if ((int)($state['cadence_step'] ?? 0) >= 5) {
+        if ((int)($state['cadence_step'] ?? 0) >= count(lead_agent_cadence_plan())) {
             return 'nurture';
         }
         if ($lastOutbound !== null && !lead_conversion_is_first_24_hours($lead, $now)) {
@@ -777,6 +840,12 @@ if (!function_exists('lead_agent_policy_flags')) {
         }
         if (preg_match('/\b(?:i (?:have|got) you|you(?:\'re| are)) (?:scheduled|booked|confirmed)\b|\bappointment (?:is|has been) confirmed\b/i', $text)) {
             $flags[] = 'unverified_booking_claim';
+        }
+        if (preg_match('/^\s*(?:re|fw|fwd)\s*:/i', $body)) {
+            $flags[] = 'misleading_thread_subject';
+        }
+        if (preg_match('/\b(?:urgent|final notice|act now|last chance|limited time)\b/i', $text)) {
+            $flags[] = 'misleading_urgency';
         }
         return array_values(array_unique($flags));
     }
@@ -1524,7 +1593,9 @@ if (!function_exists('lead_agent_sms_blocked')) {
 if (!function_exists('lead_agent_email_blocked')) {
     function lead_agent_email_blocked(array $lead): bool
     {
-        return in_array(strtolower(trim((string) ($lead['email_opt_status'] ?? ''))), ['unsubscribed', 'opted_out'], true)
+        return in_array(strtolower(trim((string) ($lead['email_opt_status'] ?? ''))), [
+            'unsubscribed', 'opted_out', 'bounced', 'blocked', 'dropped', 'invalid',
+        ], true)
             || !filter_var(trim((string) ($lead['email'] ?? '')), FILTER_VALIDATE_EMAIL);
     }
 }
@@ -1985,7 +2056,9 @@ if (!function_exists('lead_agent_repair_cycle_coverage')) {
                 ? lead_agent_legacy_nurture_schedule($leadId, $alreadyDue, $now)
                 : lead_agent_align_contact_time($now->modify('+5 minutes'))->format('Y-m-d H:i:s');
             $agentStatus = $isNurture ? 'nurture' : 'active';
-            $cadenceStep = $isNurture ? max(5, (int)($state['cadence_step'] ?? 0)) : max(0, (int)($state['cadence_step'] ?? 0));
+            $cadenceStep = $isNurture
+                ? max(count(lead_agent_cadence_plan()), (int)($state['cadence_step'] ?? 0))
+                : max(0, (int)($state['cadence_step'] ?? 0));
             $decision = $isNurture ? 'legacy_nurture_cycle_enrolled' : 'active_cycle_coverage_repaired';
             $result[$isNurture ? 'enrolled_nurture' : 'enrolled_active']++;
             if ($deliveryOnlyState && (string)($assessment['channel'] ?? '') === 'email') {
@@ -2457,7 +2530,7 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
             ? 'nurture'
             : 'active';
         $cadenceStep = $cycleStatus === 'nurture'
-            ? max(5, (int)($existing['cadence_step'] ?? 0))
+            ? max(count(lead_agent_cadence_plan()), (int)($existing['cadence_step'] ?? 0))
             : max(0, (int)($existing['cadence_step'] ?? 0));
         $nextActionAt = trim((string)($existing['next_action_at'] ?? ''));
         if ($emailAvailable && ($nextActionAt === '' || strtotime($nextActionAt) === false)) {
@@ -2620,6 +2693,12 @@ if (!function_exists('lead_agent_sms_send')) {
 if (!function_exists('lead_agent_email_send')) {
     function lead_agent_email_send(array $lead, string $subject, string $body, string $eventKey): array
     {
+        if (function_exists('lead_email_automation_authentication_status')) {
+            $authentication = lead_email_automation_authentication_status();
+            if (empty($authentication['ready'])) {
+                return ['ok' => false, 'message' => 'Automated email paused until sender SPF is valid.', 'authentication' => $authentication];
+            }
+        }
         $body = lead_language_maybe_add_email_offer($lead, $body);
         $flags = lead_agent_policy_flags($subject . ' ' . $body);
         if ($flags !== []) {
@@ -2671,40 +2750,66 @@ if (!function_exists('lead_agent_approved_followup')) {
         if (lead_language_is_spanish($lead)) {
             $hola = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
             $spanishSms = [
-                1 => $hola . ' solo quería confirmar que recibió mi mensaje. ¿Qué le gustaría mejorar más de su sonrisa: color, forma, espacios u otra cosa?',
-                2 => $hola . ' le dejo continuar con su día. ¿Está bien si mañana le doy seguimiento sobre sus metas para su sonrisa?',
-                3 => $hola . ' retomando nuestra conversación. ¿Qué pregunta sería más útil responder sobre sus opciones para la sonrisa?',
-                5 => $hola . ' cerraré el seguimiento activo por ahora. Si mejorar su sonrisa sigue siendo una meta, responda cuando guste y retomamos. Responda STOP para cancelar.',
+                1 => $hola . ' quería asegurarme de que recibió la información que solicitó. ¿Qué le gustaría mejorar más de su sonrisa: color, forma, espacios u otra cosa?',
+                2 => $hola . ' una pregunta rápida para poder ayudarle mejor: ¿qué cambio en su sonrisa sería el más importante para usted?',
+                4 => $hola . ' quería mantener abierta la conversación. ¿Hay alguna pregunta que pueda responderle sobre sus opciones para la sonrisa?',
+                5 => $hola . ' retomando nuestra conversación hoy. ¿Qué pregunta sería más útil responder sobre sus opciones para la sonrisa?',
+                7 => $hola . ' sigo disponible para ayudarle sin presión. ¿Le sería útil saber qué esperar durante una consulta gratis? Responda STOP para cancelar.',
+                9 => $hola . ' si una llamada le resulta más fácil, puedo pedirle a Rod que se comunique a la hora que usted prefiera. ¿Desea continuar por mensaje o por llamada?',
+                11 => $hola . ' cerraré el seguimiento activo por ahora, pero puede responder cuando guste y retomamos. Responda STOP para cancelar.',
             ];
             if ($channel === 'sms') {
                 return ['subject' => '', 'body' => $spanishSms[$step] ?? $hola . ' seguimos disponibles para ayudarle. ¿Mejorar su sonrisa todavía es algo en lo que desea apoyo? Responda STOP para cancelar.'];
             }
+            $spanishSubjects = [
+                3 => 'La información que solicitó a Elite Smiles',
+                6 => 'Qué esperar en su consulta de sonrisa',
+                8 => 'Un próximo paso claro y sin presión',
+                10 => 'Aquí estamos cuando esté listo',
+            ];
+            $spanishBodies = [
+                3 => 'Aquí tiene la información que solicitó: cada sonrisa es diferente, por eso el Dr. Meden revisa sus dientes, mordida, fotos y metas antes de explicar qué opciones podrían funcionar. La consulta es gratis y sin presión.',
+                6 => 'Durante una consulta gratis, el objetivo es entender sus metas, revisar su sonrisa y explicarle opciones personalizadas con claridad. No necesita tomar ninguna decisión antes de venir.',
+                8 => 'Si todavía está explorando, está bien. Podemos ayudarle a entender qué podría ser posible para su sonrisa y cuál sería un próximo paso personalizado.',
+                10 => 'Dejaré la puerta abierta. Cuando sea el momento adecuado, puede responder este correo y continuaremos desde aquí sin comenzar de nuevo.',
+            ];
             return [
-                'subject' => $step <= 2 ? 'Qué esperar en Elite Smiles' : 'Un próximo paso sin presión',
+                'subject' => $spanishSubjects[$step] ?? 'Aquí estamos cuando esté listo',
                 'body' => $hola . "\n\n"
-                    . ($step <= 2
-                        ? 'Cada sonrisa es diferente. Durante una consulta gratis, el Dr. Meden revisa sus dientes, mordida, fotos y metas antes de explicar qué opciones podrían funcionar. Es una oportunidad para obtener información clara sin presión.'
-                        : 'No necesita decidir nada antes de la consulta. El objetivo es entender qué puede ser posible para su sonrisa y cómo sería un próximo paso personalizado.')
-                    . "\n\nPuede responder aquí cuando tenga una pregunta.\n\nElite Smiles",
+                    . ($spanishBodies[$step] ?? 'Seguimos disponibles para ayudarle a entender sus opciones para la sonrisa sin presión.')
+                    . "\n\nPuede responder aquí cuando tenga una pregunta.\n\nEl equipo de Elite Smiles",
             ];
         }
         $sms = [
-            1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else? If a call is easier, tell me a good time.',
-            2 => $hello . ' I’ll let you get back to your day. Is it okay if I follow up tomorrow about your smile goals?',
-            3 => $hello . ' picking this back up today. What question would be most helpful for us to answer about your smile options?',
-            5 => $hello . ' I’ll move this out of active follow-up for now. If improving your smile is still a goal, reply anytime and we’ll pick it back up. Reply STOP to opt out.',
+            1 => $hello . ' I wanted to make sure the information you requested reached you. What would you most like to improve about your smile—color, shape, spacing, or something else?',
+            2 => $hello . ' one quick question so I can help better: what change in your smile would matter most to you?',
+            4 => $hello . ' I wanted to keep the conversation open. Is there a question I can answer about your smile options?',
+            5 => $hello . ' picking this back up today. What question would be most helpful for us to answer about your smile options?',
+            7 => $hello . ' I’m still here to help without pressure. Would it be useful to know what to expect during a complimentary consultation? Reply STOP to opt out.',
+            9 => $hello . ' if a call is easier, I can ask Rod to reach out at a time you choose. Would you rather continue by text or call?',
+            11 => $hello . ' I’ll close active follow-up for now, but you can reply anytime and we’ll pick it back up. Reply STOP to opt out.',
         ];
         if ($channel === 'sms') {
             $body = $sms[$step] ?? $hello . ' Elite Smiles checking in. Is improving your smile still something you would like help with? Reply STOP to opt out.';
             return ['subject' => '', 'body' => $body];
         }
 
-        $subject = $step <= 2 ? 'What to expect at Elite Smiles' : 'A low-pressure next step';
+        $subjects = [
+            3 => 'The information you requested from Elite Smiles',
+            6 => 'What to expect at your smile consultation',
+            8 => 'A clear, low-pressure next step',
+            10 => 'Here when you are ready',
+        ];
+        $bodies = [
+            3 => 'Here is the information you requested: every smile is different, so Dr. Meden reviews your teeth, bite, photos, and goals before explaining which options may fit. The consultation is complimentary and low pressure.',
+            6 => 'During a complimentary consultation, the goal is to understand what you want to improve, review your smile, and explain personalized options clearly. You do not need to make any decision before you come in.',
+            8 => 'If you are still exploring, that is completely okay. We can help you understand what may be possible for your smile and what a personalized next step would look like.',
+            10 => 'I will leave the door open. When the timing feels right, reply to this email and we can continue from here without starting over.',
+        ];
+        $subject = $subjects[$step] ?? 'Here when you are ready';
         $body = $hello . "\n\n"
-            . ($step <= 2
-                ? 'Every smile is different. During a complimentary consultation, Dr. Meden reviews your teeth, bite, photos, and goals before explaining which options may fit. It is a chance to get clear information without pressure.'
-                : 'There is no need to decide anything before your consultation. The goal is simply to understand what may be possible for your smile and what a personalized next step would look like.')
-            . "\n\nYou can reply here whenever a question comes up.\n\nElite Smiles";
+            . ($bodies[$step] ?? 'We are still available to help you understand your smile options without pressure.')
+            . "\n\nYou can reply here whenever a question comes up.\n\nThe Elite Smiles Team";
         return ['subject' => $subject, 'body' => $body];
     }
 }
@@ -3379,8 +3484,10 @@ if (!function_exists('lead_agent_handle_inbound')) {
         }
 
         $engagedAt = now();
-        $next = lead_agent_step_schedule($engagedAt, 3);
-        db_execute("UPDATE lead_agent_states SET status = 'engaged', cadence_step = 2, started_at = :started_at, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
+        $resumeStep = lead_agent_post_reply_resume_step($channel);
+        $next = lead_agent_step_schedule($engagedAt, $resumeStep + 1);
+        db_execute("UPDATE lead_agent_states SET status = 'engaged', cadence_step = :cadence_step, started_at = :started_at, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = 'answered_inbound', updated_at = NOW() WHERE lead_id = :lead_id", [
+            'cadence_step' => $resumeStep,
             'started_at' => $engagedAt,
             'next_action_at' => $next['at'],
             'lead_id' => $leadId,
@@ -3403,6 +3510,39 @@ if (!function_exists('lead_agent_daily_outbound_count')) {
             $email = 0;
         }
         return $sms + $email;
+    }
+}
+
+if (!function_exists('lead_agent_daily_sms_outbound_count')) {
+    function lead_agent_daily_sms_outbound_count(int $leadId, string $date): int
+    {
+        return (int)db_value(
+            "SELECT COUNT(*) FROM lead_messages WHERE lead_id = :lead_id AND direction = 'outbound' AND DATE(created_at) = :day",
+            ['lead_id' => $leadId, 'day' => $date]
+        );
+    }
+}
+
+if (!function_exists('lead_agent_latest_inbound_is_sms')) {
+    function lead_agent_latest_inbound_is_sms(int $leadId): bool
+    {
+        if ($leadId <= 0) {
+            return false;
+        }
+        try {
+            $latest = db_one(
+                "SELECT channel FROM (
+                    SELECT 'sms' AS channel, created_at, id FROM lead_messages WHERE lead_id = :sms_lead_id AND direction = 'inbound'
+                    UNION ALL
+                    SELECT 'email' AS channel, created_at, id FROM lead_emails WHERE lead_id = :email_lead_id AND direction = 'inbound'
+                 ) inbound_replies
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                ['sms_lead_id' => $leadId, 'email_lead_id' => $leadId]
+            );
+            return (string)($latest['channel'] ?? '') === 'sms';
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 }
 
@@ -3775,11 +3915,26 @@ if (!function_exists('lead_agent_guardrail_reason')) {
             return $smsExplicitlyBlocked && $emailExplicitlyBlocked ? 'all_channels_opted_out' : 'no_delivery_channel';
         }
         $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $today = $now->format('Y-m-d');
+        $smsUnavailable = lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue((int)($lead['id'] ?? 0));
+        $effectiveChannel = lead_agent_prioritize_first_two_day_sms(
+            (string)($schedule['channel'] ?? ''),
+            (string)($state['started_at'] ?? ''),
+            lead_agent_daily_sms_outbound_count((int)($lead['id'] ?? 0), $today),
+            $smsUnavailable,
+            $now,
+            lead_agent_latest_inbound_is_sms((int)($lead['id'] ?? 0))
+        );
+        if ($effectiveChannel === 'email' && function_exists('lead_email_automation_authentication_status')) {
+            $authentication = lead_email_automation_authentication_status();
+            if (empty($authentication['ready'])) {
+                return 'email_authentication_hold';
+            }
+        }
         $hour = (int) $now->format('G');
-        if ($hour < 8 || $hour >= 20) {
+        if ($hour < 9 || $hour >= 20) {
             return 'quiet_hours';
         }
-        $today = $now->format('Y-m-d');
         $max = lead_agent_daily_outbound_limit((string) ($state['started_at'] ?? ''));
         if (lead_agent_daily_outbound_count((int) $lead['id'], $today) >= $max) {
             return 'daily_cap';
@@ -3837,6 +3992,237 @@ if (!function_exists('lead_agent_recover_drafting_exceptions')) {
     }
 }
 
+if (!function_exists('lead_agent_monthly_email_due')) {
+    /** Pure 30-day eligibility gate for low-frequency Nurture/Lost email. */
+    function lead_agent_monthly_email_due(
+        array $lead,
+        string $lastSuccessfulEmailAt = '',
+        string $conversationClosureReason = '',
+        ?DateTimeImmutable $now = null
+    ): bool {
+        $status = strtolower(trim((string)($lead['status'] ?? '')));
+        if (!in_array($status, ['no_answer', 'lost_lead'], true)
+            || lead_agent_internal_or_test_record($lead)
+            || lead_agent_email_blocked($lead)
+            || trim($conversationClosureReason) !== '') {
+            return false;
+        }
+
+        // A business-stage loss can remain marketable, but a wrong recipient,
+        // explicit decline, or no-treatment record must never be reactivated.
+        $lostReason = strtolower(trim((string)($lead['lost_reason'] ?? '')));
+        if ($status === 'lost_lead' && in_array($lostReason, [
+            'wrong_lead',
+            'treatment_not_needed',
+            'not_interested',
+            'do_not_contact',
+            'email_unsubscribe',
+        ], true)) {
+            return false;
+        }
+        if (trim((string)($lead['consultation_date'] ?? '')) !== ''
+            || in_array(strtolower(trim((string)($lead['consultation_status'] ?? ''))), ['scheduled', 'booked', 'confirmed', 'completed'], true)) {
+            return false;
+        }
+
+        $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
+        $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+        if ($lastInbound !== '' && strtotime($lastInbound) !== false
+            && ($lastOutbound === '' || strtotime($lastOutbound) === false || strtotime($lastInbound) >= strtotime($lastOutbound))) {
+            return false;
+        }
+
+        $anchor = trim($lastSuccessfulEmailAt);
+        if ($anchor === '' || strtotime($anchor) === false) {
+            $anchor = $status === 'lost_lead'
+                ? trim((string)($lead['updated_at'] ?? ''))
+                : trim((string)($lead['created_at'] ?? ''));
+        }
+        if ($anchor === '' || strtotime($anchor) === false) {
+            return false;
+        }
+
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?? new DateTimeImmutable('now', $timezone);
+        try {
+            $lastEligibleTouch = new DateTimeImmutable($anchor, $timezone);
+        } catch (Throwable $e) {
+            return false;
+        }
+        return $lastEligibleTouch <= $now->modify('-30 days');
+    }
+}
+
+if (!function_exists('lead_agent_monthly_email_template')) {
+    /** Approved rotating copy; compliance footer and unsubscribe are added at send time. */
+    function lead_agent_monthly_email_template(array $lead, int $rotation = 0): array
+    {
+        $rotation = (($rotation % 4) + 4) % 4;
+        $first = lead_agent_first_name($lead);
+        if (lead_language_is_spanish($lead)) {
+            $hello = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+            $subjects = [
+                'Un paso sencillo para su sonrisa',
+                'Qué esperar en Elite Smiles',
+                'Mantenga abiertas sus opciones para la sonrisa',
+                'Aquí estamos cuando sea el momento adecuado',
+            ];
+            $bodies = [
+                'Cuando sea el momento adecuado, una consulta gratis puede ayudarle a entender sus opciones con claridad y sin presión. Puede responder a este correo si desea retomar sus metas para la sonrisa.',
+                'Cada sonrisa es diferente. El Dr. Meden comienza por entender sus metas y revisar qué opciones podrían ser apropiadas antes de recomendar un próximo paso. Estamos disponibles cuando quiera continuar.',
+                'No necesita decidir nada ahora. Si todavía está considerando un cambio en su sonrisa, podemos ayudarle a entender qué podría ser posible durante una consulta gratis.',
+                'Solo queremos mantener la puerta abierta. Si el momento es mejor ahora, responda a este correo y continuaremos desde donde lo dejamos.',
+            ];
+            return [
+                'subject' => $subjects[$rotation],
+                'body' => $hello . "\n\n" . $bodies[$rotation] . "\n\nEl equipo de Elite Smiles",
+            ];
+        }
+
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $subjects = [
+            'A simple next step for your smile',
+            'What to expect at Elite Smiles',
+            'Keeping your smile options open',
+            'Here when the timing feels right',
+        ];
+        $bodies = [
+            'When the timing feels right, a complimentary consultation can help you understand your options clearly and without pressure. You can reply to this email whenever you would like to revisit your smile goals.',
+            'Every smile is different. Dr. Meden starts by understanding your goals and reviewing which options may be appropriate before recommending a next step. We are available whenever you would like to continue.',
+            'You do not need to decide anything now. If you are still considering a change to your smile, we can help you understand what may be possible during a complimentary consultation.',
+            'We simply wanted to keep the door open. If the timing is better now, reply to this email and we can continue from where we left off.',
+        ];
+        return [
+            'subject' => $subjects[$rotation],
+            'body' => $hello . "\n\n" . $bodies[$rotation] . "\n\nThe Elite Smiles Team",
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_run_monthly_email_outreach')) {
+    /**
+     * Send at most a small daily batch of 30-day Nurture/Lost reactivation
+     * emails. The last successful lead email is authoritative, so this never
+     * adds a second email inside the same 30-day window.
+     */
+    function lead_agent_run_monthly_email_outreach(int $dailyLimit = 10, bool $dryRun = false): array
+    {
+        $dailyLimit = max(1, min(25, $dailyLimit));
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $result = [
+            'due' => 0,
+            'processed' => 0,
+            'sent' => 0,
+            'dry_run' => $dryRun,
+            'reason' => '',
+            'results' => [],
+        ];
+        $hour = (int)$now->format('G');
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+            $result['reason'] = 'agent_disabled';
+            return $result;
+        }
+        if ($hour < 9 || $hour >= 20) {
+            $result['reason'] = 'quiet_hours';
+            return $result;
+        }
+        if (function_exists('lead_email_automation_authentication_status')) {
+            $authentication = lead_email_automation_authentication_status();
+            if (empty($authentication['ready'])) {
+                $result['reason'] = 'email_authentication_hold';
+                return $result + ['authentication' => $authentication];
+            }
+        }
+        if (function_exists('lead_email_ensure_schema')) {
+            lead_email_ensure_schema();
+        }
+
+        $attemptedToday = $dryRun ? 0 : (int)db_value("SELECT COUNT(*) FROM lead_agent_events
+            WHERE event_type IN ('monthly_email_reserved','monthly_email_sent','monthly_email_failed')
+              AND DATE(created_at) = :day", ['day' => $now->format('Y-m-d')]);
+        $remaining = max(0, $dailyLimit - $attemptedToday);
+        if ($remaining < 1) {
+            $result['reason'] = 'daily_batch_cap';
+            return $result;
+        }
+
+        $candidateLimit = max($remaining, min(250, $remaining * 8));
+        try {
+            $candidates = db_all("SELECT l.*, email_history.last_successful_email_at
+                FROM leads l
+                LEFT JOIN (
+                    SELECT lead_id, MAX(created_at) AS last_successful_email_at
+                    FROM lead_emails
+                    WHERE direction = 'outbound' AND LOWER(COALESCE(status, '')) IN ('sent','delivered','accepted')
+                    GROUP BY lead_id
+                ) email_history ON email_history.lead_id = l.id
+                WHERE l.status IN ('no_answer','lost_lead')
+                ORDER BY COALESCE(email_history.last_successful_email_at, l.updated_at, l.created_at) ASC, l.id ASC
+                LIMIT {$candidateLimit}");
+        } catch (Throwable $e) {
+            $result['reason'] = 'candidate_query_failed';
+            return $result;
+        }
+
+        foreach ($candidates as $lead) {
+            if ($result['processed'] >= $remaining) {
+                break;
+            }
+            $leadId = (int)($lead['id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $closureReason = trim((string)($lead['last_inbound_at'] ?? '')) !== ''
+                ? lead_agent_latest_inbound_closure_reason($leadId)
+                : '';
+            if (!lead_agent_monthly_email_due(
+                $lead,
+                (string)($lead['last_successful_email_at'] ?? ''),
+                $closureReason,
+                $now
+            )) {
+                continue;
+            }
+
+            $result['due']++;
+            $result['processed']++;
+            $rotation = (((int)$now->format('Y') * 12) + (int)$now->format('n') + $leadId) % 4;
+            $draft = lead_agent_monthly_email_template($lead, $rotation);
+            $flags = lead_agent_policy_flags((string)$draft['subject'] . ' ' . (string)$draft['body']);
+            if ($flags !== []) {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'monthly_email_policy_gate', 'channel' => 'email'];
+                continue;
+            }
+            if ($dryRun || lead_agent_mode() === 'shadow') {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'would_send', 'reason' => 'monthly_lifecycle_email', 'channel' => 'email'];
+                continue;
+            }
+
+            $eventKey = 'monthly-email-' . $leadId . '-' . $now->format('Ymd');
+            if (!lead_agent_event($leadId, $eventKey, 'monthly_email_reserved', 'email', 'pending', 'monthly_lifecycle_email')) {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'duplicate_monthly_email', 'channel' => 'email'];
+                continue;
+            }
+            $send = lead_agent_email_send($lead, (string)$draft['subject'], (string)$draft['body'], $eventKey);
+            if (empty($send['ok'])) {
+                db_execute("UPDATE lead_agent_events SET event_type = 'monthly_email_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
+                    'reason' => substr((string)($send['message'] ?? 'delivery_failed'), 0, 190),
+                    'event_key' => $eventKey,
+                ]);
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'monthly_email_delivery_failed', 'channel' => 'email'];
+                continue;
+            }
+
+            db_execute("UPDATE lead_agent_events SET event_type = 'monthly_email_sent', status = 'sent', reason = 'monthly_lifecycle_email' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+            lead_agent_record_touchpoint($lead, $eventKey, 'email', 0, 'monthly_lifecycle_email', $send);
+            lead_agent_record_learning('monthly_reactivation', 'email', 'sent');
+            $result['sent']++;
+            $result['results'][] = ['lead_id' => $leadId, 'action' => 'sent', 'reason' => 'monthly_lifecycle_email', 'channel' => 'email'];
+        }
+        return $result;
+    }
+}
+
 if (!function_exists('lead_agent_process_state')) {
     function lead_agent_process_state(array $state, bool $dryRun = false): array
     {
@@ -3868,7 +4254,8 @@ if (!function_exists('lead_agent_process_state')) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
                 $decisionType = 'paused';
             } else {
-                $deferred = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify($reason === 'daily_cap' ? '+1 day' : '+1 hour'));
+                $deferOneDay = in_array($reason, ['daily_cap', 'email_authentication_hold'], true);
+                $deferred = lead_agent_align_contact_time((new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))->modify($deferOneDay ? '+1 day' : '+1 hour'));
                 $nextActionAt = $deferred->format('Y-m-d H:i:s');
                 db_execute('UPDATE lead_agent_states SET next_action_at = :next_action_at, last_decision = :decision, lock_token = \'\', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
                     'next_action_at' => $nextActionAt, 'decision' => 'deferred_' . $reason, 'lead_id' => $leadId,
@@ -3894,7 +4281,14 @@ if (!function_exists('lead_agent_process_state')) {
             return ['lead_id' => $leadId, 'action' => 'paused', 'reason' => 'no_delivery_channel'];
         }
 
-        $channel = (string) $schedule['channel'];
+        $channel = lead_agent_prioritize_first_two_day_sms(
+            (string)$schedule['channel'],
+            (string)($state['started_at'] ?? ''),
+            lead_agent_daily_sms_outbound_count($leadId, date('Y-m-d')),
+            $smsUnavailable,
+            null,
+            lead_agent_latest_inbound_is_sms($leadId)
+        );
         if ($channel === 'sms' && $smsUnavailable) {
             $channel = 'email';
         }
@@ -3993,7 +4387,8 @@ if (!function_exists('lead_agent_process_state')) {
         if (strtotime((string) $following['at']) <= time()) {
             $following = lead_agent_incremental_schedule(now(), $nextStep);
         }
-        $nextStateStatus = $nextStep >= 5 || (string)($state['status'] ?? '') === 'nurture' ? 'nurture' : 'active';
+        $activeStepCount = count(lead_agent_cadence_plan());
+        $nextStateStatus = $nextStep >= $activeStepCount || (string)($state['status'] ?? '') === 'nurture' ? 'nurture' : 'active';
         db_execute("UPDATE lead_agent_states SET status = :status, cadence_step = :step, last_action_at = NOW(), next_action_at = :next_action_at, last_decision = :decision, lock_token = '', locked_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id", [
             'status' => $nextStateStatus,
             'step' => $nextStep,
@@ -4004,11 +4399,11 @@ if (!function_exists('lead_agent_process_state')) {
         db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $eventKey]);
         lead_agent_record_touchpoint($lead, $eventKey, $channel, $nextStep, (string) $schedule['phase'], $send + lead_agent_draft_conversion_meta($draft));
         lead_agent_record_learning('cadence_followup', $channel, $draftSource . '_sent');
-        if ($nextStep >= 5) {
+        if ($nextStep === $activeStepCount) {
             lead_lifecycle_transition_status(
                 $leadId,
                 'no_answer',
-                'The seven-day active follow-up sprint ended without a reply; the lead moved to Nurture.',
+                'The six-day active follow-up sprint ended without a reply; twice-weekly Nurture continues.',
                 'lead_agent_cadence',
                 ['new_lead', 'attempted_contact', 'contacted', 'in_contact', '']
             );
@@ -4044,6 +4439,7 @@ if (!function_exists('lead_agent_run_due')) {
         $recoveredDraftingExceptions = 0;
         $conversionMemoriesRefreshed = 0;
         $schedulingRepair = [];
+        $monthlyEmail = [];
         $dueCount = 0;
         $results = [];
         try {
@@ -4085,6 +4481,9 @@ if (!function_exists('lead_agent_run_due')) {
                     $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
                 }
             }
+            $monthlyEmail = lead_agent_run_monthly_email_outreach(10, $dryRun);
+            $dueCount += (int)($monthlyEmail['due'] ?? 0);
+            $results = array_merge($results, (array)($monthlyEmail['results'] ?? []));
             if (!$dryRun) {
                 lead_agent_sync_crm_followup_schedule();
             }
@@ -4103,7 +4502,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'coverage_repair' => $coverageRepair, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'coverage_repair' => $coverageRepair, 'scheduling_repair' => $schedulingRepair, 'monthly_email' => $monthlyEmail, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 
@@ -4149,7 +4548,7 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'cadence_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent') AND status = 'sent'"),
             'automatic_replies' => $eventCount("event_type = 'automatic_reply' AND status = 'sent'"),
             'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
-            'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
+            'emails_sent' => $eventCount("((event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND channel = 'email') OR event_type = 'monthly_email_sent') AND status = 'sent'"),
             'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
             // These are people, not event totals. A lead can generate more than one
             // handoff event during the same conversation and must only be counted once.

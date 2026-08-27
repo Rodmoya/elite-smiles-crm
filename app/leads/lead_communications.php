@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
 require_once __DIR__ . '/lead_service.php';
+require_once __DIR__ . '/lead_language.php';
 
 if (!function_exists('lead_comm_table_exists')) {
     function lead_comm_table_exists(string $table): bool
@@ -153,6 +154,7 @@ if (!function_exists('lead_comm_ensure_schema')) {
         lead_comm_add_leads_column('follow_up_status', "VARCHAR(50) NOT NULL DEFAULT 'not_checked'");
         lead_comm_add_leads_column('last_follow_up_check_at', 'DATETIME NULL');
         lead_comm_add_leads_column('pipeline_position', 'INT NOT NULL DEFAULT 0');
+        lead_language_ensure_schema();
     }
 }
 

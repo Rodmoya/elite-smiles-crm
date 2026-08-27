@@ -21,6 +21,7 @@ require_once __DIR__ . '/../core/helpers.php';
 require_once __DIR__ . '/../core/mailer.php';
 require_once __DIR__ . '/../notifications/internal_sms.php';
 require_once __DIR__ . '/lead_meta.php';
+require_once __DIR__ . '/lead_language.php';
 require_once __DIR__ . '/lead_email.php';
 
 if (!function_exists('lead_default_opportunity_value')) {
@@ -235,6 +236,7 @@ if (!function_exists('lead_pipeline_ensure_schema')) {
             return;
         }
 
+        lead_language_ensure_schema();
         lead_identity_ensure_schema();
 
         foreach ([
@@ -816,6 +818,8 @@ if (!function_exists('lead_pipeline_counts')) {
             foreach ([
                 'phone',
                 'sms_opt_status',
+                'preferred_language',
+                'preferred_language_source',
                 'last_contacted_at',
                 'last_inbound_at',
                 'last_outbound_at',
@@ -884,6 +888,8 @@ if (!function_exists('lead_pipeline_stage_values')) {
             foreach ([
                 'phone',
                 'sms_opt_status',
+                'preferred_language',
+                'preferred_language_source',
                 'last_contacted_at',
                 'last_inbound_at',
                 'last_outbound_at',
@@ -977,6 +983,8 @@ if (!function_exists('lead_pipeline_rows')) {
             'lost_reason',
             'notes',
             'sms_opt_status',
+            'preferred_language',
+            'preferred_language_source',
             'last_contacted_at',
             'last_inbound_at',
             'last_outbound_at',
@@ -1126,6 +1134,8 @@ if (!function_exists('lead_recent_rows')) {
             'lost_reason',
             'notes',
             'sms_opt_status',
+            'preferred_language',
+            'preferred_language_source',
             'last_contacted_at',
             'last_inbound_at',
             'last_outbound_at',
@@ -2034,6 +2044,20 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
             }
         }
 
+        $incomingLanguage = lead_language_normalize((string)($data['preferred_language'] ?? 'unknown'));
+        if ($incomingLanguage !== 'unknown' && leads_has_column('preferred_language')) {
+            $updates[] = '`preferred_language` = :preferred_language';
+            $params['preferred_language'] = $incomingLanguage;
+            if (leads_has_column('preferred_language_source')) {
+                $updates[] = '`preferred_language_source` = :preferred_language_source';
+                $params['preferred_language_source'] = mb_substr(
+                    trim((string)($data['preferred_language_source'] ?? 'intake_refresh')) ?: 'intake_refresh',
+                    0,
+                    40
+                );
+            }
+        }
+
         if (
             leads_has_column('status')
             && $incomingStatus !== ''
@@ -2269,7 +2293,14 @@ if (!function_exists('lead_force_send_first_touch_sms')) {
 
         $body = function_exists('lead_ai_default_new_lead_sms')
             ? lead_ai_default_new_lead_sms($lead)
-            : 'Hi, this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. We offer a complimentary consultation with Dr. Meden to review options and financing. What day/time works best for you? Reply STOP to opt out.';
+            : lead_language_maybe_add_sms_offer(
+                $lead,
+                lead_language_text(
+                    $lead,
+                    'Hi, this is Rod from Elite Smiles. Thanks for reaching out about your smile consultation. What would you most like to improve about your smile? Reply STOP to opt out.',
+                    'Hola, soy Rod de Elite Smiles. Gracias por contactarnos sobre su sonrisa. ¿Qué le gustaría mejorar más? Responda STOP para cancelar.'
+                )
+            );
 
         $sendResult = elite_twilio_send_sms((string)($lead['phone'] ?? ''), $body, [
             'lead_id' => $leadId,
@@ -2455,6 +2486,11 @@ if (!function_exists('lead_create_minimal')) {
         if (!in_array($data['sms_opt_status'], ['unknown', 'opted_in', 'opted_out'], true)) {
             $data['sms_opt_status'] = 'unknown';
         }
+        $data['preferred_language'] = lead_language_normalize((string)($data['preferred_language'] ?? 'unknown'));
+        $data['preferred_language_source'] = mb_substr(trim((string)($data['preferred_language_source'] ?? '')), 0, 40);
+        if ($data['preferred_language'] === 'unknown') {
+            $data['preferred_language_source'] = '';
+        }
 
         if (!lead_is_min_capture_complete($data)) {
             return ['ok' => false, 'message' => 'Please provide at least a name, phone, or email.', 'lead_id' => 0];
@@ -2593,6 +2629,8 @@ if (!function_exists('lead_create_minimal')) {
             'lead_value' => $leadValue,
             'lost_reason' => $data['lost_reason'] !== '' ? $data['lost_reason'] : null,
             'sms_opt_status' => $data['sms_opt_status'],
+            'preferred_language' => $data['preferred_language'],
+            'preferred_language_source' => $data['preferred_language_source'],
             'notes' => $data['notes'],
             'pipeline_position' => lead_pipeline_next_position($data['status']),
             'created_at' => now(),

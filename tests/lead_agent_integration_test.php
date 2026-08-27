@@ -13,6 +13,10 @@ lead_agent_ensure_schema();
 lead_comm_ensure_schema();
 lead_email_ensure_schema();
 
+foreach (['preferred_language', 'preferred_language_source'] as $column) {
+    integration_expect((bool) db_one("SHOW COLUMNS FROM leads LIKE '" . $column . "'"), 'Language preference column is missing: ' . $column);
+}
+
 foreach (['human_takeover_until', 'scheduling_phase', 'availability_option_1', 'availability_option_2', 'selected_availability', 'scheduling_context', 'availability_pool_json'] as $column) {
     integration_expect((bool) db_one("SHOW COLUMNS FROM lead_agent_states LIKE '" . $column . "'"), 'Scheduling state column is missing: ' . $column);
 }
@@ -27,6 +31,14 @@ try {
          VALUES ('Lead Agent Integration Test', '+18015550199', 'lead-agent-test@example.invalid', 'contacted', 'opted_in', 'subscribed', NOW(), NOW())"
     );
     integration_expect($leadId > 0, 'Synthetic lead was not created.');
+
+    $languageLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Language Preference Integration Test', '+18015550198', 'language-test@example.invalid', 'new_lead', 'opted_in', 'subscribed', NOW(), NOW())"
+    );
+    integration_expect(lead_language_set_preference($languageLeadId, 'es', 'inbound_detected'), 'A source-backed Spanish preference was not saved.');
+    $savedLanguage = db_one('SELECT preferred_language, preferred_language_source FROM leads WHERE id = :id LIMIT 1', ['id' => $languageLeadId]);
+    integration_expect((string)($savedLanguage['preferred_language'] ?? '') === 'es' && (string)($savedLanguage['preferred_language_source'] ?? '') === 'inbound_detected', 'Language preference provenance was not stored correctly.');
 
     $enrollment = lead_agent_enroll($leadId, ['source' => 'integration_test']);
     integration_expect(!empty($enrollment['enrolled']), 'Synthetic lead was not enrolled.');

@@ -2269,9 +2269,39 @@ $consultationOptions = [
                                     <div class="grid grid-cols-1 gap-4">
 
                                         <div class="rounded-2xl bg-white px-4 py-4">
-                                            <label for="modal-communication-consultation-date-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduled Consultation</label>
-                                            <input type="datetime-local" id="modal-communication-consultation-date-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none">
-                                            <p class="mt-2 text-[11px] leading-5 text-slate-500">This saves to the real appointment field.</p>
+                                            <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduled Consultation</p>
+                                            <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                <div>
+                                                    <label for="modal-communication-consultation-date-picker" class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Date</label>
+                                                    <input type="date" id="modal-communication-consultation-date-picker" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+                                                </div>
+                                                <div>
+                                                    <label for="modal-communication-consultation-time-input" class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Time</label>
+                                                    <select id="modal-communication-consultation-time-input" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+                                                        <option value="">Select time</option>
+                                                        <?php for ($slotMinutes = 9 * 60; $slotMinutes <= 18 * 60; $slotMinutes += 30): ?>
+                                                            <?php
+                                                            $slotHour = intdiv($slotMinutes, 60);
+                                                            $slotMinute = $slotMinutes % 60;
+                                                            $slotValue = sprintf('%02d:%02d', $slotHour, $slotMinute);
+                                                            $slotLabel = date('g:i A', mktime($slotHour, $slotMinute));
+                                                            ?>
+                                                            <option value="<?= e($slotValue) ?>"><?= e($slotLabel) ?></option>
+                                                        <?php endfor; ?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <input type="hidden" id="modal-communication-consultation-date-input">
+                                            <p id="modal-communication-consultation-date-status" class="mt-2 text-[11px] leading-5 text-slate-500">Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.</p>
+                                        </div>
+
+                                        <div class="rounded-2xl border-t border-slate-100 bg-white px-4 py-4">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <label for="modal-communication-dob-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Date of Birth</label>
+                                                <span id="modal-communication-age-summary" class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">Age: Not provided</span>
+                                            </div>
+                                            <input type="date" id="modal-communication-dob-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+                                            <p class="mt-2 text-[11px] leading-5 text-slate-500">DOB and age save to the same lead record used for appointment preparation.</p>
                                         </div>
 
                                     </div>
@@ -2719,8 +2749,13 @@ $consultationOptions = [
 
     const modalLeadConsultationDateInput = document.getElementById('modal-lead-consultation-date-input');
     const modalCommunicationConsultationDateInput = document.getElementById('modal-communication-consultation-date-input');
+    const modalCommunicationConsultationDatePicker = document.getElementById('modal-communication-consultation-date-picker');
+    const modalCommunicationConsultationTimeInput = document.getElementById('modal-communication-consultation-time-input');
+    const modalCommunicationConsultationDateStatus = document.getElementById('modal-communication-consultation-date-status');
 
     const modalLeadDobInput = document.getElementById('modal-lead-dob-input');
+    const modalCommunicationDobInput = document.getElementById('modal-communication-dob-input');
+    const modalCommunicationAgeSummary = document.getElementById('modal-communication-age-summary');
     const modalLeadIntentTypeInput = document.getElementById('modal-lead-intent-type-input');
 
     const modalLeadPreferredDayInput = document.getElementById('modal-lead-preferred-day-input');
@@ -3807,6 +3842,124 @@ $consultationOptions = [
 
         return normalized.length >= 16 ? normalized : '';
 
+    }
+
+    function communicationConsultationSlotIsAllowed(timeValue) {
+        const match = /^(\d{2}):(\d{2})$/.exec(String(timeValue || ''));
+        if (!match) return false;
+
+        const minutes = Number(match[1]) * 60 + Number(match[2]);
+        return minutes >= 9 * 60
+            && minutes <= 18 * 60
+            && (minutes - 9 * 60) % 30 === 0;
+    }
+
+    function syncCommunicationConsultationFields(value) {
+        const normalized = toDatetimeLocal(value);
+        const dateValue = normalized ? normalized.slice(0, 10) : '';
+        const timeValue = normalized ? normalized.slice(11, 16) : '';
+
+        if (modalCommunicationConsultationDateInput) {
+            modalCommunicationConsultationDateInput.value = normalized;
+        }
+        if (modalCommunicationConsultationDatePicker) {
+            modalCommunicationConsultationDatePicker.value = dateValue;
+        }
+        if (modalCommunicationConsultationTimeInput) {
+            modalCommunicationConsultationTimeInput.value = communicationConsultationSlotIsAllowed(timeValue) ? timeValue : '';
+        }
+        if (modalCommunicationConsultationDateStatus) {
+            modalCommunicationConsultationDateStatus.textContent = normalized && !communicationConsultationSlotIsAllowed(timeValue)
+                ? 'This existing appointment is outside the 9:00 AM-6:00 PM schedule. Choose an approved 30-minute time to change it.'
+                : 'Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.';
+        }
+    }
+
+    function updateCommunicationConsultationValue() {
+        const dateValue = modalCommunicationConsultationDatePicker?.value || '';
+        const timeValue = modalCommunicationConsultationTimeInput?.value || '';
+        const hasCompleteSlot = dateValue !== '' && communicationConsultationSlotIsAllowed(timeValue);
+        const combinedValue = hasCompleteSlot ? `${dateValue}T${timeValue}` : '';
+
+        if (modalCommunicationConsultationDateInput) {
+            modalCommunicationConsultationDateInput.value = combinedValue;
+        }
+        if (modalLeadConsultationDateInput) {
+            modalLeadConsultationDateInput.value = combinedValue;
+        }
+        if (modalLeadConsultInput && combinedValue) {
+            modalLeadConsultInput.value = 'scheduled';
+        }
+        if (modalCommunicationConsultationDateStatus) {
+            modalCommunicationConsultationDateStatus.textContent = dateValue && !timeValue
+                ? 'Choose an appointment time between 9:00 AM and 6:00 PM.'
+                : (!dateValue && timeValue
+                    ? 'Choose the appointment date.'
+                    : 'Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.');
+        }
+        if (saveStatus && activeCard) {
+            saveStatus.textContent = 'Consultation time changed. Save changes to keep it.';
+        }
+        updateMissingPanel();
+    }
+
+    function calculateAgeFromDob(value, today = new Date()) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+        if (!match || !(today instanceof Date) || Number.isNaN(today.getTime())) return null;
+
+        const birthYear = Number(match[1]);
+        const birthMonth = Number(match[2]);
+        const birthDay = Number(match[3]);
+        const birthDate = new Date(0);
+        birthDate.setHours(0, 0, 0, 0);
+        birthDate.setFullYear(birthYear, birthMonth - 1, birthDay);
+
+        if (birthDate.getFullYear() !== birthYear
+            || birthDate.getMonth() !== birthMonth - 1
+            || birthDate.getDate() !== birthDay) {
+            return null;
+        }
+
+        let age = today.getFullYear() - birthYear;
+        const birthdayHasPassed = today.getMonth() + 1 > birthMonth
+            || (today.getMonth() + 1 === birthMonth && today.getDate() >= birthDay);
+        if (!birthdayHasPassed) age -= 1;
+
+        return age >= 0 ? age : null;
+    }
+
+    function updateCommunicationAge(value) {
+        const age = calculateAgeFromDob(value);
+        if (modalCommunicationAgeSummary) {
+            modalCommunicationAgeSummary.textContent = age === null ? 'Age: Not provided' : `Age: ${age}`;
+        }
+    }
+
+    function syncCommunicationDobFields(value) {
+        const dateValue = String(value || '').slice(0, 10);
+        const todayValue = toDateKey(new Date());
+
+        if (modalLeadDobInput) {
+            modalLeadDobInput.value = dateValue;
+            modalLeadDobInput.max = todayValue;
+        }
+        if (modalCommunicationDobInput) {
+            modalCommunicationDobInput.value = dateValue;
+            modalCommunicationDobInput.max = todayValue;
+        }
+        updateCommunicationAge(dateValue);
+    }
+
+    function updateCommunicationDobValue() {
+        const dateValue = modalCommunicationDobInput?.value || '';
+        if (modalLeadDobInput) {
+            modalLeadDobInput.value = dateValue;
+        }
+        updateCommunicationAge(dateValue);
+        if (saveStatus && activeCard) {
+            saveStatus.textContent = 'Date of birth changed. Save changes to keep it.';
+        }
+        updateMissingPanel();
     }
 
     function toDateKey(date) {
@@ -6432,9 +6585,9 @@ function applyCommunicationViewportFit() {
         if (modalLeadConsultInput) modalLeadConsultInput.value = card.dataset.leadConsult || '';
 
         if (modalLeadConsultationDateInput) modalLeadConsultationDateInput.value = toDatetimeLocal(card.dataset.leadConsultationDate || '');
-        if (modalCommunicationConsultationDateInput) modalCommunicationConsultationDateInput.value = toDatetimeLocal(card.dataset.leadConsultationDate || '');
+        syncCommunicationConsultationFields(card.dataset.leadConsultationDate || '');
 
-        if (modalLeadDobInput) modalLeadDobInput.value = card.dataset.leadDateOfBirth || '';
+        syncCommunicationDobFields(card.dataset.leadDateOfBirth || '');
         if (modalLeadIntentTypeInput) modalLeadIntentTypeInput.value = card.dataset.leadIntentType || '';
 
         if (modalLeadPreferredDayInput) modalLeadPreferredDayInput.value = card.dataset.leadSchedulingPreferredDay || '';
@@ -8513,23 +8666,30 @@ function applyCommunicationViewportFit() {
         });
     });
 
-    if (modalCommunicationConsultationDateInput) {
-        modalCommunicationConsultationDateInput.addEventListener('input', function () {
-            if (modalLeadConsultationDateInput) {
-                modalLeadConsultationDateInput.value = modalCommunicationConsultationDateInput.value;
-            }
-            if (modalLeadConsultInput && modalCommunicationConsultationDateInput.value) {
-                modalLeadConsultInput.value = 'scheduled';
-            }
-            if (saveStatus && activeCard) {
-                saveStatus.textContent = 'Consultation time changed. Save changes to keep it.';
-            }
-        });
+    if (modalCommunicationConsultationDatePicker) {
+        modalCommunicationConsultationDatePicker.addEventListener('input', updateCommunicationConsultationValue);
+        modalCommunicationConsultationDatePicker.addEventListener('change', updateCommunicationConsultationValue);
+    }
+
+    if (modalCommunicationConsultationTimeInput) {
+        modalCommunicationConsultationTimeInput.addEventListener('input', updateCommunicationConsultationValue);
+        modalCommunicationConsultationTimeInput.addEventListener('change', updateCommunicationConsultationValue);
     }
 
     if (modalLeadConsultationDateInput && modalCommunicationConsultationDateInput) {
         modalLeadConsultationDateInput.addEventListener('input', function () {
-            modalCommunicationConsultationDateInput.value = modalLeadConsultationDateInput.value;
+            syncCommunicationConsultationFields(modalLeadConsultationDateInput.value);
+        });
+    }
+
+    if (modalCommunicationDobInput) {
+        modalCommunicationDobInput.addEventListener('input', updateCommunicationDobValue);
+        modalCommunicationDobInput.addEventListener('change', updateCommunicationDobValue);
+    }
+
+    if (modalLeadDobInput) {
+        modalLeadDobInput.addEventListener('input', function () {
+            syncCommunicationDobFields(modalLeadDobInput.value);
         });
     }
 

@@ -724,6 +724,9 @@ if (!function_exists('lead_email_record_bounce')) {
         try {
             $sets = ['updated_at = :now'];
             $params = ['id' => $leadId, 'now' => now()];
+            if (lead_email_column_exists('leads', 'email_opt_status')) {
+                $sets[] = "email_opt_status = 'bounced'";
+            }
             if (lead_email_column_exists('leads', 'follow_up_status')) {
                 $sets[] = "follow_up_status = 'needs_follow_up'";
             }
@@ -1016,8 +1019,10 @@ if (!function_exists('lead_email_send')) {
             return ['ok' => false, 'message' => 'Subject and email body are required.'];
         }
 
-        if ((string)($lead['email_opt_status'] ?? 'subscribed') === 'unsubscribed') {
-            return ['ok' => false, 'message' => 'Lead has unsubscribed from email follow-up.'];
+        if (in_array(strtolower(trim((string)($lead['email_opt_status'] ?? 'subscribed'))), [
+            'unsubscribed', 'opted_out', 'bounced', 'blocked', 'dropped', 'invalid',
+        ], true)) {
+            return ['ok' => false, 'message' => 'Lead email is suppressed from follow-up.'];
         }
 
         $trackingToken = bin2hex(random_bytes(24));

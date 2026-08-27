@@ -1593,7 +1593,9 @@ if (!function_exists('lead_agent_sms_blocked')) {
 if (!function_exists('lead_agent_email_blocked')) {
     function lead_agent_email_blocked(array $lead): bool
     {
-        return in_array(strtolower(trim((string) ($lead['email_opt_status'] ?? ''))), ['unsubscribed', 'opted_out'], true)
+        return in_array(strtolower(trim((string) ($lead['email_opt_status'] ?? ''))), [
+            'unsubscribed', 'opted_out', 'bounced', 'blocked', 'dropped', 'invalid',
+        ], true)
             || !filter_var(trim((string) ($lead['email'] ?? '')), FILTER_VALIDATE_EMAIL);
     }
 }
@@ -3990,6 +3992,237 @@ if (!function_exists('lead_agent_recover_drafting_exceptions')) {
     }
 }
 
+if (!function_exists('lead_agent_monthly_email_due')) {
+    /** Pure 30-day eligibility gate for low-frequency Nurture/Lost email. */
+    function lead_agent_monthly_email_due(
+        array $lead,
+        string $lastSuccessfulEmailAt = '',
+        string $conversationClosureReason = '',
+        ?DateTimeImmutable $now = null
+    ): bool {
+        $status = strtolower(trim((string)($lead['status'] ?? '')));
+        if (!in_array($status, ['no_answer', 'lost_lead'], true)
+            || lead_agent_internal_or_test_record($lead)
+            || lead_agent_email_blocked($lead)
+            || trim($conversationClosureReason) !== '') {
+            return false;
+        }
+
+        // A business-stage loss can remain marketable, but a wrong recipient,
+        // explicit decline, or no-treatment record must never be reactivated.
+        $lostReason = strtolower(trim((string)($lead['lost_reason'] ?? '')));
+        if ($status === 'lost_lead' && in_array($lostReason, [
+            'wrong_lead',
+            'treatment_not_needed',
+            'not_interested',
+            'do_not_contact',
+            'email_unsubscribe',
+        ], true)) {
+            return false;
+        }
+        if (trim((string)($lead['consultation_date'] ?? '')) !== ''
+            || in_array(strtolower(trim((string)($lead['consultation_status'] ?? ''))), ['scheduled', 'booked', 'confirmed', 'completed'], true)) {
+            return false;
+        }
+
+        $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
+        $lastOutbound = trim((string)($lead['last_outbound_at'] ?? ''));
+        if ($lastInbound !== '' && strtotime($lastInbound) !== false
+            && ($lastOutbound === '' || strtotime($lastOutbound) === false || strtotime($lastInbound) >= strtotime($lastOutbound))) {
+            return false;
+        }
+
+        $anchor = trim($lastSuccessfulEmailAt);
+        if ($anchor === '' || strtotime($anchor) === false) {
+            $anchor = $status === 'lost_lead'
+                ? trim((string)($lead['updated_at'] ?? ''))
+                : trim((string)($lead['created_at'] ?? ''));
+        }
+        if ($anchor === '' || strtotime($anchor) === false) {
+            return false;
+        }
+
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?? new DateTimeImmutable('now', $timezone);
+        try {
+            $lastEligibleTouch = new DateTimeImmutable($anchor, $timezone);
+        } catch (Throwable $e) {
+            return false;
+        }
+        return $lastEligibleTouch <= $now->modify('-30 days');
+    }
+}
+
+if (!function_exists('lead_agent_monthly_email_template')) {
+    /** Approved rotating copy; compliance footer and unsubscribe are added at send time. */
+    function lead_agent_monthly_email_template(array $lead, int $rotation = 0): array
+    {
+        $rotation = (($rotation % 4) + 4) % 4;
+        $first = lead_agent_first_name($lead);
+        if (lead_language_is_spanish($lead)) {
+            $hello = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+            $subjects = [
+                'Un paso sencillo para su sonrisa',
+                'Qué esperar en Elite Smiles',
+                'Mantenga abiertas sus opciones para la sonrisa',
+                'Aquí estamos cuando sea el momento adecuado',
+            ];
+            $bodies = [
+                'Cuando sea el momento adecuado, una consulta gratis puede ayudarle a entender sus opciones con claridad y sin presión. Puede responder a este correo si desea retomar sus metas para la sonrisa.',
+                'Cada sonrisa es diferente. El Dr. Meden comienza por entender sus metas y revisar qué opciones podrían ser apropiadas antes de recomendar un próximo paso. Estamos disponibles cuando quiera continuar.',
+                'No necesita decidir nada ahora. Si todavía está considerando un cambio en su sonrisa, podemos ayudarle a entender qué podría ser posible durante una consulta gratis.',
+                'Solo queremos mantener la puerta abierta. Si el momento es mejor ahora, responda a este correo y continuaremos desde donde lo dejamos.',
+            ];
+            return [
+                'subject' => $subjects[$rotation],
+                'body' => $hello . "\n\n" . $bodies[$rotation] . "\n\nEl equipo de Elite Smiles",
+            ];
+        }
+
+        $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        $subjects = [
+            'A simple next step for your smile',
+            'What to expect at Elite Smiles',
+            'Keeping your smile options open',
+            'Here when the timing feels right',
+        ];
+        $bodies = [
+            'When the timing feels right, a complimentary consultation can help you understand your options clearly and without pressure. You can reply to this email whenever you would like to revisit your smile goals.',
+            'Every smile is different. Dr. Meden starts by understanding your goals and reviewing which options may be appropriate before recommending a next step. We are available whenever you would like to continue.',
+            'You do not need to decide anything now. If you are still considering a change to your smile, we can help you understand what may be possible during a complimentary consultation.',
+            'We simply wanted to keep the door open. If the timing is better now, reply to this email and we can continue from where we left off.',
+        ];
+        return [
+            'subject' => $subjects[$rotation],
+            'body' => $hello . "\n\n" . $bodies[$rotation] . "\n\nThe Elite Smiles Team",
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_run_monthly_email_outreach')) {
+    /**
+     * Send at most a small daily batch of 30-day Nurture/Lost reactivation
+     * emails. The last successful lead email is authoritative, so this never
+     * adds a second email inside the same 30-day window.
+     */
+    function lead_agent_run_monthly_email_outreach(int $dailyLimit = 10, bool $dryRun = false): array
+    {
+        $dailyLimit = max(1, min(25, $dailyLimit));
+        $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        $result = [
+            'due' => 0,
+            'processed' => 0,
+            'sent' => 0,
+            'dry_run' => $dryRun,
+            'reason' => '',
+            'results' => [],
+        ];
+        $hour = (int)$now->format('G');
+        if (!lead_agent_enabled() || lead_agent_mode() === 'off') {
+            $result['reason'] = 'agent_disabled';
+            return $result;
+        }
+        if ($hour < 9 || $hour >= 20) {
+            $result['reason'] = 'quiet_hours';
+            return $result;
+        }
+        if (function_exists('lead_email_automation_authentication_status')) {
+            $authentication = lead_email_automation_authentication_status();
+            if (empty($authentication['ready'])) {
+                $result['reason'] = 'email_authentication_hold';
+                return $result + ['authentication' => $authentication];
+            }
+        }
+        if (function_exists('lead_email_ensure_schema')) {
+            lead_email_ensure_schema();
+        }
+
+        $attemptedToday = $dryRun ? 0 : (int)db_value("SELECT COUNT(*) FROM lead_agent_events
+            WHERE event_type IN ('monthly_email_reserved','monthly_email_sent','monthly_email_failed')
+              AND DATE(created_at) = :day", ['day' => $now->format('Y-m-d')]);
+        $remaining = max(0, $dailyLimit - $attemptedToday);
+        if ($remaining < 1) {
+            $result['reason'] = 'daily_batch_cap';
+            return $result;
+        }
+
+        $candidateLimit = max($remaining, min(250, $remaining * 8));
+        try {
+            $candidates = db_all("SELECT l.*, email_history.last_successful_email_at
+                FROM leads l
+                LEFT JOIN (
+                    SELECT lead_id, MAX(created_at) AS last_successful_email_at
+                    FROM lead_emails
+                    WHERE direction = 'outbound' AND LOWER(COALESCE(status, '')) IN ('sent','delivered','accepted')
+                    GROUP BY lead_id
+                ) email_history ON email_history.lead_id = l.id
+                WHERE l.status IN ('no_answer','lost_lead')
+                ORDER BY COALESCE(email_history.last_successful_email_at, l.updated_at, l.created_at) ASC, l.id ASC
+                LIMIT {$candidateLimit}");
+        } catch (Throwable $e) {
+            $result['reason'] = 'candidate_query_failed';
+            return $result;
+        }
+
+        foreach ($candidates as $lead) {
+            if ($result['processed'] >= $remaining) {
+                break;
+            }
+            $leadId = (int)($lead['id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $closureReason = trim((string)($lead['last_inbound_at'] ?? '')) !== ''
+                ? lead_agent_latest_inbound_closure_reason($leadId)
+                : '';
+            if (!lead_agent_monthly_email_due(
+                $lead,
+                (string)($lead['last_successful_email_at'] ?? ''),
+                $closureReason,
+                $now
+            )) {
+                continue;
+            }
+
+            $result['due']++;
+            $result['processed']++;
+            $rotation = (((int)$now->format('Y') * 12) + (int)$now->format('n') + $leadId) % 4;
+            $draft = lead_agent_monthly_email_template($lead, $rotation);
+            $flags = lead_agent_policy_flags((string)$draft['subject'] . ' ' . (string)$draft['body']);
+            if ($flags !== []) {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'monthly_email_policy_gate', 'channel' => 'email'];
+                continue;
+            }
+            if ($dryRun || lead_agent_mode() === 'shadow') {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'would_send', 'reason' => 'monthly_lifecycle_email', 'channel' => 'email'];
+                continue;
+            }
+
+            $eventKey = 'monthly-email-' . $leadId . '-' . $now->format('Ymd');
+            if (!lead_agent_event($leadId, $eventKey, 'monthly_email_reserved', 'email', 'pending', 'monthly_lifecycle_email')) {
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'duplicate_monthly_email', 'channel' => 'email'];
+                continue;
+            }
+            $send = lead_agent_email_send($lead, (string)$draft['subject'], (string)$draft['body'], $eventKey);
+            if (empty($send['ok'])) {
+                db_execute("UPDATE lead_agent_events SET event_type = 'monthly_email_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
+                    'reason' => substr((string)($send['message'] ?? 'delivery_failed'), 0, 190),
+                    'event_key' => $eventKey,
+                ]);
+                $result['results'][] = ['lead_id' => $leadId, 'action' => 'skipped', 'reason' => 'monthly_email_delivery_failed', 'channel' => 'email'];
+                continue;
+            }
+
+            db_execute("UPDATE lead_agent_events SET event_type = 'monthly_email_sent', status = 'sent', reason = 'monthly_lifecycle_email' WHERE event_key = :event_key", ['event_key' => $eventKey]);
+            lead_agent_record_touchpoint($lead, $eventKey, 'email', 0, 'monthly_lifecycle_email', $send);
+            lead_agent_record_learning('monthly_reactivation', 'email', 'sent');
+            $result['sent']++;
+            $result['results'][] = ['lead_id' => $leadId, 'action' => 'sent', 'reason' => 'monthly_lifecycle_email', 'channel' => 'email'];
+        }
+        return $result;
+    }
+}
+
 if (!function_exists('lead_agent_process_state')) {
     function lead_agent_process_state(array $state, bool $dryRun = false): array
     {
@@ -4206,6 +4439,7 @@ if (!function_exists('lead_agent_run_due')) {
         $recoveredDraftingExceptions = 0;
         $conversionMemoriesRefreshed = 0;
         $schedulingRepair = [];
+        $monthlyEmail = [];
         $dueCount = 0;
         $results = [];
         try {
@@ -4247,6 +4481,9 @@ if (!function_exists('lead_agent_run_due')) {
                     $results[] = ['lead_id' => $leadId, 'action' => 'error', 'reason' => 'worker_exception'];
                 }
             }
+            $monthlyEmail = lead_agent_run_monthly_email_outreach(10, $dryRun);
+            $dueCount += (int)($monthlyEmail['due'] ?? 0);
+            $results = array_merge($results, (array)($monthlyEmail['results'] ?? []));
             if (!$dryRun) {
                 lead_agent_sync_crm_followup_schedule();
             }
@@ -4265,7 +4502,7 @@ if (!function_exists('lead_agent_run_due')) {
         } catch (Throwable $e) {
             esm_log('lead_agent', 'Daily operations report refresh failed.', ['error' => $e->getMessage()]);
         }
-        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'coverage_repair' => $coverageRepair, 'scheduling_repair' => $schedulingRepair, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
+        return ['ok' => true, 'run_id' => (int)$run['id'], 'mode' => lead_agent_mode(), 'dry_run' => $dryRun, 'stale_alert' => $staleAlert, 'lifecycle' => $lifecycle, 'backfill' => $backfill, 'coverage_repair' => $coverageRepair, 'scheduling_repair' => $schedulingRepair, 'monthly_email' => $monthlyEmail, 'conversion_memories_refreshed' => $conversionMemoriesRefreshed, 'recovered_drafting_exceptions' => $recoveredDraftingExceptions, 'repaired_first_day' => $repairedFirstDay, 'repaired_slow_sprint' => $repairedSlowSprint, 'repaired_catchup' => $repairedCatchup, 'due' => $dueCount, 'processed' => count($results), 'results' => $results];
     }
 }
 
@@ -4311,7 +4548,7 @@ if (!function_exists('lead_agent_daily_metrics')) {
             'cadence_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent') AND status = 'sent'"),
             'automatic_replies' => $eventCount("event_type = 'automatic_reply' AND status = 'sent'"),
             'sms_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'sms'"),
-            'emails_sent' => $eventCount("event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND status = 'sent' AND channel = 'email'"),
+            'emails_sent' => $eventCount("((event_type IN ('cadence_reserved', 'cadence_sent', 'automatic_reply') AND channel = 'email') OR event_type = 'monthly_email_sent') AND status = 'sent'"),
             'inbound_handled' => $eventCount("event_type = 'inbound_classified'"),
             // These are people, not event totals. A lead can generate more than one
             // handoff event during the same conversation and must only be counted once.

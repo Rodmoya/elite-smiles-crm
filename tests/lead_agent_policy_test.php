@@ -147,6 +147,7 @@ $emailSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_em
 expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'lead_email_inbound')"), 'Inbound email must reopen New Lead or Nurture through the central lifecycle transition.');
 expect_true(str_contains($emailSource, 'List-Unsubscribe-Post: List-Unsubscribe=One-Click') && str_contains($emailSource, 'List-Unsubscribe: <'), 'Every automated lead email must retain one-click unsubscribe headers.');
 expect_true(str_contains($emailSource, 'unsubscribe from follow-up emails') && str_contains($emailSource, '11762 South State, Suite 300, Draper, UT 84020'), 'Lead emails must retain a visible unsubscribe link and the practice mailing address.');
+expect_true(str_contains($emailSource, "email_opt_status = 'bounced'"), 'A confirmed email bounce must suppress that address from future monthly outreach.');
 $plainCompliance = lead_email_plain_text_with_compliance('Requested information.', 'https://example.com/unsubscribe');
 expect_true(str_contains($plainCompliance, '11762 South State, Suite 300, Draper, UT 84020') && str_contains($plainCompliance, 'Unsubscribe from follow-up emails: https://example.com/unsubscribe'), 'Plain-text email alternatives must include both the physical address and a direct unsubscribe mechanism.');
 expect_true(lead_email_spf_records_authorize([
@@ -162,6 +163,10 @@ expect_true(!lead_email_spf_records_authorize([
 expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dryRun)'), 'Every Lead Agent run must perform the dry-run capable lifecycle reconciliation.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_cycle_coverage(500, $dryRun)'), 'Every Lead Agent run must repair uncovered active and Nurture cycle records.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
+expect_true(str_contains($agentSource, 'lead_agent_run_monthly_email_outreach(10, $dryRun)'), 'Every Lead Agent run must evaluate the guarded monthly Nurture/Lost email lane.');
+$leadMetaSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_meta.php');
+expect_true(str_contains($leadMetaSource, "'no_answer', 'lost_lead', ''"), 'A reply from a reactivated Lost lead must reopen the active conversation.');
+expect_true(str_contains($leadMetaSource, 'SET lost_reason = NULL'), 'Reopening a Lost lead must clear the stale loss reason.');
 expect_true(!str_contains($agentSource, "'send_pushover_fallback' => true"), 'Automated Lead Agent SMS failure must not create a Pushover interruption.');
 $operationsSource = (string) file_get_contents(dirname(__DIR__) . '/lead-agent-operations.php');
 expect_true(str_contains($operationsSource, 'id="cycle-coverage"') && str_contains($operationsSource, 'id="cycle-coverage-data"'), 'Authenticated Lead Agent Operations must expose live cycle coverage and its exact audit payload.');
@@ -361,6 +366,41 @@ expect_true(lead_email_first_touch_should_wait_for_sms($smsReachableLead), 'A le
 expect_true(!lead_email_first_touch_should_wait_for_sms($smsReachableLead, false), 'An email-only intake path must retain immediate first-touch email.');
 expect_true(!lead_email_first_touch_should_wait_for_sms(['phone' => '123', 'sms_opt_status' => 'unknown', 'status' => 'new_lead']), 'An invalid phone must allow email to serve as the viable first-touch channel.');
 expect_true(!lead_email_first_touch_should_wait_for_sms(['phone' => '+18015550199', 'sms_opt_status' => 'opted_out', 'status' => 'new_lead']), 'SMS opt-out must allow consented email without waiting on SMS.');
+
+$monthlyNow = new DateTimeImmutable('2026-08-27 12:00:00', new DateTimeZone(APP_TIMEZONE));
+$monthlyNurtureLead = [
+    'id' => 101,
+    'full_name' => 'Taylor Example',
+    'status' => 'no_answer',
+    'email' => 'taylor@example.com',
+    'email_opt_status' => 'subscribed',
+    'created_at' => '2026-05-01 10:00:00',
+    'updated_at' => '2026-06-01 10:00:00',
+    'last_outbound_at' => '2026-07-20 10:00:00',
+    'last_inbound_at' => '',
+];
+expect_true(lead_agent_monthly_email_due($monthlyNurtureLead, '2026-07-20 10:00:00', '', $monthlyNow), 'A Nurture lead with no successful email for 30 days must be eligible for monthly reactivation.');
+expect_true(!lead_agent_monthly_email_due($monthlyNurtureLead, '2026-08-10 10:00:00', '', $monthlyNow), 'A recent successful email must block another monthly reactivation email.');
+expect_true(!lead_agent_monthly_email_due(array_merge($monthlyNurtureLead, ['email_opt_status' => 'unsubscribed']), '2026-07-20 10:00:00', '', $monthlyNow), 'Email unsubscribe must permanently block monthly reactivation.');
+expect_true(!lead_agent_monthly_email_due(array_merge($monthlyNurtureLead, ['email_opt_status' => 'bounced']), '2026-07-20 10:00:00', '', $monthlyNow), 'A bounced email address must never be retried by monthly reactivation.');
+$monthlyLostLead = array_merge($monthlyNurtureLead, ['status' => 'lost_lead', 'lost_reason' => 'not_ready']);
+expect_true(lead_agent_monthly_email_due($monthlyLostLead, '2026-07-20 10:00:00', '', $monthlyNow), 'An ordinary Lost business outcome may receive one low-frequency monthly email.');
+expect_true(!lead_agent_monthly_email_due(array_merge($monthlyLostLead, ['lost_reason' => 'wrong_lead']), '2026-07-20 10:00:00', '', $monthlyNow), 'A wrong-recipient Lost record must never receive monthly email.');
+expect_true(!lead_agent_monthly_email_due($monthlyLostLead, '2026-07-20 10:00:00', 'explicit_decline_or_distance', $monthlyNow), 'An explicit decline or do-not-contact signal must block monthly email even if the pipeline says Lost.');
+expect_true(!lead_agent_monthly_email_due(array_merge($monthlyLostLead, [
+    'last_inbound_at' => '2026-08-20 10:00:00',
+    'last_outbound_at' => '2026-08-19 10:00:00',
+]), '2026-07-20 10:00:00', '', $monthlyNow), 'A patient reply waiting for an answer must never receive automated monthly email.');
+expect_true(!lead_agent_monthly_email_due(array_merge($monthlyLostLead, ['consultation_status' => 'scheduled']), '2026-07-20 10:00:00', '', $monthlyNow), 'A scheduled consultation must block monthly reactivation.');
+$monthlySubjects = [];
+for ($rotation = 0; $rotation < 4; $rotation++) {
+    $monthlyDraft = lead_agent_monthly_email_template($monthlyNurtureLead, $rotation);
+    $monthlySubjects[] = (string)$monthlyDraft['subject'];
+    expect_true(lead_agent_policy_flags((string)$monthlyDraft['subject'] . ' ' . (string)$monthlyDraft['body']) === [], 'Every monthly email rotation must pass Lead Agent policy gates.');
+}
+expect_true(count(array_unique($monthlySubjects)) === 4, 'Monthly reactivation must rotate useful subjects instead of repeating one stale email.');
+$spanishMonthlyDraft = lead_agent_monthly_email_template(array_merge($monthlyNurtureLead, ['preferred_language' => 'es']), 0);
+expect_true(str_starts_with((string)$spanishMonthlyDraft['body'], 'Hola Taylor') && lead_agent_policy_flags((string)$spanishMonthlyDraft['subject'] . ' ' . (string)$spanishMonthlyDraft['body']) === [], 'Spanish-preferring Nurture and Lost leads must receive approved Spanish monthly copy.');
 
 $sampleLead = ['full_name' => 'Taylor Example'];
 foreach ($plan as $step => $item) {

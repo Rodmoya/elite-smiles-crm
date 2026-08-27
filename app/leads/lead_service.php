@@ -1298,6 +1298,70 @@ if (!function_exists('lead_call_consent_requested')) {
     }
 }
 
+if (!function_exists('lead_operator_consultation_is_scheduled')) {
+    /** A recorded appointment suppresses only acknowledgments, never actionable replies. */
+    function lead_operator_consultation_is_scheduled(array $lead): bool
+    {
+        return in_array(trim((string)($lead['status'] ?? '')), [
+            'consultation_booked',
+            'consult_completed',
+            'treatment_accepted',
+            'treatment_completed',
+        ], true)
+            || in_array(trim((string)($lead['consultation_status'] ?? '')), [
+                'scheduled',
+                'booked',
+                'confirmed',
+                'completed',
+            ], true)
+            || trim((string)($lead['consultation_date'] ?? '')) !== '';
+    }
+}
+
+if (!function_exists('lead_operator_message_is_acknowledgment')) {
+    /** True only for a closed-loop confirmation that does not request staff action. */
+    function lead_operator_message_is_acknowledgment(string $body): bool
+    {
+        $text = strtolower(trim(preg_replace('/\s+/u', ' ', $body) ?? $body));
+        if ($text === '' || strlen($text) > 480) {
+            return false;
+        }
+
+        if (preg_match(
+            '/[?¿]|\b(?:but|pero|reschedul\w*|reprogram\w*|cancel\w*|change|move|different|another\s+(?:day|time)|can[’\']?t|cannot|won[’\']?t|unable|late|address|where|when|what|how|why|cost|price|financ\w*|insurance|help|question|dob|date\s+of\s+birth|birth\s*date|cambiar|cancelar|no\s+puedo|no\s+podr[eé]|tarde|direcci[oó]n|d[oó]nde|cu[aá]ndo|cu[aá]nto|precio|costo|seguro|ayuda|pregunta|ll[aá]ma\w*)\b|\b(?:can|could|would|will)\s+you\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/iu',
+            $text
+        )) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/(?:\b(?:yes|yeah|yep|ok|okay|got\s+it|thank\s+you|thanks|perfect|sounds\s+good|see\s+you(?:\s+then|\s+there)?|i(?:\s+will|[’\']ll|ll)\s+be\s+there|we(?:\s+will|[’\']ll|ll)\s+be\s+there|confirmed|gracias|perfect[oa]|entendido|de\s+acuerdo|nos\s+vemos|all[ií]\s+estar[eé])\b|👍|✅)/iu',
+            $text
+        );
+    }
+}
+
+if (!function_exists('lead_operator_messages_are_acknowledgments')) {
+    /** All consecutive inbound messages after the latest outbound must be non-actionable. */
+    function lead_operator_messages_are_acknowledgments(array $bodies): bool
+    {
+        $bodies = array_values(array_filter(array_map(
+            static fn(mixed $body): string => trim((string)$body),
+            $bodies
+        ), static fn(string $body): bool => $body !== ''));
+        if ($bodies === []) {
+            return false;
+        }
+
+        foreach ($bodies as $body) {
+            if (!lead_operator_message_is_acknowledgment($body)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
 if (!function_exists('lead_operator_recent_thread_signals')) {
     function lead_operator_recent_thread_signals(int $leadId): array
     {
@@ -1309,6 +1373,7 @@ if (!function_exists('lead_operator_recent_thread_signals')) {
 
         $signals = [
             'call_requested' => false,
+            'acknowledgment_only' => false,
         ];
 
         if ($leadId <= 0 || !lead_related_table_exists('lead_messages')) {
@@ -1330,6 +1395,7 @@ if (!function_exists('lead_operator_recent_thread_signals')) {
             return $signals;
         }
 
+        $unansweredInboundBodies = [];
         foreach ($messages as $message) {
             if ((string)($message['direction'] ?? '') !== 'inbound') {
                 // Ordered newest first: an outbound response resolves any
@@ -1341,12 +1407,14 @@ if (!function_exists('lead_operator_recent_thread_signals')) {
             if ($body === '') {
                 continue;
             }
+            $unansweredInboundBodies[] = $body;
 
             if (lead_call_consent_requested($body)) {
                 $signals['call_requested'] = true;
-                break;
             }
         }
+
+        $signals['acknowledgment_only'] = lead_operator_messages_are_acknowledgments($unansweredInboundBodies);
 
         $cache[$leadId] = $signals;
         return $signals;
@@ -1682,13 +1750,15 @@ if (!function_exists('lead_action_queue_rows')) {
                 }
 
                 $signals = lead_operator_recent_thread_signals($leadId);
+                $scheduledAcknowledgment = lead_operator_consultation_is_scheduled($lead)
+                    && !empty($signals['acknowledgment_only']);
                 if ($signals['call_requested'] && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt)) {
                     $priority = 100;
                     $actionKey = 'reply_needed';
                     $actionLabel = 'Call requested';
                     $actionTone = 'blue';
                     $reason = 'Lead asked for a phone call after the last outbound touch. Call first before sending another standard follow-up.';
-                } elseif ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt))) {
+                } elseif (!$scheduledAcknowledgment && ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt))) {
                     $priority = 95;
                 } elseif ($actionKey === 'first_touch') {
                     $priority = 85;

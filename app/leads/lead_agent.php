@@ -403,7 +403,7 @@ if (!function_exists('lead_agent_step_schedule')) {
 
         $extra = max(1, $step - count($plan));
         $lastPlanItem = end($plan) ?: ['hours' => 144, 'channel' => 'sms'];
-        $lastPlanHours = (float) ($lastPlanItem['hours'] ?? 144);
+        $lastPlanHours = (int) round((float) ($lastPlanItem['hours'] ?? 144));
         // Two touches per week after the active sprint: three days, then four
         // days, alternating email and SMS without ever creating a burst.
         $hours = $lastPlanHours + (intdiv($extra, 2) * 168) + ($extra % 2 === 1 ? 72 : 0);

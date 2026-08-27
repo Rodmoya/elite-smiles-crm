@@ -1,0 +1,32 @@
+name: Consultation Doctor Reminders
+
+on:
+  schedule:
+    # Runs on every Utah consultation half-hour in both MDT and MST.
+    # The PHP worker applies America/Denver and sends only a currently due event.
+    - cron: '0,30 0,14-23 * * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    name: remind-dr-meden
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CRON_SECRET: ${{ secrets.ELITE_CONSULTATION_REMINDER_CRON_SECRET || secrets.ELITE_LEAD_AGENT_CRON_SECRET }}
+    steps:
+      - name: Run deduplicated doctor reminder worker
+        run: |
+          test -n "$CRON_SECRET"
+          response_file="$(mktemp)"
+          http_code="$(curl --silent --show-error --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            -A 'Elite-Smiles-Consultation-Doctor-Reminder/1.0' \
+            -H "X-Elite-Cron-Secret: $CRON_SECRET" \
+            -H 'Accept: application/json' \
+            'https://hi.elitesmilesutah.com/crm/app/api/consultation_reminder_cron.php?doctor_only=1&limit=50' || true)"
+          jq -c '{ok, doctor_only, doctor_processed, statuses: [.doctor_results[].sms.status]}' "$response_file" 2>/dev/null \
+            || echo '{"ok":false,"message":"Reminder worker did not return valid JSON."}'
+          test "$http_code" -ge 200
+          test "$http_code" -lt 300
+          jq -e '.ok == true and .doctor_only == true' "$response_file" >/dev/null

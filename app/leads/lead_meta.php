@@ -797,17 +797,22 @@ if (!function_exists('lead_lifecycle_transition_status')) {
 if (!function_exists('lead_lifecycle_mark_inbound_answer')) {
     function lead_lifecycle_mark_inbound_answer(int $leadId, string $source, bool $explicitOptIn = false): array
     {
-        $allowed = ['new_lead', 'attempted_contact', 'contacted', 'no_answer', ''];
+        $allowed = ['new_lead', 'attempted_contact', 'contacted', 'no_answer', 'lost_lead', ''];
         if ($explicitOptIn) {
             $allowed[] = 'opted_out';
         }
-        return lead_lifecycle_transition_status(
+        $transition = lead_lifecycle_transition_status(
             $leadId,
             'in_contact',
             'Lead answered; the conversation is open again.',
             $source,
             $allowed
         );
+        if (!empty($transition['changed']) && (string)($transition['from'] ?? '') === 'lost_lead'
+            && lead_lifecycle_column_exists('lost_reason')) {
+            db_execute('UPDATE leads SET lost_reason = NULL WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        }
+        return $transition;
     }
 }
 

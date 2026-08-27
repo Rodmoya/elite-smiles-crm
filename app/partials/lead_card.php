@@ -348,6 +348,22 @@ $leadNextActionTone = trim((string)($leadNextAction['tone'] ?? 'slate'));
 $leadUrgencyKey = trim((string)($leadUrgency['key'] ?? 'normal'));
 $leadUrgencyLabel = trim((string)($leadUrgency['label'] ?? 'On track'));
 $leadUrgencyTone = trim((string)($leadUrgency['tone'] ?? 'slate'));
+$leadThreadSignals = function_exists('lead_operator_recent_thread_signals')
+    ? lead_operator_recent_thread_signals($leadId)
+    : [];
+$leadResolvedScheduledAcknowledgment = !$leadNeedsAttention
+    && $leadConversionStageKey === 'consultation_booked'
+    && (string)($leadNextAction['key'] ?? '') === 'reply_needed'
+    && function_exists('lead_operator_consultation_is_scheduled')
+    && lead_operator_consultation_is_scheduled($lead)
+    && !empty($leadThreadSignals['acknowledgment_only']);
+if ($leadResolvedScheduledAcknowledgment) {
+    $leadNextActionLabel = 'Prep consult';
+    $leadNextActionTone = 'purple';
+    $leadUrgencyKey = 'recent';
+    $leadUrgencyLabel = 'Recent';
+    $leadUrgencyTone = 'emerald';
+}
 $leadHasBadPhone = false;
 foreach ((array)($leadConversion['badges'] ?? []) as $conversionBadge) {
     if ((string)($conversionBadge['key'] ?? '') === 'bad_phone') {

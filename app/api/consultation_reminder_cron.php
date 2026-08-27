@@ -8,6 +8,8 @@ declare(strict_types=1);
  * Sends deterministic appointment reminders:
  * - day_before: after 9:00 AM the day before the scheduled consultation
  * - morning_of: after 7:00 AM on the consultation day, before the appointment
+ * - Dr. Meden: at 9:00 AM Utah time and one hour before the consultation
+ *   (a 10:00 AM consultation collapses both doctor reminders into one SMS)
  */
 
 require_once dirname(__DIR__) . '/config/config.php';
@@ -17,6 +19,7 @@ require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
+require_once dirname(__DIR__) . '/leads/consultation_doctor_reminders.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -208,6 +211,10 @@ function consultation_reminder_send_email(array $lead, string $reminderKey, arra
         return ['ok' => false, 'status' => 'skipped', 'reason' => 'Invalid lead or appointment.'];
     }
 
+    if (!elite_smtp_is_configured()) {
+        return ['ok' => false, 'status' => 'disabled', 'reason' => 'SMTP is not configured.'];
+    }
+
     if (consultation_reminder_already_sent($leadId, $reminderKey, 'email', $consultationDate)) {
         return ['ok' => true, 'status' => 'already_sent'];
     }
@@ -321,13 +328,67 @@ function consultation_reminder_send_sms(array $lead, string $reminderKey, array 
     ];
 }
 
+function consultation_reminder_send_doctor_sms(array $lead, array $event): array
+{
+    $leadId = (int)($lead['id'] ?? 0);
+    $consultationDate = trim((string)($lead['consultation_date'] ?? ''));
+    $reminderKey = trim((string)($event['key'] ?? ''));
+
+    if ($leadId <= 0 || $consultationDate === '' || $reminderKey === '') {
+        return ['ok' => false, 'status' => 'skipped', 'reason' => 'Invalid lead, appointment, or reminder event.'];
+    }
+
+    if (consultation_reminder_already_sent($leadId, $reminderKey, 'internal_sms', $consultationDate)) {
+        return ['ok' => true, 'status' => 'already_sent'];
+    }
+
+    $recipient = lead_consultation_booked_internal_recipient();
+    if (empty($recipient['enabled'])) {
+        return ['ok' => false, 'status' => 'disabled', 'reason' => 'Dr. Meden reminder recipient is disabled.'];
+    }
+
+    $body = consultation_doctor_reminder_message($lead, $event);
+    $send = internal_sms_send($recipient, $body, 0);
+    $status = !empty($send['ok']) ? 'sent' : 'failed';
+    consultation_reminder_record(
+        $leadId,
+        $reminderKey,
+        'internal_sms',
+        $consultationDate,
+        $status,
+        (string)($send['twilio_sid'] ?? ''),
+        (string)($send['message'] ?? '')
+    );
+
+    $activityType = !empty($send['ok'])
+        ? 'consultation_doctor_reminder_sms'
+        : 'consultation_doctor_reminder_sms_failed';
+    $activityBody = !empty($send['ok'])
+        ? 'Sent Dr. Meden consultation reminder (' . $reminderKey . ').'
+        : 'Dr. Meden consultation reminder failed (' . $reminderKey . '): ' . (string)($send['message'] ?? 'Unknown error');
+    lead_comm_insert_activity($leadId, $activityType, $activityBody, [
+        'reminder_key' => $reminderKey,
+        'recipient_key' => (string)($recipient['key'] ?? ''),
+        'recipient_name' => (string)($recipient['name'] ?? ''),
+        'consultation_date' => $consultationDate,
+        'twilio_sid' => (string)($send['twilio_sid'] ?? ''),
+        'twilio_status' => (string)($send['twilio_status'] ?? ''),
+        'status_code' => (int)($send['status_code'] ?? 0),
+    ], 'Consultation Reminder');
+
+    return [
+        'ok' => !empty($send['ok']),
+        'status' => $status,
+        'message' => (string)($send['message'] ?? ''),
+        'twilio_sid' => (string)($send['twilio_sid'] ?? ''),
+        'twilio_status' => (string)($send['twilio_status'] ?? ''),
+        'reminder_key' => $reminderKey,
+    ];
+}
+
 $configuredSecret = trim((string)ELITE_CONSULTATION_REMINDER_CRON_SECRET);
 if ($configuredSecret === '' || !hash_equals($configuredSecret, consultation_reminder_secret())) {
     consultation_reminder_json(['ok' => false, 'message' => 'Unauthorized.'], 401);
-}
-
-if (!elite_smtp_is_configured()) {
-    consultation_reminder_json(['ok' => false, 'message' => 'SMTP is not configured.'], 503);
 }
 
 try {
@@ -339,17 +400,20 @@ try {
 
 $now = new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
 $currentTime = $now->format('H:i:s');
+$doctorOnly = filter_var($_GET['doctor_only'] ?? $_POST['doctor_only'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $dueKeys = [];
 
-if ($currentTime >= '09:00:00') {
+if (!$doctorOnly && $currentTime >= '09:00:00') {
     $dueKeys[] = 'day_before';
 }
-if ($currentTime >= '07:00:00') {
+if (!$doctorOnly && $currentTime >= '07:00:00') {
     $dueKeys[] = 'morning_of';
 }
 
 $processed = 0;
 $results = [];
+$doctorProcessed = 0;
+$doctorResults = [];
 $limit = max(1, min(50, (int)($_GET['limit'] ?? $_POST['limit'] ?? 25)));
 
 foreach ($dueKeys as $reminderKey) {
@@ -389,10 +453,43 @@ foreach ($dueKeys as $reminderKey) {
     }
 }
 
+$doctorRows = db_all(
+    "SELECT *
+     FROM leads
+     WHERE consultation_date IS NOT NULL
+       AND consultation_date <> ''
+       AND DATE(consultation_date) = :target_date
+       AND consultation_date > NOW()
+       AND status = 'consultation_booked'
+       AND (consultation_status IS NULL OR consultation_status = '' OR consultation_status = 'scheduled')
+     ORDER BY consultation_date ASC, id ASC
+     LIMIT {$limit}",
+    ['target_date' => $now->format('Y-m-d')]
+);
+
+foreach ($doctorRows as $lead) {
+    $event = consultation_doctor_reminder_due_event((string)($lead['consultation_date'] ?? ''), $now);
+    if ($event === null) {
+        continue;
+    }
+
+    $doctorProcessed++;
+    $doctorResults[] = [
+        'lead_id' => (int)($lead['id'] ?? 0),
+        'name' => (string)($lead['full_name'] ?? ''),
+        'reminder_key' => (string)($event['key'] ?? ''),
+        'consultation_date' => (string)($lead['consultation_date'] ?? ''),
+        'sms' => consultation_reminder_send_doctor_sms($lead, $event),
+    ];
+}
+
 consultation_reminder_json([
     'ok' => true,
     'message' => 'Consultation reminder run complete.',
     'processed' => $processed,
     'results' => $results,
     'sms_enabled' => ELITE_CONSULTATION_REMINDER_SMS_ENABLED,
+    'doctor_only' => $doctorOnly,
+    'doctor_processed' => $doctorProcessed,
+    'doctor_results' => $doctorResults,
 ]);

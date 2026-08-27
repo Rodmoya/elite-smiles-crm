@@ -1758,7 +1758,15 @@ if (!function_exists('lead_action_queue_rows')) {
                     $actionLabel = 'Call requested';
                     $actionTone = 'blue';
                     $reason = 'Lead asked for a phone call after the last outbound touch. Call first before sending another standard follow-up.';
-                } elseif (!$scheduledAcknowledgment && ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $lastInboundAt !== '' && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt))) {
+                } elseif (
+                    !$scheduledAcknowledgment
+                    && (
+                        (int)($lead['unread_message_count'] ?? 0) > 0
+                        || ($actionKey === 'reply_needed'
+                            && $lastInboundAt !== ''
+                            && ($lastOutboundAt === '' || $lastInboundAt >= $lastOutboundAt))
+                    )
+                ) {
                     $priority = 95;
                 } elseif ($actionKey === 'first_touch') {
                     $priority = 85;

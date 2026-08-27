@@ -2209,7 +2209,7 @@ $consultationOptions = [
                                     </div>
                                 </div>
 
-                                <div class="min-h-0 overflow-visible rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1 xl:row-span-2">
+                                <div id="lead-selected-summary-panel" class="min-h-0 overflow-visible rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm xl:col-start-1 xl:row-start-1 xl:row-span-2">
 
                                     <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Selected Lead</p>
 
@@ -2333,7 +2333,7 @@ $consultationOptions = [
 
                                 </div>
 
-                                <details class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm xl:col-start-3 xl:row-start-2">
+                                <details id="lead-email-history-panel" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm xl:col-start-3 xl:row-start-2">
 
                                     <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
 
@@ -2813,6 +2813,8 @@ $consultationOptions = [
     const leadUnifiedTimelinePanel = document.getElementById('lead-unified-timeline-panel');
     const leadActivityPanel = document.getElementById('lead-activity-panel');
     const leadCommunicationComposerPanel = document.getElementById('lead-communication-composer-panel');
+    const leadSelectedSummaryPanel = document.getElementById('lead-selected-summary-panel');
+    const leadEmailHistoryPanel = document.getElementById('lead-email-history-panel');
 
     const messageThread = document.getElementById('modal-message-thread');
 
@@ -6397,7 +6399,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationGrid.style.rowGap = '';
             }
 
-            [leadUnifiedTimelinePanel, leadActivityPanel, leadCommunicationComposerPanel].forEach((panel) => {
+            [leadUnifiedTimelinePanel, leadActivityPanel, leadCommunicationComposerPanel, leadSelectedSummaryPanel, leadEmailHistoryPanel].forEach((panel) => {
                 if (!panel) return;
                 panel.style.gridColumn = '';
                 panel.style.gridRow = '';
@@ -6406,6 +6408,7 @@ function applyCommunicationViewportFit() {
                 panel.style.width = '';
                 panel.style.alignSelf = '';
             });
+            if (leadSelectedSummaryPanel) leadSelectedSummaryPanel.style.overflowY = '';
             if (leadCommunicationComposerPanel) {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
@@ -6446,6 +6449,14 @@ function applyCommunicationViewportFit() {
             leadCommunicationGrid.style.rowGap = '16px';
         }
 
+        if (leadSelectedSummaryPanel) {
+            leadSelectedSummaryPanel.style.gridColumn = '1 / 2';
+            leadSelectedSummaryPanel.style.gridRow = '1 / 3';
+            leadSelectedSummaryPanel.style.height = `${viewportBudget}px`;
+            leadSelectedSummaryPanel.style.minHeight = '0';
+            leadSelectedSummaryPanel.style.overflowY = 'auto';
+        }
+
         if (leadUnifiedTimelinePanel) {
             leadUnifiedTimelinePanel.style.gridColumn = '2 / 3';
             leadUnifiedTimelinePanel.style.gridRow = '1 / 2';
@@ -6458,6 +6469,14 @@ function applyCommunicationViewportFit() {
             leadActivityPanel.style.gridRow = '1 / 2';
             leadActivityPanel.style.height = `${listBudget}px`;
             leadActivityPanel.style.minHeight = '0';
+        }
+
+        if (leadEmailHistoryPanel) {
+            leadEmailHistoryPanel.style.gridColumn = '3 / 4';
+            leadEmailHistoryPanel.style.gridRow = '2 / 3';
+            leadEmailHistoryPanel.style.height = `${composerBudget}px`;
+            leadEmailHistoryPanel.style.minHeight = '0';
+            leadEmailHistoryPanel.style.alignSelf = 'stretch';
         }
 
         if (leadCommunicationComposerPanel) {

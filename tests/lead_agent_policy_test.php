@@ -145,6 +145,20 @@ expect_true(!str_contains($leadServiceSource, 'Automatically moved new lead from
 expect_true(str_contains($webhookSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'twilio_sms_webhook')"), 'Inbound SMS must reopen New Lead or Nurture through the central lifecycle transition.');
 $emailSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_email.php');
 expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$leadId, 'lead_email_inbound')"), 'Inbound email must reopen New Lead or Nurture through the central lifecycle transition.');
+expect_true(str_contains($emailSource, 'List-Unsubscribe-Post: List-Unsubscribe=One-Click') && str_contains($emailSource, 'List-Unsubscribe: <'), 'Every automated lead email must retain one-click unsubscribe headers.');
+expect_true(str_contains($emailSource, 'unsubscribe from follow-up emails') && str_contains($emailSource, '11762 South State, Suite 300, Draper, UT 84020'), 'Lead emails must retain a visible unsubscribe link and the practice mailing address.');
+$plainCompliance = lead_email_plain_text_with_compliance('Requested information.', 'https://example.com/unsubscribe');
+expect_true(str_contains($plainCompliance, '11762 South State, Suite 300, Draper, UT 84020') && str_contains($plainCompliance, 'Unsubscribe from follow-up emails: https://example.com/unsubscribe'), 'Plain-text email alternatives must include both the physical address and a direct unsubscribe mechanism.');
+expect_true(lead_email_spf_records_authorize([
+    ['txt' => 'v=spf1 ip4:66.225.201.146 include:relay.mailchannels.net include:spf.jetsmtp.net ~all'],
+], 'spf.jetsmtp.net'), 'A single SPF record containing the required JetEmail include must authorize automated email.');
+expect_true(!lead_email_spf_records_authorize([
+    ['txt' => 'v=spf1 ip4:66.225.201.146 include:relay.mailchannels.net ~all'],
+], 'spf.jetsmtp.net'), 'Automated email must fail closed while the sender SPF omits JetEmail.');
+expect_true(!lead_email_spf_records_authorize([
+    ['txt' => 'v=spf1 include:spf.jetsmtp.net ~all'],
+    ['txt' => 'v=spf1 include:relay.mailchannels.net ~all'],
+], 'spf.jetsmtp.net'), 'Multiple SPF records must not be accepted as valid sender authentication.');
 expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dryRun)'), 'Every Lead Agent run must perform the dry-run capable lifecycle reconciliation.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_cycle_coverage(500, $dryRun)'), 'Every Lead Agent run must repair uncovered active and Nurture cycle records.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
@@ -241,26 +255,37 @@ expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engage
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 
 $plan = lead_agent_cadence_plan();
-expect_true(count($plan) === 5, 'Active follow-up should be finite before the lead enters low-frequency nurture.');
-expect_true($plan[1]['hours'] === 0.5 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_delivery_check', 'The first follow-up must re-engage an unanswered lead after 30 minutes.');
-expect_true($plan[2]['hours'] === 7 && $plan[2]['phase'] === 'same_day_close_loop', 'The second cadence step must close the loop later on day one.');
-expect_true($plan[3]['hours'] === 20 && $plan[3]['phase'] === 'next_day_reengagement', 'The conversation must restart the next day while intent is still fresh.');
-expect_true($plan[4]['hours'] === 72 && $plan[4]['channel'] === 'email' && $plan[4]['phase'] === 'education', 'Email must serve an educational role instead of duplicating the SMS CTA.');
-expect_true($plan[5]['hours'] === 168 && $plan[5]['phase'] === 'active_sprint_close', 'The final active touch must close the seven-day sprint before Nurture.');
+expect_true(count($plan) === 9, 'The active sprint must cover the requested six-day follow-up window before Nurture.');
+expect_true($plan[1]['hours'] === 2 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_goal_followup', 'The first unanswered follow-up must target the two-hour window.');
+expect_true($plan[2]['hours'] === 5 && $plan[2]['channel'] === 'email' && $plan[2]['phase'] === 'same_day_requested_information', 'The five-hour touch must use email to add requested information instead of duplicating SMS.');
+expect_true($plan[3]['hours'] === 24 && $plan[3]['channel'] === 'sms', 'The conversation must restart at the next-day milestone while intent is fresh.');
+expect_true($plan[4]['hours'] === 32 && $plan[4]['channel'] === 'email', 'Day two must include a second, educational touch.');
+expect_true($plan[5]['hours'] === 48 && $plan[6]['hours'] === 60, 'The active sprint must include the requested 48-hour and 60-hour milestones.');
+expect_true($plan[9]['hours'] === 144 && $plan[9]['phase'] === 'active_sprint_close', 'The final active touch must close the six-day sprint before Nurture.');
 $sameDayStep = lead_agent_step_schedule('2026-08-26 12:02:00', 1);
-expect_true($sameDayStep['at'] === '2026-08-26 12:32:00', 'A midday first touch must schedule the second engagement 30 minutes later.');
-$monthlyStep = lead_agent_step_schedule('2026-08-01 09:00:00', 6);
-expect_true($monthlyStep['hours'] === 720 && $monthlyStep['phase'] === 'monthly_nurture', 'Long-term follow-up must taper to monthly nurture instead of daily pressure.');
+expect_true($sameDayStep['at'] === '2026-08-26 14:02:00', 'A midday first touch must schedule the next engagement two hours later.');
+$lateStep = lead_agent_step_schedule('2026-08-26 18:00:00', 2);
+expect_true($lateStep['at'] === '2026-08-27 09:00:00', 'A target outside the contact window must move to 9 AM the next day.');
+$earlyAligned = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-26 08:59:00', new DateTimeZone(APP_TIMEZONE)));
+$closingAligned = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-26 20:00:00', new DateTimeZone(APP_TIMEZONE)));
+expect_true($earlyAligned->format('Y-m-d H:i:s') === '2026-08-26 09:00:00', 'No automated touch may send before 9 AM.');
+expect_true($closingAligned->format('Y-m-d H:i:s') === '2026-08-27 09:00:00', 'No automated touch may send at or after 8 PM.');
+$nurtureStepOne = lead_agent_step_schedule('2026-08-01 09:00:00', 10);
+$nurtureStepTwo = lead_agent_step_schedule('2026-08-01 09:00:00', 11);
+expect_true($nurtureStepOne['hours'] === 216 && $nurtureStepOne['phase'] === 'twice_weekly_nurture' && $nurtureStepOne['channel'] === 'email', 'Long-term Nurture must resume three days after the active sprint.');
+expect_true($nurtureStepTwo['hours'] === 312 && $nurtureStepTwo['channel'] === 'sms', 'The next Nurture touch must follow four days later, producing two touches per week.');
 
 $dayZeroLimit = lead_agent_daily_outbound_limit('2026-08-26 12:02:00', new DateTimeImmutable('2026-08-26 15:02:00', new DateTimeZone(APP_TIMEZONE)));
+$dayOneLimit = lead_agent_daily_outbound_limit('2026-08-26 12:02:00', new DateTimeImmutable('2026-08-27 15:02:00', new DateTimeZone(APP_TIMEZONE)));
 $dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
 $daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
-expect_true($dayZeroLimit === 4, 'Day one must allow the first-touch bundle plus the delivery check and close-loop.');
+expect_true($dayZeroLimit === 4, 'Day one must allow no more than four total SMS and email touches, including first touch.');
+expect_true($dayOneLimit === 2, 'The second calendar day must allow no more than two total touches.');
 expect_true($dayFiveLimit === 1, 'The cadence must never send more than one automated follow-up in a day.');
 expect_true($daySixLimit === 1, 'The one-message daily cap must remain in force after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
-expect_true($incremental['at'] === '2026-08-06 08:00:00', 'An overdue first-day catch-up must preserve spacing and quiet hours from the actual send time.');
+expect_true($incremental['at'] === '2026-08-06 09:00:00', 'An overdue first-day catch-up must preserve spacing and the 9 AM contact boundary from the actual send time.');
 
 $lifecycleNow = new DateTimeImmutable('2026-08-26 15:00:00', new DateTimeZone(APP_TIMEZONE));
 $firstDayLead = [
@@ -301,12 +326,13 @@ expect_true(lead_agent_lifecycle_decision($longStalled, ['status' => 'engaged', 
 $unansweredInbound = $longStalled;
 $unansweredInbound['last_outbound_at'] = '2026-08-23 11:00:00';
 expect_true(lead_agent_lifecycle_decision($unansweredInbound, ['status' => 'engaged', 'cadence_step' => 4], 2, $lifecycleNow) === '', 'An unanswered inbound message must never be moved to Nurture.');
-expect_true(lead_agent_lifecycle_decision($olderUnanswered, ['status' => 'active', 'cadence_step' => 5], 0, $lifecycleNow) === 'nurture', 'A never-answered lead must enter Nurture after the five-step active sprint.');
+expect_true(lead_agent_lifecycle_decision($olderUnanswered, ['status' => 'active', 'cadence_step' => 9], 0, $lifecycleNow) === 'nurture', 'A never-answered lead must enter Nurture after the nine-step six-day active sprint.');
 expect_true(lead_conversion_stage_legacy_target('lead_answered') === 'in_contact' && lead_conversion_stage_legacy_target('nurture') === 'no_answer', 'New display stages must retain legacy database compatibility.');
 
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
 expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');
 expect_true(str_contains(strtolower($firstTouchSms), 'what are you hoping to improve'), 'First-touch SMS should begin a natural goal-focused conversation.');
+expect_true(str_contains($firstTouchSms, 'Reply STOP to opt out.'), 'The first SMS must identify the one-step STOP mechanism.');
 expect_true(str_contains($firstTouchSms, 'English or Spanish is welcome') && str_contains($firstTouchSms, 'ESPANOL'), 'Unknown-language first touch must offer Spanish neutrally.');
 $englishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example', 'preferred_language' => 'en']);
 expect_true(!str_contains($englishFirstTouchSms, 'ESPANOL'), 'A confirmed English preference must not receive the unknown-language prompt.');
@@ -314,6 +340,8 @@ $spanishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Exa
 expect_true(str_starts_with($spanishFirstTouchSms, 'Hola Taylor') && str_contains($spanishFirstTouchSms, '¿Qué le gustaría mejorar'), 'A confirmed Spanish preference must receive Spanish first touch.');
 $firstTouchEmail = lead_email_default_first_touch(['full_name' => 'Taylor Example', 'procedure_interest' => 'Veneers']);
 expect_true(substr_count((string) $firstTouchEmail['body'], '?') === 0, 'First-touch email must add trust and education instead of duplicating the SMS question.');
+expect_true((string) $firstTouchEmail['subject'] === 'The information you requested from Elite Smiles', 'First-touch email needs an accurate subject tied to the lead request.');
+expect_true(str_contains((string) $firstTouchEmail['body'], 'Here is the information you requested.'), 'First-touch email must immediately explain why the lead is receiving it.');
 
 $sampleLead = ['full_name' => 'Taylor Example'];
 foreach ($plan as $step => $item) {
@@ -325,6 +353,8 @@ foreach ($plan as $step => $item) {
 }
 $redirect = lead_agent_cost_redirect($sampleLead, 'sms');
 expect_true(lead_agent_policy_flags((string) $redirect['body']) === [], 'Approved question redirect must not discuss treatment cost.');
+expect_true(in_array('misleading_thread_subject', lead_agent_policy_flags('Re: Your request Here is an unrelated first email.'), true), 'Lead Agent must block a fake reply prefix on a new email subject.');
+expect_true(in_array('misleading_urgency', lead_agent_policy_flags('Final notice: act now.'), true), 'Lead Agent must block urgency language that could mislead recipients or damage sender reputation.');
 
 $fallback = lead_agent_safe_contextual_fallback([
     'full_name' => 'Taylor Example',

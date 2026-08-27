@@ -421,10 +421,10 @@ if (!function_exists('lead_email_default_first_touch')) {
                 : 'Quería asegurarme de dar seguimiento a su solicitud de consulta de sonrisa.';
 
             return [
-                'subject' => 'Seguimiento de tu consulta con Elite Smiles',
+                'subject' => 'La información que solicitó a Elite Smiles',
                 'body' => implode("\n\n", [
                     $greeting,
-                    $serviceLine,
+                    'Aquí tiene la información que solicitó. ' . $serviceLine,
                     'Cada sonrisa se planifica de forma personalizada. El Dr. Meden revisa sus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan genérico.',
                     'La consulta es gratis y sin presión. Puede responder este correo si tiene alguna pregunta; Rod también le enviará un mensaje de texto para que continuar la conversación sea fácil.',
                     "Con gusto,\nEl equipo de Elite Smiles",
@@ -440,14 +440,14 @@ if (!function_exists('lead_email_default_first_touch')) {
 
         $body = implode("\n\n", [
             $greeting,
-            $serviceLine,
+            'Here is the information you requested. ' . $serviceLine,
             'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
             'The consultation is complimentary and low pressure. You can reply here with any questions; Rod will also text you so it is easy to continue the conversation.',
             "Warmly,\nThe Elite Smiles Team",
         ]);
 
         return [
-            'subject' => 'Following up on your Elite Smiles consultation',
+            'subject' => 'The information you requested from Elite Smiles',
             'body' => lead_language_maybe_add_email_offer($lead, $body),
         ];
     }
@@ -502,6 +502,79 @@ if (!function_exists('lead_email_html_template')) {
   ' . $trackingPixel . '
 </body>
 </html>';
+    }
+}
+
+if (!function_exists('lead_email_plain_text_with_compliance')) {
+    function lead_email_plain_text_with_compliance(string $body, string $unsubscribeUrl): string
+    {
+        $optOut = trim($unsubscribeUrl) !== ''
+            ? 'Unsubscribe from follow-up emails: ' . trim($unsubscribeUrl)
+            : 'Reply with unsubscribe to stop follow-up emails.';
+        return rtrim($body)
+            . "\n\n---\nElite Smiles by Dr. Walter Meden\n"
+            . "11762 South State, Suite 300, Draper, UT 84020\n"
+            . "You are receiving this because you requested information from Elite Smiles.\n"
+            . $optOut;
+    }
+}
+
+if (!function_exists('lead_email_spf_records_authorize')) {
+    /** Pure SPF check kept separate so policy tests do not depend on live DNS. */
+    function lead_email_spf_records_authorize(array $records, string $requiredInclude): bool
+    {
+        $requiredInclude = strtolower(trim($requiredInclude));
+        if ($requiredInclude === '') {
+            return true;
+        }
+        $spfRecords = [];
+        foreach ($records as $record) {
+            $value = is_array($record)
+                ? (string)($record['txt'] ?? $record['entries'][0] ?? '')
+                : (string)$record;
+            $value = strtolower(trim($value));
+            if (str_starts_with($value, 'v=spf1')) {
+                $spfRecords[] = $value;
+            }
+        }
+        if (count($spfRecords) !== 1) {
+            return false;
+        }
+        return str_contains($spfRecords[0], 'include:' . $requiredInclude);
+    }
+}
+
+if (!function_exists('lead_email_automation_authentication_status')) {
+    /** Fail closed for automated marketing follow-up when sender SPF is invalid. */
+    function lead_email_automation_authentication_status(): array
+    {
+        static $status = null;
+        if (is_array($status)) {
+            return $status;
+        }
+        $requiredInclude = defined('ELITE_EMAIL_REQUIRED_SPF_INCLUDE')
+            ? strtolower(trim((string)ELITE_EMAIL_REQUIRED_SPF_INCLUDE))
+            : 'spf.jetsmtp.net';
+        if ($requiredInclude === '') {
+            return $status = ['ready' => true, 'reason' => 'spf_requirement_disabled'];
+        }
+        $fromEmail = strtolower(trim((string)SMTP_FROM_EMAIL));
+        $domain = str_contains($fromEmail, '@') ? substr(strrchr($fromEmail, '@') ?: '', 1) : '';
+        if ($domain === '' || !function_exists('dns_get_record')) {
+            return $status = ['ready' => false, 'reason' => 'sender_spf_unverifiable', 'domain' => $domain];
+        }
+        try {
+            $records = dns_get_record($domain, DNS_TXT);
+        } catch (Throwable $e) {
+            $records = false;
+        }
+        $ready = is_array($records) && lead_email_spf_records_authorize($records, $requiredInclude);
+        return $status = [
+            'ready' => $ready,
+            'reason' => $ready ? 'sender_spf_authorized' : 'sender_spf_missing_required_include',
+            'domain' => $domain,
+            'required_include' => $requiredInclude,
+        ];
     }
 }
 
@@ -952,12 +1025,13 @@ if (!function_exists('lead_email_send')) {
         $leadForEmail['id'] = $leadId;
         $htmlBody = lead_email_html_template($leadForEmail, $subject, $body, $trackingToken);
         $unsubscribeUrl = lead_email_unsubscribe_url($leadId);
+        $plainSendBody = lead_email_plain_text_with_compliance($body, $unsubscribeUrl);
         $headers = [
             'List-Unsubscribe: <' . $unsubscribeUrl . '>',
             'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
         ];
 
-        $send = elite_smtp_send_mail($to, $subject, $body, null, $htmlBody, $headers);
+        $send = elite_smtp_send_mail($to, $subject, $plainSendBody, null, $htmlBody, $headers);
         $emailId = lead_email_insert([
             'lead_id' => $leadId,
             'direction' => 'outbound',
@@ -1072,6 +1146,18 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                 'subject' => '',
                 'body' => '',
                 'status_label' => 'Auto first-touch email disabled.',
+            ];
+        }
+
+        $authentication = lead_email_automation_authentication_status();
+        if (empty($authentication['ready'])) {
+            esm_log('lead_email', 'Automatic first-touch email paused because sender authentication is not ready.', $authentication + ['lead_id' => $leadId]);
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => 'Auto first-touch email paused until sender SPF is valid.',
             ];
         }
 

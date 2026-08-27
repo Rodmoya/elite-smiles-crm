@@ -1136,8 +1136,23 @@ if (!function_exists('lead_email_unsubscribe')) {
     }
 }
 
+if (!function_exists('lead_email_first_touch_should_wait_for_sms')) {
+    function lead_email_first_touch_should_wait_for_sms(array $lead, bool $smsWillBeAttempted = true): bool
+    {
+        if (!$smsWillBeAttempted
+            || !defined('ELITE_LEAD_AGENT_ENABLED') || !ELITE_LEAD_AGENT_ENABLED
+            || (defined('ELITE_LEAD_AGENT_MODE') && ELITE_LEAD_AGENT_MODE === 'off')
+            || !elite_phone_is_valid_us((string)($lead['phone'] ?? ''))) {
+            return false;
+        }
+        $smsStatus = strtolower(trim((string)($lead['sms_opt_status'] ?? 'unknown')));
+        $leadStatus = strtolower(trim((string)($lead['status'] ?? '')));
+        return !in_array($smsStatus, ['dnd', 'opted_out'], true) && $leadStatus !== 'opted_out';
+    }
+}
+
 if (!function_exists('lead_email_maybe_send_first_touch')) {
-    function lead_email_maybe_send_first_touch(int $leadId): array
+    function lead_email_maybe_send_first_touch(int $leadId, bool $smsWillBeAttempted = true): array
     {
         if (!defined('ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED') || !ELITE_EMAIL_AUTO_FIRST_TOUCH_ENABLED) {
             return [
@@ -1146,6 +1161,27 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                 'subject' => '',
                 'body' => '',
                 'status_label' => 'Auto first-touch email disabled.',
+            ];
+        }
+
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead || trim((string)($lead['email'] ?? '')) === '') {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => 'Lead has no valid email address.',
+            ];
+        }
+
+        if (lead_email_first_touch_should_wait_for_sms($lead, $smsWillBeAttempted)) {
+            return [
+                'attempted' => false,
+                'sent' => false,
+                'subject' => '',
+                'body' => '',
+                'status_label' => 'Auto email deferred until the unanswered five-hour follow-up.',
             ];
         }
 
@@ -1158,17 +1194,6 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
                 'subject' => '',
                 'body' => '',
                 'status_label' => 'Auto first-touch email paused until sender SPF is valid.',
-            ];
-        }
-
-        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
-        if (!$lead || trim((string)($lead['email'] ?? '')) === '') {
-            return [
-                'attempted' => false,
-                'sent' => false,
-                'subject' => '',
-                'body' => '',
-                'status_label' => 'Lead has no valid email address.',
             ];
         }
 

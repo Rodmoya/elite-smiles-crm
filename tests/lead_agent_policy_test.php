@@ -255,23 +255,24 @@ expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engage
 expect_true(lead_agent_followup_context_reason(['id' => 0], ['status' => 'engaged', 'scheduling_phase' => 'awaiting_availability']) === 'scheduling_in_progress', 'The agent must stay silent while Rod is checking availability.');
 
 $plan = lead_agent_cadence_plan();
-expect_true(count($plan) === 9, 'The active sprint must cover the requested six-day follow-up window before Nurture.');
-expect_true($plan[1]['hours'] === 2 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_goal_followup', 'The first unanswered follow-up must target the two-hour window.');
-expect_true($plan[2]['hours'] === 5 && $plan[2]['channel'] === 'email' && $plan[2]['phase'] === 'same_day_requested_information', 'The five-hour touch must use email to add requested information instead of duplicating SMS.');
-expect_true($plan[3]['hours'] === 24 && $plan[3]['channel'] === 'sms', 'The conversation must restart at the next-day milestone while intent is fresh.');
-expect_true($plan[4]['hours'] === 32 && $plan[4]['channel'] === 'email', 'Day two must include a second, educational touch.');
-expect_true($plan[5]['hours'] === 48 && $plan[6]['hours'] === 60, 'The active sprint must include the requested 48-hour and 60-hour milestones.');
-expect_true($plan[9]['hours'] === 144 && $plan[9]['phase'] === 'active_sprint_close', 'The final active touch must close the six-day sprint before Nurture.');
+expect_true(count($plan) === 11, 'The active sprint must cover the requested six-day follow-up window before Nurture.');
+expect_true($plan[1]['hours'] === 0.5 && $plan[1]['channel'] === 'sms' && $plan[1]['phase'] === 'same_day_delivery_check', 'The first unanswered follow-up must send by SMS after 30 minutes.');
+expect_true($plan[2]['hours'] === 2 && $plan[2]['channel'] === 'sms' && $plan[2]['phase'] === 'same_day_goal_followup', 'The two-hour unanswered follow-up must keep SMS primary.');
+expect_true($plan[3]['hours'] === 5 && $plan[3]['channel'] === 'email' && $plan[3]['phase'] === 'same_day_requested_information', 'The first email must wait until the five-hour unanswered milestone.');
+expect_true($plan[4]['hours'] === 20 && $plan[4]['channel'] === 'sms' && $plan[5]['hours'] === 24 && $plan[5]['channel'] === 'sms', 'The second day must include at least two planned SMS touches.');
+expect_true($plan[6]['hours'] === 32 && $plan[6]['channel'] === 'email', 'Day two may add one educational email only while the lead remains unanswered.');
+expect_true($plan[7]['hours'] === 48 && $plan[8]['hours'] === 60, 'The active sprint must include the requested 48-hour and 60-hour milestones.');
+expect_true($plan[11]['hours'] === 144 && $plan[11]['phase'] === 'active_sprint_close', 'The final active touch must close the six-day sprint before Nurture.');
 $sameDayStep = lead_agent_step_schedule('2026-08-26 12:02:00', 1);
-expect_true($sameDayStep['at'] === '2026-08-26 14:02:00', 'A midday first touch must schedule the next engagement two hours later.');
-$lateStep = lead_agent_step_schedule('2026-08-26 18:00:00', 2);
+expect_true($sameDayStep['at'] === '2026-08-26 12:32:00', 'A midday first touch must schedule the next engagement 30 minutes later.');
+$lateStep = lead_agent_step_schedule('2026-08-26 18:00:00', 3);
 expect_true($lateStep['at'] === '2026-08-27 09:00:00', 'A target outside the contact window must move to 9 AM the next day.');
 $earlyAligned = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-26 08:59:00', new DateTimeZone(APP_TIMEZONE)));
 $closingAligned = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-26 20:00:00', new DateTimeZone(APP_TIMEZONE)));
 expect_true($earlyAligned->format('Y-m-d H:i:s') === '2026-08-26 09:00:00', 'No automated touch may send before 9 AM.');
 expect_true($closingAligned->format('Y-m-d H:i:s') === '2026-08-27 09:00:00', 'No automated touch may send at or after 8 PM.');
-$nurtureStepOne = lead_agent_step_schedule('2026-08-01 09:00:00', 10);
-$nurtureStepTwo = lead_agent_step_schedule('2026-08-01 09:00:00', 11);
+$nurtureStepOne = lead_agent_step_schedule('2026-08-01 09:00:00', 12);
+$nurtureStepTwo = lead_agent_step_schedule('2026-08-01 09:00:00', 13);
 expect_true($nurtureStepOne['hours'] === 216 && $nurtureStepOne['phase'] === 'twice_weekly_nurture' && $nurtureStepOne['channel'] === 'email', 'Long-term Nurture must resume three days after the active sprint.');
 expect_true($nurtureStepTwo['hours'] === 312 && $nurtureStepTwo['channel'] === 'sms', 'The next Nurture touch must follow four days later, producing two touches per week.');
 
@@ -280,12 +281,25 @@ $dayOneLimit = lead_agent_daily_outbound_limit('2026-08-26 12:02:00', new DateTi
 $dayFiveLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-05 18:00:00', new DateTimeZone(APP_TIMEZONE)));
 $daySixLimit = lead_agent_daily_outbound_limit('2026-08-01 10:00:00', new DateTimeImmutable('2026-08-06 09:00:00', new DateTimeZone(APP_TIMEZONE)));
 expect_true($dayZeroLimit === 4, 'Day one must allow no more than four total SMS and email touches, including first touch.');
-expect_true($dayOneLimit === 2, 'The second calendar day must allow no more than two total touches.');
+expect_true($dayOneLimit === 3, 'The second calendar day must allow two SMS touches and no more than one unanswered email.');
 expect_true($dayFiveLimit === 1, 'The cadence must never send more than one automated follow-up in a day.');
 expect_true($daySixLimit === 1, 'The one-message daily cap must remain in force after day five.');
 
 $incremental = lead_agent_incremental_schedule('2026-08-05 17:00:00', 1);
-expect_true($incremental['at'] === '2026-08-06 09:00:00', 'An overdue first-day catch-up must preserve spacing and the 9 AM contact boundary from the actual send time.');
+expect_true($incremental['at'] === '2026-08-05 19:00:00', 'An overdue 30-minute touch must preserve at least two hours of spacing before the next SMS.');
+
+$smsPriorityNow = new DateTimeImmutable('2026-08-26 15:00:00', new DateTimeZone(APP_TIMEZONE));
+$smsPriorityNextDay = new DateTimeImmutable('2026-08-27 15:00:00', new DateTimeZone(APP_TIMEZONE));
+$smsPriorityThirdDay = new DateTimeImmutable('2026-08-28 15:00:00', new DateTimeZone(APP_TIMEZONE));
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 1, false, $smsPriorityNow) === 'sms', 'Day one must prioritize a second SMS before email.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 1, false, $smsPriorityNextDay) === 'sms', 'Day two must prioritize a second SMS before email.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 2, false, $smsPriorityNextDay) === 'email', 'Email may proceed after two SMS touches have sent that day.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 1, true, $smsPriorityNow) === 'email', 'An unavailable SMS channel must not block the email fallback.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 1, false, $smsPriorityThirdDay) === 'email', 'Later cadence days must follow the planned channel.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 2, false, $smsPriorityThirdDay, true) === 'sms', 'After a lead answers by SMS, future automated engagement must stay on SMS while that channel remains deliverable.');
+expect_true(lead_agent_prioritize_first_two_day_sms('email', '2026-08-26 12:00:00', 2, true, $smsPriorityThirdDay, true) === 'email', 'Email may remain the fallback only when SMS later becomes unavailable.');
+expect_true(lead_agent_post_reply_resume_step('sms') === 3, 'An SMS reply must skip the unanswered five-hour email step.');
+expect_true(lead_agent_post_reply_resume_step('email') === 2, 'An email reply may remain in the email-capable engagement path.');
 
 $lifecycleNow = new DateTimeImmutable('2026-08-26 15:00:00', new DateTimeZone(APP_TIMEZONE));
 $firstDayLead = [
@@ -326,7 +340,7 @@ expect_true(lead_agent_lifecycle_decision($longStalled, ['status' => 'engaged', 
 $unansweredInbound = $longStalled;
 $unansweredInbound['last_outbound_at'] = '2026-08-23 11:00:00';
 expect_true(lead_agent_lifecycle_decision($unansweredInbound, ['status' => 'engaged', 'cadence_step' => 4], 2, $lifecycleNow) === '', 'An unanswered inbound message must never be moved to Nurture.');
-expect_true(lead_agent_lifecycle_decision($olderUnanswered, ['status' => 'active', 'cadence_step' => 9], 0, $lifecycleNow) === 'nurture', 'A never-answered lead must enter Nurture after the nine-step six-day active sprint.');
+expect_true(lead_agent_lifecycle_decision($olderUnanswered, ['status' => 'active', 'cadence_step' => 11], 0, $lifecycleNow) === 'nurture', 'A never-answered lead must enter Nurture after the eleven-step six-day active sprint.');
 expect_true(lead_conversion_stage_legacy_target('lead_answered') === 'in_contact' && lead_conversion_stage_legacy_target('nurture') === 'no_answer', 'New display stages must retain legacy database compatibility.');
 
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
@@ -342,6 +356,11 @@ $firstTouchEmail = lead_email_default_first_touch(['full_name' => 'Taylor Exampl
 expect_true(substr_count((string) $firstTouchEmail['body'], '?') === 0, 'First-touch email must add trust and education instead of duplicating the SMS question.');
 expect_true((string) $firstTouchEmail['subject'] === 'The information you requested from Elite Smiles', 'First-touch email needs an accurate subject tied to the lead request.');
 expect_true(str_contains((string) $firstTouchEmail['body'], 'Here is the information you requested.'), 'First-touch email must immediately explain why the lead is receiving it.');
+$smsReachableLead = ['phone' => '+18015550199', 'sms_opt_status' => 'unknown', 'status' => 'new_lead'];
+expect_true(lead_email_first_touch_should_wait_for_sms($smsReachableLead), 'A lead reachable by SMS must not receive email before the unanswered five-hour milestone.');
+expect_true(!lead_email_first_touch_should_wait_for_sms($smsReachableLead, false), 'An email-only intake path must retain immediate first-touch email.');
+expect_true(!lead_email_first_touch_should_wait_for_sms(['phone' => '123', 'sms_opt_status' => 'unknown', 'status' => 'new_lead']), 'An invalid phone must allow email to serve as the viable first-touch channel.');
+expect_true(!lead_email_first_touch_should_wait_for_sms(['phone' => '+18015550199', 'sms_opt_status' => 'opted_out', 'status' => 'new_lead']), 'SMS opt-out must allow consented email without waiting on SMS.');
 
 $sampleLead = ['full_name' => 'Taylor Example'];
 foreach ($plan as $step => $item) {
@@ -430,8 +449,8 @@ expect_true(str_contains($openAvailabilityAcknowledgment, 'mornings or afternoon
 
 $alignedMorning = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 06:15:00', new DateTimeZone(APP_TIMEZONE)));
 $alignedNight = lead_agent_align_contact_time(new DateTimeImmutable('2026-08-06 21:15:00', new DateTimeZone(APP_TIMEZONE)));
-expect_true($alignedMorning->format('Y-m-d H:i') === '2026-08-06 08:00', 'Morning sends should move to 8 AM.');
-expect_true($alignedNight->format('Y-m-d H:i') === '2026-08-07 08:00', 'Night sends should move to next-day 8 AM.');
+expect_true($alignedMorning->format('Y-m-d H:i') === '2026-08-06 09:00', 'Morning sends should move to 9 AM.');
+expect_true($alignedNight->format('Y-m-d H:i') === '2026-08-07 09:00', 'Night sends should move to next-day 9 AM.');
 
 $healthNow = new DateTimeImmutable('2026-08-07 11:00:00', new DateTimeZone(APP_TIMEZONE));
 $healthyRun = lead_agent_run_health(['status' => 'completed', 'finished_at' => '2026-08-07 10:45:00', 'started_at' => '2026-08-07 10:44:59'], $healthNow);

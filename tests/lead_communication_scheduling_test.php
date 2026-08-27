@@ -45,6 +45,22 @@ lead_communication_scheduling_expect(
     'Communication scheduling must show the calculated age beside DOB.'
 );
 lead_communication_scheduling_expect(
+    str_contains($source, 'id="modal-communication-scheduling-content" class="mt-4 space-y-4"'),
+    'Communication scheduling must use one compact vertical layout in the narrow lead summary column.'
+);
+lead_communication_scheduling_expect(
+    str_contains($source, 'class="mt-3 grid grid-cols-1 gap-3"'),
+    'Appointment date and time must remain full width instead of being squeezed into narrow side-by-side controls.'
+);
+lead_communication_scheduling_expect(
+    str_contains($source, 'id="modal-communication-dob-section" class="border-t border-slate-200 pt-4"'),
+    'DOB and age must be integrated into the Scheduling card with a compact divider.'
+);
+lead_communication_scheduling_expect(
+    str_contains($source, '9:00 AM–6:00 PM · 30-minute slots'),
+    'The scheduling availability note must be concise for the narrow Communication column.'
+);
+lead_communication_scheduling_expect(
     str_contains($source, 'function calculateAgeFromDob(value, today = new Date())'),
     'The lead workspace must calculate age from DOB using the current date.'
 );

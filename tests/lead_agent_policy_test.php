@@ -35,6 +35,9 @@ expect_true(lead_agent_policy_flags('If a call is easier, tell me a good time.')
 expect_true(lead_agent_policy_flags('I will call you this afternoon.') === ['unapproved_call_commitment'], 'The agent must not commit to an unrequested call.');
 expect_true(lead_agent_policy_flags('Would Tuesday work? Or would Wednesday be better?') === ['multiple_questions'], 'Automated copy must never ask multiple questions at once.');
 expect_true(lead_agent_policy_flags('I have you scheduled for Tuesday at 2 PM.') === ['unverified_booking_claim'], 'Lead Agent must never claim an appointment is booked before the scheduling workflow confirms it.');
+expect_true(!lead_first_touch_requires_attention('new_lead', false, false, strtotime('+1 day')), 'A new lead with a future automated follow-up must not receive a premature red attention halo.');
+expect_true(lead_first_touch_requires_attention('new_lead', true, false, strtotime('-1 minute')), 'A genuinely due first-day follow-up should remain actionable.');
+expect_true(lead_first_touch_requires_attention('new_lead', false, false, null), 'A first touch without any saved follow-up schedule should remain actionable after the grace period.');
 
 $preference = lead_agent_scheduling_preferences('Tuesday afternoon works best for me.');
 expect_true($preference['day'] === 'tuesday' && $preference['period'] === 'afternoon' && !empty($preference['has_preference']), 'Scheduling preference should capture day and time of day.');

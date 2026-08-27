@@ -137,6 +137,11 @@ if ($messageId <= 0) {
     echo '<Response></Response>';
     exit;
 }
+
+// Language is a patient preference learned from their own words. Record it at
+// ingestion time so it works even when the Lead Agent is disabled or paused.
+lead_language_record_inbound($leadId, $body);
+
 if ($sidLockName !== '') {
     db_value('SELECT RELEASE_LOCK(:lock_name)', ['lock_name' => $sidLockName]);
 }

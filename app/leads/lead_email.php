@@ -879,6 +879,11 @@ if (!function_exists('lead_email_record_inbound')) {
             'created_by' => 'Mailbox',
         ]);
 
+        // Use only the patient's new reply, excluding quoted thread history,
+        // so a prior outbound message cannot determine the saved language.
+        $newReplyText = lead_email_new_reply_text($subject, $body);
+        lead_language_record_inbound($leadId, $newReplyText);
+
         $isUnsubscribe = lead_email_is_unsubscribe_request($subject, $body);
         if ($isUnsubscribe) {
             lead_email_unsubscribe($leadId);
@@ -924,7 +929,7 @@ if (!function_exists('lead_email_record_inbound')) {
                     mobile_ai_send_lead_event_push($freshLeadForPush ?: $lead, [
                         'lead_id' => $leadId,
                         'type' => 'reply',
-                        'message' => trim($subject . ' - ' . lead_email_new_reply_text($subject, $body)),
+                        'message' => trim($subject . ' - ' . $newReplyText),
                         'notification_id' => 'email-' . $emailId,
                     ]);
                 }
@@ -944,7 +949,7 @@ if (!function_exists('lead_email_record_inbound')) {
         if (function_exists('lead_agent_enabled') && lead_agent_enabled()) {
             lead_agent_handle_inbound(
                 $leadId,
-                lead_email_new_reply_text($subject, $body),
+                $newReplyText,
                 'email',
                 'email-' . ($sourceId !== '' ? $sourceId : (string) $emailId)
             );

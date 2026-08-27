@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/leads/lead_service.php';
 require_once dirname(__DIR__) . '/app/leads/consultation_doctor_reminders.php';
+require_once dirname(__DIR__) . '/app/leads/consultation_patient_reminders.php';
 
 function consultation_notification_expect(bool $condition, string $message): void
 {
@@ -67,11 +68,39 @@ $combinedMessage = consultation_doctor_reminder_message([
 consultation_notification_expect(str_contains($combinedMessage, '9:00 AM / one-hour consultation reminder'), 'The combined doctor reminder must explain why only one text was sent.');
 consultation_notification_expect(str_contains($combinedMessage, '10:00 AM'), 'The doctor reminder must include the consultation time.');
 
+$englishPatientReminder = consultation_reminder_copy([
+    'id' => 248,
+    'full_name' => 'Taylor Example',
+    'consultation_date' => '2026-09-02 15:00:00',
+    'preferred_language' => 'en',
+], 'morning_of');
+consultation_notification_expect(str_starts_with((string)$englishPatientReminder['sms'], 'Hi Taylor'), 'An English-preferring patient must receive the English reminder.');
+consultation_notification_expect(str_contains((string)$englishPatientReminder['sms'], '11762 South State, Suite 300, Draper, UT 84020'), 'The patient SMS must include the complete practice address.');
+consultation_notification_expect(str_contains((string)$englishPatientReminder['sms'], 'https://maps.app.goo.gl/ZXg2nV5ARpC7NHLUA'), 'The patient SMS must include the approved Google Maps directions link.');
+consultation_notification_expect(str_contains((string)$englishPatientReminder['email'], 'Directions:'), 'The patient email must include a clear English directions label.');
+
+$spanishPatientReminder = consultation_reminder_copy([
+    'id' => 249,
+    'full_name' => 'Taylor Example',
+    'consultation_date' => '2026-09-02 15:00:00',
+    'preferred_language' => 'es',
+], 'day_before');
+consultation_notification_expect(str_starts_with((string)$spanishPatientReminder['sms'], 'Hola Taylor'), 'A Spanish-preferring patient must receive the Spanish reminder.');
+consultation_notification_expect(str_contains((string)$spanishPatientReminder['sms'], 'Dirección:'), 'The Spanish patient SMS must label the address in Spanish.');
+consultation_notification_expect(str_contains((string)$spanishPatientReminder['sms'], 'Cómo llegar:'), 'The Spanish patient SMS must label the map link in Spanish.');
+consultation_notification_expect(str_contains((string)$spanishPatientReminder['email'], 'https://maps.app.goo.gl/ZXg2nV5ARpC7NHLUA'), 'The Spanish patient email must include the approved Google Maps directions link.');
+
 $cronSource = (string)file_get_contents(dirname(__DIR__) . '/app/api/consultation_reminder_cron.php');
 consultation_notification_expect(str_contains($cronSource, "consultation_reminder_already_sent(\$leadId, \$reminderKey, 'internal_sms', \$consultationDate)"), 'Repeated cron runs must deduplicate each doctor reminder.');
 consultation_notification_expect(str_contains($cronSource, 'consultation_doctor_reminder_due_event'), 'The live reminder worker must use the tested doctor timing policy.');
 consultation_notification_expect(str_contains($cronSource, "'consultation_doctor_reminder_sms'"), 'Successful doctor reminders must create an auditable lead activity.');
 consultation_notification_expect(str_contains($cronSource, "\$doctorOnly = filter_var"), 'The worker must support a doctor-only mode that cannot accidentally activate patient reminders.');
+consultation_notification_expect(str_contains($cronSource, 'lead_language_sync_from_conversation'), 'Patient reminders must reconcile language from stored inbound conversation history before composing copy.');
+
+$smsWebhookSource = (string)file_get_contents(dirname(__DIR__) . '/app/api/twilio_sms_webhook.php');
+$emailSource = (string)file_get_contents(dirname(__DIR__) . '/app/leads/lead_email.php');
+consultation_notification_expect(str_contains($smsWebhookSource, 'lead_language_record_inbound($leadId, $body)'), 'Inbound SMS must mark a clear language preference even when Lead Agent is disabled.');
+consultation_notification_expect(str_contains($emailSource, 'lead_language_record_inbound($leadId, $newReplyText)'), 'Inbound email must mark language from only the patient\'s new reply.');
 
 $workflow = (string)file_get_contents(dirname(__DIR__) . '/.github/workflows/consultation-doctor-reminders.yml');
 consultation_notification_expect(str_contains($workflow, "cron: '0,30 0,14-23 * * *'"), 'The production fallback must cover every Utah consultation half-hour in both MST and MDT.');

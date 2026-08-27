@@ -39,6 +39,12 @@ try {
     integration_expect(lead_language_set_preference($languageLeadId, 'es', 'inbound_detected'), 'A source-backed Spanish preference was not saved.');
     $savedLanguage = db_one('SELECT preferred_language, preferred_language_source FROM leads WHERE id = :id LIMIT 1', ['id' => $languageLeadId]);
     integration_expect((string)($savedLanguage['preferred_language'] ?? '') === 'es' && (string)($savedLanguage['preferred_language_source'] ?? '') === 'inbound_detected', 'Language preference provenance was not stored correctly.');
+    $englishSignal = lead_language_record_inbound($languageLeadId, 'Hello, I would like a consultation for veneers.');
+    integration_expect(($englishSignal['language'] ?? '') === 'en' && !empty($englishSignal['saved']), 'A newer clear English reply must update an earlier passively detected preference.');
+    $spanishExplicit = lead_language_record_inbound($languageLeadId, 'Español por favor');
+    integration_expect(($spanishExplicit['language'] ?? '') === 'es' && !empty($spanishExplicit['saved']), 'An explicit Spanish request must update the saved preference.');
+    $retainedExplicit = lead_language_record_inbound($languageLeadId, 'Hello, I would like an appointment for implants.');
+    integration_expect(($retainedExplicit['language'] ?? '') === 'es' && ($retainedExplicit['reason'] ?? '') === 'stronger_preference_retained', 'Passive detection must not overwrite an explicit patient language choice.');
 
     $enrollment = lead_agent_enroll($leadId, ['source' => 'integration_test']);
     integration_expect(!empty($enrollment['enrolled']), 'Synthetic lead was not enrolled.');

@@ -19,6 +19,7 @@ require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
+require_once dirname(__DIR__) . '/leads/consultation_patient_reminders.php';
 require_once dirname(__DIR__) . '/leads/consultation_doctor_reminders.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -105,101 +106,6 @@ function consultation_reminder_record(int $leadId, string $reminderKey, string $
             'created_at' => now(),
         ]
     );
-}
-
-function consultation_reminder_first_name(array $lead): string
-{
-    $name = trim((string)($lead['full_name'] ?? ''));
-    if ($name === '') {
-        return '';
-    }
-
-    $parts = preg_split('/\s+/', $name) ?: [];
-    return trim((string)($parts[0] ?? ''));
-}
-
-function consultation_reminder_format_appointment(string $consultationDate, string $language = 'en'): string
-{
-    $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $consultationDate, new DateTimeZone(APP_TIMEZONE));
-    if (!$dt) {
-        $dt = new DateTimeImmutable($consultationDate, new DateTimeZone(APP_TIMEZONE));
-    }
-
-    if (lead_language_normalize($language) === 'es') {
-        $days = [
-            'Monday' => 'lunes', 'Tuesday' => 'martes', 'Wednesday' => 'miércoles',
-            'Thursday' => 'jueves', 'Friday' => 'viernes', 'Saturday' => 'sábado', 'Sunday' => 'domingo',
-        ];
-        $months = [
-            'January' => 'enero', 'February' => 'febrero', 'March' => 'marzo', 'April' => 'abril',
-            'May' => 'mayo', 'June' => 'junio', 'July' => 'julio', 'August' => 'agosto',
-            'September' => 'septiembre', 'October' => 'octubre', 'November' => 'noviembre', 'December' => 'diciembre',
-        ];
-        return ($days[$dt->format('l')] ?? $dt->format('l')) . ', ' . $dt->format('j') . ' de '
-            . ($months[$dt->format('F')] ?? $dt->format('F')) . ' a las ' . $dt->format('g:i A');
-    }
-    return $dt->format('l, F j') . ' at ' . $dt->format('g:i A');
-}
-
-function consultation_reminder_copy(array $lead, string $reminderKey): array
-{
-    $firstName = consultation_reminder_first_name($lead);
-    $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
-    $language = lead_language_preference($lead);
-    $appointment = consultation_reminder_format_appointment((string)$lead['consultation_date'], $language);
-
-    if ($language === 'es') {
-        $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-        if ($reminderKey === 'morning_of') {
-            return [
-                'subject' => 'Recordatorio: su consulta con Elite Smiles es hoy',
-                'email' => implode("\n\n", [
-                    $greeting,
-                    'Este es un recordatorio de que su consulta con Elite Smiles es hoy, ' . $appointment . '.',
-                    'Esperamos verle. Si algo cambia o necesita ayuda para encontrarnos, responda y avísenos.',
-                    "Atentamente,\nEl equipo de Elite Smiles\n11762 South State, Suite 300\nDraper, UT 84020",
-                ]),
-                'sms' => trim(($firstName !== '' ? 'Hola ' . $firstName . ', ' : 'Hola, ') . 'recordatorio de Elite Smiles: su consulta es hoy a las ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Si necesita algo antes, responda aquí.'),
-            ];
-        }
-
-        return [
-            'subject' => 'Recordatorio: su consulta con Elite Smiles es mañana',
-            'email' => implode("\n\n", [
-                $greeting,
-                'Este es un recordatorio de que su consulta con Elite Smiles es mañana, ' . $appointment . '.',
-                'Su consulta es gratis y el equipo del Dr. Meden revisará claramente las opciones para su caso.',
-                'Si necesita hacer algún cambio, responda aquí y le ayudaremos.',
-                "Atentamente,\nEl equipo de Elite Smiles\n11762 South State, Suite 300\nDraper, UT 84020",
-            ]),
-            'sms' => trim(($firstName !== '' ? 'Hola ' . $firstName . ', ' : 'Hola, ') . 'recordatorio de Elite Smiles: su consulta es mañana a las ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Si necesita algo, responda aquí.'),
-        ];
-    }
-
-    if ($reminderKey === 'morning_of') {
-        return [
-            'subject' => 'Reminder: your Elite Smiles consultation is today',
-            'email' => implode("\n\n", [
-                $greeting,
-                'This is a quick reminder that your consultation with Elite Smiles is today, ' . $appointment . '.',
-                'We look forward to seeing you. If anything changes or you need help finding us, just reply and let us know.',
-                "Warmly,\nThe Elite Smiles Team\n11762 South State, Suite 300\nDraper, UT 84020",
-            ]),
-            'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is today at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. If you need anything before then, just reply here.'),
-        ];
-    }
-
-    return [
-        'subject' => 'Reminder: your Elite Smiles consultation is tomorrow',
-        'email' => implode("\n\n", [
-            $greeting,
-            'This is a friendly reminder that your consultation with Elite Smiles is tomorrow, ' . $appointment . '.',
-            'Your consultation is free, and Dr. Meden’s team will review your options, pricing, and financing clearly based on your specific case.',
-            'If you need to make any changes, just reply here and we will help.',
-            "Warmly,\nThe Elite Smiles Team\n11762 South State, Suite 300\nDraper, UT 84020",
-        ]),
-        'sms' => trim(($firstName !== '' ? 'Hi ' . $firstName . ', ' : 'Hi, ') . 'reminder from Elite Smiles: your consultation is tomorrow at ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. If you need anything before then, just reply here.'),
-    ];
 }
 
 function consultation_reminder_send_email(array $lead, string $reminderKey, array $copy): array
@@ -437,6 +343,9 @@ foreach ($dueKeys as $reminderKey) {
 
     foreach ($rows as $lead) {
         $processed++;
+        // Resolve older unknown-language records from the patient's actual SMS
+        // and email replies immediately before building reminder copy.
+        $lead = lead_language_sync_from_conversation($lead);
         $leadId = (int)($lead['id'] ?? 0);
         $copy = consultation_reminder_copy($lead, $reminderKey);
         $emailResult = consultation_reminder_send_email($lead, $reminderKey, $copy);

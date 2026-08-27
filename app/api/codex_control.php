@@ -1134,6 +1134,7 @@ if (!function_exists('codex_api_operator_recent_thread_signals')) {
             'location_question' => false,
             'scheduling_intent' => false,
             'stop_requested' => false,
+            'acknowledgment_only' => false,
         ];
         if ($leadId <= 0) {
             return $signals;
@@ -1152,10 +1153,17 @@ if (!function_exists('codex_api_operator_recent_thread_signals')) {
             return $signals;
         }
 
+        $unansweredInboundBodies = [];
+        $collectUnansweredInbound = true;
         foreach ($messages as $message) {
             $direction = (string)($message['direction'] ?? '');
             $body = trim((string)($message['body'] ?? ''));
             $createdAt = (string)($message['created_at'] ?? '');
+            if ($direction === 'outbound') {
+                $collectUnansweredInbound = false;
+            } elseif ($direction === 'inbound' && $collectUnansweredInbound && $body !== '') {
+                $unansweredInboundBodies[] = $body;
+            }
             if ($direction === 'inbound' && $signals['last_inbound_body'] === '') {
                 $signals['last_inbound_body'] = codex_api_text_excerpt($body, 240);
                 $signals['last_inbound_at'] = $createdAt;
@@ -1184,6 +1192,10 @@ if (!function_exists('codex_api_operator_recent_thread_signals')) {
             $signals['stop_requested'] = $signals['stop_requested'] || codex_api_operator_text_contains($body, [
                 '/^\s*stop\s*$/i', '/\bstop\b/i', '/\bno\s+me\s+(?:text|mandes|envies)\b/i',
             ]);
+        }
+
+        if (function_exists('lead_operator_messages_are_acknowledgments')) {
+            $signals['acknowledgment_only'] = lead_operator_messages_are_acknowledgments($unansweredInboundBodies);
         }
 
         return $signals;
@@ -1287,7 +1299,10 @@ if (!function_exists('codex_api_crm_operator_command_center')) {
 
                 $lastInbound = trim((string)($lead['last_inbound_at'] ?? ''));
                 $inboundIsNewest = $lastInbound !== '' && ($lastOutbound === '' || strtotime($lastInbound) >= strtotime($lastOutbound));
-                if ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $inboundIsNewest)) {
+                $scheduledAcknowledgment = function_exists('lead_operator_consultation_is_scheduled')
+                    && lead_operator_consultation_is_scheduled($lead)
+                    && !empty($signals['acknowledgment_only']);
+                if (!$scheduledAcknowledgment && ((int)($lead['unread_message_count'] ?? 0) > 0 || ($actionKey === 'reply_needed' && $inboundIsNewest))) {
                     $buckets['do_now'][] = codex_api_operator_action_bucket(
                         codex_api_operator_action_card($lead, 'reply_needed', 95, 'Lead has a reply that needs review.', 'Read context and respond with a direct, human-feeling answer.'),
                         'do_now'

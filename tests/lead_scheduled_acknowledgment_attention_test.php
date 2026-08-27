@@ -37,7 +37,9 @@ scheduled_ack_expect(!lead_operator_messages_are_acknowledgments(['Perfect!', 'C
 
 $serviceSource = (string)file_get_contents(dirname(__DIR__) . '/app/leads/lead_service.php');
 $controlSource = (string)file_get_contents(dirname(__DIR__) . '/app/api/codex_control.php');
+$cardSource = (string)file_get_contents(dirname(__DIR__) . '/app/partials/lead_card.php');
 scheduled_ack_expect(str_contains($serviceSource, '!$scheduledAcknowledgment'), 'The lead-board queue must apply the scheduled-acknowledgment exception.');
 scheduled_ack_expect(str_contains($controlSource, '!$scheduledAcknowledgment'), 'Elite AI command-center attention must apply the same exception.');
+scheduled_ack_expect(str_contains($cardSource, '$leadResolvedScheduledAcknowledgment') && str_contains($cardSource, "\$leadNextActionLabel = 'Prep consult';"), 'A resolved scheduled acknowledgment must display Prep consult instead of Reply now.');
 
 echo "Scheduled acknowledgment attention tests passed.\n";

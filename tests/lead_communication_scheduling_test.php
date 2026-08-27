@@ -33,8 +33,8 @@ lead_communication_scheduling_expect(
     'Communication scheduling must validate the approved appointment slots before synchronizing the real field.'
 );
 lead_communication_scheduling_expect(
-    str_contains($source, 'id="modal-communication-consultation-date-input"'),
-    'Communication scheduling must retain the hidden real appointment value used by the existing save flow.'
+    str_contains($source, 'modalLeadConsultationDateInput.value = combinedValue;'),
+    'Communication scheduling must synchronize to the existing appointment field used by the save flow.'
 );
 lead_communication_scheduling_expect(
     str_contains($source, 'id="modal-communication-dob-input"'),

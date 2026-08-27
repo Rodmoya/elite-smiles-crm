@@ -2291,14 +2291,13 @@ $consultationOptions = [
                                                     </select>
                                                 </div>
                                             </div>
-                                            <input type="hidden" id="modal-communication-consultation-date-input">
-                                            <p id="modal-communication-consultation-date-status" class="mt-2 text-[11px] leading-5 text-slate-500">Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.</p>
+                                            <p id="modal-communication-consultation-date-status" aria-live="polite" class="mt-2 text-[11px] leading-5 text-slate-500">Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.</p>
                                         </div>
 
                                         <div class="rounded-2xl border-t border-slate-100 bg-white px-4 py-4">
                                             <div class="flex items-center justify-between gap-3">
                                                 <label for="modal-communication-dob-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Date of Birth</label>
-                                                <span id="modal-communication-age-summary" class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">Age: Not provided</span>
+                                                <span id="modal-communication-age-summary" aria-live="polite" class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">Age: Not provided</span>
                                             </div>
                                             <input type="date" id="modal-communication-dob-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
                                             <p class="mt-2 text-[11px] leading-5 text-slate-500">DOB and age save to the same lead record used for appointment preparation.</p>
@@ -2748,7 +2747,6 @@ $consultationOptions = [
     const modalLeadConsultInput = document.getElementById('modal-lead-consult-input');
 
     const modalLeadConsultationDateInput = document.getElementById('modal-lead-consultation-date-input');
-    const modalCommunicationConsultationDateInput = document.getElementById('modal-communication-consultation-date-input');
     const modalCommunicationConsultationDatePicker = document.getElementById('modal-communication-consultation-date-picker');
     const modalCommunicationConsultationTimeInput = document.getElementById('modal-communication-consultation-time-input');
     const modalCommunicationConsultationDateStatus = document.getElementById('modal-communication-consultation-date-status');
@@ -3859,9 +3857,6 @@ $consultationOptions = [
         const dateValue = normalized ? normalized.slice(0, 10) : '';
         const timeValue = normalized ? normalized.slice(11, 16) : '';
 
-        if (modalCommunicationConsultationDateInput) {
-            modalCommunicationConsultationDateInput.value = normalized;
-        }
         if (modalCommunicationConsultationDatePicker) {
             modalCommunicationConsultationDatePicker.value = dateValue;
         }
@@ -3881,9 +3876,6 @@ $consultationOptions = [
         const hasCompleteSlot = dateValue !== '' && communicationConsultationSlotIsAllowed(timeValue);
         const combinedValue = hasCompleteSlot ? `${dateValue}T${timeValue}` : '';
 
-        if (modalCommunicationConsultationDateInput) {
-            modalCommunicationConsultationDateInput.value = combinedValue;
-        }
         if (modalLeadConsultationDateInput) {
             modalLeadConsultationDateInput.value = combinedValue;
         }
@@ -8676,7 +8668,7 @@ function applyCommunicationViewportFit() {
         modalCommunicationConsultationTimeInput.addEventListener('change', updateCommunicationConsultationValue);
     }
 
-    if (modalLeadConsultationDateInput && modalCommunicationConsultationDateInput) {
+    if (modalLeadConsultationDateInput) {
         modalLeadConsultationDateInput.addEventListener('input', function () {
             syncCommunicationConsultationFields(modalLeadConsultationDateInput.value);
         });

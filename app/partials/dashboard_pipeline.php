@@ -2217,6 +2217,8 @@ $consultationOptions = [
 
                                     <p id="legacy-modal-sms-lead-phone" class="mt-1 text-slate-500">No phone selected</p>
 
+                                    <p id="legacy-modal-sms-lead-email" class="mt-1 break-all text-slate-500">No email selected</p>
+
                                     <div class="mt-3 hidden flex-wrap gap-2">
                                         <button type="button" data-composer-mode="sms" class="composer-mode-button rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">SMS</button>
                                         <button type="button" data-composer-mode="email" class="composer-mode-button rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Email</button>
@@ -6630,6 +6632,8 @@ function applyCommunicationViewportFit() {
         setText('legacy-modal-sms-lead-name', card.dataset.leadName || 'Lead', 'Lead');
 
         setText('legacy-modal-sms-lead-phone', formatPhoneForDisplay(card.dataset.leadPhone || '') || 'No phone selected', 'No phone selected');
+
+        setText('legacy-modal-sms-lead-email', (card.dataset.leadEmail || '').trim() || 'No email selected', 'No email selected');
 
         if (smsInput) smsInput.value = '';
 

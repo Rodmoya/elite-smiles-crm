@@ -223,6 +223,9 @@ if (!function_exists('lead_card_initials')) {
 $leadIntentionDisplay = trim(str_replace('_', ' ', $leadIntentionDisplay));
 $leadIntentionDisplay = preg_replace('/\s+/', ' ', $leadIntentionDisplay);
 $leadSmsOptStatus = lead_card_value($lead, 'sms_opt_status', 'unknown');
+$leadPreferredLanguage = function_exists('lead_language_preference')
+    ? lead_language_preference($lead)
+    : lead_card_value($lead, 'preferred_language', 'unknown');
 $leadLastContactedAt = lead_card_value($lead, 'last_contacted_at');
 $leadLastInboundAt = lead_card_value($lead, 'last_inbound_at');
 $leadLastOutboundAt = lead_card_value($lead, 'last_outbound_at');
@@ -413,6 +416,7 @@ if ($leadHasBadPhone) {
     data-lead-instagram-username="<?= e($leadInstagramUsername) ?>"
     data-lead-trigger-keyword="<?= e($leadTriggerKeyword) ?>"
     data-lead-sms-opt-status="<?= e($leadSmsOptStatus) ?>"
+    data-lead-preferred-language="<?= e($leadPreferredLanguage) ?>"
     data-lead-last-contacted-at="<?= e($leadLastContactedAt) ?>"
     data-lead-last-inbound-at="<?= e($leadLastInboundAt) ?>"
     data-lead-last-outbound-at="<?= e($leadLastOutboundAt) ?>"
@@ -547,13 +551,16 @@ if ($leadHasBadPhone) {
         </div>
     <?php endif; ?>
 
-    <?php if ($leadUnreadMessageCount > 0 || $isIncomplete || $nextFollowUpLabel !== '' || $leadSmsOptStatus === 'opted_out'): ?>
+    <?php if ($leadUnreadMessageCount > 0 || $isIncomplete || $nextFollowUpLabel !== '' || $leadSmsOptStatus === 'opted_out' || $leadPreferredLanguage === 'es'): ?>
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <?php if ($nextFollowUpLabel !== ''): ?>
                 <span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700"><?= e($nextFollowUpLabel) ?></span>
             <?php endif; ?>
             <?php if ($leadSmsOptStatus === 'opted_out'): ?>
                 <span class="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">DND</span>
+            <?php endif; ?>
+            <?php if ($leadPreferredLanguage === 'es'): ?>
+                <span class="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Español</span>
             <?php endif; ?>
         </div>
     <?php endif; ?>

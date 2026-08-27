@@ -115,13 +115,26 @@ function consultation_reminder_first_name(array $lead): string
     return trim((string)($parts[0] ?? ''));
 }
 
-function consultation_reminder_format_appointment(string $consultationDate): string
+function consultation_reminder_format_appointment(string $consultationDate, string $language = 'en'): string
 {
     $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $consultationDate, new DateTimeZone(APP_TIMEZONE));
     if (!$dt) {
         $dt = new DateTimeImmutable($consultationDate, new DateTimeZone(APP_TIMEZONE));
     }
 
+    if (lead_language_normalize($language) === 'es') {
+        $days = [
+            'Monday' => 'lunes', 'Tuesday' => 'martes', 'Wednesday' => 'miércoles',
+            'Thursday' => 'jueves', 'Friday' => 'viernes', 'Saturday' => 'sábado', 'Sunday' => 'domingo',
+        ];
+        $months = [
+            'January' => 'enero', 'February' => 'febrero', 'March' => 'marzo', 'April' => 'abril',
+            'May' => 'mayo', 'June' => 'junio', 'July' => 'julio', 'August' => 'agosto',
+            'September' => 'septiembre', 'October' => 'octubre', 'November' => 'noviembre', 'December' => 'diciembre',
+        ];
+        return ($days[$dt->format('l')] ?? $dt->format('l')) . ', ' . $dt->format('j') . ' de '
+            . ($months[$dt->format('F')] ?? $dt->format('F')) . ' a las ' . $dt->format('g:i A');
+    }
     return $dt->format('l, F j') . ' at ' . $dt->format('g:i A');
 }
 
@@ -129,7 +142,36 @@ function consultation_reminder_copy(array $lead, string $reminderKey): array
 {
     $firstName = consultation_reminder_first_name($lead);
     $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
-    $appointment = consultation_reminder_format_appointment((string)$lead['consultation_date']);
+    $language = lead_language_preference($lead);
+    $appointment = consultation_reminder_format_appointment((string)$lead['consultation_date'], $language);
+
+    if ($language === 'es') {
+        $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
+        if ($reminderKey === 'morning_of') {
+            return [
+                'subject' => 'Recordatorio: su consulta con Elite Smiles es hoy',
+                'email' => implode("\n\n", [
+                    $greeting,
+                    'Este es un recordatorio de que su consulta con Elite Smiles es hoy, ' . $appointment . '.',
+                    'Esperamos verle. Si algo cambia o necesita ayuda para encontrarnos, responda y avísenos.',
+                    "Atentamente,\nEl equipo de Elite Smiles\n11762 South State, Suite 300\nDraper, UT 84020",
+                ]),
+                'sms' => trim(($firstName !== '' ? 'Hola ' . $firstName . ', ' : 'Hola, ') . 'recordatorio de Elite Smiles: su consulta es hoy a las ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Si necesita algo antes, responda aquí.'),
+            ];
+        }
+
+        return [
+            'subject' => 'Recordatorio: su consulta con Elite Smiles es mañana',
+            'email' => implode("\n\n", [
+                $greeting,
+                'Este es un recordatorio de que su consulta con Elite Smiles es mañana, ' . $appointment . '.',
+                'Su consulta es gratis y el equipo del Dr. Meden revisará claramente las opciones para su caso.',
+                'Si necesita hacer algún cambio, responda aquí y le ayudaremos.',
+                "Atentamente,\nEl equipo de Elite Smiles\n11762 South State, Suite 300\nDraper, UT 84020",
+            ]),
+            'sms' => trim(($firstName !== '' ? 'Hola ' . $firstName . ', ' : 'Hola, ') . 'recordatorio de Elite Smiles: su consulta es mañana a las ' . (new DateTimeImmutable((string)$lead['consultation_date']))->format('g:i A') . '. Si necesita algo, responda aquí.'),
+        ];
+    }
 
     if ($reminderKey === 'morning_of') {
         return [

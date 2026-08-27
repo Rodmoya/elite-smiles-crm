@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/twilio.php';
 require_once dirname(__DIR__) . '/notifications/internal_sms.php';
 require_once __DIR__ . '/lead_meta.php';
+require_once __DIR__ . '/lead_language.php';
 require_once __DIR__ . '/lead_communications.php';
 require_once __DIR__ . '/lead_email.php';
 require_once __DIR__ . '/lead_agent_observability.php';
@@ -788,24 +789,24 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if ($text === '') {
             return 'needs_attention';
         }
-        if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text)\b/i', $text)) {
+        if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text|cancelar|no me escriba|no me escriban|deje de escribir)\b/iu', $text)) {
             return 'opt_out';
         }
-        if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want)\b/i', $text)) {
+        if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want|no me interesa|ya no me interesa|ahora no|tal vez despues|tal vez después|no gracias|muy lejos|no puedo viajar)\b/iu', $text)) {
             return 'pause';
         }
         if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $text)
             && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $text)) {
             return 'needs_attention';
         }
-        if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance)\b|\$/i', $text)) {
+        if (preg_match('/\b(cost|price|pricing|how much|payment|payments|financ(?:e|ing)|monthly|insurance|costo|precio|cuanto cuesta|cuánto cuesta|pago|pagos|financiamiento|seguro)\b|\$/iu', $text)) {
             return 'cost_redirect';
         }
         if (lead_call_consent_requested($text)
-            || preg_match('/\b(complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible)\b/i', $text)) {
+            || preg_match('/\b(complaint|upset|angry|refund|lawyer|pain|infection|swelling|emergency|diagnos|candidate|eligible|queja|enojado|reembolso|abogado|dolor|infeccion|infección|hinchazon|hinchazón|emergencia|diagnostico|diagnóstico)\b/iu', $text)) {
             return 'needs_attention';
         }
-        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|mornings|mornign|afternoon|afternoons|evening|weekday|weekend|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|tomorrow|next week)\b/i', $text)) {
+        if (preg_match('/\b(book|schedule|appointment|consult|come in|available|availability|morning|mornings|mornign|afternoon|afternoons|evening|weekday|weekend|monday|tuesday|wednesday|wednesdays|wensday|wensdays|wenesday|wenesdays|thursday|friday|saturday|tomorrow|next week|agendar|programar|cita|consulta|disponible|disponibilidad|mañana|manana|tarde|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|proxima semana|próxima semana)\b/iu', $text)) {
             return 'ready_to_schedule';
         }
         return 'general';
@@ -915,10 +916,10 @@ if (!function_exists('lead_agent_decline_kind')) {
     function lead_agent_decline_kind(string $body): string
     {
         $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
-        if (preg_match('/\b(not right now|maybe later|another time|not yet|reach out later|check back)\b/i', $text)) {
+        if (preg_match('/\b(not right now|maybe later|another time|not yet|reach out later|check back|ahora no|tal vez despues|tal vez después|otro momento|todavia no|todavía no)\b/iu', $text)) {
             return 'deferred';
         }
-        if (preg_match('/\b(not interested|no longer interested|no thank you|too far|cannot travel|can\'t travel|do not want|don\'t want)\b/i', $text)) {
+        if (preg_match('/\b(not interested|no longer interested|no thank you|too far|cannot travel|can\'t travel|do not want|don\'t want|no me interesa|ya no me interesa|no gracias|muy lejos|no puedo viajar|no quiero)\b/iu', $text)) {
             return 'declined';
         }
         return 'paused';
@@ -1267,6 +1268,32 @@ if (!function_exists('lead_agent_scheduling_acknowledgment')) {
         $hasDay = $day !== '';
         $hasTime = $period !== '' || $specificTime !== '';
         $name = $first !== '' ? ', ' . $first : '';
+        if (lead_language_is_spanish($lead)) {
+            $spanishDays = [
+                'monday' => 'lunes', 'tuesday' => 'martes', 'wednesday' => 'miércoles',
+                'thursday' => 'jueves', 'friday' => 'viernes', 'saturday' => 'sábado',
+                'sunday' => 'domingo', 'today' => 'hoy', 'tomorrow' => 'mañana',
+                'next week' => 'la próxima semana', 'following week' => 'la semana siguiente',
+            ];
+            $dayLabel = $spanishDays[$day] ?? $day;
+            $periodLabel = ['morning' => 'la mañana', 'afternoon' => 'la tarde', 'evening' => 'la noche'][$period] ?? $period;
+            if (!$hasDay && !$hasTime) {
+                return 'Claro' . $name . '. Puedo revisar lo que tenemos disponible esta semana. '
+                    . '¿Generalmente le funciona mejor por la mañana o por la tarde? '
+                    . 'Programamos consultas desde las 9:00 AM hasta la última consulta a las 6:00 PM.';
+            }
+            if ($hasDay && !$hasTime) {
+                return 'Tomaré ' . $dayLabel . ' como su preferencia' . $name . '. ¿Prefiere por la mañana o por la tarde? '
+                    . 'Programamos consultas desde las 9:00 AM hasta la última consulta a las 6:00 PM.';
+            }
+            if (!$hasDay && $hasTime) {
+                $timeLabel = $specificTime !== '' ? 'Alrededor de las ' . $specificTime : ucfirst($periodLabel);
+                return $timeLabel . ' funciona como preferencia' . $name . '. ¿Qué día de esta semana le resulta más fácil?';
+            }
+            $label = trim(($dayLabel !== '' ? $dayLabel . ' ' : '') . ($specificTime !== '' ? $specificTime : $periodLabel));
+            return ucfirst($label !== '' ? $label : 'Ese horario') . ' suena bien' . $name . '. '
+                . 'Permítame revisar si está disponible y le responderé en breve.';
+        }
         if (!$hasDay && !$hasTime) {
             return 'Absolutely' . $name . '—I can check what we have available this week. '
                 . 'Do mornings or afternoons usually work better for you? '
@@ -1287,10 +1314,26 @@ if (!function_exists('lead_agent_scheduling_acknowledgment')) {
 }
 
 if (!function_exists('lead_agent_format_availability')) {
-    function lead_agent_format_availability(string $value): string
+    function lead_agent_format_availability(string $value, string $language = 'en'): string
     {
         $timestamp = strtotime($value);
-        return $timestamp === false ? '' : date('l, F j \a\t g:i A', $timestamp);
+        if ($timestamp === false) {
+            return '';
+        }
+        if (lead_language_normalize($language) === 'es') {
+            $days = [
+                'Monday' => 'lunes', 'Tuesday' => 'martes', 'Wednesday' => 'miércoles',
+                'Thursday' => 'jueves', 'Friday' => 'viernes', 'Saturday' => 'sábado', 'Sunday' => 'domingo',
+            ];
+            $months = [
+                'January' => 'enero', 'February' => 'febrero', 'March' => 'marzo', 'April' => 'abril',
+                'May' => 'mayo', 'June' => 'junio', 'July' => 'julio', 'August' => 'agosto',
+                'September' => 'septiembre', 'October' => 'octubre', 'November' => 'noviembre', 'December' => 'diciembre',
+            ];
+            return ($days[date('l', $timestamp)] ?? date('l', $timestamp)) . ', ' . date('j', $timestamp)
+                . ' de ' . ($months[date('F', $timestamp)] ?? date('F', $timestamp)) . ' a las ' . date('g:i A', $timestamp);
+        }
+        return date('l, F j \a\t g:i A', $timestamp);
     }
 }
 
@@ -1298,6 +1341,11 @@ if (!function_exists('lead_agent_availability_offer_message')) {
     function lead_agent_availability_offer_message(array $lead, string $option1, string $option2): string
     {
         $first = lead_agent_first_name($lead);
+        if (lead_language_is_spanish($lead)) {
+            $hello = $first !== '' ? 'Hola ' . $first . ', revisé nuestra disponibilidad. ' : 'Hola, revisé nuestra disponibilidad. ';
+            return $hello . 'Podemos ofrecerle ' . lead_agent_format_availability($option1, 'es') . ' o '
+                . lead_agent_format_availability($option2, 'es') . '. ¿Cuál le funciona mejor?';
+        }
         $hello = $first !== '' ? 'Hi ' . $first . ', I checked our availability. ' : 'Hi, I checked our availability. ';
         return $hello . 'We can offer ' . lead_agent_format_availability($option1) . ' or '
             . lead_agent_format_availability($option2) . '. Which works better for you?';
@@ -1308,10 +1356,10 @@ if (!function_exists('lead_agent_match_availability_selection')) {
     function lead_agent_match_availability_selection(string $body, string $option1, string $option2): int
     {
         $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
-        if (preg_match('/\b(first|option\s*1|number\s*1|#1)\b/i', $text)) {
+        if (preg_match('/\b(first|option\s*1|number\s*1|#1|primera|primer|opci[oó]n\s*1|n[uú]mero\s*1)\b/iu', $text)) {
             return 1;
         }
-        if (preg_match('/\b(second|option\s*2|number\s*2|#2)\b/i', $text)) {
+        if (preg_match('/\b(second|option\s*2|number\s*2|#2|segunda|segundo|opci[oó]n\s*2|n[uú]mero\s*2)\b/iu', $text)) {
             return 2;
         }
         $matches = [];
@@ -1326,6 +1374,11 @@ if (!function_exists('lead_agent_match_availability_selection')) {
                 strtolower(date('g:i A', $timestamp)),
                 strtolower(date('g A', $timestamp)),
             ];
+            $spanishDays = [
+                'monday' => 'lunes', 'tuesday' => 'martes', 'wednesday' => 'miércoles',
+                'thursday' => 'jueves', 'friday' => 'viernes', 'saturday' => 'sábado', 'sunday' => 'domingo',
+            ];
+            $tokens[] = $spanishDays[strtolower(date('l', $timestamp))] ?? '';
             foreach ($tokens as $token) {
                 if ($token !== '' && str_contains($text, $token)) {
                     $matches[$number] = true;
@@ -2511,6 +2564,7 @@ if (!function_exists('lead_agent_sms_send')) {
     function lead_agent_sms_send(array $lead, string $body, string $eventKey): array
     {
         $leadId = (int) ($lead['id'] ?? 0);
+        $body = lead_language_maybe_add_sms_offer($lead, $body);
         $flags = lead_agent_policy_flags($body);
         if ($flags !== []) {
             return ['ok' => false, 'message' => 'Policy blocked SMS.', 'policy_flags' => $flags];
@@ -2566,6 +2620,7 @@ if (!function_exists('lead_agent_sms_send')) {
 if (!function_exists('lead_agent_email_send')) {
     function lead_agent_email_send(array $lead, string $subject, string $body, string $eventKey): array
     {
+        $body = lead_language_maybe_add_email_offer($lead, $body);
         $flags = lead_agent_policy_flags($subject . ' ' . $body);
         if ($flags !== []) {
             return ['ok' => false, 'message' => 'Policy blocked email.', 'policy_flags' => $flags];
@@ -2613,6 +2668,26 @@ if (!function_exists('lead_agent_approved_followup')) {
     {
         $first = lead_agent_first_name($lead);
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+        if (lead_language_is_spanish($lead)) {
+            $hola = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+            $spanishSms = [
+                1 => $hola . ' solo quería confirmar que recibió mi mensaje. ¿Qué le gustaría mejorar más de su sonrisa: color, forma, espacios u otra cosa?',
+                2 => $hola . ' le dejo continuar con su día. ¿Está bien si mañana le doy seguimiento sobre sus metas para su sonrisa?',
+                3 => $hola . ' retomando nuestra conversación. ¿Qué pregunta sería más útil responder sobre sus opciones para la sonrisa?',
+                5 => $hola . ' cerraré el seguimiento activo por ahora. Si mejorar su sonrisa sigue siendo una meta, responda cuando guste y retomamos. Responda STOP para cancelar.',
+            ];
+            if ($channel === 'sms') {
+                return ['subject' => '', 'body' => $spanishSms[$step] ?? $hola . ' seguimos disponibles para ayudarle. ¿Mejorar su sonrisa todavía es algo en lo que desea apoyo? Responda STOP para cancelar.'];
+            }
+            return [
+                'subject' => $step <= 2 ? 'Qué esperar en Elite Smiles' : 'Un próximo paso sin presión',
+                'body' => $hola . "\n\n"
+                    . ($step <= 2
+                        ? 'Cada sonrisa es diferente. Durante una consulta gratis, el Dr. Meden revisa sus dientes, mordida, fotos y metas antes de explicar qué opciones podrían funcionar. Es una oportunidad para obtener información clara sin presión.'
+                        : 'No necesita decidir nada antes de la consulta. El objetivo es entender qué puede ser posible para su sonrisa y cómo sería un próximo paso personalizado.')
+                    . "\n\nPuede responder aquí cuando tenga una pregunta.\n\nElite Smiles",
+            ];
+        }
         $sms = [
             1 => $hello . ' just checking that my message reached you. What would you most like to improve about your smile—color, shape, spacing, or something else? If a call is easier, tell me a good time.',
             2 => $hello . ' I’ll let you get back to your day. Is it okay if I follow up tomorrow about your smile goals?',
@@ -2647,6 +2722,13 @@ if (!function_exists('lead_agent_strategy_followup_draft')) {
         $time = trim((string) ($lead['scheduling_preferred_time'] ?? ''));
         $hasDay = $day !== '';
         $hasTime = $time !== '';
+
+        if (lead_language_is_spanish($lead)) {
+            return lead_agent_approved_followup($lead, $channel, $step) + [
+                'draft_source' => 'strategy_template',
+                'strategy_key' => trim((string)($conversionMemory['strategy_key'] ?? 'consultation_value')),
+            ];
+        }
 
         $goalLine = 'your smile goals';
         if ($goal !== '') {
@@ -2728,6 +2810,26 @@ if (!function_exists('lead_agent_safe_contextual_fallback')) {
         $interest = strtolower(trim((string) ($lead['procedure_interest'] ?? '')));
         $goal = str_contains($interest, 'veneer') ? 'veneers consultation' : 'smile consultation';
 
+        if (lead_language_is_spanish($lead)) {
+            $hola = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+            $spanishGoal = str_contains($interest, 'veneer') ? 'consulta de carillas' : 'consulta de sonrisa';
+            if ($day !== '' && $time === '') {
+                $body = $hola . ' estamos disponibles cuando quiera programar su ' . $spanishGoal
+                    . ' gratis. Anteriormente mencionó ' . $day . '. ¿Generalmente le funciona mejor por la mañana o por la tarde?';
+            } elseif ($day === '' && $time !== '') {
+                $body = $hola . ' estamos disponibles cuando quiera programar su ' . $spanishGoal
+                    . ' gratis. Anteriormente prefirió ' . $time . '. ¿Qué día de la semana le funciona mejor?';
+            } elseif ($day !== '' && $time !== '') {
+                $body = $hola . ' estamos disponibles cuando quiera para su ' . $spanishGoal
+                    . ' gratis. ¿Quiere que le pida a Rod revisar disponibilidad para ' . $day . ' ' . $time . '?';
+            } else {
+                return lead_agent_approved_followup($lead, $channel, $step) + ['draft_source' => 'approved_fallback'];
+            }
+            return $channel === 'email'
+                ? ['subject' => 'Cuando esté listo', 'body' => $body . "\n\nElite Smiles", 'draft_source' => 'approved_fallback']
+                : ['subject' => '', 'body' => $body, 'draft_source' => 'approved_fallback'];
+        }
+
         if ($day !== '' && $time === '') {
             $body = $hello . ' we are here whenever you are ready to schedule your complimentary ' . $goal
                 . '. You previously mentioned ' . $day . '. Would mornings or afternoons usually work best?';
@@ -2755,6 +2857,13 @@ if (!function_exists('lead_agent_cost_redirect')) {
     function lead_agent_cost_redirect(array $lead, string $channel): array
     {
         $first = lead_agent_first_name($lead);
+        if (lead_language_is_spanish($lead)) {
+            $hola = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+            $body = $hola . ' cada sonrisa es diferente, por eso el Dr. Meden revisa sus metas y necesidades durante la consulta gratis. ¿Quiere que Rod le ayude a programarla?';
+            return $channel === 'email'
+                ? ['subject' => 'Su consulta con Elite Smiles', 'body' => $body . "\n\nElite Smiles"]
+                : ['subject' => '', 'body' => $body];
+        }
         $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
         $body = $hello . ' every smile is different, so Dr. Meden reviews your goals and clinical needs during the complimentary consultation. Would you like Rod to help get that scheduled?';
         return $channel === 'email'
@@ -2836,7 +2945,7 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
         lead_lifecycle_mark_scheduling($leadId, 'lead_agent_scheduling_intent');
         $message = lead_agent_scheduling_acknowledgment($lead, $preferences);
         $draft = $channel === 'email'
-            ? ['subject' => 'Your Elite Smiles consultation', 'body' => $message . "\n\nElite Smiles"]
+            ? ['subject' => lead_language_text($lead, 'Your Elite Smiles consultation', 'Su consulta con Elite Smiles'), 'body' => $message . "\n\nElite Smiles"]
             : ['subject' => '', 'body' => $message];
         $sendKey = 'scheduling-reply-' . $eventKey;
         $send = lead_agent_send_natural_reply($lead, $channel, $draft, $sendKey, 'ready_to_schedule');
@@ -2902,7 +3011,7 @@ if (!function_exists('lead_agent_offer_availability')) {
             return ['ok' => false, 'message' => 'No consented delivery channel is available.'];
         }
         $draft = $channel === 'email'
-            ? ['subject' => 'Two consultation times for you', 'body' => $body . "\n\nElite Smiles"]
+            ? ['subject' => lead_language_text($lead, 'Two consultation times for you', 'Dos horarios de consulta para usted'), 'body' => $body . "\n\nElite Smiles"]
             : ['subject' => '', 'body' => $body];
         $eventKey = 'availability-offer-' . $leadId . '-' . hash('sha256', $normalized1 . '|' . $normalized2);
         $send = lead_agent_send_natural_reply($lead, $channel, $draft, $eventKey, 'availability_offered');
@@ -2950,7 +3059,7 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
         $option2 = (string) ($state['availability_option_2'] ?? '');
         $selectedNumber = lead_agent_match_availability_selection($body, $option1, $option2);
         if ($selectedNumber === 0) {
-            $asksForDifferentTime = (bool) preg_match('/\b(neither|none|other|later|earlier|different|do not work|don\'t work|does not work|doesn\'t work|not work)\b/i', $body);
+            $asksForDifferentTime = (bool) preg_match('/\b(neither|none|other|later|earlier|different|do not work|don\'t work|does not work|doesn\'t work|not work|ninguno|ninguna|otro|otra|m[aá]s tarde|m[aá]s temprano|diferente|no funciona|no me funciona)\b/iu', $body);
             if ($asksForDifferentTime) {
                 $pool = json_decode((string) ($state['availability_pool_json'] ?? ''), true);
                 $pool = is_array($pool) ? array_values(array_diff($pool, [$option1, $option2])) : [];
@@ -2969,8 +3078,11 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
                     $offer = lead_agent_offer_availability($leadId, (string) $nextChoices[0], (string) $nextChoices[1], 0, $freshAvailable);
                     return ['ok' => !empty($offer['ok']), 'handled' => true, 'intent' => 'alternate_slots_offered', 'sent' => !empty($offer['ok']), 'status' => 'awaiting_slot_selection'];
                 }
-                $message = 'No problem—let me check a different time window for you.';
-                $draft = $channel === 'email' ? ['subject' => 'Your consultation time', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+                $message = lead_language_text($lead,
+                    'No problem—let me check a different time window for you.',
+                    'No hay problema. Permítame revisar otro horario para usted.'
+                );
+                $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation time', 'El horario de su consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
                 $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-alternatives-needed-' . $eventKey, 'alternate_slots_needed');
                 db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'awaiting_availability', availability_option_1 = NULL, availability_option_2 = NULL, availability_pool_json = NULL, human_takeover = 1, next_action_at = NULL, last_decision = 'alternate_window_needed', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
                 return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'The lead declined the available pool and needs a different time window.', [
@@ -2978,22 +3090,27 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
                     'preference' => trim((string) ($state['scheduling_context'] ?? '')),
                 ]) + ['handled' => true, 'intent' => 'alternate_slots_needed', 'sent' => !empty($send['sent'])];
             }
-            $message = 'Of course—which works better for you: ' . lead_agent_format_availability($option1) . ' or ' . lead_agent_format_availability($option2) . '?';
-            $draft = $channel === 'email' ? ['subject' => 'Your consultation time', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $message = lead_language_is_spanish($lead)
+                ? 'Claro. ¿Cuál le funciona mejor: ' . lead_agent_format_availability($option1, 'es') . ' o ' . lead_agent_format_availability($option2, 'es') . '?'
+                : 'Of course—which works better for you: ' . lead_agent_format_availability($option1) . ' or ' . lead_agent_format_availability($option2) . '?';
+            $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation time', 'El horario de su consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-clarify-' . $eventKey, 'slot_clarification');
             return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'slot_clarification', 'sent' => !empty($send['sent']), 'status' => 'awaiting_slot_selection'];
         }
 
         $selected = $selectedNumber === 1 ? $option1 : $option2;
-        $formatted = lead_agent_format_availability($selected);
+        $formatted = lead_agent_format_availability($selected, lead_language_preference($lead));
         $selectedTimestamp = strtotime($selected);
         $selectedWindow = $selectedTimestamp !== false
             ? [['start' => date('Y-m-d H:i:s', $selectedTimestamp), 'end' => date('Y-m-d H:i:s', $selectedTimestamp + 1800)]]
             : [];
         $availabilityCheck = $selectedWindow !== [] ? lead_agent_slots_for_operator_windows($selectedWindow) : ['available' => []];
         if (!in_array($selected, (array) ($availabilityCheck['available'] ?? []), true)) {
-            $message = 'That time just became unavailable. Let me check two fresh options for you.';
-            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $message = lead_language_text($lead,
+                'That time just became unavailable. Let me check two fresh options for you.',
+                'Ese horario acaba de dejar de estar disponible. Permítame revisar dos opciones nuevas para usted.'
+            );
+            $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation request', 'Su solicitud de consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-no-longer-open-' . $eventKey, 'availability_changed');
             db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'awaiting_availability', availability_option_1 = NULL, availability_option_2 = NULL, selected_availability = NULL, human_takeover = 1, human_takeover_until = NULL, next_action_at = NULL, last_decision = 'selected_slot_no_longer_available', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
             return lead_agent_internal_handoff($lead, 'ready_to_schedule', 'The selected calendar slot became occupied and needs two replacement options.', [
@@ -3002,10 +3119,14 @@ if (!function_exists('lead_agent_handle_slot_selection')) {
             ]) + ['handled' => true, 'intent' => 'availability_changed', 'sent' => !empty($send['sent'])];
         }
         $hasDob = trim((string) ($lead['date_of_birth'] ?? '')) !== '';
-        $message = $hasDob
-            ? 'Perfect—I have ' . $formatted . ' as your choice. Rod will confirm it shortly.'
-            : 'Perfect—I have ' . $formatted . ' as your choice. What is your date of birth so I can finish the appointment request?';
-        $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+        $message = lead_language_is_spanish($lead)
+            ? ($hasDob
+                ? 'Perfecto. Tengo ' . $formatted . ' como su elección. Rod lo confirmará en breve.'
+                : 'Perfecto. Tengo ' . $formatted . ' como su elección. ¿Cuál es su fecha de nacimiento para terminar la solicitud de cita?')
+            : ($hasDob
+                ? 'Perfect—I have ' . $formatted . ' as your choice. Rod will confirm it shortly.'
+                : 'Perfect—I have ' . $formatted . ' as your choice. What is your date of birth so I can finish the appointment request?');
+        $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation request', 'Su solicitud de consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
         $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'slot-selected-' . $eventKey, 'slot_selected');
         if (empty($send['ok'])) {
             return lead_agent_internal_handoff($lead, 'needs_attention', 'The selected appointment option could not be acknowledged.') + ['handled' => true, 'intent' => 'slot_selected'];
@@ -3033,29 +3154,37 @@ if (!function_exists('lead_agent_handle_dob_reply')) {
     function lead_agent_handle_dob_reply(array $lead, array $state, string $body, string $channel, string $eventKey): array
     {
         $leadId = (int) ($lead['id'] ?? 0);
-        if (preg_match('/\b(why|what for|why do you need|why is.*needed)\b/i', $body)) {
-            $message = 'We use it to create the appointment record. If you prefer, you can provide it by phone instead.';
-            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+        if (preg_match('/\b(why|what for|why do you need|why is.*needed|por qu[eé]|para qu[eé]|por qu[eé] la necesitan)\b/iu', $body)) {
+            $message = lead_language_text($lead,
+                'We use it to create the appointment record. If you prefer, you can provide it by phone instead.',
+                'La usamos para crear el registro de la cita. Si prefiere, puede proporcionarla por teléfono.'
+            );
+            $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation request', 'Su solicitud de consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-explain-' . $eventKey, 'dob_explanation');
             return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'dob_explanation', 'sent' => !empty($send['sent']), 'status' => 'awaiting_dob'];
         }
         $dob = lead_agent_parse_dob($body);
         if ($dob === '') {
-            $looksLikeDate = (bool) preg_match('/\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i', $body);
+            $looksLikeDate = (bool) preg_match('/\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/iu', $body);
             if (!$looksLikeDate) {
                 return lead_agent_internal_handoff($lead, 'needs_attention', 'Lead replied while DOB was pending, but the message was not a recognizable date.') + ['handled' => true, 'intent' => 'needs_attention'];
             }
-            $message = 'Thanks. Please send your date of birth as MM/DD/YYYY so I can add it correctly.';
-            $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+            $message = lead_language_text($lead,
+                'Thanks. Please send your date of birth as MM/DD/YYYY so I can add it correctly.',
+                'Gracias. Envíe su fecha de nacimiento como MM/DD/AAAA para que pueda registrarla correctamente.'
+            );
+            $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation request', 'Su solicitud de consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-format-' . $eventKey, 'dob_format');
             return ['ok' => !empty($send['ok']), 'handled' => true, 'intent' => 'dob_format', 'sent' => !empty($send['sent']), 'status' => 'awaiting_dob'];
         }
 
         db_execute('UPDATE leads SET date_of_birth = :dob, updated_at = NOW() WHERE id = :id LIMIT 1', ['dob' => $dob, 'id' => $leadId]);
         $selected = (string) ($state['selected_availability'] ?? '');
-        $formatted = lead_agent_format_availability($selected);
-        $message = 'Thank you—I have that. Rod will confirm ' . ($formatted !== '' ? $formatted : 'your appointment time') . ' shortly.';
-        $draft = $channel === 'email' ? ['subject' => 'Your consultation request', 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
+        $formatted = lead_agent_format_availability($selected, lead_language_preference($lead));
+        $message = lead_language_is_spanish($lead)
+            ? 'Gracias, ya la tengo. Rod confirmará ' . ($formatted !== '' ? $formatted : 'el horario de su cita') . ' en breve.'
+            : 'Thank you—I have that. Rod will confirm ' . ($formatted !== '' ? $formatted : 'your appointment time') . ' shortly.';
+        $draft = $channel === 'email' ? ['subject' => lead_language_text($lead, 'Your consultation request', 'Su solicitud de consulta'), 'body' => $message . "\n\nElite Smiles"] : ['subject' => '', 'body' => $message];
         $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'dob-received-' . $eventKey, 'dob_received');
         db_execute("UPDATE lead_agent_states SET status = 'ready_to_schedule', scheduling_phase = 'ready_to_confirm', next_action_at = NULL, last_action_at = NOW(), last_decision = 'dob_received_ready_to_confirm', updated_at = NOW() WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
         lead_comm_insert_activity($leadId, 'lead_agent_dob_received', 'Lead Agent securely saved DOB after the lead selected an appointment option.', ['selected_option' => $selected], 'Lead Agent');
@@ -3091,6 +3220,15 @@ if (!function_exists('lead_agent_handle_inbound')) {
         }
         if ((string) ($state['last_inbound_event_key'] ?? '') === $eventKey) {
             return ['ok' => true, 'handled' => false, 'duplicate' => true];
+        }
+
+        $languageSignal = lead_language_detect_message_signal($body);
+        $detectedLanguage = (string)($languageSignal['language'] ?? 'unknown');
+        if ($detectedLanguage !== 'unknown') {
+            $languageSource = (string)($languageSignal['source'] ?? 'inbound_detected');
+            lead_language_set_preference($leadId, $detectedLanguage, $languageSource);
+            $lead['preferred_language'] = $detectedLanguage;
+            $lead['preferred_language_source'] = $languageSource;
         }
 
         db_execute('UPDATE lead_agent_states SET last_inbound_event_key = :event_key, next_action_at = NULL, updated_at = NOW() WHERE lead_id = :lead_id', [
@@ -3143,16 +3281,27 @@ if (!function_exists('lead_agent_handle_inbound')) {
         $schedulingPhase = (string) ($state['scheduling_phase'] ?? '');
         if ($schedulingPhase !== '' && $intent === 'cost_redirect') {
             $first = lead_agent_first_name($lead);
-            $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
-            $nextStep = match ($schedulingPhase) {
-                'awaiting_slot_selection' => 'Which of the two consultation times works better for you?',
-                'awaiting_dob' => 'To finish the appointment request, what is your date of birth?',
-                'ready_to_confirm' => 'Rod will confirm the consultation time you selected shortly.',
-                default => 'Would mornings or afternoons usually work better for you?',
-            };
-            $message = $hello . ' every smile is different, so Dr. Meden reviews your goals and clinical needs during the complimentary consultation. ' . $nextStep;
+            if (lead_language_is_spanish($lead)) {
+                $hello = $first !== '' ? 'Hola ' . $first . ',' : 'Hola,';
+                $nextStep = match ($schedulingPhase) {
+                    'awaiting_slot_selection' => '¿Cuál de los dos horarios de consulta le funciona mejor?',
+                    'awaiting_dob' => 'Para terminar la solicitud de cita, ¿cuál es su fecha de nacimiento?',
+                    'ready_to_confirm' => 'Rod confirmará pronto el horario de consulta que seleccionó.',
+                    default => '¿Generalmente le funciona mejor por la mañana o por la tarde?',
+                };
+                $message = $hello . ' cada sonrisa es diferente, por eso el Dr. Meden revisa sus metas y necesidades durante la consulta gratis. ' . $nextStep;
+            } else {
+                $hello = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+                $nextStep = match ($schedulingPhase) {
+                    'awaiting_slot_selection' => 'Which of the two consultation times works better for you?',
+                    'awaiting_dob' => 'To finish the appointment request, what is your date of birth?',
+                    'ready_to_confirm' => 'Rod will confirm the consultation time you selected shortly.',
+                    default => 'Would mornings or afternoons usually work better for you?',
+                };
+                $message = $hello . ' every smile is different, so Dr. Meden reviews your goals and clinical needs during the complimentary consultation. ' . $nextStep;
+            }
             $draft = $channel === 'email'
-                ? ['subject' => 'Your Elite Smiles consultation', 'body' => $message . "\n\nElite Smiles"]
+                ? ['subject' => lead_language_text($lead, 'Your Elite Smiles consultation', 'Su consulta con Elite Smiles'), 'body' => $message . "\n\nElite Smiles"]
                 : ['subject' => '', 'body' => $message];
             $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'cost-redirect-' . $eventKey, 'cost_redirect');
             if (empty($send['ok'])) {

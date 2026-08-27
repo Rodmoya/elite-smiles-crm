@@ -141,6 +141,7 @@ if (!function_exists('lead_ai_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, personal, professional, persuasive, never pushy, perfect grammar and capitalization.',
+            'Language: preferred_language is authoritative when it is en or es. Write entirely in Spanish for es and entirely in English for en. When it is unknown, follow the language used in the newest patient message. Never infer language, nationality, or ethnicity from a person\'s name.',
             'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.active_thread is true, you are continuing a live back-and-forth and should not open with a fresh greeting or reintroduce yourself.',
             'If thread_state.active_thread is false, a friendly greeting is allowed and often helpful for follow-up messages, as long as the reply still feels specific to the current lead and prior context.',
             'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, begin directly with the answer or next step, not with "Hi", "Hello", or the patient name.',
@@ -200,6 +201,7 @@ if (!function_exists('lead_ai_email_system_prompt')) {
             'Business facts: Elite Smiles by Walter Meden DDS, 11762 South State, Suite 300, Draper, UT 84020.',
             'Primary goal: schedule a free consultation with Dr. Meden for dental implants, All-on-X, veneers, or smile consultation leads.',
             'Tone: warm, polished, professional, persuasive, personal, never pushy. Write like a real office team member, not marketing automation.',
+            'Language: preferred_language is authoritative when it is en or es. Write entirely in Spanish for es and entirely in English for en. When it is unknown, follow the language used in the newest patient message. Never infer language, nationality, or ethnicity from a person\'s name.',
             'Thread awareness: the context includes a thread_state object with thread history and a summary. If thread_state.active_thread is true, you are continuing a live back-and-forth and must not open with a fresh greeting or reintroduce yourself.',
             'If thread_state.active_thread is false, a friendly greeting is allowed and often helpful for follow-up emails, as long as the body still feels specific to the current lead and prior context.',
             'If thread_state.conversation_mode is reply or follow_up and thread_state.active_thread is true, the body should start with the response itself, not "Hi", "Hello", or the patient name.',
@@ -713,6 +715,8 @@ if (!function_exists('lead_ai_context')) {
                 'source' => (string)($lead['source'] ?? ''),
                 'landing_page' => (string)($lead['landing_page'] ?? ''),
                 'status' => (string)($lead['status'] ?? ''),
+                'preferred_language' => lead_language_preference($lead),
+                'preferred_language_source' => (string)($lead['preferred_language_source'] ?? ''),
                 'financing_needed' => (string)($lead['financing_needed'] ?? ''),
                 'consultation_status' => (string)($lead['consultation_status'] ?? ''),
                 'consultation_date' => (string)($lead['consultation_date'] ?? ''),
@@ -752,6 +756,8 @@ if (!function_exists('lead_ai_email_context')) {
                 'landing_page' => (string)($lead['landing_page'] ?? ''),
                 'campaign' => (string)($lead['campaign'] ?? ''),
                 'status' => (string)($lead['status'] ?? ''),
+                'preferred_language' => lead_language_preference($lead),
+                'preferred_language_source' => (string)($lead['preferred_language_source'] ?? ''),
                 'financing_needed' => (string)($lead['financing_needed'] ?? ''),
                 'consultation_status' => (string)($lead['consultation_status'] ?? ''),
                 'consultation_date' => (string)($lead['consultation_date'] ?? ''),
@@ -1242,16 +1248,14 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
     function lead_ai_default_new_lead_sms(array $lead): string
     {
         $firstName = function_exists('lead_email_first_name') ? lead_email_first_name($lead) : '';
-        $notes = strtolower((string)($lead['notes'] ?? ''));
-        $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
-        if ($prefersSpanish) {
+        if (lead_language_is_spanish($lead)) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos sobre opciones para tu sonrisa. Que te gustaria mejorar mas: color, forma, espacios, dientes desgastados, o solo quieres conocer lo que es posible? Responde STOP para cancelar.';
+            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos. ¿Qué le gustaría mejorar más de su sonrisa: color, forma, espacios, dientes desgastados, o está explorando opciones? Responda STOP para cancelar.';
         }
 
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
-
-        return $greeting . ' this is Rod with Elite Smiles. Thanks for reaching out about veneers/smile options. What are you hoping to improve most—color, shape, spacing, worn teeth, or are you just exploring what may be possible? Reply STOP to opt out.';
+        $body = $greeting . ' this is Rod with Elite Smiles. Thanks for reaching out. What are you hoping to improve most—color, shape, spacing, worn teeth, or are you exploring what may be possible? Reply STOP to opt out.';
+        return lead_language_maybe_add_sms_offer($lead, $body);
     }
 }
 

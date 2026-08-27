@@ -12,6 +12,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
+require_once __DIR__ . '/lead_language.php';
 
 if (!function_exists('lead_conversion_ensure_schema')) {
     function lead_conversion_ensure_schema(): void
@@ -148,10 +149,8 @@ if (!function_exists('lead_conversion_strategy_rankings')) {
 if (!function_exists('lead_conversion_detect_language')) {
     function lead_conversion_detect_language(string $inboundText): string
     {
-        if ($inboundText !== '' && preg_match('/\b(?:hola|gracias|quiero|necesito|puedo|cuando|donde|martes|miercoles|miércoles|jueves|viernes|mañana|tarde|dientes|sonrisa|carillas|implantes)\b/iu', $inboundText)) {
-            return 'es';
-        }
-        return 'en';
+        $signal = lead_language_detect_message_signal($inboundText);
+        return (string)($signal['language'] ?? 'unknown') === 'es' ? 'es' : 'en';
     }
 }
 
@@ -214,8 +213,9 @@ if (!function_exists('lead_conversion_extract_signals')) {
         $readiness = max(0, min(100, $closed ? 0 : $readiness));
 
         $state = $closed ? 'closed' : ($answered['consultation_interest'] || $answered['day_preference'] || $answered['time_preference'] ? 'scheduling' : ($objection !== '' ? 'objection' : (count($inbound) > 0 ? 'engaged' : 'exploring')));
+        $preferredLanguage = lead_language_preference($lead);
         return [
-            'language' => lead_conversion_detect_language($inboundText),
+            'language' => $preferredLanguage !== 'unknown' ? $preferredLanguage : lead_conversion_detect_language($inboundText),
             'treatment_goal' => mb_substr($goal, 0, 190),
             'primary_objection' => $objection,
             'readiness_score' => $readiness,

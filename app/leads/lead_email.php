@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/core/helpers.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/core/smtp.php';
 require_once __DIR__ . '/lead_meta.php';
+require_once __DIR__ . '/lead_language.php';
 require_once __DIR__ . '/lead_agent_observability.php';
 
 if (!function_exists('lead_email_ensure_schema')) {
@@ -412,22 +413,20 @@ if (!function_exists('lead_email_default_first_touch')) {
     function lead_email_default_first_touch(array $lead): array
     {
         $firstName = lead_email_first_name($lead);
-        $notes = strtolower((string)($lead['notes'] ?? ''));
-        $prefersSpanish = str_contains($notes, 'preferred language: spanish') || str_contains($notes, 'idioma preferido: español') || str_contains($notes, 'idioma preferido: espanol');
-        if ($prefersSpanish) {
+        if (lead_language_is_spanish($lead)) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
             $procedure = trim((string)($lead['procedure_interest'] ?? ''));
             $serviceLine = $procedure !== ''
-                ? 'Queria asegurarme de dar seguimiento a tu solicitud de consulta sobre ' . $procedure . '.'
-                : 'Queria asegurarme de dar seguimiento a tu solicitud de consulta de sonrisa.';
+                ? 'Quería asegurarme de dar seguimiento a su solicitud de consulta sobre ' . $procedure . '.'
+                : 'Quería asegurarme de dar seguimiento a su solicitud de consulta de sonrisa.';
 
             return [
                 'subject' => 'Seguimiento de tu consulta con Elite Smiles',
                 'body' => implode("\n\n", [
                     $greeting,
                     $serviceLine,
-                    'Cada sonrisa se planifica de forma personalizada. Dr. Meden revisa tus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan generico.',
-                    'La consulta es gratis y sin presion. Puedes responder este correo si tienes alguna pregunta; Rod tambien te enviara un mensaje de texto para que continuar la conversacion sea facil.',
+                    'Cada sonrisa se planifica de forma personalizada. El Dr. Meden revisa sus dientes, mordida y metas antes de recomendar opciones, para que no sea un plan genérico.',
+                    'La consulta es gratis y sin presión. Puede responder este correo si tiene alguna pregunta; Rod también le enviará un mensaje de texto para que continuar la conversación sea fácil.',
                     "Con gusto,\nEl equipo de Elite Smiles",
                 ]),
             ];
@@ -439,15 +438,17 @@ if (!function_exists('lead_email_default_first_touch')) {
             ? 'I wanted to make sure we followed up on your ' . $procedure . ' consultation request.'
             : 'I wanted to make sure we followed up on your smile consultation request.';
 
+        $body = implode("\n\n", [
+            $greeting,
+            $serviceLine,
+            'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
+            'The consultation is complimentary and low pressure. You can reply here with any questions; Rod will also text you so it is easy to continue the conversation.',
+            "Warmly,\nThe Elite Smiles Team",
+        ]);
+
         return [
             'subject' => 'Following up on your Elite Smiles consultation',
-            'body' => implode("\n\n", [
-                $greeting,
-                $serviceLine,
-                'Every smile case is custom. Dr. Meden reviews your teeth, bite, and goals before recommending options, so you are not getting a cookie-cutter plan.',
-                'The consultation is complimentary and low pressure. You can reply here with any questions; Rod will also text you so it is easy to continue the conversation.',
-                "Warmly,\nThe Elite Smiles Team",
-            ]),
+            'body' => lead_language_maybe_add_email_offer($lead, $body),
         ];
     }
 }

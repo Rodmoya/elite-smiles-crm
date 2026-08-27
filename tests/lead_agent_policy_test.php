@@ -16,6 +16,9 @@ expect_true(lead_agent_classify_inbound('Can I come in Tuesday afternoon?') === 
 expect_true(lead_agent_classify_inbound('How much does it cost?') === 'cost_redirect', 'Cost question should use approved redirect.');
 expect_true(lead_agent_classify_inbound('STOP') === 'opt_out', 'STOP should halt automation.');
 expect_true(lead_agent_classify_inbound('No thank you') === 'pause', 'A polite decline must stop automated follow-up.');
+expect_true(lead_agent_classify_inbound('Quiero agendar una cita el martes por la tarde.') === 'ready_to_schedule', 'Spanish scheduling intent must stay in the deterministic scheduling flow.');
+expect_true(lead_agent_classify_inbound('No me interesa, gracias.') === 'pause', 'A Spanish decline must stop automated follow-up.');
+expect_true(lead_agent_classify_inbound('Cuánto cuesta la consulta?') === 'cost_redirect', 'A Spanish cost question must use the safe cost redirect.');
 expect_true(lead_agent_decline_kind('No thank you') === 'declined', 'An explicit decline must close the Scheduling pipeline record.');
 expect_true(lead_agent_decline_kind('Maybe later') === 'deferred', 'A timing deferral must not be treated as a permanent rejection.');
 expect_true(lead_agent_classify_inbound('That is too far for me to travel') === 'pause', 'A distance-based decline must stop automated follow-up.');
@@ -39,6 +42,16 @@ $specificTime = lead_agent_scheduling_preferences('Can I come Thursday at 4:30 P
 expect_true($specificTime['day'] === 'thursday' && $specificTime['specific_time'] === '4:30 PM', 'A specific requested time should be captured.');
 $spanishPreference = lead_agent_scheduling_preferences('El martes por la tarde me funciona mejor.');
 expect_true($spanishPreference['day'] === 'tuesday' && $spanishPreference['period'] === 'afternoon', 'Spanish day and time-of-day preferences should remain in the scheduling flow.');
+$nameOnlyLanguage = lead_language_detect_message_signal('Vania Mendez Perez');
+expect_true(($nameOnlyLanguage['language'] ?? '') === 'unknown', 'A person\'s name must never be treated as a language signal.');
+$spanishMessageLanguage = lead_language_detect_message_signal('Hola, me interesa una consulta para carillas.');
+expect_true(($spanishMessageLanguage['language'] ?? '') === 'es' && ($spanishMessageLanguage['source'] ?? '') === 'inbound_detected', 'A clearly Spanish inbound message should establish a source-backed Spanish preference.');
+$explicitSpanishLanguage = lead_language_detect_message_signal('Spanish please');
+expect_true(($explicitSpanishLanguage['language'] ?? '') === 'es' && ($explicitSpanishLanguage['source'] ?? '') === 'inbound_explicit', 'An explicit Spanish request should be authoritative.');
+$explicitEnglishLanguage = lead_language_detect_message_signal('English please');
+expect_true(($explicitEnglishLanguage['language'] ?? '') === 'en' && ($explicitEnglishLanguage['source'] ?? '') === 'inbound_explicit', 'An explicit English request should be authoritative.');
+expect_true(lead_language_preference(['full_name' => 'Maria Gutierrez']) === 'unknown', 'A Spanish-looking name must leave language unknown.');
+expect_true(lead_language_preference(['notes' => 'Preferred language: Spanish']) === 'es', 'Legacy explicit landing-page language evidence must remain usable.');
 $nextWeekPreference = lead_agent_scheduling_preferences('Next week works for me.');
 expect_true($nextWeekPreference['day'] === 'next week' && !empty($nextWeekPreference['has_preference']), 'A next-week preference must not trigger the same scheduling question again.');
 $rejectedNextWeek = lead_agent_scheduling_preferences("I'm interested. The next week is bad for me.");
@@ -51,10 +64,14 @@ $acknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos E
 expect_true(str_contains($acknowledgment, 'Let me check whether that is available') && substr_count($acknowledgment, '?') === 0, 'A complete preference should receive a natural acknowledgment without another question.');
 $preferenceQuestion = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example'], lead_agent_scheduling_preferences('I want to schedule.'));
 expect_true(substr_count($preferenceQuestion, '?') === 1 && str_contains($preferenceQuestion, 'mornings or afternoons'), 'A scheduling request without a preference should ask one simple question.');
+$spanishAcknowledgment = lead_agent_scheduling_acknowledgment(['full_name' => 'Carlos Example', 'preferred_language' => 'es'], $spanishPreference);
+expect_true(str_contains($spanishAcknowledgment, 'Permítame revisar') && substr_count($spanishAcknowledgment, '?') === 0, 'A Spanish scheduling preference must receive a Spanish acknowledgment.');
 $option1 = '2026-08-19 15:30:00';
 $option2 = '2026-08-20 17:00:00';
 $offer = lead_agent_availability_offer_message(['full_name' => 'Carlos Example'], $option1, $option2);
 expect_true(substr_count($offer, '?') === 1 && str_contains($offer, 'Wednesday, August 19 at 3:30 PM') && str_contains($offer, 'Thursday, August 20 at 5:00 PM'), 'Availability offer should contain exactly two clear options and one question.');
+$spanishOffer = lead_agent_availability_offer_message(['full_name' => 'Carlos Example', 'preferred_language' => 'es'], $option1, $option2);
+expect_true(substr_count($spanishOffer, '?') === 1 && str_contains($spanishOffer, 'miércoles, 19 de agosto') && str_contains($spanishOffer, 'jueves, 20 de agosto'), 'Spanish availability must present both appointment options in Spanish.');
 expect_true(lead_agent_match_availability_selection('Wednesday at 3:30 works', $option1, $option2) === 1, 'Lead should be able to select the first option naturally.');
 expect_true(lead_agent_match_availability_selection('The second option is better', $option1, $option2) === 2, 'Lead should be able to select the second option by position.');
 expect_true(lead_agent_parse_dob('My birthday is 03/19/1999') === '1999-03-19', 'DOB should normalize only after a slot is selected.');
@@ -287,6 +304,11 @@ expect_true(lead_conversion_stage_legacy_target('lead_answered') === 'in_contact
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
 expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');
 expect_true(str_contains(strtolower($firstTouchSms), 'what are you hoping to improve'), 'First-touch SMS should begin a natural goal-focused conversation.');
+expect_true(str_contains($firstTouchSms, 'English or Spanish is welcome') && str_contains($firstTouchSms, 'ESPANOL'), 'Unknown-language first touch must offer Spanish neutrally.');
+$englishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example', 'preferred_language' => 'en']);
+expect_true(!str_contains($englishFirstTouchSms, 'ESPANOL'), 'A confirmed English preference must not receive the unknown-language prompt.');
+$spanishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example', 'preferred_language' => 'es']);
+expect_true(str_starts_with($spanishFirstTouchSms, 'Hola Taylor') && str_contains($spanishFirstTouchSms, '¿Qué le gustaría mejorar'), 'A confirmed Spanish preference must receive Spanish first touch.');
 $firstTouchEmail = lead_email_default_first_touch(['full_name' => 'Taylor Example', 'procedure_interest' => 'Veneers']);
 expect_true(substr_count((string) $firstTouchEmail['body'], '?') === 0, 'First-touch email must add trust and education instead of duplicating the SMS question.');
 

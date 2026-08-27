@@ -52,5 +52,15 @@ lead_communication_scheduling_expect(
     str_contains($source, 'modalLeadDobInput.value = dateValue;'),
     'Communication DOB must synchronize to the real lead DOB field before saving.'
 );
+lead_communication_scheduling_expect(
+    str_contains($source, "leadSelectedSummaryPanel.style.gridRow = '1 / 3';")
+        && str_contains($source, "leadSelectedSummaryPanel.style.overflowY = 'auto';"),
+    'Scheduling details must remain usable across both desktop communication grid rows.'
+);
+lead_communication_scheduling_expect(
+    str_contains($source, "leadEmailHistoryPanel.style.gridColumn = '3 / 4';")
+        && str_contains($source, "leadEmailHistoryPanel.style.gridRow = '2 / 3';"),
+    'Email history must remain in the right column instead of covering scheduling details.'
+);
 
 echo "Lead communication scheduling tests passed.\n";

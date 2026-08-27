@@ -134,6 +134,13 @@ try {
         $createdAt = trim((string)($lead['created_at'] ?? ''));
         $unread = (int)($lead['unread_message_count'] ?? 0);
         $isNurtureLead = in_array($stage, $nurtureStages, true);
+        $followUpStatus = trim((string)($lead['follow_up_status'] ?? ''));
+
+        // Confirmed invalid contact data is retained for deduplication, not
+        // repeatedly promoted back into the human attention queue.
+        if ($followUpStatus === 'unreachable') {
+            continue;
+        }
 
         if ($unread > 0) {
             $reasons[] = 'Unread patient reply';

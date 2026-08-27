@@ -166,6 +166,7 @@ expect_true(str_contains($emailSource, "lead_lifecycle_mark_inbound_answer(\$lea
 expect_true(str_contains($emailSource, 'List-Unsubscribe-Post: List-Unsubscribe=One-Click') && str_contains($emailSource, 'List-Unsubscribe: <'), 'Every automated lead email must retain one-click unsubscribe headers.');
 expect_true(str_contains($emailSource, 'unsubscribe from follow-up emails') && str_contains($emailSource, '11762 South State, Suite 300, Draper, UT 84020'), 'Lead emails must retain a visible unsubscribe link and the practice mailing address.');
 expect_true(str_contains($emailSource, "email_opt_status = 'bounced'"), 'A confirmed email bounce must suppress that address from future monthly outreach.');
+expect_true(str_contains($emailSource, "lead_agent_reconcile_unreachable_contact(\$leadId, 'email_bounce')"), 'An email bounce must immediately re-evaluate whether any deliverable channel remains.');
 $plainCompliance = lead_email_plain_text_with_compliance('Requested information.', 'https://example.com/unsubscribe');
 expect_true(str_contains($plainCompliance, '11762 South State, Suite 300, Draper, UT 84020') && str_contains($plainCompliance, 'Unsubscribe from follow-up emails: https://example.com/unsubscribe'), 'Plain-text email alternatives must include both the physical address and a direct unsubscribe mechanism.');
 expect_true(lead_email_spf_records_authorize([
@@ -190,6 +191,19 @@ $operationsSource = (string) file_get_contents(dirname(__DIR__) . '/lead-agent-o
 expect_true(str_contains($operationsSource, 'id="cycle-coverage"') && str_contains($operationsSource, 'id="cycle-coverage-data"'), 'Authenticated Lead Agent Operations must expose live cycle coverage and its exact audit payload.');
 expect_true(!lead_attention_is_actionable(['_action_queue' => ['action_key' => 'delivery_issue']]), 'A non-actionable SMS delivery failure must not create a red human-attention halo.');
 expect_true(lead_attention_is_actionable(['_action_queue' => ['action_key' => 'reply_needed']]), 'A patient reply that needs an answer must remain in the human-attention queue.');
+$invalidContactLead = [
+    'status' => 'no_answer',
+    'follow_up_status' => 'unreachable',
+    'phone' => '80155512',
+    'email' => 'invalid-contact@example.invalid',
+    'email_opt_status' => 'bounced',
+];
+expect_true((string)(lead_conversion_next_action($invalidContactLead)['key'] ?? '') === 'invalid_contact', 'An unreachable lead must display Invalid contact instead of a nurture action.');
+expect_true((string)(lead_conversion_urgency($invalidContactLead)['key'] ?? '') === 'unreachable', 'An unreachable lead must not display a cleanup urgency that could be mistaken for human work.');
+$invalidContactBadges = lead_conversion_badges($invalidContactLead);
+expect_true((string)($invalidContactBadges[0]['key'] ?? '') === 'unreachable', 'The Unreachable badge must remain visible before lower-priority contact-quality badges.');
+$followUpCheckSource = (string)file_get_contents(dirname(__DIR__) . '/app/actions/lead_followup_check.php');
+expect_true(str_contains($followUpCheckSource, "if (\$followUpStatus === 'unreachable')"), 'The legacy follow-up checker must not reactivate an unreachable record.');
 
 $eligibleBackfill = [
     'full_name' => 'Real Lead',
@@ -218,6 +232,8 @@ expect_true(lead_agent_backfill_ineligible_reason(array_merge($invalidPhoneBackf
 $noChannelBackfill = $emailOnlyBackfill;
 $noChannelBackfill['email_opt_status'] = 'unsubscribed';
 expect_true(lead_agent_backfill_ineligible_reason($noChannelBackfill) === 'no_consented_delivery_channel', 'A lead without a consented channel must not be enrolled.');
+expect_true(lead_agent_confirmed_unreachable_contact(array_merge($invalidPhoneBackfill, ['email_opt_status' => 'unsubscribed'])), 'A confirmed invalid phone with no usable email route must be classified as unreachable.');
+expect_true(!lead_agent_confirmed_unreachable_contact($noChannelBackfill), 'Pure consent opt-outs must not be mislabeled as invalid contact data.');
 
 $legacyNurture = array_merge($eligibleBackfill, ['status' => 'no_answer']);
 $nurtureGap = lead_agent_cycle_assessment($legacyNurture, [], false, '');

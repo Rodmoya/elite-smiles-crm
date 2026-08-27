@@ -504,6 +504,9 @@ if (!function_exists('lead_conversion_age_hours')) {
 if (!function_exists('lead_conversion_urgency')) {
     function lead_conversion_urgency(array $lead): array
     {
+        if (lead_conversion_is_unreachable_invalid_contact($lead)) {
+            return ['key' => 'unreachable', 'label' => 'Unreachable', 'tone' => 'slate'];
+        }
         if (lead_conversion_bad_phone($lead)) {
             return ['key' => 'cleanup', 'label' => 'Cleanup', 'tone' => 'rose'];
         }
@@ -837,11 +840,23 @@ if (!function_exists('lead_lifecycle_mark_scheduling')) {
     }
 }
 
+if (!function_exists('lead_conversion_is_unreachable_invalid_contact')) {
+    function lead_conversion_is_unreachable_invalid_contact(array $lead): bool
+    {
+        return trim((string)($lead['status'] ?? '')) === 'no_answer'
+            && trim((string)($lead['follow_up_status'] ?? '')) === 'unreachable';
+    }
+}
+
 if (!function_exists('lead_conversion_next_action')) {
     function lead_conversion_next_action(array $lead): array
     {
         $status = trim((string)($lead['status'] ?? ''));
         $stageKey = lead_conversion_stage_key($lead);
+
+        if (lead_conversion_is_unreachable_invalid_contact($lead)) {
+            return ['key' => 'invalid_contact', 'label' => 'Invalid contact', 'tone' => 'slate'];
+        }
 
         if ($status === 'treatment_completed') {
             return ['key' => 'completed_tracking', 'label' => 'Completed', 'tone' => 'emerald'];
@@ -937,6 +952,9 @@ if (!function_exists('lead_conversion_badges')) {
     function lead_conversion_badges(array $lead): array
     {
         $badges = [];
+        if (lead_conversion_is_unreachable_invalid_contact($lead)) {
+            $badges[] = ['key' => 'unreachable', 'label' => 'Unreachable', 'tone' => 'slate'];
+        }
         if (lead_conversion_bad_phone($lead)) {
             $badges[] = ['key' => 'bad_phone', 'label' => 'Bad Phone', 'tone' => 'rose'];
         }

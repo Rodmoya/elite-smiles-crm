@@ -2248,13 +2248,13 @@ $consultationOptions = [
                                 </div>
 
 
-                                <div class="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                                <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4 shadow-sm">
 
-                                    <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center justify-between gap-2">
 
-                                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduling Details</p>
+                                        <p class="text-xs font-semibold text-slate-700">Scheduling</p>
 
-                                        <span class="text-[11px] font-medium text-slate-400">Appointment prep</span>
+                                        <span class="whitespace-nowrap rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">Appointment</span>
 
                                     </div>
 
@@ -2268,18 +2268,18 @@ $consultationOptions = [
 
                                     </div>
 
-                                    <div class="grid grid-cols-1 gap-4">
+                                    <div id="modal-communication-scheduling-content" class="mt-4 space-y-4">
 
-                                        <div class="rounded-2xl bg-white px-4 py-4">
-                                            <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Scheduled Consultation</p>
-                                            <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Consultation</p>
+                                            <div class="mt-3 grid grid-cols-1 gap-3">
                                                 <div>
-                                                    <label for="modal-communication-consultation-date-picker" class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Date</label>
-                                                    <input type="date" id="modal-communication-consultation-date-picker" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+                                                    <label for="modal-communication-consultation-date-picker" class="text-[11px] font-medium text-slate-500">Date</label>
+                                                    <input type="date" id="modal-communication-consultation-date-picker" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
                                                 </div>
                                                 <div>
-                                                    <label for="modal-communication-consultation-time-input" class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Time</label>
-                                                    <select id="modal-communication-consultation-time-input" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+                                                    <label for="modal-communication-consultation-time-input" class="text-[11px] font-medium text-slate-500">Time</label>
+                                                    <select id="modal-communication-consultation-time-input" class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
                                                         <option value="">Select time</option>
                                                         <?php for ($slotMinutes = 9 * 60; $slotMinutes <= 18 * 60; $slotMinutes += 30): ?>
                                                             <?php
@@ -2293,16 +2293,15 @@ $consultationOptions = [
                                                     </select>
                                                 </div>
                                             </div>
-                                            <p id="modal-communication-consultation-date-status" aria-live="polite" class="mt-2 text-[11px] leading-5 text-slate-500">Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.</p>
+                                            <p id="modal-communication-consultation-date-status" aria-live="polite" class="mt-2 text-[11px] leading-4 text-slate-500">9:00 AM–6:00 PM · 30-minute slots</p>
                                         </div>
 
-                                        <div class="rounded-2xl border-t border-slate-100 bg-white px-4 py-4">
-                                            <div class="flex items-center justify-between gap-3">
-                                                <label for="modal-communication-dob-input" class="text-xs uppercase tracking-[0.18em] text-slate-400">Date of Birth</label>
-                                                <span id="modal-communication-age-summary" aria-live="polite" class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">Age: Not provided</span>
+                                        <div id="modal-communication-dob-section" class="border-t border-slate-200 pt-4">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label for="modal-communication-dob-input" class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Date of birth</label>
+                                                <span id="modal-communication-age-summary" aria-live="polite" class="whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">Age: Not provided</span>
                                             </div>
-                                            <input type="date" id="modal-communication-dob-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
-                                            <p class="mt-2 text-[11px] leading-5 text-slate-500">DOB and age save to the same lead record used for appointment preparation.</p>
+                                            <input type="date" id="modal-communication-dob-input" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
                                         </div>
 
                                     </div>
@@ -3870,7 +3869,7 @@ $consultationOptions = [
         if (modalCommunicationConsultationDateStatus) {
             modalCommunicationConsultationDateStatus.textContent = normalized && !communicationConsultationSlotIsAllowed(timeValue)
                 ? 'This existing appointment is outside the 9:00 AM-6:00 PM schedule. Choose an approved 30-minute time to change it.'
-                : 'Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.';
+                : '9:00 AM–6:00 PM · 30-minute slots';
         }
     }
 
@@ -3888,10 +3887,10 @@ $consultationOptions = [
         }
         if (modalCommunicationConsultationDateStatus) {
             modalCommunicationConsultationDateStatus.textContent = dateValue && !timeValue
-                ? 'Choose an appointment time between 9:00 AM and 6:00 PM.'
+                ? 'Choose a time from 9:00 AM to 6:00 PM.'
                 : (!dateValue && timeValue
                     ? 'Choose the appointment date.'
-                    : 'Appointments are available from 9:00 AM through 6:00 PM in 30-minute intervals.');
+                    : '9:00 AM–6:00 PM · 30-minute slots');
         }
         if (saveStatus && activeCard) {
             saveStatus.textContent = 'Consultation time changed. Save changes to keep it.';

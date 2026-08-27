@@ -238,6 +238,15 @@ if (!function_exists('lead_language_source_priority')) {
         if ($source === '') {
             return 0;
         }
+        if (in_array($source, [
+            'landing_page_default',
+            'landing_page_browser',
+            'landing_page_link',
+            'landing_page_remembered',
+            'landing_page_ui',
+        ], true)) {
+            return 5;
+        }
         if (str_contains($source, 'manual')
             || str_contains($source, 'operator')
             || str_contains($source, 'intake')

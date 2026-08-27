@@ -50,6 +50,7 @@
             <input type="hidden" name="<?= e((string) $attrName) ?>" value="<?= e((string) $attrValue) ?>">
             <?php endforeach; ?>
             <input type="hidden" name="preferred_language" value="en">
+            <input type="hidden" name="preferred_language_source" value="landing_page_default">
 
             <!-- Hidden fields for all quiz answers -->
             <?php foreach ($quizSteps as $step):

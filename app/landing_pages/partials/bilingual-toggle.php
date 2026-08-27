@@ -93,6 +93,11 @@
     const languageParam = new URLSearchParams(window.location.search).get('lang');
     const storedLanguage = window.localStorage ? localStorage.getItem('elite_landing_language') : '';
     const browserLanguage = (navigator.language || '').toLowerCase();
+    const initialLanguageSource = languageParam === 'es' || languageParam === 'en'
+        ? 'landing_page_link'
+        : (storedLanguage === 'es' || storedLanguage === 'en'
+            ? 'landing_page_remembered'
+            : (browserLanguage.startsWith('es') ? 'landing_page_browser' : 'landing_page_default'));
     let currentLanguage = languageParam === 'es' || languageParam === 'en'
         ? languageParam
         : (storedLanguage === 'es' || storedLanguage === 'en' ? storedLanguage : (browserLanguage.startsWith('es') ? 'es' : 'en'));
@@ -136,12 +141,20 @@
         });
     }
 
-    function setPreferredLanguage(lang) {
+    function setPreferredLanguage(lang, source = 'landing_page_selected') {
         currentLanguage = lang === 'es' ? 'es' : 'en';
-        if (window.localStorage) localStorage.setItem('elite_landing_language', currentLanguage);
+        const languageSource = source === 'landing_page_selected'
+            ? 'landing_page_selected'
+            : initialLanguageSource;
+        if (languageSource === 'landing_page_selected' && window.localStorage) {
+            localStorage.setItem('elite_landing_language', currentLanguage);
+        }
         document.documentElement.lang = currentLanguage;
         document.querySelectorAll('[name="preferred_language"]').forEach(input => {
             input.value = currentLanguage;
+        });
+        document.querySelectorAll('[name="preferred_language_source"]').forEach(input => {
+            input.value = languageSource;
         });
         document.querySelectorAll('[data-language-toggle]').forEach(btn => {
             const active = btn.getAttribute('data-language-toggle') === currentLanguage;
@@ -152,7 +165,7 @@
             btn.classList.toggle('text-eliteInk', !active);
         });
         walkAndTranslate(currentLanguage);
-        if (typeof trackEvent === 'function') {
+        if (languageSource === 'landing_page_selected' && typeof trackEvent === 'function') {
             trackEvent('language_selected', { language: currentLanguage, landing_page: <?= json_encode((string) ($pageSlug ?? $slug ?? ''), JSON_UNESCAPED_SLASHES) ?> });
         }
     }
@@ -161,7 +174,7 @@
         const target = event.target.closest('[data-language-toggle]');
         if (!target) return;
         event.preventDefault();
-        setPreferredLanguage(target.getAttribute('data-language-toggle') || 'en');
+        setPreferredLanguage(target.getAttribute('data-language-toggle') || 'en', 'landing_page_selected');
     });
 
     window.EliteLandingLanguage = {
@@ -170,9 +183,9 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setPreferredLanguage(currentLanguage));
+        document.addEventListener('DOMContentLoaded', () => setPreferredLanguage(currentLanguage, initialLanguageSource));
     } else {
-        setPreferredLanguage(currentLanguage);
+        setPreferredLanguage(currentLanguage, initialLanguageSource);
     }
 })();
 </script>

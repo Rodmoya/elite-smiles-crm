@@ -2086,6 +2086,7 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
         $incomingStatus = trim((string)($data['status'] ?? ''));
         $reopenedFromStatus = '';
         $reopenedToStatus = '';
+        $languageRefresh = null;
 
         foreach ([
             'full_name',
@@ -2132,16 +2133,14 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
 
         $incomingLanguage = lead_language_normalize((string)($data['preferred_language'] ?? 'unknown'));
         if ($incomingLanguage !== 'unknown' && leads_has_column('preferred_language')) {
-            $updates[] = '`preferred_language` = :preferred_language';
-            $params['preferred_language'] = $incomingLanguage;
-            if (leads_has_column('preferred_language_source')) {
-                $updates[] = '`preferred_language_source` = :preferred_language_source';
-                $params['preferred_language_source'] = mb_substr(
+            $languageRefresh = lead_language_apply_signal($leadId, [
+                'language' => $incomingLanguage,
+                'source' => mb_substr(
                     trim((string)($data['preferred_language_source'] ?? 'intake_refresh')) ?: 'intake_refresh',
                     0,
                     40
-                );
-            }
+                ),
+            ]);
         }
 
         if (
@@ -2201,6 +2200,14 @@ if (!function_exists('lead_refresh_duplicate_from_input')) {
                 'source' => 'lead_create_minimal',
                 'duplicate_match_type' => (string)($duplicate['duplicate_match_type'] ?? ''),
             ];
+            if (is_array($languageRefresh)) {
+                $activityMeta['language_refresh'] = [
+                    'language' => (string)($languageRefresh['language'] ?? 'unknown'),
+                    'source' => (string)($languageRefresh['source'] ?? ''),
+                    'saved' => !empty($languageRefresh['saved']),
+                    'reason' => (string)($languageRefresh['reason'] ?? ''),
+                ];
+            }
 
             if ($reopenedFromStatus !== '' && $reopenedToStatus !== '') {
                 $activityBody = 'Duplicate public intake refreshed this lead, reopened it, and moved it to the top of the board.';

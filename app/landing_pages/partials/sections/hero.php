@@ -97,6 +97,7 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
                         <input type="hidden" name="<?= e((string) $attrName) ?>" value="<?= e((string) $attrValue) ?>">
                     <?php endforeach; ?>
                     <input type="hidden" name="preferred_language" value="en">
+                    <input type="hidden" name="preferred_language_source" value="landing_page_default">
                     <input type="hidden" name="procedure_interest" value="<?= e($quickProcedureLabel) ?>">
                     <?php foreach ($quickQuizSteps as $quickStep): ?>
                         <?php $quickField = (string) ($quickStep['field'] ?? ''); ?>

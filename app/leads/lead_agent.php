@@ -3327,11 +3327,10 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return ['ok' => true, 'handled' => false, 'duplicate' => true];
         }
 
-        $languageSignal = lead_language_detect_message_signal($body);
+        $languageSignal = lead_language_record_inbound($leadId, $body);
         $detectedLanguage = (string)($languageSignal['language'] ?? 'unknown');
         if ($detectedLanguage !== 'unknown') {
             $languageSource = (string)($languageSignal['source'] ?? 'inbound_detected');
-            lead_language_set_preference($leadId, $detectedLanguage, $languageSource);
             $lead['preferred_language'] = $detectedLanguage;
             $lead['preferred_language_source'] = $languageSource;
         }

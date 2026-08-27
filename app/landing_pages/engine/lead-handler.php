@@ -49,6 +49,31 @@ if (!function_exists('lp_handle_post')) {
 
 }
 
+if (!function_exists('lp_language_preference_source')) {
+    function lp_language_preference_source(string $source): string
+    {
+        $source = strtolower(trim($source));
+        return in_array($source, [
+            'landing_page_default',
+            'landing_page_browser',
+            'landing_page_link',
+            'landing_page_remembered',
+            'landing_page_selected',
+        ], true) ? $source : 'landing_page_default';
+    }
+}
+
+if (!function_exists('lp_language_intake_note')) {
+    function lp_language_intake_note(string $language, string $source): string
+    {
+        $label = $language === 'es' ? 'Spanish' : 'English';
+        if ($source === 'landing_page_selected') {
+            return 'Preferred language: ' . $label;
+        }
+        return 'Landing page display language: ' . $label . ' (' . $source . ')';
+    }
+}
+
 if (!function_exists('lp_handle_standard_post')) {
 
     function lp_handle_standard_post(array $ctx, array $result): array
@@ -63,6 +88,7 @@ if (!function_exists('lp_handle_standard_post')) {
         $sf['preferred_contact']  = trim((string) post('preferred_contact'));
         $sf['sms_consent']        = post('sms_consent') === 'yes' ? 'yes' : '';
         $sf['preferred_language']  = strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
+        $sf['preferred_language_source'] = lp_language_preference_source((string) post('preferred_language_source', 'landing_page_default'));
 
         foreach ($ctx['quizSteps'] as $step) {
             $field = (string) ($step['field'] ?? '');
@@ -131,7 +157,7 @@ if (!function_exists('lp_handle_standard_post')) {
             $notes[] = 'Preferred contact: ' . $sf['preferred_contact'];
         }
         $notes[] = 'SMS consent: ' . ($sf['sms_consent'] === 'yes' ? 'yes' : 'no');
-        $notes[] = 'Preferred language: ' . ($sf['preferred_language'] === 'es' ? 'Spanish' : 'English');
+        $notes[] = lp_language_intake_note($sf['preferred_language'], $sf['preferred_language_source']);
         if ($notesContactWarning !== '') {
             $notes[] = $notesContactWarning;
         }
@@ -152,7 +178,7 @@ if (!function_exists('lp_handle_standard_post')) {
             'lead_value'         => '15000',
             'sms_opt_status'     => $smsOptStatus,
             'preferred_language' => $sf['preferred_language'],
-            'preferred_language_source' => 'landing_page_ui',
+            'preferred_language_source' => $sf['preferred_language_source'],
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
             'suppress_notification_email' => true,
@@ -238,6 +264,7 @@ if (!function_exists('lp_handle_voucher_post')) {
         $vf['start_timing']     = trim((string) post('start_timing'));
         $vf['preferred_contact']= trim((string) post('preferred_contact'));
         $vf['preferred_language']= strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
+        $vf['preferred_language_source'] = lp_language_preference_source((string) post('preferred_language_source', 'landing_page_default'));
 
         if ($vf['full_name'] === '') throw new RuntimeException('Please enter your full name.');
         if ($vf['phone'] === '')     throw new RuntimeException('Please enter your phone number.');
@@ -267,7 +294,7 @@ if (!function_exists('lp_handle_voucher_post')) {
             'What brings you in: ' . $vf['what_brings_you_in'],
             'When to start: '  . $vf['start_timing'],
             'Preferred contact: ' . $vf['preferred_contact'],
-            'Preferred language: ' . ($vf['preferred_language'] === 'es' ? 'Spanish' : 'English'),
+            lp_language_intake_note($vf['preferred_language'], $vf['preferred_language_source']),
         ];
         if ($ctx['queryCampaign']) $notes[] = 'Campaign: ' . $ctx['queryCampaign'];
         if ($ctx['queryKeyword'])  $notes[] = 'Trigger keyword: ' . $ctx['queryKeyword'];
@@ -299,7 +326,7 @@ if (!function_exists('lp_handle_voucher_post')) {
             'lead_value'         => '15000',
             'sms_opt_status'     => 'unknown',
             'preferred_language' => $vf['preferred_language'],
-            'preferred_language_source' => 'landing_page_ui',
+            'preferred_language_source' => $vf['preferred_language_source'],
             'notes'              => implode("\n", $notes),
             'refresh_duplicate'  => true,
             'suppress_notification_email' => true,

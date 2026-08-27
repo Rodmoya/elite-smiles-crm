@@ -112,6 +112,25 @@ if (!function_exists('lead_language_detect_message_signal')) {
             return ['language' => 'es', 'source' => 'inbound_detected', 'confidence' => min(0.95, 0.72 + (($matches - 2) * 0.08))];
         }
 
+        $englishMarkers = [
+            '/\b(?:hello|hi|good morning|good afternoon|good evening)\b/u',
+            '/\b(?:i am interested|i\'m interested|i would like|i\'d like|i want|i need)\b/u',
+            '/\b(?:can you help|could you help|please help)\b/u',
+            '/\b(?:appointment|consultation|smile|teeth|veneers|implants)\b/u',
+            '/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/u',
+            '/\b(?:tomorrow|morning|afternoon|evening|this week|next week)\b/u',
+            '/\b(?:thank you|thanks|please|yes please|that works for me)\b/u',
+        ];
+        $matches = 0;
+        foreach ($englishMarkers as $pattern) {
+            if (preg_match($pattern, $text)) {
+                $matches++;
+            }
+        }
+        if ($matches >= 2) {
+            return ['language' => 'en', 'source' => 'inbound_detected', 'confidence' => min(0.95, 0.72 + (($matches - 2) * 0.08))];
+        }
+
         return ['language' => 'unknown', 'source' => '', 'confidence' => 0.0];
     }
 }
@@ -209,6 +228,177 @@ if (!function_exists('lead_language_set_preference')) {
             }
             return false;
         }
+    }
+}
+
+if (!function_exists('lead_language_source_priority')) {
+    function lead_language_source_priority(string $source): int
+    {
+        $source = strtolower(trim($source));
+        if ($source === '') {
+            return 0;
+        }
+        if (in_array($source, [
+            'landing_page_default',
+            'landing_page_browser',
+            'landing_page_link',
+            'landing_page_remembered',
+            'landing_page_ui',
+        ], true)) {
+            return 5;
+        }
+        if (str_contains($source, 'manual')
+            || str_contains($source, 'operator')
+            || str_contains($source, 'intake')
+            || str_contains($source, 'selected')) {
+            return 40;
+        }
+        if ($source === 'inbound_explicit') {
+            return 30;
+        }
+        if ($source === 'inbound_detected' || str_contains($source, 'conversation')) {
+            return 10;
+        }
+        return 20;
+    }
+}
+
+if (!function_exists('lead_language_apply_signal')) {
+    /**
+     * Save a language signal without allowing passive detection to overwrite a
+     * stronger manual, intake, or explicit preference. A newer explicit request
+     * may change an older explicit request because it is the patient's choice.
+     */
+    function lead_language_apply_signal(int $leadId, array $signal): array
+    {
+        $language = lead_language_normalize((string)($signal['language'] ?? ''));
+        $source = mb_substr(trim((string)($signal['source'] ?? '')), 0, 40);
+        if ($leadId <= 0 || $language === 'unknown' || $source === '') {
+            return ['language' => 'unknown', 'source' => '', 'saved' => false, 'reason' => 'no_clear_signal'];
+        }
+
+        lead_language_ensure_schema();
+        try {
+            $current = db_one('SELECT preferred_language, preferred_language_source FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+            if (!$current) {
+                return ['language' => 'unknown', 'source' => '', 'saved' => false, 'reason' => 'lead_not_found'];
+            }
+
+            $currentLanguage = lead_language_normalize((string)($current['preferred_language'] ?? ''));
+            $currentSource = trim((string)($current['preferred_language_source'] ?? ''));
+            $incomingPriority = lead_language_source_priority($source);
+            $currentPriority = lead_language_source_priority($currentSource);
+            $explicitSwitch = $source === 'inbound_explicit';
+
+            if ($currentLanguage !== 'unknown'
+                && !$explicitSwitch
+                && ($currentPriority > $incomingPriority || $currentSource === 'inbound_explicit')) {
+                return ['language' => $currentLanguage, 'source' => $currentSource, 'saved' => false, 'reason' => 'stronger_preference_retained'];
+            }
+            if ($currentLanguage === $language && $currentSource === $source) {
+                return ['language' => $currentLanguage, 'source' => $currentSource, 'saved' => false, 'reason' => 'unchanged'];
+            }
+
+            $saved = lead_language_set_preference($leadId, $language, $source);
+            return ['language' => $language, 'source' => $source, 'saved' => $saved, 'reason' => $saved ? 'saved' : 'unchanged'];
+        } catch (Throwable $e) {
+            if (function_exists('esm_log')) {
+                esm_log('lead_language', 'Could not apply inbound language signal.', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+            }
+            return ['language' => 'unknown', 'source' => '', 'saved' => false, 'reason' => 'storage_error'];
+        }
+    }
+}
+
+if (!function_exists('lead_language_record_inbound')) {
+    /** Record a preference from one inbound SMS or the new portion of an email. */
+    function lead_language_record_inbound(int $leadId, string $body): array
+    {
+        return lead_language_apply_signal($leadId, lead_language_detect_message_signal($body));
+    }
+}
+
+if (!function_exists('lead_language_conversation_signal')) {
+    /**
+     * Recover language from recent inbound conversation history. The newest
+     * explicit request wins; otherwise the newest clearly detected message wins.
+     */
+    function lead_language_conversation_signal(int $leadId): array
+    {
+        if ($leadId <= 0) {
+            return ['language' => 'unknown', 'source' => '', 'confidence' => 0.0];
+        }
+
+        $items = [];
+        try {
+            foreach (db_all(
+                "SELECT id, body, created_at FROM lead_messages WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 20",
+                ['lead_id' => $leadId]
+            ) as $row) {
+                $items[] = ['id' => (int)($row['id'] ?? 0), 'created_at' => (string)($row['created_at'] ?? ''), 'body' => (string)($row['body'] ?? '')];
+            }
+        } catch (Throwable $e) {
+            // A missing legacy table must not block an appointment reminder.
+        }
+
+        try {
+            foreach (db_all(
+                "SELECT id, subject, body, created_at FROM lead_emails WHERE lead_id = :lead_id AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 20",
+                ['lead_id' => $leadId]
+            ) as $row) {
+                $subject = (string)($row['subject'] ?? '');
+                $body = (string)($row['body'] ?? '');
+                $newReply = function_exists('lead_email_new_reply_text')
+                    ? lead_email_new_reply_text($subject, $body)
+                    : trim($subject . "\n" . $body);
+                $items[] = ['id' => (int)($row['id'] ?? 0), 'created_at' => (string)($row['created_at'] ?? ''), 'body' => $newReply];
+            }
+        } catch (Throwable $e) {
+            // Email history is optional for older installations.
+        }
+
+        usort($items, static function (array $a, array $b): int {
+            $byTime = strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? ''));
+            return $byTime !== 0 ? $byTime : ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0));
+        });
+
+        $newestDetected = null;
+        foreach ($items as $item) {
+            $signal = lead_language_detect_message_signal((string)($item['body'] ?? ''));
+            if (($signal['source'] ?? '') === 'inbound_explicit') {
+                return $signal;
+            }
+            if ($newestDetected === null && ($signal['language'] ?? 'unknown') !== 'unknown') {
+                $newestDetected = $signal;
+            }
+        }
+
+        return $newestDetected ?? ['language' => 'unknown', 'source' => '', 'confidence' => 0.0];
+    }
+}
+
+if (!function_exists('lead_language_sync_from_conversation')) {
+    /** Return a lead row with the best source-backed conversation preference. */
+    function lead_language_sync_from_conversation(array $lead): array
+    {
+        $leadId = (int)($lead['id'] ?? 0);
+        if ($leadId <= 0) {
+            return $lead;
+        }
+
+        $currentLanguage = lead_language_preference($lead);
+        $currentSource = trim((string)($lead['preferred_language_source'] ?? ''));
+        if ($currentLanguage !== 'unknown' && lead_language_source_priority($currentSource) >= 40) {
+            return $lead;
+        }
+
+        $applied = lead_language_apply_signal($leadId, lead_language_conversation_signal($leadId));
+        $resolvedLanguage = lead_language_normalize((string)($applied['language'] ?? ''));
+        if ($resolvedLanguage !== 'unknown') {
+            $lead['preferred_language'] = $resolvedLanguage;
+            $lead['preferred_language_source'] = (string)($applied['source'] ?? $currentSource);
+        }
+        return $lead;
     }
 }
 

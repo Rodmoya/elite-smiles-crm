@@ -1328,7 +1328,7 @@ if (!function_exists('lead_operator_message_is_acknowledgment')) {
         }
 
         if (preg_match(
-            '/[?¿]|\b(?:but|pero|reschedul\w*|reprogram\w*|cancel\w*|change|move|different|another\s+(?:day|time)|can[’\']?t|cannot|won[’\']?t|unable|late|address|where|when|what|how|why|cost|price|financ\w*|insurance|help|question|dob|date\s+of\s+birth|birth\s*date|cambiar|cancelar|no\s+puedo|no\s+podr[eé]|tarde|direcci[oó]n|d[oó]nde|cu[aá]ndo|cu[aá]nto|precio|costo|seguro|ayuda|pregunta|ll[aá]ma\w*)\b|\b(?:can|could|would|will)\s+you\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/iu',
+            '/[?¿]|\b(?:but|pero|reschedul\w*|reprogram\w*|cancel\w*|change|move|different|another\s+(?:day|time)|can[’\']?t|cannot|won[’\']?t|unable|late|address|where|when|what|how|why|cost|price|financ\w*|insurance|call|phone|help|question|dob|date\s+of\s+birth|birth\s*date|cambiar|cancelar|no\s+puedo|no\s+podr[eé]|tarde|direcci[oó]n|d[oó]nde|cu[aá]ndo|cu[aá]nto|precio|costo|seguro|ayuda|pregunta|ll[aá]ma\w*)\b|\b(?:can|could|would|will)\s+you\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/iu',
             $text
         )) {
             return false;

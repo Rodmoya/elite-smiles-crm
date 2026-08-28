@@ -1791,13 +1791,18 @@ if (!function_exists('lead_agent_cycle_rows')) {
                 s.human_takeover AS agent_human_takeover,
                 s.scheduling_phase AS agent_scheduling_phase,
                 s.pause_reason AS agent_pause_reason,
-                EXISTS(
+                (EXISTS(
                     SELECT 1 FROM lead_messages delivery_message
                     WHERE delivery_message.lead_id = l.id
                       AND delivery_message.direction = 'outbound'
                       AND delivery_message.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
                       AND LOWER(COALESCE(delivery_message.twilio_status, '')) IN ('failed','undelivered')
-                ) AS agent_recent_sms_delivery_issue
+                ) OR EXISTS(
+                    SELECT 1 FROM lead_activities delivery_activity
+                    WHERE delivery_activity.lead_id = l.id
+                      AND delivery_activity.type = 'sms_delivery_issue'
+                      AND delivery_activity.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                )) AS agent_recent_sms_delivery_issue
             FROM leads l
             LEFT JOIN lead_agent_states s ON s.lead_id = l.id
             ORDER BY l.id ASC
@@ -2014,29 +2019,22 @@ if (!function_exists('lead_agent_repair_cycle_coverage')) {
                 ? lead_agent_latest_inbound_closure_reason($leadId)
                 : '';
             $assessment = lead_agent_cycle_assessment($lead, $state, $smsIssue, $closureReason);
-            $deliveryOnlyState = (string)($state['last_decision'] ?? '') === 'sms_delivery_failed_needs_attention';
+            $deliveryOnlyState = in_array((string)($state['last_decision'] ?? ''), [
+                'sms_delivery_failed_needs_attention',
+                'sms_unreachable_email_cycle_resumed',
+                'email_bounced_switch_channel',
+                'unreachable_no_delivery_channel',
+                'unreachable_invalid_contact',
+            ], true);
 
-            if ((string)($assessment['category'] ?? '') === 'unreachable' && $deliveryOnlyState) {
+            if ((string)($assessment['category'] ?? '') === 'unreachable'
+                && lead_agent_confirmed_unreachable_contact($lead, $state, $smsIssue)) {
                 $result['unreachable_moved_to_nurture']++;
                 $result['candidates'][] = ['lead_id' => $leadId, 'action' => 'pause_unreachable', 'channel' => ''];
                 if ($dryRun) {
                     continue;
                 }
-                db_execute("UPDATE lead_agent_states SET status = 'paused', human_takeover = 0,
-                        human_takeover_until = NULL, next_action_at = NULL,
-                        last_decision = 'unreachable_no_delivery_channel',
-                        pause_reason = 'No consented, deliverable SMS or email channel remains.',
-                        lock_token = '', locked_at = NULL, updated_at = NOW()
-                    WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
-                lead_lifecycle_transition_status(
-                    $leadId,
-                    'no_answer',
-                    'No deliverable contact channel remains; lead moved to Nurture without another send.',
-                    'lead_agent_cycle_repair',
-                    ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
-                );
-                db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
-                lead_agent_event($leadId, 'cycle-unreachable-' . $leadId, 'cycle_closed', '', 'recorded', 'no_consented_delivery_channel');
+                lead_agent_reconcile_unreachable_contact($leadId, 'lead_agent_cycle_repair');
                 continue;
             }
 
@@ -2568,7 +2566,7 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
             );
 
             if (function_exists('leads_has_column') && leads_has_column('follow_up_status')) {
-                $sets = ["follow_up_status = 'ok'", 'updated_at = NOW()'];
+                $sets = [$emailAvailable ? "follow_up_status = 'ok'" : "follow_up_status = 'unreachable'", 'updated_at = NOW()'];
                 if (leads_has_column('next_follow_up_at')) {
                     $sets[] = $emailAvailable ? 'next_follow_up_at = :next_follow_up_at' : 'next_follow_up_at = NULL';
                 }
@@ -2586,6 +2584,7 @@ if (!function_exists('lead_agent_mark_sms_delivery_attention')) {
                     'sms_delivery_failure',
                     ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
                 );
+                lead_agent_reconcile_unreachable_contact($leadId, 'sms_delivery_failure');
             }
         }
 
@@ -3618,13 +3617,153 @@ if (!function_exists('lead_agent_recent_sms_delivery_issue')) {
         }
         $days = max(1, min(30, $days));
         try {
-            return (int) db_value("SELECT COUNT(*) FROM lead_messages
-                WHERE lead_id = :lead_id AND direction = 'outbound'
-                  AND created_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
-                  AND LOWER(COALESCE(twilio_status, '')) IN ('failed','undelivered')", ['lead_id' => $leadId]) > 0;
+            return (int) db_value("SELECT
+                EXISTS(
+                    SELECT 1 FROM lead_messages
+                    WHERE lead_id = :message_lead_id AND direction = 'outbound'
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
+                      AND LOWER(COALESCE(twilio_status, '')) IN ('failed','undelivered')
+                ) OR EXISTS(
+                    SELECT 1 FROM lead_activities
+                    WHERE lead_id = :activity_lead_id AND type = 'sms_delivery_issue'
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL {$days} DAY)
+                )", ['message_lead_id' => $leadId, 'activity_lead_id' => $leadId]) > 0;
         } catch (Throwable $e) {
             return false;
         }
+    }
+}
+
+if (!function_exists('lead_agent_confirmed_unreachable_contact')) {
+    /** True only when no channel remains and at least one route has real delivery-invalid evidence. */
+    function lead_agent_confirmed_unreachable_contact(array $lead, array $state = [], bool $recentSmsIssue = false): bool
+    {
+        $lastDecision = trim((string)($state['last_decision'] ?? ''));
+        $smsFailureDecision = in_array($lastDecision, [
+            'sms_delivery_failed_needs_attention',
+            'sms_unreachable_email_cycle_resumed',
+            'unreachable_no_delivery_channel',
+            'unreachable_invalid_contact',
+        ], true);
+        $smsDeliveryInvalid = !elite_phone_is_valid_us((string)($lead['phone'] ?? ''))
+            || $recentSmsIssue
+            || $smsFailureDecision;
+        $emailStatus = strtolower(trim((string)($lead['email_opt_status'] ?? '')));
+        $emailDeliveryInvalid = !filter_var(trim((string)($lead['email'] ?? '')), FILTER_VALIDATE_EMAIL)
+            || in_array($emailStatus, ['bounced', 'blocked', 'dropped', 'invalid'], true);
+        $smsUnavailable = lead_agent_sms_blocked($lead) || $recentSmsIssue || $smsFailureDecision;
+        $emailUnavailable = lead_agent_email_blocked($lead);
+
+        return $smsUnavailable && $emailUnavailable && ($smsDeliveryInvalid || $emailDeliveryInvalid);
+    }
+}
+
+if (!function_exists('lead_agent_reconcile_unreachable_contact')) {
+    /**
+     * Stop outreach once every known channel is confirmed unusable. The record
+     * remains available for deduplication or later corrected contact details,
+     * but it is not operator work and must never create an attention halo.
+     */
+    function lead_agent_reconcile_unreachable_contact(int $leadId, string $source = 'lead_agent_delivery'): array
+    {
+        if ($leadId <= 0) {
+            return ['ok' => false, 'classified' => false, 'reason' => 'lead_not_found'];
+        }
+
+        lead_agent_ensure_schema();
+        $lead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'classified' => false, 'reason' => 'lead_not_found'];
+        }
+
+        $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]) ?: [];
+        $lastDecision = trim((string)($state['last_decision'] ?? ''));
+        $recentSmsIssue = lead_agent_recent_sms_delivery_issue($leadId);
+        if (!lead_agent_confirmed_unreachable_contact($lead, $state, $recentSmsIssue)) {
+            $smsUnavailable = lead_agent_sms_blocked($lead) || $recentSmsIssue;
+            return [
+                'ok' => true,
+                'classified' => false,
+                'reason' => 'confirmed_unreachable_not_met',
+                'route' => !$smsUnavailable ? 'sms' : (!lead_agent_email_blocked($lead) ? 'email' : 'protected'),
+            ];
+        }
+
+        $closureReason = trim((string)($lead['last_inbound_at'] ?? '')) !== ''
+            ? lead_agent_latest_inbound_closure_reason($leadId)
+            : '';
+        $assessment = lead_agent_cycle_assessment($lead, $state, true, $closureReason);
+        if ((string)($assessment['category'] ?? '') !== 'unreachable') {
+            return [
+                'ok' => true,
+                'classified' => false,
+                'reason' => (string)($assessment['reason'] ?? 'protected_state'),
+                'route' => 'protected',
+            ];
+        }
+
+        $alreadyClassified = trim((string)($lead['status'] ?? '')) === 'no_answer'
+            && trim((string)($lead['follow_up_status'] ?? '')) === 'unreachable'
+            && $lastDecision === 'unreachable_invalid_contact';
+        if ($alreadyClassified) {
+            return ['ok' => true, 'classified' => true, 'changed' => false, 'reason' => 'already_unreachable', 'route' => 'unreachable'];
+        }
+
+        $startedAt = trim((string)($state['started_at'] ?? ''));
+        if ($startedAt === '' || strtotime($startedAt) === false) {
+            $startedAt = trim((string)($lead['created_at'] ?? ''));
+        }
+        if ($startedAt === '' || strtotime($startedAt) === false) {
+            $startedAt = now();
+        }
+
+        db_query(
+            "INSERT INTO lead_agent_states
+                (lead_id, status, cadence_step, started_at, next_action_at, last_action_at, last_decision,
+                 human_takeover, human_takeover_until, pause_reason, lock_token, locked_at, created_at, updated_at)
+             VALUES
+                (:lead_id, 'paused', :cadence_step, :started_at, NULL, :last_action_at, 'unreachable_invalid_contact',
+                 0, NULL, 'No deliverable SMS or email channel remains.', '', NULL, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                status = 'paused', human_takeover = 0, human_takeover_until = NULL,
+                next_action_at = NULL, last_decision = 'unreachable_invalid_contact',
+                pause_reason = 'No deliverable SMS or email channel remains.',
+                lock_token = '', locked_at = NULL, updated_at = NOW()",
+            [
+                'lead_id' => $leadId,
+                'cadence_step' => max(0, (int)($state['cadence_step'] ?? 0)),
+                'started_at' => $startedAt,
+                'last_action_at' => trim((string)($state['last_action_at'] ?? '')) ?: null,
+            ]
+        );
+        lead_lifecycle_transition_status(
+            $leadId,
+            'no_answer',
+            'No deliverable contact channel remains; Lead Agent classified the record as Unreachable / Invalid Contact.',
+            $source,
+            ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
+        );
+        db_execute("UPDATE leads SET follow_up_status = 'unreachable', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+        lead_agent_event(
+            $leadId,
+            'contactability-unreachable-' . $leadId,
+            'cycle_closed',
+            '',
+            'recorded',
+            'unreachable_invalid_contact',
+            ['source' => substr(trim($source), 0, 80), 'automatic_outreach' => 'stopped']
+        );
+        if (function_exists('lead_comm_insert_activity')) {
+            lead_comm_insert_activity(
+                $leadId,
+                'lead_unreachable',
+                'No deliverable SMS or email channel remains. Lead Agent stopped automated outreach and classified this record as Unreachable / Invalid Contact.',
+                ['source' => substr(trim($source), 0, 80), 'automatic_outreach' => 'stopped'],
+                'Lead Agent'
+            );
+        }
+
+        return ['ok' => true, 'classified' => true, 'changed' => true, 'reason' => 'unreachable_invalid_contact', 'route' => 'unreachable'];
     }
 }
 
@@ -4247,7 +4386,7 @@ if (!function_exists('lead_agent_process_state')) {
                     'lead_agent_guardrail',
                     ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
                 );
-                db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+                lead_agent_reconcile_unreachable_contact($leadId, 'lead_agent_guardrail');
                 $decisionType = 'paused';
             } elseif (in_array($reason, ['terminal_or_human_stage', 'consultation_date_present', 'conversation_closed', 'all_channels_opted_out', 'human_takeover', 'conversation_owned_or_paused', 'scheduling_in_progress', 'human_follow_up_state', 'unanswered_inbound'], true)) {
                 lead_agent_pause($leadId, $reason, $reason === 'all_channels_opted_out' ? 'opted_out' : 'paused');
@@ -4275,8 +4414,7 @@ if (!function_exists('lead_agent_process_state')) {
                 'lead_agent_delivery_route',
                 ['new_lead', 'attempted_contact', 'contacted', 'in_contact', 'no_answer', '']
             );
-            db_execute("UPDATE leads SET follow_up_status = 'ok', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
-            lead_agent_event($leadId, 'cycle-unreachable-' . $leadId, 'cycle_closed', '', 'recorded', 'no_consented_delivery_channel');
+            lead_agent_reconcile_unreachable_contact($leadId, 'lead_agent_delivery_route');
             return ['lead_id' => $leadId, 'action' => 'paused', 'reason' => 'no_delivery_channel'];
         }
 

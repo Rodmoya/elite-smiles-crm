@@ -742,12 +742,17 @@ if (!function_exists('lead_email_record_bounce')) {
             ]);
         }
 
+        $contactability = function_exists('lead_agent_reconcile_unreachable_contact')
+            ? lead_agent_reconcile_unreachable_contact($leadId, 'email_bounce')
+            : ['ok' => true, 'classified' => false, 'reason' => 'lead_agent_not_loaded'];
+
         return [
             'ok' => true,
             'message' => $alreadyBounced ? 'Bounce already recorded.' : 'Bounce recorded.',
             'lead_id' => $leadId,
             'email_id' => $emailId,
             'duplicate' => $alreadyBounced,
+            'contactability' => $contactability,
         ];
     }
 }

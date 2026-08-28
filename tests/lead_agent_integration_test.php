@@ -87,8 +87,52 @@ try {
     $unreachableLead = db_one('SELECT status, follow_up_status, next_follow_up_at FROM leads WHERE id = :id LIMIT 1', ['id' => $unreachableLeadId]);
     $unreachableState = db_one('SELECT status, human_takeover, next_action_at, last_decision FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $unreachableLeadId]);
     integration_expect((string)($unreachableRoute['route'] ?? '') === 'nurture_unreachable', 'A lead without any deliverable channel must enter unreachable Nurture.');
-    integration_expect((string)($unreachableLead['status'] ?? '') === 'no_answer' && empty($unreachableLead['next_follow_up_at']), 'Unreachable leads must leave the active pipeline without scheduling another send.');
-    integration_expect((string)($unreachableState['status'] ?? '') === 'paused' && empty($unreachableState['human_takeover']) && empty($unreachableState['next_action_at']), 'Unreachable state must be parked without a human-attention halo.');
+    integration_expect((string)($unreachableLead['status'] ?? '') === 'no_answer'
+        && (string)($unreachableLead['follow_up_status'] ?? '') === 'unreachable'
+        && empty($unreachableLead['next_follow_up_at']), 'Unreachable leads must leave the active pipeline, retain an Invalid Contact classification, and schedule no further sends.');
+    integration_expect((string)($unreachableState['status'] ?? '') === 'paused'
+        && (string)($unreachableState['last_decision'] ?? '') === 'unreachable_invalid_contact'
+        && empty($unreachableState['human_takeover'])
+        && empty($unreachableState['next_action_at']), 'Unreachable state must be parked without a human-attention halo.');
+
+    $sequentialFailureLeadId = db_insert(
+        "INSERT INTO leads (full_name, phone, email, status, sms_opt_status, email_opt_status, created_at, updated_at)
+         VALUES ('Sequential Delivery Fixture', '80155512', 'sequential-delivery@example.invalid', 'new_lead', 'unknown', 'subscribed', NOW(), NOW())"
+    );
+    $smsFallback = lead_agent_mark_sms_delivery_attention($sequentialFailureLeadId, 'invalid_number', '21211', 'Synthetic invalid number.', [
+        'event_key' => 'integration-sequential-sms-' . $sequentialFailureLeadId,
+        'source' => 'integration_test',
+    ]);
+    integration_expect((string)($smsFallback['route'] ?? '') === 'email', 'An invalid phone must continue through email while that channel still appears deliverable.');
+    $sequentialEmailId = lead_email_insert([
+        'lead_id' => $sequentialFailureLeadId,
+        'direction' => 'outbound',
+        'from_email' => 'hello@example.invalid',
+        'to_email' => 'sequential-delivery@example.invalid',
+        'subject' => 'Synthetic sequential delivery test',
+        'body' => 'Synthetic sequential delivery body.',
+        'status' => 'sent',
+        'provider_response' => 'accepted',
+        'created_by' => 'Lead Agent',
+    ]);
+    integration_expect($sequentialEmailId > 0, 'Sequential delivery fixture email was not created.');
+    $bounceResult = lead_email_record_bounce(
+        'sequential-delivery@example.invalid',
+        'Mail delivery failed: returning message to sender',
+        'Synthetic bounce body.',
+        'imap:sequential-test'
+    );
+    $sequentialLead = db_one('SELECT status, follow_up_status, next_follow_up_at, email_opt_status FROM leads WHERE id = :id LIMIT 1', ['id' => $sequentialFailureLeadId]);
+    $sequentialState = db_one('SELECT status, human_takeover, next_action_at, last_decision FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $sequentialFailureLeadId]);
+    integration_expect(!empty($bounceResult['contactability']['classified']), 'The second failed channel must immediately classify the lead as unreachable.');
+    integration_expect((string)($sequentialLead['status'] ?? '') === 'no_answer'
+        && (string)($sequentialLead['follow_up_status'] ?? '') === 'unreachable'
+        && (string)($sequentialLead['email_opt_status'] ?? '') === 'bounced'
+        && empty($sequentialLead['next_follow_up_at']), 'A sequential SMS failure plus email bounce must stop every future automated contact.');
+    integration_expect((string)($sequentialState['status'] ?? '') === 'paused'
+        && (string)($sequentialState['last_decision'] ?? '') === 'unreachable_invalid_contact'
+        && empty($sequentialState['human_takeover'])
+        && empty($sequentialState['next_action_at']), 'Sequential channel failure must not leave an attention halo or scheduled action.');
 
     db_execute("UPDATE lead_agent_states SET next_action_at = DATE_ADD(started_at, INTERVAL 48 HOUR) WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
     integration_expect(lead_agent_repair_first_day_schedule(20) === 1, 'Existing first-day leads on the old 48-hour schedule must be accelerated once.');

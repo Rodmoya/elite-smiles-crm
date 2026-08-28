@@ -1449,6 +1449,10 @@ if (!function_exists('elite_ai_recommended_next_step')) {
         $followUpStatus = trim((string) ($lead['follow_up_status'] ?? ''));
         $nextFollowUpAt = trim((string) ($lead['next_follow_up_at'] ?? ''));
 
+        if ($followUpStatus === 'unreachable') {
+            return 'No outreach is available. SMS and email are both undeliverable, so retain this record only for deduplication or corrected contact information.';
+        }
+
         if ($status === 'consultation_booked') {
             return 'Protect this lead and review appointment readiness only. ' . ($ruleText !== '' ? $ruleText : 'Consultation Booked is protected.');
         }
@@ -2820,6 +2824,10 @@ if (!function_exists('elite_ai_stage_message_candidates')) {
             $lastOutboundAt = trim((string) ($row['message_last_outbound_at'] ?? $row['last_outbound_at'] ?? ''));
             $nextFollowUpAt = trim((string) ($row['next_follow_up_at'] ?? ''));
             $followUpStatus = strtolower(trim((string) ($row['follow_up_status'] ?? '')));
+
+            if ($followUpStatus === 'unreachable') {
+                continue;
+            }
 
             $lastInboundTs = $lastInboundAt !== '' ? (strtotime($lastInboundAt) ?: 0) : 0;
             $lastOutboundTs = $lastOutboundAt !== '' ? (strtotime($lastOutboundAt) ?: 0) : 0;
@@ -6802,4 +6810,3 @@ function elite_ai_handle_request(array $user, array $request): array
         ];
     }
 }
-

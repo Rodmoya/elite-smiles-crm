@@ -431,6 +431,41 @@ if (!function_exists('lead_conversion_datetime')) {
     }
 }
 
+if (!function_exists('lead_conversion_patient_hold_until')) {
+    /** Return the saved wake-up time for an intentional patient-requested hold. */
+    function lead_conversion_patient_hold_until(array $lead): ?DateTimeImmutable
+    {
+        $agentStatus = trim((string)($lead['agent_status'] ?? ''));
+        $pauseReason = trim((string)($lead['agent_pause_reason'] ?? ''));
+        if ($agentStatus !== 'paused' || $pauseReason !== 'patient_requested_future_followup') {
+            return null;
+        }
+
+        return lead_conversion_datetime($lead['agent_next_action_at'] ?? $lead['next_follow_up_at'] ?? '');
+    }
+}
+
+if (!function_exists('lead_conversion_patient_hold_active')) {
+    function lead_conversion_patient_hold_active(array $lead, ?DateTimeImmutable $now = null): bool
+    {
+        $holdUntil = lead_conversion_patient_hold_until($lead);
+        if ($holdUntil === null) {
+            return false;
+        }
+
+        $now = $now ?? new DateTimeImmutable('now');
+        return $holdUntil > $now;
+    }
+}
+
+if (!function_exists('lead_conversion_patient_hold_label')) {
+    function lead_conversion_patient_hold_label(array $lead): string
+    {
+        $holdUntil = lead_conversion_patient_hold_until($lead);
+        return $holdUntil === null ? 'On hold' : 'On hold until ' . $holdUntil->format('M j');
+    }
+}
+
 if (!function_exists('lead_conversion_reply_needed')) {
     function lead_conversion_reply_needed(array $lead): bool
     {
@@ -506,6 +541,9 @@ if (!function_exists('lead_conversion_urgency')) {
     {
         if (lead_conversion_is_unreachable_invalid_contact($lead)) {
             return ['key' => 'unreachable', 'label' => 'Unreachable', 'tone' => 'slate'];
+        }
+        if (lead_conversion_patient_hold_active($lead)) {
+            return ['key' => 'patient_hold', 'label' => 'On hold', 'tone' => 'slate'];
         }
         if (lead_conversion_bad_phone($lead)) {
             return ['key' => 'cleanup', 'label' => 'Cleanup', 'tone' => 'rose'];
@@ -856,6 +894,9 @@ if (!function_exists('lead_conversion_next_action')) {
 
         if (lead_conversion_is_unreachable_invalid_contact($lead)) {
             return ['key' => 'invalid_contact', 'label' => 'Invalid contact', 'tone' => 'slate'];
+        }
+        if (lead_conversion_patient_hold_active($lead)) {
+            return ['key' => 'patient_hold', 'label' => lead_conversion_patient_hold_label($lead), 'tone' => 'slate'];
         }
 
         if ($status === 'treatment_completed') {

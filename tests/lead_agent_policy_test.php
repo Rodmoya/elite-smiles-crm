@@ -21,6 +21,45 @@ expect_true(lead_agent_classify_inbound('No me interesa, gracias.') === 'pause',
 expect_true(lead_agent_classify_inbound('Cuánto cuesta la consulta?') === 'cost_redirect', 'A Spanish cost question must use the safe cost redirect.');
 expect_true(lead_agent_decline_kind('No thank you') === 'declined', 'An explicit decline must close the Scheduling pipeline record.');
 expect_true(lead_agent_decline_kind('Maybe later') === 'deferred', 'A timing deferral must not be treated as a permanent rejection.');
+$holdNow = new DateTimeImmutable('2026-08-28 18:00:00', new DateTimeZone(APP_TIMEZONE));
+expect_true(
+    lead_agent_requested_followup_at('I need to wait until October to start making appointments.', $holdNow) === '2026-10-01 09:00:00',
+    'A patient request to wait until a future month must become a dated 9 AM hold in the CRM timezone.'
+);
+expect_true(
+    lead_agent_classify_inbound('I need to wait until October to start making appointments.') === 'pause',
+    'A future-contact instruction must outrank scheduling and clinical follow-up automation.'
+);
+expect_true(
+    lead_agent_requested_followup_at('October afternoons work best for an appointment.', $holdNow) === '',
+    'A normal appointment preference must not be mistaken for permission to silence the conversation until that month.'
+);
+expect_true(
+    lead_conversion_patient_hold_active([
+        'agent_status' => 'paused',
+        'agent_pause_reason' => 'patient_requested_future_followup',
+        'agent_next_action_at' => '2026-10-01 09:00:00',
+    ], $holdNow),
+    'A future patient-requested hold must be recognized as intentionally silent.'
+);
+expect_true(
+    !lead_conversion_patient_hold_active([
+        'agent_status' => 'paused',
+        'agent_pause_reason' => 'patient_requested_future_followup',
+        'agent_next_action_at' => '2026-08-01 09:00:00',
+    ], $holdNow),
+    'An expired patient hold must not hide the lead from review.'
+);
+$holdAction = lead_conversion_next_action([
+    'status' => 'no_answer',
+    'agent_status' => 'paused',
+    'agent_pause_reason' => 'patient_requested_future_followup',
+    'agent_next_action_at' => '2099-10-01 09:00:00',
+]);
+expect_true(
+    ($holdAction['key'] ?? '') === 'patient_hold' && str_contains((string)($holdAction['label'] ?? ''), 'On hold until Oct 1'),
+    'A held lead card must explain the hold date instead of asking staff to reactivate it.'
+);
 expect_true(lead_agent_classify_inbound('That is too far for me to travel') === 'pause', 'A distance-based decline must stop automated follow-up.');
 expect_true(lead_agent_classify_inbound('I have swelling and pain') === 'needs_attention', 'Clinical concern should require human review.');
 expect_true(lead_agent_classify_inbound('I need an appointment because I have pain and swelling') === 'needs_attention', 'Clinical urgency must override scheduling language.');
@@ -183,6 +222,9 @@ expect_true(str_contains($agentSource, 'lead_agent_reconcile_lifecycle(500, $dry
 expect_true(str_contains($agentSource, 'lead_agent_repair_cycle_coverage(500, $dryRun)'), 'Every Lead Agent run must repair uncovered active and Nurture cycle records.');
 expect_true(str_contains($agentSource, 'lead_agent_repair_slow_active_sprint(500)'), 'Every live run must accelerate leads still carrying the former slow cadence.');
 expect_true(str_contains($agentSource, 'lead_agent_run_monthly_email_outreach(10, $dryRun)'), 'Every Lead Agent run must evaluate the guarded monthly Nurture/Lost email lane.');
+expect_true(str_contains($agentSource, 'lead_agent_release_due_patient_holds()'), 'Every live Lead Agent run must wake expired patient holds into human review.');
+expect_true(str_contains($agentSource, "'patient_requested_future_followup'"), 'Patient-requested holds must use a durable, auditable pause reason.');
+expect_true(str_contains($agentSource, "'patient_requested_future_followup_due'"), 'Monthly outreach and the action queue must distinguish an expired hold from ordinary Nurture.');
 $leadMetaSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_meta.php');
 expect_true(str_contains($leadMetaSource, "'no_answer', 'lost_lead', ''"), 'A reply from a reactivated Lost lead must reopen the active conversation.');
 expect_true(str_contains($leadMetaSource, 'SET lost_reason = NULL'), 'Reopening a Lost lead must clear the stale loss reason.');

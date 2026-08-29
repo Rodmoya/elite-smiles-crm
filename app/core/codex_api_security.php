@@ -194,6 +194,7 @@ if (!function_exists('codex_security_action_scopes')) {
             'delete_lead' => ['leads:write'],
             'mark_notification_reviewed' => ['leads:write'],
             'move_stage' => ['stages:write'],
+            'hold_lead_until' => ['leads:write', 'stages:write'],
             'send_sms' => ['messages:send'],
             'nurture_reactivation_send' => ['messages:send'],
             'send_internal_sms' => ['messages:send'],

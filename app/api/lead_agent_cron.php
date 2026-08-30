@@ -23,7 +23,7 @@ $limit = max(1, min(50, (int) ($_GET['limit'] ?? $_POST['limit'] ?? 20)));
 $dryRun = filter_var($_GET['dry_run'] ?? $_POST['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 try {
-    echo json_encode(lead_agent_run_due($limit, $dryRun), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    file_put_contents('php://output', (string) json_encode(lead_agent_run_due($limit, $dryRun), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 } catch (Throwable $e) {
     esm_log('lead_agent', 'Lead Agent cron failed.', ['error' => $e->getMessage()]);
     http_response_code(500);

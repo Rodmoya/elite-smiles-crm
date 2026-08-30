@@ -66,10 +66,11 @@ try {
                 OR next_follow_up_at = ''
                 OR next_follow_up_at <= NOW()
                 OR follow_up_status = 'needs_follow_up'
-           )
+         )
          ORDER BY COALESCE(next_follow_up_at, created_at) ASC, id ASC
-         LIMIT {$limit}"
+         LIMIT 25"
     );
+    $rows = array_slice($rows, 0, $limit);
 } catch (Throwable $e) {
     esm_log('lead_email', 'Email follow-up cron query failed.', ['message' => $e->getMessage()]);
     email_followup_json(['ok' => false, 'message' => 'Could not load due leads.'], 500);

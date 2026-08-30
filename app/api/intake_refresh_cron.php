@@ -157,6 +157,9 @@ try {
 
 $limit = max(1, min(50, (int)($_GET['limit'] ?? $_POST['limit'] ?? 25)));
 $lookbackHours = max(1, min(24, (int)($_GET['lookback_hours'] ?? $_POST['lookback_hours'] ?? 6)));
+$lookbackStart = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))
+    ->modify('-' . $lookbackHours . ' hours')
+    ->format('Y-m-d H:i:s');
 
 try {
     $leads = db_all(
@@ -164,10 +167,12 @@ try {
          FROM leads l
          LEFT JOIN lead_intake_refreshes r ON r.lead_id = l.id
          WHERE r.id IS NULL
-           AND l.created_at >= DATE_SUB(NOW(), INTERVAL {$lookbackHours} HOUR)
+           AND l.created_at >= :lookback_start
          ORDER BY l.created_at ASC, l.id ASC
-         LIMIT {$limit}"
+         LIMIT 50",
+        ['lookback_start' => $lookbackStart]
     );
+    $leads = array_slice($leads, 0, $limit);
 } catch (Throwable $e) {
     esm_log('lead_intake', 'Could not load leads for intake refresh.', ['error' => $e->getMessage()]);
     intake_refresh_json(['ok' => false, 'message' => 'Could not load recent leads.'], 500);

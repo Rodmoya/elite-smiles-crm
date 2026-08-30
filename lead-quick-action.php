@@ -305,6 +305,13 @@ if (!function_exists('elite_qa_escape')) {
     }
 }
 
+if (!function_exists('elite_qa_output')) {
+    function elite_qa_output($value): void
+    {
+        echo htmlspecialchars(trim((string) ($value ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+}
+
 if (!function_exists('elite_qa_app_url')) {
     function elite_qa_app_url(): string
     {
@@ -598,26 +605,26 @@ try {
     ?>
     <section class="hero">
         <div class="eyebrow">Elite Smiles</div>
-        <h1><?php echo elite_qa_escape($fullName); ?></h1>
-        <p><?php echo elite_qa_escape($heroText); ?></p>
+        <h1><?php elite_qa_output($fullName); ?></h1>
+        <p><?php elite_qa_output($heroText); ?></p>
     </section>
 
     <div class="grid">
         <section class="card">
             <div class="card-head">
                 <h2 class="card-title">Quick Actions</h2>
-                <p class="card-subtitle"><?php echo elite_qa_escape($cardSubtitle); ?></p>
+                <p class="card-subtitle"><?php elite_qa_output($cardSubtitle); ?></p>
             </div>
             <div class="card-body">
                 <div class="actions">
                     <?php if ($smsTextLink !== ''): ?>
-                        <a class="action action-dark" href="<?php echo elite_qa_escape($smsTextLink); ?>">Text for Text</a>
+                        <a class="action action-dark" href="<?php elite_qa_output($smsTextLink); ?>">Text for Text</a>
                     <?php else: ?>
                         <span class="action action-disabled">Text for Text</span>
                     <?php endif; ?>
 
                     <?php if ($smsCallLink !== ''): ?>
-                        <a class="action action-gold" href="<?php echo elite_qa_escape($smsCallLink); ?>">Text for Call</a>
+                        <a class="action action-gold" href="<?php elite_qa_output($smsCallLink); ?>">Text for Call</a>
                     <?php else: ?>
                         <span class="action action-disabled">Text for Call</span>
                     <?php endif; ?>
@@ -626,7 +633,7 @@ try {
                 <?php if ($phone === ''): ?>
                     <div class="helper">This lead does not have a phone number, so text actions are unavailable.</div>
                 <?php else: ?>
-                    <div class="helper"><?php echo elite_qa_escape($helperText); ?></div>
+                    <div class="helper"><?php elite_qa_output($helperText); ?></div>
                 <?php endif; ?>
             </div>
         </section>
@@ -638,31 +645,31 @@ try {
             </div>
             <div class="card-body">
                 <div class="pill-row">
-                    <span class="pill">Lead ID: <?php echo elite_qa_escape((string) ($lead['id'] ?? '')); ?></span>
-                    <span class="pill">Status: <?php echo elite_qa_escape($displayStatus); ?></span>
-                    <span class="pill">Assigned: <?php echo elite_qa_escape($displayAssigned); ?></span>
+                    <span class="pill">Lead ID: <?php elite_qa_output((string) ($lead['id'] ?? '')); ?></span>
+                    <span class="pill">Status: <?php elite_qa_output($displayStatus); ?></span>
+                    <span class="pill">Assigned: <?php elite_qa_output($displayAssigned); ?></span>
                 </div>
 
                 <div class="meta-grid">
                     <div class="meta-row">
                         <div class="meta-label">Full Name</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($fullName); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($fullName); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Phone</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($displayPhone); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($displayPhone); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Email</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($email !== '' ? $email : 'Not provided'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($email !== '' ? $email : 'Not provided'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Preferred Contact</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($displayPreferred); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($displayPreferred); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Procedure Interest</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($displayProcedure); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($displayProcedure); ?></div>
                     </div>
                 </div>
             </div>
@@ -677,35 +684,35 @@ try {
                 <div class="meta-grid">
                     <div class="meta-row">
                         <div class="meta-label">Source</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($source !== '' ? $source : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($source !== '' ? $source : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Source Medium</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($sourceMedium !== '' ? $sourceMedium : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($sourceMedium !== '' ? $sourceMedium : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Source Type</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($sourceType !== '' ? $sourceType : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($sourceType !== '' ? $sourceType : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Landing Page</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($landingPage !== '' ? $landingPage : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($landingPage !== '' ? $landingPage : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Campaign</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($campaign !== '' ? $campaign : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($campaign !== '' ? $campaign : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Trigger Keyword</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($triggerKeyword !== '' ? $triggerKeyword : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($triggerKeyword !== '' ? $triggerKeyword : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Instagram Username</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($instagramUsername !== '' ? $instagramUsername : 'Not specified'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($instagramUsername !== '' ? $instagramUsername : 'Not specified'); ?></div>
                     </div>
                     <div class="meta-row">
                         <div class="meta-label">Received At</div>
-                        <div class="meta-value"><?php echo elite_qa_escape($createdAt !== '' ? $createdAt : 'Not available'); ?></div>
+                        <div class="meta-value"><?php elite_qa_output($createdAt !== '' ? $createdAt : 'Not available'); ?></div>
                     </div>
                 </div>
             </div>

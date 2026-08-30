@@ -40,21 +40,17 @@ if (!in_array($range, ['1', '7', '30', '90'], true)) {
     $range = '30';
 }
 $rangeDays = (int)$range;
-
-$where = ['e.created_at >= DATE_SUB(NOW(), INTERVAL ' . $rangeDays . ' DAY)'];
-$params = [];
-
-if ($direction === 'inbound') {
-    $where[] = "e.direction = 'inbound'";
-} elseif ($direction === 'outbound') {
-    $where[] = "e.direction = 'outbound'";
-} elseif ($direction === 'failed') {
-    $where[] = "e.status = 'failed'";
-} elseif ($direction === 'opened') {
-    $where[] = 'e.opened_at IS NOT NULL';
-}
-
-$whereSql = implode(' AND ', $where);
+$rangeStart = (new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE)))
+    ->modify('-' . $rangeDays . ' days')
+    ->format('Y-m-d H:i:s');
+$params = [
+    'range_start' => $rangeStart,
+    'show_all' => $direction === 'all' ? 1 : 0,
+    'show_inbound' => $direction === 'inbound' ? 1 : 0,
+    'show_outbound' => $direction === 'outbound' ? 1 : 0,
+    'show_failed' => $direction === 'failed' ? 1 : 0,
+    'show_opened' => $direction === 'opened' ? 1 : 0,
+];
 
 $summary = db_one(
     "SELECT
@@ -67,8 +63,8 @@ $summary = db_one(
         MAX(CASE WHEN direction = 'inbound' THEN created_at ELSE NULL END) AS last_inbound_at,
         MAX(CASE WHEN direction = 'outbound' THEN created_at ELSE NULL END) AS last_outbound_at
      FROM lead_emails
-     WHERE created_at >= DATE_SUB(NOW(), INTERVAL {$rangeDays} DAY)",
-    []
+     WHERE created_at >= :summary_range_start",
+    ['summary_range_start' => $rangeStart]
 ) ?? [];
 
 $recentEmails = db_all(
@@ -89,7 +85,14 @@ $recentEmails = db_all(
         l.status AS lead_status
      FROM lead_emails e
      LEFT JOIN leads l ON l.id = e.lead_id
-     WHERE {$whereSql}
+     WHERE e.created_at >= :range_start
+       AND (
+            :show_all = 1
+            OR (:show_inbound = 1 AND e.direction = 'inbound')
+            OR (:show_outbound = 1 AND e.direction = 'outbound')
+            OR (:show_failed = 1 AND e.status = 'failed')
+            OR (:show_opened = 1 AND e.opened_at IS NOT NULL)
+       )
      ORDER BY e.created_at DESC, e.id DESC
      LIMIT 80",
     $params
@@ -342,4 +345,3 @@ function email_status_preview(string $body, int $limit = 220): string
     </main>
 </body>
 </html>
-

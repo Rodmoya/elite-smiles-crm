@@ -8,9 +8,12 @@ on:
         required: false
         default: 'false'
 
+permissions: {}
+
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Run guarded Lead Agent fallback
         env:
@@ -27,7 +30,8 @@ jobs:
               -H "X-Elite-Cron-Secret: $CRON_SECRET" \
               -H 'Accept: application/json' \
               "https://hi.elitesmilesutah.com/crm/app/api/lead_agent_cron.php?limit=20&dry_run=${DRY_RUN}" || true)"
-            cat "$response_file"
+            jq -c '{ok, message, processed, sent}' "$response_file" 2>/dev/null \
+              || echo '{"ok":false,"message":"Lead Agent endpoint did not return valid JSON."}'
             if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] && jq -e '.ok == true' "$response_file" >/dev/null 2>&1; then
               valid_response=true
               break

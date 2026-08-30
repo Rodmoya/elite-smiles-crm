@@ -1,0 +1,5 @@
+# The repository owner must review ownership-sensitive changes.
+* @Rodmoya
+/.github/ @Rodmoya
+/app/config/ @Rodmoya
+/app/core/ @Rodmoya

@@ -21,9 +21,9 @@ if (!$draft || !in_array((string)$draft['status'], ['approved', 'scheduled', 'pu
     exit('Media not found.');
 }
 
-$path = social_studio_safe_storage_path((string)($draft['branded_image_storage_key'] ?? ''));
-// The signed draft ID selects a DB-owned storage key; safe_storage_path constrains it to STORAGE_PATH.
-if ($path === '' || !is_file($path)) { // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+$candidatePath = social_studio_safe_storage_path((string)($draft['branded_image_storage_key'] ?? ''));
+$path = social_studio_verified_storage_file($candidatePath);
+if ($path === null) {
     http_response_code(404);
     exit('Media not found.');
 }
@@ -33,7 +33,12 @@ try {
     http_response_code(415);
     exit('Meta-ready image could not be prepared.');
 }
-$mime = function_exists('mime_content_type') ? (string)(mime_content_type($servedPath) ?: '') : ''; // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+$servedPath = social_studio_verified_storage_file($servedPath);
+if ($servedPath === null) {
+    http_response_code(415);
+    exit('Meta-ready image escaped private storage.');
+}
+$mime = social_studio_storage_file_mime($servedPath);
 if ($mime !== 'image/jpeg') {
     http_response_code(415);
     exit('Meta publishing requires a JPEG image.');
@@ -41,7 +46,9 @@ if ($mime !== 'image/jpeg') {
 
 header('Content-Type: ' . $mime);
 header('Content-Disposition: inline; filename="elite-smiles-post-' . $draftId . '.jpg"');
-header('Content-Length: ' . (string)filesize($servedPath)); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+header('Content-Length: ' . (string)social_studio_storage_file_size($servedPath));
 header('Cache-Control: public, max-age=3600, immutable');
 header('X-Content-Type-Options: nosniff');
-readfile($servedPath); // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
+if (!social_studio_stream_storage_file($servedPath)) {
+    http_response_code(500);
+}

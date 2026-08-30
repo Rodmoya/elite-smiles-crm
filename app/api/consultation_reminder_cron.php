@@ -337,9 +337,10 @@ foreach ($dueKeys as $reminderKey) {
            AND status = 'consultation_booked'
            AND (consultation_status IS NULL OR consultation_status = '' OR consultation_status = 'scheduled')
          ORDER BY consultation_date ASC, id ASC
-         LIMIT {$limit}",
-        ['target_date' => $targetDate]
+         LIMIT 50",
+         ['target_date' => $targetDate]
     );
+    $rows = array_slice($rows, 0, $limit);
 
     foreach ($rows as $lead) {
         $processed++;

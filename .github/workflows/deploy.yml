@@ -15,11 +15,18 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: elite-smiles-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
-  deploy:
+  validate:
     name: validate-and-deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -54,8 +61,36 @@ jobs:
             php "$test_file"
           done
 
+  deploy:
+    name: deploy-production
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy == true))
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://hi.elitesmilesutah.com/crm/
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout validated revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        with:
+          php-version: "8.4"
+          extensions: curl
+          coverage: none
+
+      - name: Build production bundle
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
+          npm ci --no-audit --no-fund
+          npm run build:lead-agent-css
+          git diff --exit-code -- assets/css/lead-agent.css
+
       - name: Deploy via FTPS
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
         uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -63,13 +98,16 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
           port: ${{ secrets.FTP_PORT || 21 }}
-          security: ${{ secrets.FTP_SECURITY || 'loose' }}
+          security: strict
           timeout: ${{ secrets.FTP_TIMEOUT || 120000 }}
           server-dir: ${{ secrets.FTP_SERVER_DIR || '/hi.elitesmilesutah.com/crm/' }}
           local-dir: ./
           exclude: |
             **/.git*
             **/.git*/**
+            **/.github/**
+            **/*.md
+            .semgrepignore
             node_modules/**
             tests/artifacts/**
             .env
@@ -89,10 +127,8 @@ jobs:
             _live_site/**
             site-root/**
             tools/**
-            HANDOFF_*.md
 
       - name: Verify deployed CRM health
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
         env:
           HEALTH_SECRET: ${{ secrets.META_PROCESSOR_SECRET }}
         run: |
@@ -105,12 +141,8 @@ jobs:
             -H "Accept: application/json" \
             "https://hi.elitesmilesutah.com/crm/health.php" || true)"
           cat "$health_body"
-          if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+          if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] && jq -e '.ok == true' "$health_body" >/dev/null 2>&1; then
             exit 0
           fi
-          if [[ "$http_code" == "403" ]] && grep -q "Imunify360 bot-protection" "$health_body"; then
-            echo "::warning::Deployment completed, but BanaHosting Imunify360 blocked the GitHub runner health probe."
-            exit 0
-          fi
-          echo "Health verification failed with HTTP $http_code" >&2
+          echo "Health verification failed or did not return an ok JSON response (HTTP $http_code)." >&2
           exit 1

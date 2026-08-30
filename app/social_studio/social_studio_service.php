@@ -1230,6 +1230,64 @@ if (!function_exists('social_studio_safe_storage_path')) {
     }
 }
 
+if (!function_exists('social_studio_verified_storage_file')) {
+    /**
+     * Resolve an existing file and prove its canonical path remains inside
+     * the private Social Studio storage root. This rejects traversal and
+     * symlink escapes before any endpoint performs file operations.
+     */
+    function social_studio_verified_storage_file(?string $candidatePath): ?string
+    {
+        if ($candidatePath === null || $candidatePath === '') {
+            return null;
+        }
+
+        $root = realpath(social_studio_private_root());
+        $resolved = realpath($candidatePath);
+        if ($root === false || $resolved === false) {
+            return null;
+        }
+
+        $rootPrefix = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if (!str_starts_with($resolved, $rootPrefix) || !is_file($resolved)) {
+            return null;
+        }
+
+        return $resolved;
+    }
+}
+
+if (!function_exists('social_studio_storage_file_mime')) {
+    function social_studio_storage_file_mime(string $verifiedPath): string
+    {
+        return function_exists('mime_content_type')
+            ? (string)(mime_content_type($verifiedPath) ?: '')
+            : '';
+    }
+}
+
+if (!function_exists('social_studio_storage_file_size')) {
+    function social_studio_storage_file_size(string $verifiedPath): int
+    {
+        $size = filesize($verifiedPath);
+        return $size === false ? 0 : (int)$size;
+    }
+}
+
+if (!function_exists('social_studio_stream_storage_file')) {
+    function social_studio_stream_storage_file(string $verifiedPath): bool
+    {
+        $handle = fopen($verifiedPath, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        $result = fpassthru($handle);
+        fclose($handle);
+        return $result !== false;
+    }
+}
+
 if (!function_exists('social_studio_image_url')) {
     function social_studio_image_url(array $draft, bool $branded = true): string
     {

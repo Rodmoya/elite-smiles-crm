@@ -1190,26 +1190,11 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
             ];
         }
 
-        if (lead_email_first_touch_should_wait_for_sms($lead, $smsWillBeAttempted)) {
-            return [
-                'attempted' => false,
-                'sent' => false,
-                'subject' => '',
-                'body' => '',
-                'status_label' => 'Auto email deferred until the unanswered five-hour follow-up.',
-            ];
-        }
-
         $authentication = lead_email_automation_authentication_status();
         if (empty($authentication['ready'])) {
-            esm_log('lead_email', 'Automatic first-touch email paused because sender authentication is not ready.', $authentication + ['lead_id' => $leadId]);
-            return [
-                'attempted' => false,
-                'sent' => false,
-                'subject' => '',
-                'body' => '',
-                'status_label' => 'Auto first-touch email paused until sender SPF is valid.',
-            ];
+            // Keep the SPF issue visible in logs, but do not silently suppress
+            // a valid first-touch email when SMTP itself is configured.
+            esm_log('lead_email', 'Automatic first-touch email is being attempted while sender authentication is not fully verified.', $authentication + ['lead_id' => $leadId]);
         }
 
         $template = lead_email_default_first_touch($lead);

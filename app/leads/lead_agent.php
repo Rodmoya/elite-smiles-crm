@@ -3507,7 +3507,9 @@ if (!function_exists('lead_agent_daily_outbound_count')) {
         } catch (Throwable $e) {
             $email = 0;
         }
-        return $sms + $email;
+        // SMS + email are one coordinated outreach touch. Count the larger
+        // channel total so paired deliveries do not consume two daily touches.
+        return max($sms, $email);
     }
 }
 
@@ -4518,6 +4520,42 @@ if (!function_exists('lead_agent_process_state')) {
                 'fallback_channel' => $channel,
                 'step' => $nextStep,
             ] + lead_agent_draft_conversion_meta($draft);
+        }
+
+        // A cadence step is one coordinated outreach touch. Keep SMS and email
+        // on the same clock so a lead with both consented channels is not
+        // silently skipped on email every other step.
+        $pairedChannel = $channel === 'sms' ? 'email' : 'sms';
+        $pairedBlocked = $pairedChannel === 'sms'
+            ? (lead_agent_sms_blocked($lead) || lead_agent_recent_sms_delivery_issue($leadId))
+            : lead_agent_email_blocked($lead);
+        if (!$pairedBlocked && !empty($send['ok'])) {
+            $pairedKey = 'cadence-' . $leadId . '-' . $nextStep . '-' . $pairedChannel;
+            if (lead_agent_event($leadId, $pairedKey, 'cadence_reserved', $pairedChannel, 'pending', (string) $schedule['phase'], ['step' => $nextStep, 'paired_with' => $eventKey])) {
+                $pairedDraft = lead_agent_contextual_followup($lead, $pairedChannel, $nextStep);
+                if ($pairedDraft === null) {
+                    $pairedDraft = lead_agent_safe_contextual_fallback($lead, $pairedChannel, $nextStep);
+                }
+                $pairedFlags = lead_agent_policy_flags((string) ($pairedDraft['subject'] ?? '') . ' ' . (string) ($pairedDraft['body'] ?? ''));
+                if ($pairedFlags === []) {
+                    $pairedSend = $pairedChannel === 'email'
+                        ? lead_agent_email_send($lead, (string) ($pairedDraft['subject'] ?? 'Whenever you are ready'), (string) ($pairedDraft['body'] ?? ''), $pairedKey)
+                        : lead_agent_sms_send($lead, (string) ($pairedDraft['body'] ?? ''), $pairedKey);
+                    if (!empty($pairedSend['ok'])) {
+                        db_execute("UPDATE lead_agent_events SET event_type = 'cadence_sent', status = 'sent', reason = 'delivered_to_provider' WHERE event_key = :event_key", ['event_key' => $pairedKey]);
+                        lead_agent_record_touchpoint($lead, $pairedKey, $pairedChannel, $nextStep, (string) $schedule['phase'], $pairedSend + lead_agent_draft_conversion_meta($pairedDraft));
+                        lead_agent_record_learning('cadence_followup', $pairedChannel, (string) ($pairedDraft['draft_source'] ?? 'paired_channel') . '_sent');
+                    } else {
+                        db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = :reason WHERE event_key = :event_key", [
+                            'reason' => substr((string) ($pairedSend['message'] ?? 'paired_delivery_failed'), 0, 190),
+                            'event_key' => $pairedKey,
+                        ]);
+                        lead_agent_record_learning('cadence_followup', $pairedChannel, 'delivery_failed');
+                    }
+                } else {
+                    db_execute("UPDATE lead_agent_events SET event_type = 'cadence_failed', status = 'failed', reason = 'paired_content_policy_gate' WHERE event_key = :event_key", ['event_key' => $pairedKey]);
+                }
+            }
         }
 
         $following = lead_agent_step_schedule((string) $state['started_at'], $nextStep + 1);

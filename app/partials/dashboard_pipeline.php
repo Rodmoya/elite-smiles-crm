@@ -5746,9 +5746,9 @@ $consultationOptions = [
                     </span>
                     <div class="min-w-0 flex-1">
                         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                            <div class="flex min-w-0 flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 pr-1 text-center">
-                                <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
-                                <p class="text-sm font-semibold">${escapeHtml(item.title || '')}</p>
+                            <div class="flex min-w-0 flex-wrap items-baseline justify-start gap-x-2 gap-y-0.5 pr-1 text-left">
+                                <p class="text-[11px] font-bold uppercase tracking-[0.08em]">${escapeHtml(item.type || 'Activity')}</p>
+                                <p class="text-xs font-bold text-slate-500">${escapeHtml(item.title || '')}</p>
                             </div>
                             <div class="flex shrink-0 flex-col items-end gap-0.5 text-right">
                                 <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>

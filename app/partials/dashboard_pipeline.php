@@ -6581,7 +6581,9 @@ function applyCommunicationViewportFit() {
             leadCommunicationComposerPanel.style.alignSelf = 'end';
         }
 
-        const unifiedPanelHeight = `${Math.max(200, listBudget - 36)}px`;
+        // Keep the conversation viewport to about three cards. The timeline remains
+        // scrollable, while the composer stays visible without competing for space.
+        const unifiedPanelHeight = `${Math.min(420, Math.max(200, listBudget - 36))}px`;
         const activityPanelHeight = `${Math.max(180, Math.floor(listBudget * 0.72))}px`;
         const emailPanelHeight = `${Math.max(90, Math.min(180, Math.floor(listBudget * 0.22)))}px`;
         const messageThreadHeight = `${Math.max(110, Math.min(180, Math.floor(viewportBudget * 0.22)))}px`;

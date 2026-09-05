@@ -22,11 +22,11 @@ lead_composer_expect(
     'The communication composer body must scroll when its controls exceed the available height.'
 );
 lead_composer_expect(
-    str_contains($source, "composerMode === 'email' ? 292"),
+    str_contains($source, "composerMode === 'email' ? 260"),
     'Email mode must reserve a compact but usable vertical space for its action row.'
 );
 lead_composer_expect(
-    str_contains($source, "composerMode === 'email' ? 0.34"),
+    str_contains($source, "composerMode === 'email' ? 0.29"),
     'Email mode must preserve more vertical space for the conversation timeline.'
 );
 lead_composer_expect(

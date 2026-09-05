@@ -192,13 +192,13 @@ $consultationOptions = [
 #lead-communication-composer-panel .composer-mode-button { min-height: 30px; }
 #lead-communication-composer-panel textarea { line-height: 1.35; }
 #modal-composer-panel-sms { overflow: hidden; }
-#modal-composer-panel-sms > div.flex { gap: .5rem; padding: .5rem; }
-#modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 36px; height: 36px; min-height: 36px; padding-top: .5rem; padding-bottom: .5rem; }
-#modal-composer-panel-sms .border-blue-100 { padding: .5rem; }
-#modal-composer-panel-sms #modal-lead-sms-instruction-input { min-height: 34px; height: 34px; padding-top: .4rem; padding-bottom: .4rem; }
+#modal-composer-panel-sms > div.flex { gap: .35rem; padding: .4rem; }
+#modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 30px; height: 30px; min-height: 30px; padding-top: .35rem; padding-bottom: .35rem; }
+#modal-composer-panel-sms .border-blue-100 { padding: .4rem; }
+#modal-composer-panel-sms #modal-lead-sms-instruction-input { min-height: 26px; height: 26px; padding-top: .25rem; padding-bottom: .25rem; }
 #modal-composer-panel-sms #modal-lead-draft-sms-button,
 #modal-composer-panel-sms #modal-lead-improve-sms-button,
-#modal-composer-panel-sms #modal-lead-send-sms-button { padding-top: .5rem; padding-bottom: .5rem; }
+#modal-composer-panel-sms #modal-lead-send-sms-button { padding-top: .4rem; padding-bottom: .4rem; }
 </style>
 
 
@@ -2374,7 +2374,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[220px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[180px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -6521,9 +6521,9 @@ function applyCommunicationViewportFit() {
         if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 204 : 188);
-        const composerRatio = composerMode === 'email' ? 0.29 : (composerMode === 'note' ? 0.24 : 0.23);
-        const maximumComposerBudget = Math.max(188, viewportBudget - 286);
+        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 204 : 156);
+        const composerRatio = composerMode === 'email' ? 0.29 : (composerMode === 'note' ? 0.24 : 0.20);
+        const maximumComposerBudget = Math.max(156, viewportBudget - 318);
         const composerBudget = isComposerCollapsed
             ? 58
             : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));

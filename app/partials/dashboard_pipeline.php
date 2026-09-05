@@ -193,7 +193,7 @@ $consultationOptions = [
 #lead-communication-composer-panel textarea { line-height: 1.35; }
 #modal-composer-panel-sms { overflow: auto; }
 #modal-composer-panel-sms > div.flex { gap: .35rem; padding: .4rem; }
-#modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 30px; height: 30px; min-height: 30px; padding-top: .35rem; padding-bottom: .35rem; }
+#modal-composer-panel-sms #modal-lead-sms-input { flex: 1 1 auto; min-height: 72px; padding: .75rem; }
 #modal-composer-panel-sms .border-blue-100 { padding: .4rem; }
 #modal-composer-panel-sms #modal-lead-sms-instruction-input { min-height: 26px; height: 26px; padding-top: .25rem; padding-bottom: .25rem; }
 #modal-composer-panel-sms #modal-lead-draft-sms-button,
@@ -2379,10 +2379,11 @@ $consultationOptions = [
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
                                     <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conversation Composer</p>
-                                    <div class="flex items-center gap-3 text-xs font-semibold">
+                                    <div class="flex flex-wrap items-center gap-3 text-xs font-semibold">
                                         <button type="button" data-composer-mode="sms" class="composer-mode-button text-slate-900">SMS</button>
                                         <button type="button" data-composer-mode="email" class="composer-mode-button text-slate-500">Email</button>
                                         <button type="button" data-composer-mode="note" class="composer-mode-button text-slate-500">Note</button>
+                                        <button type="button" data-composer-mode="instruction" class="composer-mode-button text-slate-500">Draft from instruction</button>
                                         <button
                                             type="button"
                                             id="modal-composer-collapse-toggle"
@@ -2452,7 +2453,7 @@ $consultationOptions = [
                                         placeholder="Type a message..."
                                     ></textarea>
 
-                                    <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
+                                    <div id="composer-instruction-sms" class="rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
                                         <label for="modal-lead-sms-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this SMS should do</label>
                                         <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
                                             <textarea
@@ -2552,7 +2553,7 @@ $consultationOptions = [
                                     placeholder="Draft a polished patient email..."
                                 ></textarea>
 
-                                <div class="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
+                                <div id="composer-instruction-email" class="hidden rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
                                     <label for="modal-lead-email-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this email should do</label>
                                     <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
                                         <textarea
@@ -2596,6 +2597,16 @@ $consultationOptions = [
 
                                 </div>
 
+                            </div>
+
+                            <div id="modal-composer-panel-instruction" data-composer-panel="instruction" class="hidden space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+                                <fieldset class="flex items-center gap-4 text-sm">
+                                    <legend class="sr-only">Draft channel</legend>
+                                    <label class="flex cursor-pointer items-center gap-2"><input type="radio" name="composer_instruction_channel" value="sms" checked> Text</label>
+                                    <label class="flex cursor-pointer items-center gap-2"><input type="radio" name="composer_instruction_channel" value="email"> Email</label>
+                                </fieldset>
+                                <div id="composer-instruction-fields"></div>
+                                <p class="text-xs text-slate-500">Describe what you want to say. Review the generated draft in Text or Email before sending.</p>
                             </div>
 
                             <div id="modal-composer-panel-note" data-composer-panel="note" class="hidden h-full min-h-0 rounded-[1.5rem] border border-slate-200 bg-white p-4">
@@ -2843,6 +2854,18 @@ $consultationOptions = [
     const emailStatus = document.getElementById('modal-lead-email-status');
     const composerModeButtons = Array.from(document.querySelectorAll('[data-composer-mode]'));
     const composerPanels = Array.from(document.querySelectorAll('[data-composer-panel]'));
+    // Reuse the channel-specific instruction controls and their draft handlers.
+    const instructionFields = document.getElementById('composer-instruction-fields');
+    const instructionChannels = Array.from(document.querySelectorAll('[name="composer_instruction_channel"]'));
+    ['sms', 'email'].forEach((channel) => {
+        const fields = document.getElementById('composer-instruction-' + channel);
+        if (fields && instructionFields) instructionFields.appendChild(fields);
+    });
+    instructionChannels.forEach((radio) => radio.addEventListener('change', () => {
+        ['sms', 'email'].forEach((channel) => {
+            document.getElementById('composer-instruction-' + channel)?.classList.toggle('hidden', radio.value !== channel);
+        });
+    }));
     const composerBody = document.getElementById('modal-composer-body');
     const composerCollapseToggle = document.getElementById('modal-composer-collapse-toggle');
     const communicationNoteInput = document.getElementById('modal-communication-note-input');
@@ -4450,7 +4473,7 @@ $consultationOptions = [
 
     function setComposerMode(mode) {
 
-        composerMode = ['email', 'sms', 'note'].includes(mode) ? mode : 'sms';
+        composerMode = ['email', 'sms', 'note', 'instruction'].includes(mode) ? mode : 'sms';
 
         composerModeButtons.forEach((button) => {
             const isActive = button.dataset.composerMode === composerMode;
@@ -5226,6 +5249,7 @@ $consultationOptions = [
         setComposerInstructionStatus(channel, 'Reading the full conversation and drafting...');
         const drafted = channel === 'sms' ? await draftLeadSms() : await draftLeadEmail();
         setComposerInstructionStatus(channel, drafted ? 'Draft ready. Review it, then click Send.' : 'Draft could not be created. Review the status above.');
+        if (drafted) setComposerMode(channel);
         return drafted;
     }
 
@@ -6737,6 +6761,14 @@ function applyCommunicationViewportFit() {
         setText('legacy-modal-sms-lead-email', (card.dataset.leadEmail || '').trim() || 'No email selected', 'No email selected');
 
         if (smsInput) smsInput.value = '';
+
+        if (smsInstructionInput) smsInstructionInput.value = '';
+        if (emailInstructionInput) emailInstructionInput.value = '';
+        setComposerInstructionStatus('sms', '');
+        setComposerInstructionStatus('email', '');
+        instructionChannels.forEach((radio) => { radio.checked = radio.value === 'sms'; });
+        document.getElementById('composer-instruction-sms')?.classList.remove('hidden');
+        document.getElementById('composer-instruction-email')?.classList.add('hidden');
 
         if (smsTemplateSelect) smsTemplateSelect.value = '';
 

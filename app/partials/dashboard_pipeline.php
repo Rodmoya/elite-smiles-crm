@@ -183,8 +183,14 @@ $consultationOptions = [
     #lead-communications-grid { display: flex !important; height: auto !important; flex-direction: column; gap: 1rem !important; }
     #lead-unified-timeline-panel, #lead-activity-panel { height: auto !important; min-height: 0 !important; }
     #modal-unified-timeline, #modal-activity-feed, #modal-email-history, #modal-message-thread { max-height: none !important; overflow: visible !important; }
-    #lead-communication-composer-panel { position: sticky; bottom: calc(.25rem + env(safe-area-inset-bottom)); z-index: 20; order: -1; width: 100% !important; height: auto !important; min-height: 190px; max-height: 48dvh !important; box-shadow: 0 -12px 30px rgba(15,23,42,.12); }
+    #lead-communication-composer-panel { position: sticky; bottom: calc(.25rem + env(safe-area-inset-bottom)); z-index: 20; order: -1; width: 100% !important; height: auto !important; min-height: 168px; max-height: 42dvh !important; box-shadow: 0 -12px 30px rgba(15,23,42,.12); }
 }
+
+/* Keep the desktop composer useful without letting it crowd the conversation. */
+#lead-communication-composer-panel { min-height: 0; }
+#modal-composer-body { min-height: 0; scrollbar-gutter: stable; }
+#lead-communication-composer-panel .composer-mode-button { min-height: 30px; }
+#lead-communication-composer-panel textarea { line-height: 1.35; }
 </style>
 
 
@@ -2360,7 +2366,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[300px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[260px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -5633,7 +5639,8 @@ $consultationOptions = [
                 title: email.subject || '(no subject)',
                 body: email.body || '',
                 body_html: email.body_html_safe || '',
-                meta: [email.status || '', opened].filter(Boolean).join(' | '),
+                status: email.status || '',
+                meta: opened,
             });
         });
 
@@ -5646,7 +5653,7 @@ $consultationOptions = [
                 time: message.created_at || '',
                 title: isOutbound ? 'Text sent' : 'Patient replied',
                 body: message.body || '',
-                meta: message.twilio_status || '',
+                status: message.twilio_status || '',
             });
         });
 
@@ -5732,7 +5739,10 @@ $consultationOptions = [
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
-                            <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
+                            <div class="flex shrink-0 flex-col items-end gap-0.5 text-right">
+                                <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
+                                ${item.status ? `<p class="text-[10px] font-semibold uppercase tracking-[0.08em] opacity-75">${escapeHtml(item.status)}</p>` : ''}
+                            </div>
                         </div>
                         <p class="mt-1 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
                         ${includePreview && preview ? `<p class="mt-1 truncate text-xs opacity-70">${escapeHtml(preview)}</p>` : ''}
@@ -6500,9 +6510,9 @@ function applyCommunicationViewportFit() {
         leadDetailBody.style.overflowY = 'hidden';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerMinimum = composerMode === 'email' ? 340 : (composerMode === 'note' ? 280 : 240);
-        const composerRatio = composerMode === 'email' ? 0.43 : (1 / 3);
-        const maximumComposerBudget = Math.max(240, viewportBudget - 196);
+        const composerMinimum = composerMode === 'email' ? 292 : (composerMode === 'note' ? 232 : 214);
+        const composerRatio = composerMode === 'email' ? 0.34 : (composerMode === 'note' ? 0.28 : 0.27);
+        const maximumComposerBudget = Math.max(214, viewportBudget - 250);
         const composerBudget = isComposerCollapsed
             ? 58
             : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));

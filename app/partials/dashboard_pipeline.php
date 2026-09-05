@@ -6553,13 +6553,13 @@ function applyCommunicationViewportFit() {
         if (composerBody) composerBody.style.overflowY = 'auto';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 240 : 300);
-        const composerRatio = composerMode === 'email' ? 0.29 : 0.40;
+        const composerMinimum = composerMode === 'email' ? 260 : 220;
+        const composerRatio = composerMode === 'email' ? 0.29 : 0.26;
         const maximumComposerBudget = Math.max(0, viewportBudget - 116);
         const composerBudget = isComposerCollapsed
             ? 58
             : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));
-        const listBudget = Math.min(420, Math.max(0, viewportBudget - composerBudget - 16));
+        const listBudget = Math.min(540, Math.max(0, viewportBudget - composerBudget - 16));
 
         leadDetailBody.style.boxSizing = 'border-box';
         leadDetailBody.style.maxHeight = `${bodyBudget}px`;
@@ -6614,7 +6614,7 @@ function applyCommunicationViewportFit() {
             leadCommunicationComposerPanel.style.alignSelf = 'end';
         }
 
-        // Keep the conversation viewport to about three cards. The timeline remains
+        // Keep the conversation viewport to about four cards. The timeline remains
         // scrollable, while the composer stays visible without competing for space.
         const unifiedPanelHeight = `${Math.max(0, listBudget - 80)}px`;
         const activityPanelHeight = `${Math.max(180, Math.floor(listBudget * 0.72))}px`;

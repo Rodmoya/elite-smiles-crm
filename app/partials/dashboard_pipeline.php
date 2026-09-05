@@ -2438,6 +2438,20 @@ $consultationOptions = [
                                         placeholder="Type a message..."
                                     ></textarea>
 
+                                    <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
+                                        <label for="modal-lead-sms-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this SMS should do</label>
+                                        <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
+                                            <textarea
+                                                rows="2"
+                                                id="modal-lead-sms-instruction-input"
+                                                class="min-h-[48px] flex-1 resize-none rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                placeholder="Example: Ask what day works best to reschedule the visit."
+                                            ></textarea>
+                                            <button type="button" id="modal-lead-draft-sms-instruction-button" class="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Draft from instruction</button>
+                                        </div>
+                                        <p id="modal-lead-sms-instruction-status" class="mt-1 min-h-3 text-[10px] text-blue-700"></p>
+                                    </div>
+
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <p id="modal-lead-sms-status" class="min-h-4 text-xs text-slate-500"></p>
 
@@ -2523,6 +2537,20 @@ $consultationOptions = [
                                     class="mt-2 min-h-[72px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none"
                                     placeholder="Draft a polished patient email..."
                                 ></textarea>
+
+                                <div class="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-2.5">
+                                    <label for="modal-lead-email-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this email should do</label>
+                                    <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
+                                        <textarea
+                                            rows="2"
+                                            id="modal-lead-email-instruction-input"
+                                            class="min-h-[48px] flex-1 resize-none rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                            placeholder="Example: Create an email to reschedule the visit and ask which day works best."
+                                        ></textarea>
+                                        <button type="button" id="modal-lead-draft-email-instruction-button" class="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Draft from instruction</button>
+                                    </div>
+                                    <p id="modal-lead-email-instruction-status" class="mt-1 min-h-3 text-[10px] text-blue-700"></p>
+                                </div>
 
                                 <p id="modal-lead-email-status" class="mt-2 min-h-4 shrink-0 text-xs text-slate-500"></p>
 
@@ -2704,12 +2732,18 @@ $consultationOptions = [
     const saveButtonCommunications = document.getElementById('modal-lead-save-button-communications');
 
     const draftSmsButton = document.getElementById('modal-lead-draft-sms-button');
+    const draftSmsInstructionButton = document.getElementById('modal-lead-draft-sms-instruction-button');
     const improveSmsButton = document.getElementById('modal-lead-improve-sms-button');
     const sendSmsButton = document.getElementById('modal-lead-send-sms-button');
     const draftEmailButton = document.getElementById('modal-lead-draft-email-button');
+    const draftEmailInstructionButton = document.getElementById('modal-lead-draft-email-instruction-button');
     const improveEmailButton = document.getElementById('modal-lead-improve-email-button');
     const draftBothButton = document.getElementById('modal-ai-draft-both-button');
     const sendEmailButton = document.getElementById('modal-lead-send-email-button');
+    const smsInstructionInput = document.getElementById('modal-lead-sms-instruction-input');
+    const emailInstructionInput = document.getElementById('modal-lead-email-instruction-input');
+    const smsInstructionStatus = document.getElementById('modal-lead-sms-instruction-status');
+    const emailInstructionStatus = document.getElementById('modal-lead-email-instruction-status');
     const loadThreadButton = document.getElementById('modal-lead-load-thread-button');
     const followupCheckButton = document.getElementById('run-followup-check');
     const saveStatus = document.getElementById('modal-save-status-footer');
@@ -5031,12 +5065,20 @@ $consultationOptions = [
             draftSmsButton.disabled = !hasLead || smsOptedOut || busy;
         }
 
+        if (draftSmsInstructionButton) {
+            draftSmsInstructionButton.disabled = !hasLead || smsOptedOut || busy;
+        }
+
         if (improveSmsButton) {
             improveSmsButton.disabled = !hasLead || smsOptedOut || busy;
         }
 
         if (draftEmailButton) {
             draftEmailButton.disabled = !hasLead || busy;
+        }
+
+        if (draftEmailInstructionButton) {
+            draftEmailInstructionButton.disabled = !hasLead || busy;
         }
 
         if (improveEmailButton) {
@@ -5050,6 +5092,9 @@ $consultationOptions = [
         if (aiInstructionInput) {
             aiInstructionInput.disabled = busy;
         }
+
+        if (smsInstructionInput) smsInstructionInput.disabled = busy;
+        if (emailInstructionInput) emailInstructionInput.disabled = busy;
 
     }
 
@@ -5132,7 +5177,12 @@ $consultationOptions = [
     function buildDraftInstruction(channel) {
 
         const baseInstruction = defaultAiInstruction(channel);
-        const extraInstruction = getAiInstructionValue();
+        const channelInstruction = channel === 'sms'
+            ? (smsInstructionInput ? smsInstructionInput.value.trim() : '')
+            : channel === 'email'
+                ? (emailInstructionInput ? emailInstructionInput.value.trim() : '')
+                : '';
+        const extraInstruction = channelInstruction || getAiInstructionValue();
 
         if (!extraInstruction) {
             return baseInstruction;
@@ -5143,6 +5193,26 @@ $consultationOptions = [
             `Operator instruction: ${extraInstruction}`
         ].join('\n\n');
 
+    }
+
+    function setComposerInstructionStatus(channel, message) {
+        const target = channel === 'sms' ? smsInstructionStatus : emailInstructionStatus;
+        if (target) target.textContent = message || '';
+    }
+
+    async function draftLeadFromComposerInstruction(channel) {
+        const input = channel === 'sms' ? smsInstructionInput : emailInstructionInput;
+        const instruction = input ? input.value.trim() : '';
+        if (!instruction) {
+            setComposerInstructionStatus(channel, 'Write the action you want the AI to take first.');
+            input?.focus();
+            return false;
+        }
+
+        setComposerInstructionStatus(channel, 'Reading the full conversation and drafting...');
+        const drafted = channel === 'sms' ? await draftLeadSms() : await draftLeadEmail();
+        setComposerInstructionStatus(channel, drafted ? 'Draft ready. Review it, then click Send.' : 'Draft could not be created. Review the status above.');
+        return drafted;
     }
 
     function applyDraftedFollowUp(value) {
@@ -8613,9 +8683,11 @@ function applyCommunicationViewportFit() {
     if (saveButtonCommunications) saveButtonCommunications.addEventListener('click', saveLeadDetails);
 
     if (draftSmsButton) draftSmsButton.addEventListener('click', draftLeadSms);
+    if (draftSmsInstructionButton) draftSmsInstructionButton.addEventListener('click', () => draftLeadFromComposerInstruction('sms'));
     if (improveSmsButton) improveSmsButton.addEventListener('click', improveLeadSms);
     if (sendSmsButton) sendSmsButton.addEventListener('click', sendLeadSms);
     if (draftEmailButton) draftEmailButton.addEventListener('click', draftLeadEmail);
+    if (draftEmailInstructionButton) draftEmailInstructionButton.addEventListener('click', () => draftLeadFromComposerInstruction('email'));
     if (improveEmailButton) improveEmailButton.addEventListener('click', improveLeadEmail);
     if (draftBothButton) draftBothButton.addEventListener('click', draftLeadBoth);
     if (sendEmailButton) sendEmailButton.addEventListener('click', sendLeadEmail);

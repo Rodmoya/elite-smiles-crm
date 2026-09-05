@@ -146,6 +146,9 @@ expect_true(
     'Authorized operator SMS must be intercepted before patient lookup so it can never create a false lead.'
 );
 $agentSource = (string) file_get_contents(dirname(__DIR__) . '/app/leads/lead_agent.php');
+expect_true(str_contains($agentSource, 'A cadence step is one coordinated outreach touch'), 'Every cadence step must coordinate SMS and email when both channels are available.');
+expect_true(str_contains($agentSource, '$pairedChannel = $channel === \'sms\' ? \'email\' : \'sms\';'), 'Every successful cadence delivery must attempt its paired channel.');
+expect_true(!str_contains($agentSource, 'Automated email paused until sender SPF is valid.'), 'Lead Agent follow-up email must not be silently suppressed by the SPF advisory gate.');
 expect_true(!str_contains($agentSource, 'I checked the CRM and Dentrix calendar'), 'The agent must never claim it queried Dentrix directly.');
 expect_true(!str_contains($agentSource, 'CODE CALL'), 'Operator help must not offer calls when the lead did not request one.');
 $pushSource = (string) file_get_contents(dirname(__DIR__) . '/app/core/mobile_ai_push.php');

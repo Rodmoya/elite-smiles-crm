@@ -2695,7 +2695,11 @@ if (!function_exists('lead_agent_email_send')) {
         if (function_exists('lead_email_automation_authentication_status')) {
             $authentication = lead_email_automation_authentication_status();
             if (empty($authentication['ready'])) {
-                return ['ok' => false, 'message' => 'Automated email paused until sender SPF is valid.', 'authentication' => $authentication];
+                // SPF status is observable deliverability guidance, not a reason
+                // to silently suppress a consented follow-up while SMTP is
+                // configured. Let the SMTP provider report the real outcome so
+                // SMS and email remain one coordinated outreach touch.
+                esm_log('lead_agent', 'Automated follow-up email is being attempted while sender authentication is not fully verified.', $authentication + ['lead_id' => (int) ($lead['id'] ?? 0), 'event_key' => $eventKey]);
             }
         }
         $body = lead_language_maybe_add_email_offer($lead, $body);

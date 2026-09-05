@@ -5745,14 +5745,16 @@ $consultationOptions = [
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${timelineIcon(item.type)}</svg>
                     </span>
                     <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                            <div class="flex min-w-0 flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 pr-1 text-center">
+                                <p class="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">${escapeHtml(item.type || 'Activity')}</p>
+                                <p class="text-sm font-semibold">${escapeHtml(item.title || '')}</p>
+                            </div>
                             <div class="flex shrink-0 flex-col items-end gap-0.5 text-right">
                                 <p class="text-[11px] opacity-70">${escapeHtml(formatThreadTime(item.time || ''))}</p>
                                 ${item.status ? `<p class="text-[10px] font-semibold uppercase tracking-[0.08em] opacity-75">${escapeHtml(item.status)}</p>` : ''}
                             </div>
                         </div>
-                        <p class="mt-1 text-sm font-semibold">${escapeHtml(item.title || '')}</p>
                         ${includePreview && preview ? `<p class="mt-1 truncate text-xs opacity-70">${escapeHtml(preview)}</p>` : ''}
                     </div>
                 </div>

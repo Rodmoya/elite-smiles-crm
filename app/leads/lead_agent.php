@@ -851,6 +851,68 @@ if (!function_exists('lead_agent_policy_flags')) {
     }
 }
 
+if (!function_exists('lead_agent_requested_followup_at')) {
+    /**
+     * Parse an explicit future-contact request without treating a normal
+     * appointment preference as permission to keep messaging now.
+     */
+    function lead_agent_requested_followup_at(string $body, ?DateTimeImmutable $now = null): string
+    {
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        $now = $now ?? new DateTimeImmutable('now', $timezone);
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+        if ($text === '') {
+            return '';
+        }
+
+        $deferSignal = preg_match(
+            '/\b(?:wait(?:ing)?(?:\s+until|\s+till|\s+for)?|hold\s+off|pause|reach\s+out|contact\s+me|check\s+back|follow\s+up|start\s+making\s+appointments?|espere?(?:\s+hasta)?|esperar(?:\s+hasta)?|paus[ae]|comun[ií]quese|cont[aá]cteme|vuelva\s+a\s+contactar)\b/iu',
+            $text
+        );
+        $untilSignal = preg_match('/\b(?:until|till|hasta)\b/iu', $text);
+        if (!$deferSignal && !$untilSignal) {
+            return '';
+        }
+
+        $monthNames = [
+            'january' => 1, 'enero' => 1,
+            'february' => 2, 'febrero' => 2,
+            'march' => 3, 'marzo' => 3,
+            'april' => 4, 'abril' => 4,
+            'may' => 5, 'mayo' => 5,
+            'june' => 6, 'junio' => 6,
+            'july' => 7, 'julio' => 7,
+            'august' => 8, 'agosto' => 8,
+            'september' => 9, 'septiembre' => 9, 'setiembre' => 9,
+            'october' => 10, 'octubre' => 10,
+            'november' => 11, 'noviembre' => 11,
+            'december' => 12, 'diciembre' => 12,
+        ];
+        $monthPattern = implode('|', array_map(static fn(string $month): string => preg_quote($month, '/'), array_keys($monthNames)));
+        if (preg_match('/\b(' . $monthPattern . ')\b(?:\s+(\d{1,2})(?:st|nd|rd|th)?)?(?:[\s,]+(20\d{2}))?/iu', $text, $matches)) {
+            $month = $monthNames[strtolower((string)$matches[1])] ?? 0;
+            $day = max(1, min(31, (int)($matches[2] ?? 1)));
+            $year = (int)($matches[3] ?? $now->format('Y'));
+            if ($month < 1) {
+                return '';
+            }
+            $candidate = $now->setDate($year, $month, 1)->setTime(9, 0, 0);
+            $maxDay = (int)$candidate->format('t');
+            $candidate = $candidate->setDate($year, $month, min($day, $maxDay));
+            if (!isset($matches[3]) && $candidate <= $now) {
+                $candidate = $candidate->modify('+1 year');
+            }
+            return $candidate->format('Y-m-d H:i:s');
+        }
+
+        if (preg_match('/\b(?:next\s+month|el\s+pr[oó]ximo\s+mes)\b/iu', $text)) {
+            return $now->modify('first day of next month')->setTime(9, 0, 0)->format('Y-m-d H:i:s');
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('lead_agent_classify_inbound')) {
     function lead_agent_classify_inbound(string $body): string
     {
@@ -860,6 +922,9 @@ if (!function_exists('lead_agent_classify_inbound')) {
         }
         if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text|cancelar|no me escriba|no me escriban|deje de escribir)\b/iu', $text)) {
             return 'opt_out';
+        }
+        if (lead_agent_requested_followup_at($body) !== '') {
+            return 'pause';
         }
         if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want|no me interesa|ya no me interesa|ahora no|tal vez despues|tal vez después|no gracias|muy lejos|no puedo viajar)\b/iu', $text)) {
             return 'pause';
@@ -2108,6 +2173,132 @@ if (!function_exists('lead_agent_repair_cycle_coverage')) {
     }
 }
 
+if (!function_exists('lead_agent_state_is_patient_hold')) {
+    function lead_agent_state_is_patient_hold(array $state): bool
+    {
+        return trim((string)($state['status'] ?? '')) === 'paused'
+            && trim((string)($state['pause_reason'] ?? '')) === 'patient_requested_future_followup';
+    }
+}
+
+if (!function_exists('lead_agent_state_has_active_patient_hold')) {
+    function lead_agent_state_has_active_patient_hold(array $state, ?DateTimeImmutable $now = null): bool
+    {
+        if (!lead_agent_state_is_patient_hold($state)) {
+            return false;
+        }
+        $nextActionAt = trim((string)($state['next_action_at'] ?? ''));
+        if ($nextActionAt === '') {
+            return false;
+        }
+        try {
+            $holdUntil = new DateTimeImmutable($nextActionAt, new DateTimeZone(APP_TIMEZONE));
+        } catch (Throwable) {
+            return false;
+        }
+        $now = $now ?? new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
+        return $holdUntil > $now;
+    }
+}
+
+if (!function_exists('lead_agent_hold_until')) {
+    /** Silence every automated channel until the saved date, then request human review. */
+    function lead_agent_hold_until(int $leadId, string $holdUntil, string $source = 'operator'): array
+    {
+        if ($leadId <= 0) {
+            return ['ok' => false, 'message' => 'Invalid lead selected.'];
+        }
+        $timezone = new DateTimeZone(APP_TIMEZONE);
+        try {
+            $wakeAt = new DateTimeImmutable($holdUntil, $timezone);
+        } catch (Throwable) {
+            return ['ok' => false, 'message' => 'Hold date is invalid.'];
+        }
+        $now = new DateTimeImmutable('now', $timezone);
+        if ($wakeAt <= $now) {
+            return ['ok' => false, 'message' => 'Hold date must be in the future.'];
+        }
+
+        lead_agent_ensure_schema();
+        $lead = db_one('SELECT id, status, full_name FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+        if (!$lead) {
+            return ['ok' => false, 'message' => 'Lead not found.'];
+        }
+        $wakeAtText = $wakeAt->format('Y-m-d H:i:s');
+        $startedAt = now();
+        $existing = db_one('SELECT started_at FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        if (trim((string)($existing['started_at'] ?? '')) !== '') {
+            $startedAt = (string)$existing['started_at'];
+        }
+
+        db_begin();
+        try {
+            db_query("INSERT INTO lead_agent_states
+                    (lead_id, status, cadence_step, started_at, next_action_at, last_action_at,
+                     last_decision, human_takeover, human_takeover_until, pause_reason,
+                     scheduling_phase, availability_option_1, availability_option_2,
+                     selected_availability, scheduling_context, availability_pool_json,
+                     lock_token, locked_at, created_at, updated_at)
+                VALUES
+                    (:lead_id, 'paused', 0, :started_at, :next_action_at, NULL,
+                     'patient_requested_future_hold', 0, NULL, 'patient_requested_future_followup',
+                     '', NULL, NULL, NULL, '', NULL, '', NULL, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    status = 'paused', next_action_at = VALUES(next_action_at),
+                    last_decision = 'patient_requested_future_hold',
+                    human_takeover = 0, human_takeover_until = NULL,
+                    pause_reason = 'patient_requested_future_followup',
+                    scheduling_phase = '', availability_option_1 = NULL,
+                    availability_option_2 = NULL, selected_availability = NULL,
+                    scheduling_context = '', availability_pool_json = NULL,
+                    lock_token = '', locked_at = NULL, updated_at = NOW()", [
+                'lead_id' => $leadId,
+                'started_at' => $startedAt,
+                'next_action_at' => $wakeAtText,
+            ]);
+            db_execute("UPDATE leads SET status = 'no_answer', follow_up_status = 'ok',
+                    next_follow_up_at = :next_follow_up_at, updated_at = NOW()
+                WHERE id = :lead_id LIMIT 1", [
+                'next_follow_up_at' => $wakeAtText,
+                'lead_id' => $leadId,
+            ]);
+            db_execute("UPDATE lead_agent_operator_requests
+                SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+                WHERE lead_id = :lead_id AND status = 'pending'", ['lead_id' => $leadId]);
+            db_commit();
+        } catch (Throwable $e) {
+            db_rollBack();
+            throw $e;
+        }
+
+        $source = trim($source) !== '' ? trim($source) : 'operator';
+        lead_comm_insert_activity(
+            $leadId,
+            'lead_agent_patient_hold',
+            'Automated SMS and email follow-up paused until ' . $wakeAt->format('M j, Y \a\t g:i A') . '.',
+            ['hold_until' => $wakeAtText, 'source' => $source],
+            $source === 'lead_agent_inbound' ? 'Lead Agent' : 'Codex'
+        );
+        lead_agent_event(
+            $leadId,
+            'patient-hold-' . $leadId . '-' . $wakeAt->format('YmdHi'),
+            'patient_hold',
+            '',
+            'recorded',
+            'patient_requested_future_followup',
+            ['hold_until' => $wakeAtText, 'source' => $source]
+        );
+
+        return [
+            'ok' => true,
+            'lead_id' => $leadId,
+            'status' => 'paused',
+            'stage' => 'no_answer',
+            'hold_until' => $wakeAtText,
+        ];
+    }
+}
+
 if (!function_exists('lead_agent_pause')) {
     function lead_agent_pause(int $leadId, string $reason, string $status = 'paused'): void
     {
@@ -2130,8 +2321,20 @@ if (!function_exists('lead_agent_record_human_outbound')) {
             return;
         }
         lead_agent_ensure_schema();
-        $state = db_one('SELECT lead_id FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
+        $state = db_one('SELECT * FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1', ['lead_id' => $leadId]);
         if (!$state) {
+            return;
+        }
+        if (lead_agent_state_is_patient_hold($state)) {
+            lead_agent_event(
+                $leadId,
+                'human-outbound-during-hold-' . $channel . '-' . $leadId . '-' . hash('sha256', $body . '|' . microtime(true)),
+                'human_outbound_during_hold',
+                $channel,
+                'recorded',
+                'patient_requested_future_followup',
+                ['hold_until' => (string)($state['next_action_at'] ?? '')]
+            );
             return;
         }
         $resumeAt = (new DateTimeImmutable('tomorrow 09:00', new DateTimeZone(APP_TIMEZONE)))->format('Y-m-d H:i:s');
@@ -2195,6 +2398,66 @@ if (!function_exists('lead_agent_release_expired_human_takeovers')) {
     }
 }
 
+if (!function_exists('lead_agent_release_due_patient_holds')) {
+    /** Wake a dated hold into human review; never send automatically at expiry. */
+    function lead_agent_release_due_patient_holds(?int $onlyLeadId = null): int
+    {
+        lead_agent_ensure_schema();
+        $params = [];
+        $leadFilter = '';
+        if ($onlyLeadId !== null && $onlyLeadId > 0) {
+            $leadFilter = ' AND lead_id = :lead_id';
+            $params['lead_id'] = $onlyLeadId;
+        }
+        $rows = db_all("SELECT lead_id, next_action_at FROM lead_agent_states
+            WHERE status = 'paused'
+              AND pause_reason = 'patient_requested_future_followup'
+              AND next_action_at IS NOT NULL
+              AND next_action_at <= NOW(){$leadFilter}", $params);
+        $released = 0;
+        foreach ($rows as $state) {
+            $leadId = (int)($state['lead_id'] ?? 0);
+            if ($leadId <= 0) {
+                continue;
+            }
+            $changed = db_execute("UPDATE lead_agent_states
+                SET status = 'needs_attention', human_takeover = 1,
+                    human_takeover_until = NULL, next_action_at = NULL,
+                    pause_reason = 'patient_requested_future_followup_due',
+                    last_decision = 'patient_requested_future_hold_due',
+                    lock_token = '', locked_at = NULL, updated_at = NOW()
+                WHERE lead_id = :lead_id
+                  AND status = 'paused'
+                  AND pause_reason = 'patient_requested_future_followup'
+                  AND next_action_at <= NOW()", ['lead_id' => $leadId]);
+            if (!$changed) {
+                continue;
+            }
+            $released++;
+            db_execute("UPDATE leads SET follow_up_status = 'needs_follow_up',
+                    next_follow_up_at = NULL, updated_at = NOW()
+                WHERE id = :lead_id LIMIT 1", ['lead_id' => $leadId]);
+            lead_agent_event(
+                $leadId,
+                'patient-hold-due-' . $leadId . '-' . date('Ymd'),
+                'patient_hold_due',
+                '',
+                'recorded',
+                'patient_requested_future_followup_due',
+                ['held_until' => (string)($state['next_action_at'] ?? '')]
+            );
+            lead_comm_insert_activity(
+                $leadId,
+                'lead_agent_patient_hold_due',
+                'The patient-requested hold has ended. Review the conversation before contacting the lead.',
+                ['held_until' => (string)($state['next_action_at'] ?? '')],
+                'Lead Agent'
+            );
+        }
+        return $released;
+    }
+}
+
 if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
     /** Keep the lead list and worker on one authoritative follow-up schedule. */
     function lead_agent_sync_crm_followup_schedule(?int $onlyLeadId = null): int
@@ -2206,7 +2469,7 @@ if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
             $where = ' WHERE s.lead_id = :lead_id';
             $params['lead_id'] = $onlyLeadId;
         }
-        $rows = db_all("SELECT s.lead_id, s.status, s.human_takeover, s.human_takeover_until, s.next_action_at
+        $rows = db_all("SELECT s.lead_id, s.status, s.human_takeover, s.human_takeover_until, s.next_action_at, s.pause_reason
             FROM lead_agent_states s{$where}", $params);
         $updated = 0;
         foreach ($rows as $state) {
@@ -2217,6 +2480,9 @@ if (!function_exists('lead_agent_sync_crm_followup_schedule')) {
             $nextAt = null;
             if (in_array($status, ['active', 'engaged', 'nurture'], true) && empty($state['human_takeover'])) {
                 $nextAt = trim((string) ($state['next_action_at'] ?? '')) ?: null;
+            } elseif ($status === 'paused'
+                && trim((string)($state['pause_reason'] ?? '')) === 'patient_requested_future_followup') {
+                $nextAt = trim((string)($state['next_action_at'] ?? '')) ?: null;
             } elseif ($temporaryTakeover) {
                 $nextAt = trim((string) ($state['human_takeover_until'] ?? '')) ?: null;
             }
@@ -3350,6 +3616,18 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
         }
         if ($intent === 'pause') {
+            $requestedFollowupAt = lead_agent_requested_followup_at($body);
+            if ($requestedFollowupAt !== '') {
+                $hold = lead_agent_hold_until($leadId, $requestedFollowupAt, 'lead_agent_inbound');
+                return [
+                    'ok' => !empty($hold['ok']),
+                    'handled' => true,
+                    'intent' => $intent,
+                    'sent' => false,
+                    'status' => !empty($hold['ok']) ? 'patient_hold' : 'paused',
+                    'hold_until' => (string)($hold['hold_until'] ?? ''),
+                ];
+            }
             $declineKind = lead_agent_decline_kind($body);
             lead_agent_pause($leadId, 'lead_' . $declineKind, 'paused');
             if ($declineKind === 'declined') {
@@ -3357,6 +3635,35 @@ if (!function_exists('lead_agent_handle_inbound')) {
                 lead_comm_insert_activity($leadId, 'lead_agent_explicit_decline', 'Lead Agent closed automated follow-up after the patient explicitly declined.', ['body' => mb_substr($body, 0, 250)], 'Lead Agent');
             }
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
+        }
+        if (lead_agent_state_is_patient_hold($state)) {
+            lead_lifecycle_mark_inbound_answer($leadId, 'lead_agent_patient_hold_reopened');
+            db_execute("UPDATE lead_agent_states
+                SET status = 'needs_attention', human_takeover = 1,
+                    human_takeover_until = NULL, next_action_at = NULL,
+                    pause_reason = 'patient_requested_hold_reopened_by_inbound',
+                    last_decision = 'patient_requested_hold_reopened_by_inbound',
+                    lock_token = '', locked_at = NULL, updated_at = NOW()
+                WHERE lead_id = :lead_id", ['lead_id' => $leadId]);
+            db_execute("UPDATE leads SET follow_up_status = 'reply_received',
+                    next_follow_up_at = NULL, updated_at = NOW()
+                WHERE id = :lead_id LIMIT 1", ['lead_id' => $leadId]);
+            lead_agent_event(
+                $leadId,
+                'patient-hold-reopened-' . $eventKey,
+                'inbound_routed_to_human',
+                $channel,
+                'recorded',
+                'patient_requested_hold_reopened_by_inbound'
+            );
+            lead_comm_insert_activity(
+                $leadId,
+                'lead_agent_patient_hold_reopened',
+                'The patient replied before the hold date. Lead Agent stayed silent and returned the conversation to Rod.',
+                ['channel' => $channel, 'event_key' => $eventKey],
+                'Lead Agent'
+            );
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false, 'status' => 'human_takeover'];
         }
         if (!empty($state['human_takeover']) || in_array((string) ($state['status'] ?? ''), ['human_takeover', 'ready_to_schedule', 'needs_attention'], true)) {
             lead_agent_event($leadId, 'human-owned-' . $eventKey, 'inbound_routed_to_human', $channel, 'recorded', 'human_takeover_active');
@@ -4296,7 +4603,13 @@ if (!function_exists('lead_agent_run_monthly_email_outreach')) {
                     WHERE direction = 'outbound' AND LOWER(COALESCE(status, '')) IN ('sent','delivered','accepted')
                     GROUP BY lead_id
                 ) email_history ON email_history.lead_id = l.id
+                LEFT JOIN lead_agent_states hold_state ON hold_state.lead_id = l.id
                 WHERE l.status IN ('no_answer','lost_lead')
+                  AND COALESCE(hold_state.pause_reason, '') NOT IN (
+                      'patient_requested_future_followup',
+                      'patient_requested_future_followup_due',
+                      'patient_requested_hold_reopened_by_inbound'
+                  )
                 ORDER BY COALESCE(email_history.last_successful_email_at, l.updated_at, l.created_at) ASC, l.id ASC
                 LIMIT {$candidateLimit}");
         } catch (Throwable $e) {
@@ -4602,6 +4915,7 @@ if (!function_exists('lead_agent_run_due')) {
             lead_agent_backfill_touchpoints(5000);
             lead_agent_refresh_cadence_learning(30);
             lead_agent_release_expired_human_takeovers();
+            lead_agent_release_due_patient_holds();
         }
         $limit = max(1, min(50, $limit));
         $run = lead_agent_run_start($dryRun);
@@ -4925,6 +5239,11 @@ if (!function_exists('lead_agent_exception_rows')) {
             ORDER BY COALESCE(s.handoff_notified_at, s.updated_at) DESC LIMIT {$limit}");
         foreach ($rows as &$lead) {
             $reason = trim((string) ($lead['agent_attention_reason'] ?? '')) ?: 'Lead Agent cannot safely determine the next step.';
+            if ($reason === 'patient_requested_future_followup_due') {
+                $reason = 'The patient-requested hold has ended. Review the conversation before contacting this lead.';
+            } elseif ($reason === 'patient_requested_hold_reopened_by_inbound') {
+                $reason = 'The patient replied before the hold date. Review the new message before responding.';
+            }
             $isSmsDeliveryFailure = str_contains(strtolower($reason), 'sms delivery failed');
             $lead['_action_queue'] = [
                 'priority' => 100,

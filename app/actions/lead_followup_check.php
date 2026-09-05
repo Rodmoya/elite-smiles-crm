@@ -68,6 +68,11 @@ foreach ([
         $fields[] = $field;
     }
 }
+if (lead_related_table_exists('lead_agent_states')) {
+    $fields[] = "(SELECT las.status FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_status";
+    $fields[] = "(SELECT las.pause_reason FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_pause_reason";
+    $fields[] = "(SELECT las.next_action_at FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_next_action_at";
+}
 
 $openStages = ['new_lead', 'attempted_contact', 'contacted'];
 $nurtureStages = ['no_answer'];
@@ -139,6 +144,21 @@ try {
         // Confirmed invalid contact data is retained for deduplication, not
         // repeatedly promoted back into the human attention queue.
         if ($followUpStatus === 'unreachable') {
+            continue;
+        }
+
+        if (function_exists('lead_conversion_patient_hold_active') && lead_conversion_patient_hold_active($lead)) {
+            $clearParts = [];
+            $clearParams = ['id' => $leadId, 'checked_at' => now()];
+            if (leads_has_column('follow_up_status')) {
+                $clearParts[] = "follow_up_status = 'ok'";
+            }
+            if (leads_has_column('last_follow_up_check_at')) {
+                $clearParts[] = 'last_follow_up_check_at = :checked_at';
+            }
+            if ($clearParts) {
+                db_query('UPDATE leads SET ' . implode(', ', $clearParts) . ' WHERE id = :id LIMIT 1', $clearParams);
+            }
             continue;
         }
 

@@ -191,6 +191,14 @@ $consultationOptions = [
 #modal-composer-body { min-height: 0; scrollbar-gutter: stable; }
 #lead-communication-composer-panel .composer-mode-button { min-height: 30px; }
 #lead-communication-composer-panel textarea { line-height: 1.35; }
+#modal-composer-panel-sms { overflow: hidden; }
+#modal-composer-panel-sms > div.flex { gap: .5rem; padding: .5rem; }
+#modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 36px; height: 36px; min-height: 36px; padding-top: .5rem; padding-bottom: .5rem; }
+#modal-composer-panel-sms .border-blue-100 { padding: .5rem; }
+#modal-composer-panel-sms #modal-lead-sms-instruction-input { min-height: 34px; height: 34px; padding-top: .4rem; padding-bottom: .4rem; }
+#modal-composer-panel-sms #modal-lead-draft-sms-button,
+#modal-composer-panel-sms #modal-lead-improve-sms-button,
+#modal-composer-panel-sms #modal-lead-send-sms-button { padding-top: .5rem; padding-bottom: .5rem; }
 </style>
 
 
@@ -2448,7 +2456,7 @@ $consultationOptions = [
                                         <label for="modal-lead-sms-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this SMS should do</label>
                                         <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
                                             <textarea
-                                                rows="2"
+                                                rows="1"
                                                 id="modal-lead-sms-instruction-input"
                                                 class="min-h-[48px] flex-1 resize-none rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                                 placeholder="Example: Ask what day works best to reschedule the visit."
@@ -6454,6 +6462,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
             }
+            if (composerBody) composerBody.style.overflowY = '';
 
             if (unifiedTimeline) unifiedTimeline.style.maxHeight = '';
             if (activityFeed) activityFeed.style.maxHeight = '';
@@ -6494,6 +6503,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
             }
+            if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
             [unifiedTimeline, activityFeed, emailHistory, messageThread].forEach((list) => {
                 if (!list) return;
                 list.style.maxHeight = '';
@@ -6508,6 +6518,7 @@ function applyCommunicationViewportFit() {
         );
 
         leadDetailBody.style.overflowY = 'hidden';
+        if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
         const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 204 : 188);

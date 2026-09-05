@@ -191,7 +191,7 @@ $consultationOptions = [
 #modal-composer-body { min-height: 0; scrollbar-gutter: stable; }
 #lead-communication-composer-panel .composer-mode-button { min-height: 30px; }
 #lead-communication-composer-panel textarea { line-height: 1.35; }
-#modal-composer-panel-sms { overflow: hidden; }
+#modal-composer-panel-sms { overflow: auto; }
 #modal-composer-panel-sms > div.flex { gap: .35rem; padding: .4rem; }
 #modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 30px; height: 30px; min-height: 30px; padding-top: .35rem; padding-bottom: .35rem; }
 #modal-composer-panel-sms .border-blue-100 { padding: .4rem; }
@@ -6505,7 +6505,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
             }
-            if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
+            if (composerBody) composerBody.style.overflowY = 'auto';
             [unifiedTimeline, activityFeed, emailHistory, messageThread].forEach((list) => {
                 if (!list) return;
                 list.style.maxHeight = '';
@@ -6514,28 +6514,35 @@ function applyCommunicationViewportFit() {
             return;
         }
 
-        const viewportBudget = Math.max(
-            380,
-            window.innerHeight - (leadDetailHeader.offsetHeight || 76) - (leadDetailFooter.offsetHeight || 0) - 24
-        );
+        // Measure the actual content area: the body also has bottom padding,
+        // and may start below an application header. Never budget that space twice.
+        const bodyStyle = window.getComputedStyle(leadDetailBody);
+        const bodyPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+        const viewportBottom = window.visualViewport
+            ? window.visualViewport.offsetTop + window.visualViewport.height
+            : window.innerHeight;
+        const bodyBudget = Math.max(0, viewportBottom - leadDetailBody.getBoundingClientRect().top
+            - leadDetailFooter.offsetHeight - 8);
+        const viewportBudget = Math.max(0, bodyBudget - bodyPadding);
 
         leadDetailBody.style.overflowY = 'hidden';
-        if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
+        if (composerBody) composerBody.style.overflowY = 'auto';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 204 : 156);
-        const composerRatio = composerMode === 'email' ? 0.29 : (composerMode === 'note' ? 0.24 : 0.20);
-        const maximumComposerBudget = Math.max(156, viewportBudget - 318);
+        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 240 : 300);
+        const composerRatio = composerMode === 'email' ? 0.29 : 0.40;
+        const maximumComposerBudget = Math.max(0, viewportBudget - 116);
         const composerBudget = isComposerCollapsed
             ? 58
             : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));
-        const listBudget = Math.max(180, viewportBudget - composerBudget - 16);
+        const listBudget = Math.min(420, Math.max(0, viewportBudget - composerBudget - 16));
 
-        leadDetailBody.style.maxHeight = `${viewportBudget}px`;
-        leadDetailBody.style.height = `${viewportBudget}px`;
+        leadDetailBody.style.boxSizing = 'border-box';
+        leadDetailBody.style.maxHeight = `${bodyBudget}px`;
+        leadDetailBody.style.height = `${bodyBudget}px`;
 
         if (leadCommunicationGrid) {
-            leadCommunicationGrid.style.height = `${viewportBudget}px`;
+            leadCommunicationGrid.style.height = `${listBudget + composerBudget + 16}px`;
             leadCommunicationGrid.style.gridTemplateColumns = 'minmax(220px, 15%) minmax(0, 1fr) minmax(260px, 15%)';
             leadCommunicationGrid.style.gridTemplateRows = `${listBudget}px ${composerBudget}px`;
             leadCommunicationGrid.style.alignItems = 'stretch';
@@ -6585,7 +6592,7 @@ function applyCommunicationViewportFit() {
 
         // Keep the conversation viewport to about three cards. The timeline remains
         // scrollable, while the composer stays visible without competing for space.
-        const unifiedPanelHeight = `${Math.min(420, Math.max(200, listBudget - 36))}px`;
+        const unifiedPanelHeight = `${Math.max(0, listBudget - 80)}px`;
         const activityPanelHeight = `${Math.max(180, Math.floor(listBudget * 0.72))}px`;
         const emailPanelHeight = `${Math.max(90, Math.min(180, Math.floor(listBudget * 0.22)))}px`;
         const messageThreadHeight = `${Math.max(110, Math.min(180, Math.floor(viewportBudget * 0.22)))}px`;

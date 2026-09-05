@@ -183,7 +183,7 @@ $consultationOptions = [
     #lead-communications-grid { display: flex !important; height: auto !important; flex-direction: column; gap: 1rem !important; }
     #lead-unified-timeline-panel, #lead-activity-panel { height: auto !important; min-height: 0 !important; }
     #modal-unified-timeline, #modal-activity-feed, #modal-email-history, #modal-message-thread { max-height: none !important; overflow: visible !important; }
-    #lead-communication-composer-panel { position: sticky; bottom: calc(.25rem + env(safe-area-inset-bottom)); z-index: 20; order: -1; width: 100% !important; height: auto !important; min-height: 168px; max-height: 42dvh !important; box-shadow: 0 -12px 30px rgba(15,23,42,.12); }
+    #lead-communication-composer-panel { position: sticky; bottom: calc(.25rem + env(safe-area-inset-bottom)); z-index: 20; order: -1; width: 100% !important; height: auto !important; min-height: 156px; max-height: 36dvh !important; box-shadow: 0 -12px 30px rgba(15,23,42,.12); }
 }
 
 /* Keep the desktop composer useful without letting it crowd the conversation. */
@@ -191,6 +191,14 @@ $consultationOptions = [
 #modal-composer-body { min-height: 0; scrollbar-gutter: stable; }
 #lead-communication-composer-panel .composer-mode-button { min-height: 30px; }
 #lead-communication-composer-panel textarea { line-height: 1.35; }
+#modal-composer-panel-sms { overflow: hidden; }
+#modal-composer-panel-sms > div.flex { gap: .5rem; padding: .5rem; }
+#modal-composer-panel-sms #modal-lead-sms-input { flex: 0 0 36px; height: 36px; min-height: 36px; padding-top: .5rem; padding-bottom: .5rem; }
+#modal-composer-panel-sms .border-blue-100 { padding: .5rem; }
+#modal-composer-panel-sms #modal-lead-sms-instruction-input { min-height: 34px; height: 34px; padding-top: .4rem; padding-bottom: .4rem; }
+#modal-composer-panel-sms #modal-lead-draft-sms-button,
+#modal-composer-panel-sms #modal-lead-improve-sms-button,
+#modal-composer-panel-sms #modal-lead-send-sms-button { padding-top: .5rem; padding-bottom: .5rem; }
 </style>
 
 
@@ -2366,7 +2374,7 @@ $consultationOptions = [
 
 
 
-                        <div id="lead-communication-composer-panel" class="flex h-[260px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
+                        <div id="lead-communication-composer-panel" class="flex h-[220px] min-h-0 w-full flex-col self-end overflow-hidden rounded-2xl border border-blue-200 bg-white p-3 shadow-sm xl:col-start-2 xl:row-start-2">
 
                                 <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -2448,7 +2456,7 @@ $consultationOptions = [
                                         <label for="modal-lead-sms-instruction-input" class="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Tell AI what this SMS should do</label>
                                         <div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-end">
                                             <textarea
-                                                rows="2"
+                                                rows="1"
                                                 id="modal-lead-sms-instruction-input"
                                                 class="min-h-[48px] flex-1 resize-none rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                                 placeholder="Example: Ask what day works best to reschedule the visit."
@@ -6454,6 +6462,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
             }
+            if (composerBody) composerBody.style.overflowY = '';
 
             if (unifiedTimeline) unifiedTimeline.style.maxHeight = '';
             if (activityFeed) activityFeed.style.maxHeight = '';
@@ -6494,6 +6503,7 @@ function applyCommunicationViewportFit() {
                 leadCommunicationComposerPanel.style.maxHeight = '';
                 leadCommunicationComposerPanel.style.overflowY = '';
             }
+            if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
             [unifiedTimeline, activityFeed, emailHistory, messageThread].forEach((list) => {
                 if (!list) return;
                 list.style.maxHeight = '';
@@ -6508,11 +6518,12 @@ function applyCommunicationViewportFit() {
         );
 
         leadDetailBody.style.overflowY = 'hidden';
+        if (composerBody) composerBody.style.overflowY = composerMode === 'sms' ? 'hidden' : 'auto';
 
         const isComposerCollapsed = composerBody ? composerBody.classList.contains('hidden') : false;
-        const composerMinimum = composerMode === 'email' ? 292 : (composerMode === 'note' ? 232 : 214);
-        const composerRatio = composerMode === 'email' ? 0.34 : (composerMode === 'note' ? 0.28 : 0.27);
-        const maximumComposerBudget = Math.max(214, viewportBudget - 250);
+        const composerMinimum = composerMode === 'email' ? 260 : (composerMode === 'note' ? 204 : 188);
+        const composerRatio = composerMode === 'email' ? 0.29 : (composerMode === 'note' ? 0.24 : 0.23);
+        const maximumComposerBudget = Math.max(188, viewportBudget - 286);
         const composerBudget = isComposerCollapsed
             ? 58
             : Math.min(maximumComposerBudget, Math.max(composerMinimum, Math.floor(viewportBudget * composerRatio)));

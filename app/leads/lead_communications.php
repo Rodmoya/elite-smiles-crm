@@ -434,6 +434,13 @@ if (!function_exists('lead_comm_mark_read')) {
     }
 }
 
+if (!function_exists('lead_comm_is_wrong_number')) {
+    function lead_comm_is_wrong_number(string $body): bool
+    {
+        return (bool) preg_match('/^\s*(?:(?:sorry|hi|hello)[,!]?\s*)?(?:(?:you have|you got|you.ve got|this is|it.s)\s+(?:the\s+)?)?(?:wrong\s*(?:number\b|no\.?\b|#)|n[uú]mero\s+equivocado\b)/iu', $body);
+    }
+}
+
 if (!function_exists('lead_comm_opt_command')) {
     function lead_comm_opt_command(string $body): string
     {

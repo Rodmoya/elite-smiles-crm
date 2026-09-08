@@ -619,6 +619,45 @@ if (!function_exists('lead_ai_schedule_intent_signal')) {
     }
 }
 
+if (!function_exists('lead_ai_appointment_elapsed')) {
+    function lead_ai_appointment_elapsed(array $lead, ?DateTimeImmutable $now = null): bool
+    {
+        $value = trim((string)($lead['consultation_date'] ?? ''));
+        if ($value === '') {
+            return false;
+        }
+        $zone = new DateTimeZone(APP_TIMEZONE);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, $zone);
+        return $date !== false && $date->format('Y-m-d H:i:s') === $value
+            && $date <= ($now ?? new DateTimeImmutable('now', $zone));
+    }
+}
+
+if (!function_exists('lead_ai_guard_elapsed_appointment')) {
+    function lead_ai_guard_elapsed_appointment(array $lead, array $data, ?DateTimeImmutable $now = null): array
+    {
+        if (!lead_ai_appointment_elapsed($lead, $now)) {
+            return $data;
+        }
+        $text = (string)($data['reply'] ?? $data['body'] ?? '');
+        if (!preg_match('/(?:see you|looking forward to seeing|before your (?:visit|appointment)|all set|everything is ready|confirm.{0,80}(?:consult|appointment)|nos vemos|ansiosos por verte|antes de tu cita|todo est[aá] listo)/iu', $text)) {
+            return $data;
+        }
+        $spanish = (bool)preg_match('/\b(?:hola|consulta|cita|verte|vemos|est[aá])\b/iu', $text);
+        $safe = $spanish
+            ? 'Hola, quería saber cómo le fue con su consulta. ¿Hay algo en lo que podamos ayudarle?'
+            : 'Hi, I wanted to check in about your consultation. Is there anything we can help with?';
+        $data[array_key_exists('reply', $data) ? 'reply' : 'body'] = $safe;
+        if (array_key_exists('subject', $data)) {
+            $data['subject'] = $spanish ? 'Sobre su consulta' : 'Checking in about your consultation';
+        }
+        $data['should_send'] = false;
+        $data['needs_human_review'] = true;
+        $data['note'] = 'The recorded appointment time has passed. Upcoming-appointment wording was removed. Verify attendance before sending; do not assume a no-show.';
+        return $data;
+    }
+}
+
 if (!function_exists('lead_ai_scheduling_context')) {
     function lead_ai_scheduling_context(array $lead, string $latestMessage = ''): array
     {
@@ -641,6 +680,10 @@ if (!function_exists('lead_ai_scheduling_context')) {
         }
 
         return [
+            'appointment_time_has_passed' => lead_ai_appointment_elapsed($lead),
+            'appointment_instruction' => lead_ai_appointment_elapsed($lead)
+                ? 'The recorded appointment is in the past. Never confirm it as upcoming or say see you soon. Ask about the visit without assuming attendance or a no-show.'
+                : 'Only confirm the recorded appointment if it remains in the future.',
             'past_dates_forbidden' => true,
             'availability_requires_operator_confirmation' => true,
             'office_hours' => 'Monday-Thursday 9 AM-6 PM',
@@ -987,6 +1030,7 @@ if (!function_exists('lead_ai_generate_reply')) {
             $data['note'] = trim($data['note'] . ' Draft blocked because it reused an already-answered reaction as fresh context.');
         }
 
+        $data = lead_ai_guard_elapsed_appointment($lead, $data);
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 
@@ -1035,6 +1079,7 @@ if (!function_exists('lead_ai_improve_sms')) {
             $data['confidence'] = 0.0;
         }
 
+        $data = lead_ai_guard_elapsed_appointment($lead, $data);
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 
@@ -1085,6 +1130,7 @@ if (!function_exists('lead_ai_generate_email')) {
             $data['note'] = trim($data['note'] . ' Draft blocked because it reused an already-answered reaction as fresh context.');
         }
 
+        $data = lead_ai_guard_elapsed_appointment($lead, $data);
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 
@@ -1138,6 +1184,7 @@ if (!function_exists('lead_ai_improve_email')) {
             $data['confidence'] = 0.0;
         }
 
+        $data = lead_ai_guard_elapsed_appointment($lead, $data);
         $data['provider'] = (string) ($result['provider'] ?? 'openai');
         $data['model'] = (string) ($result['model'] ?? (defined('OPENAI_MODEL_CHAT') ? OPENAI_MODEL_CHAT : ''));
 

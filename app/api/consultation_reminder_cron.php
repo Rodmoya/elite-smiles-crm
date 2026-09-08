@@ -108,6 +108,12 @@ function consultation_reminder_record(int $leadId, string $reminderKey, string $
     );
 }
 
+function consultation_reminder_still_due(array $lead): bool
+{
+    $current = db_one('SELECT status, consultation_status, consultation_date FROM leads WHERE id = :id LIMIT 1', ['id' => (int)($lead['id'] ?? 0)]);
+    return consultation_reminder_eligible($lead, $current ?: []);
+}
+
 function consultation_reminder_send_email(array $lead, string $reminderKey, array $copy): array
 {
     $leadId = (int)($lead['id'] ?? 0);
@@ -133,6 +139,9 @@ function consultation_reminder_send_email(array $lead, string $reminderKey, arra
         return ['ok' => false, 'status' => 'skipped', 'reason' => 'Email opted out.'];
     }
 
+    if (!consultation_reminder_still_due($lead)) {
+        return ['ok' => true, 'status' => 'skipped', 'reason' => 'Appointment elapsed or changed.'];
+    }
     $send = lead_email_send($leadId, (string)$copy['subject'], (string)$copy['email'], 'Appointment Reminder');
     consultation_reminder_record(
         $leadId,
@@ -181,6 +190,9 @@ function consultation_reminder_send_sms(array $lead, string $reminderKey, array 
         return ['ok' => true, 'status' => 'already_sent'];
     }
 
+    if (!consultation_reminder_still_due($lead)) {
+        return ['ok' => true, 'status' => 'skipped', 'reason' => 'Appointment elapsed or changed.'];
+    }
     $send = elite_twilio_send_sms((string)($lead['phone'] ?? ''), (string)$copy['sms'], [
         'lead_id' => $leadId,
         'lead' => $lead,
@@ -253,6 +265,9 @@ function consultation_reminder_send_doctor_sms(array $lead, array $event): array
         return ['ok' => false, 'status' => 'disabled', 'reason' => 'Dr. Meden reminder recipient is disabled.'];
     }
 
+    if (!consultation_reminder_still_due($lead)) {
+        return ['ok' => true, 'status' => 'skipped', 'reason' => 'Appointment elapsed or changed.'];
+    }
     $body = consultation_doctor_reminder_message($lead, $event);
     $send = internal_sms_send($recipient, $body, 0);
     $status = !empty($send['ok']) ? 'sent' : 'failed';
@@ -299,6 +314,17 @@ if ($configuredSecret === '' || !hash_equals($configuredSecret, consultation_rem
 
 try {
     consultation_reminder_ensure_schema();
+    // Serialize patient and doctor runs, including cPanel/GitHub overlap.
+    if ((int)db_value("SELECT GET_LOCK('elite_consultation_reminder_runner', 0)") !== 1) {
+        consultation_reminder_json(['ok' => true, 'message' => 'Reminder runner already active.', 'processed' => 0]);
+    }
+    register_shutdown_function(static function (): void {
+        try {
+            db_value("SELECT RELEASE_LOCK('elite_consultation_reminder_runner')");
+        } catch (Throwable) {
+            // Connection closure also releases the advisory lock.
+        }
+    });
 } catch (Throwable $e) {
     esm_log('appointment_reminders', 'Could not ensure reminder schema.', ['error' => $e->getMessage()]);
     consultation_reminder_json(['ok' => false, 'message' => 'Could not initialize reminder schema.'], 500);

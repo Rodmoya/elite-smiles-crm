@@ -154,7 +154,15 @@ lead_comm_insert_activity($leadId, 'sms_inbound', 'Patient replied by SMS: ' . m
 ], 'Twilio');
 
 $command = lead_comm_opt_command($body);
-if ($command === 'opt_out') {
+if (lead_comm_is_wrong_number($body)) {
+    // Persist suppression at ingestion even if the agent is disabled or human-owned.
+    lead_comm_set_sms_opt_status($leadId, 'opted_out');
+    lead_lifecycle_transition_status($leadId, 'no_answer', 'Recipient reported a wrong number; SMS blocked and lead moved to Nurture.', 'twilio_sms_webhook', []);
+    db_execute("UPDATE leads SET follow_up_status = 'paused', next_follow_up_at = NULL WHERE id = :id LIMIT 1", ['id' => $leadId]);
+    if (function_exists('lead_agent_pause')) {
+        lead_agent_pause($leadId, 'wrong_number', 'paused');
+    }
+} elseif ($command === 'opt_out') {
     lead_comm_set_sms_opt_status($leadId, 'opted_out');
     lead_lifecycle_transition_status(
         $leadId,

@@ -6,6 +6,20 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/config.php';
 require_once __DIR__ . '/lead_language.php';
 
+function consultation_reminder_eligible(array $expected, array $current, ?DateTimeImmutable $now = null): bool
+{
+    $value = (string)($current['consultation_date'] ?? '');
+    if (($current['status'] ?? '') !== 'consultation_booked'
+        || !in_array((string)($current['consultation_status'] ?? ''), ['', 'scheduled'], true)
+        || $value === '' || $value !== (string)($expected['consultation_date'] ?? '')) {
+        return false;
+    }
+    $zone = new DateTimeZone(APP_TIMEZONE);
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, $zone);
+    return $date !== false && $date->format('Y-m-d H:i:s') === $value
+        && $date > ($now ?? new DateTimeImmutable('now', $zone));
+}
+
 function consultation_reminder_first_name(array $lead): string
 {
     $name = trim((string)($lead['full_name'] ?? ''));

@@ -858,7 +858,10 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if ($text === '') {
             return 'needs_attention';
         }
-        if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|wrong number|do not text|don\'t text|cancelar|no me escriba|no me escriban|deje de escribir)\b/iu', $text)) {
+        if (lead_comm_is_wrong_number($text)) {
+            return 'wrong_number';
+        }
+        if (preg_match('/^(stop|stopall|unsubscribe|cancel|end|quit|remove me|do not text|don\'t text|cancelar|no me escriba|no me escriban|deje de escribir)\b/iu', $text)) {
             return 'opt_out';
         }
         if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want|no me interesa|ya no me interesa|ahora no|tal vez despues|tal vez después|no gracias|muy lejos|no puedo viajar)\b/iu', $text)) {
@@ -3348,6 +3351,12 @@ if (!function_exists('lead_agent_handle_inbound')) {
         lead_agent_attribute_outcome($leadId, 'reply');
         lead_agent_record_learning_outcome($intent, $channel, 'lead_replied');
 
+        if ($intent === 'wrong_number') {
+            lead_comm_set_sms_opt_status($leadId, 'opted_out');
+            lead_agent_pause($leadId, 'wrong_number', 'paused');
+            db_execute("UPDATE leads SET status = 'no_answer', follow_up_status = 'paused', next_follow_up_at = NULL, updated_at = NOW() WHERE id = :id LIMIT 1", ['id' => $leadId]);
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false];
+        }
         if ($intent === 'opt_out') {
             lead_agent_attribute_outcome($leadId, 'opt_out');
             lead_agent_pause($leadId, 'inbound_opt_out', 'opted_out');

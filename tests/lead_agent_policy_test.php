@@ -15,6 +15,8 @@ function expect_true(bool $condition, string $message): void
 expect_true(lead_agent_classify_inbound('Can I come in Tuesday afternoon?') === 'ready_to_schedule', 'Scheduling preference should hand off.');
 expect_true(lead_agent_classify_inbound('How much does it cost?') === 'cost_redirect', 'Cost question should use approved redirect.');
 expect_true(lead_agent_classify_inbound('STOP') === 'opt_out', 'STOP should halt automation.');
+expect_true(lead_agent_classify_inbound('Wrong #') === 'wrong_number', 'Wrong # should be treated as invalid contact data.');
+expect_true(lead_agent_classify_inbound('You have the wrong number') === 'wrong_number', 'Wrong number phrasing should be treated as invalid contact data.');
 expect_true(lead_agent_classify_inbound('No thank you') === 'pause', 'A polite decline must stop automated follow-up.');
 expect_true(lead_agent_classify_inbound('Quiero agendar una cita el martes por la tarde.') === 'ready_to_schedule', 'Spanish scheduling intent must stay in the deterministic scheduling flow.');
 expect_true(lead_agent_classify_inbound('No me interesa, gracias.') === 'pause', 'A Spanish decline must stop automated follow-up.');

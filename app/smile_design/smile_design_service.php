@@ -2714,7 +2714,11 @@ function smile_design_store_upload(int $caseId, array $file, string $kind = 'bef
             $image = smile_design_apply_exif_orientation($image, $tmp, $mime);
             $width = imagesx($image);
             $height = imagesy($image);
-            $max = 1800;
+            // Matches the "2K" output size now requested from Gemini
+            // (elite_gemini_generate_image_edit / imageConfig.imageSize) - no
+            // benefit to storing source detail beyond what the model can actually
+            // return, but this is real headroom over the old 1800px cap.
+            $max = 2400;
             if ($width > $max || $height > $max) {
                 $scale = min($max / $width, $max / $height);
                 $newWidth = max(1, (int)round($width * $scale));
@@ -3363,7 +3367,9 @@ function smile_design_store_private_image(array $file, string $storagePrefix): a
             $image = smile_design_apply_exif_orientation($image, $tmp, $mime);
             $width = imagesx($image);
             $height = imagesy($image);
-            $max = 1800;
+            // Matches the "2K" output size now requested from Gemini - see the
+            // matching comment in smile_design_store_upload().
+            $max = 2400;
             if ($width > $max || $height > $max) {
                 $scale = min($max / $width, $max / $height);
                 $newWidth = max(1, (int)round($width * $scale));

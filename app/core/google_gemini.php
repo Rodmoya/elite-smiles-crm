@@ -92,6 +92,15 @@ if (!function_exists('elite_gemini_generate_image_edit')) {
             ]],
             'generationConfig' => [
                 'responseModalities' => ['TEXT', 'IMAGE'],
+                // Ask for the largest native output the model supports rather than
+                // silently taking its ~1K default. Uploaded source photos are already
+                // capped at 1800px on the long edge, so 2K is enough headroom without
+                // requesting detail the source can't provide. Some flash-tier preview
+                // models are known to ignore this and always return ~1K regardless -
+                // harmless to send either way, but worth confirming empirically per model.
+                'imageConfig' => [
+                    'imageSize' => (string)($options['image_size'] ?? '2K'),
+                ],
             ],
         ];
 

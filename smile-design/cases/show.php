@@ -28,6 +28,42 @@ $consultRoomGalleryUrl = is_array($galleryLinkResult['link'] ?? null) ? (string)
 $consultRoomCaseUrl = $consultRoomGalleryUrl !== ''
     ? $consultRoomGalleryUrl . (str_contains($consultRoomGalleryUrl, '?') ? '&' : '?') . 'case_id=' . $caseId
     : base_url('smile-design/gallery?case_id=' . $caseId);
+
+// Same QR mobile-upload flow used on Staff Intake when a case is first created,
+// reused here so an existing before photo can be replaced by scanning a QR code
+// and taking a new photo on a phone instead of only via a local file picker.
+$requestedMobileUploadToken = trim((string)get('mobile_upload_token', ''));
+$mobileUploadToken = $requestedMobileUploadToken !== '' && smile_design_verify_token($requestedMobileUploadToken, 'mobile_upload')
+    ? $requestedMobileUploadToken
+    : smile_design_issue_mobile_upload_token(auth_user_id(), 2);
+$mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
+$mobileUploadStatusUrl = base_url('app/actions/smile_design_mobile_upload_status.php?token=' . rawurlencode($mobileUploadToken));
+$mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=' . rawurlencode($mobileUploadUrl);
+
+$renderMobileReplacePanel = static function (int $photoId, string $photoType) use ($mobileUploadToken, $mobileUploadQrUrl, $mobileUploadUrl, $mobileUploadStatusUrl): void {
+    ?>
+    <details class="mt-2 rounded-md border border-slate-200 bg-slate-50" data-sd-mobile-replace data-sd-mobile-photo-type="<?= e($photoType) ?>" data-status-url="<?= e($mobileUploadStatusUrl) ?>">
+        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700">Or replace via phone (QR)</summary>
+        <div class="grid gap-3 border-t border-slate-200 p-3 sm:grid-cols-[96px_1fr]">
+            <img class="h-auto w-full rounded-md border border-slate-200 bg-white p-1" src="<?= e($mobileUploadQrUrl) ?>" alt="Mobile upload QR code">
+            <div>
+                <p class="text-xs leading-5 text-slate-600">Scan to upload a new <?= e(smile_design_photo_type_options()[$photoType] ?? $photoType) ?> photo from your phone. Expires in 2 hours.</p>
+                <a class="mt-1 inline-flex text-xs font-semibold text-slate-700 underline" href="<?= e($mobileUploadUrl) ?>" target="_blank" rel="noreferrer">Open mobile upload link</a>
+                <p class="mt-2 text-xs text-slate-500" data-sd-mobile-replace-status>Waiting for phone upload.</p>
+                <div class="mt-2 flex items-center gap-2">
+                    <button class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700" type="button" data-sd-mobile-replace-refresh>Refresh</button>
+                    <form method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_mobile_replace.php')) ?>">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="photo_id" value="<?= e((string)$photoId) ?>">
+                        <input type="hidden" name="mobile_upload_token" value="<?= e($mobileUploadToken) ?>">
+                        <button class="rounded-md bg-slate-950 px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" type="submit" data-sd-mobile-replace-use disabled>Use This Photo</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </details>
+    <?php
+};
 $previewLinks = smile_design_preview_links($caseId, true, 10);
 $activePreviewLink = smile_design_active_preview_link($caseId);
 $activePreviewUrl = $activePreviewLink ? smile_design_preview_link_url($activePreviewLink) : null;
@@ -293,6 +329,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit">Replace</button>
                                 </form>
                             </div>
+                            <?php $renderMobileReplacePanel((int)$displayBeforePhoto['id'], (string)($displayBeforePhoto['photo_type'] ?? 'front')); ?>
                         </div>
                     <?php else: ?>
                         <div class="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No before photo uploaded yet.</div>
@@ -310,6 +347,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                         <input name="replacement_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="block w-full rounded-md border border-slate-300 px-3 py-2 text-xs">
                                         <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit">Replace</button>
                                     </form>
+                                    <?php $renderMobileReplacePanel((int)$photo['id'], (string)($photo['photo_type'] ?? 'front')); ?>
                                     <form class="mt-2" method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>" data-confirm="Delete this before photo? If it is linked to after versions, delete will be blocked and you should replace it instead.">
                                         <?= csrf_input() ?>
                                         <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
@@ -473,6 +511,51 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                 </div>
             </div>
         </section>
+        <script>
+        (function () {
+            const panels = Array.from(document.querySelectorAll('[data-sd-mobile-replace]'));
+            if (!panels.length) return;
+            const statusUrl = panels[0].dataset.statusUrl;
+            let timer = null;
+            async function refresh() {
+                if (!statusUrl) return;
+                try {
+                    const response = await fetch(statusUrl, { method: 'GET', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) return;
+                    const slots = data.slots || {};
+                    panels.forEach(function (panel) {
+                        const photoType = panel.dataset.sdMobilePhotoType;
+                        const slot = slots[photoType] || null;
+                        const ready = !!(slot && slot.ready);
+                        const statusEl = panel.querySelector('[data-sd-mobile-replace-status]');
+                        const useButton = panel.querySelector('[data-sd-mobile-replace-use]');
+                        if (statusEl) {
+                            statusEl.textContent = ready
+                                ? 'Ready from phone' + (slot.original_name ? ': ' + slot.original_name : '.') + ' Click Use This Photo to replace.'
+                                : 'Waiting for phone upload.';
+                            statusEl.classList.toggle('text-emerald-700', ready);
+                            statusEl.classList.toggle('text-slate-500', !ready);
+                        }
+                        if (useButton) useButton.disabled = !ready;
+                    });
+                } catch (error) {
+                    // Silent - the manual Refresh button and next poll tick will retry.
+                }
+            }
+            panels.forEach(function (panel) {
+                const refreshButton = panel.querySelector('[data-sd-mobile-replace-refresh]');
+                if (refreshButton) refreshButton.addEventListener('click', refresh);
+                panel.addEventListener('toggle', function () {
+                    if (panel.open) refresh();
+                });
+            });
+            timer = window.setInterval(function () {
+                const anyOpen = panels.some(function (panel) { return panel.open; });
+                if (anyOpen && !document.hidden) refresh();
+            }, 5000);
+        })();
+        </script>
 
         <section id="generate" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <?php if ($afterVersions): ?>

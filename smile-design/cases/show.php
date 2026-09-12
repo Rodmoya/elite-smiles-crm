@@ -40,28 +40,82 @@ $mobileUploadUrl = smile_design_mobile_upload_url($mobileUploadToken);
 $mobileUploadStatusUrl = base_url('app/actions/smile_design_mobile_upload_status.php?token=' . rawurlencode($mobileUploadToken));
 $mobileUploadQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=' . rawurlencode($mobileUploadUrl);
 
-$renderMobileReplacePanel = static function (int $photoId, string $photoType) use ($mobileUploadToken, $mobileUploadQrUrl, $mobileUploadUrl, $mobileUploadStatusUrl): void {
+// One QR/token covers all three photo types in a single phone session (same
+// as Staff Intake). Previously this - and the plain file-picker Replace
+// control - were repeated on every photo card, which got messy since one
+// scan already covers every slot. Both are now combined into a single
+// "Replace Before Photos" modal with one row per photo type, offering
+// either a local file or the phone/QR upload for that row.
+$mobileReplacePhotoIds = [];
+foreach (['front', 'left_45', 'right_45'] as $mobileReplacePhotoType) {
+    $mobileReplaceExisting = smile_design_find_before_photo_by_type($caseId, $mobileReplacePhotoType, true);
+    if ($mobileReplaceExisting) {
+        $mobileReplacePhotoIds[$mobileReplacePhotoType] = (int)$mobileReplaceExisting['id'];
+    }
+}
+$renderMobileReplacePanel = static function () use ($mobileUploadToken, $mobileUploadQrUrl, $mobileUploadUrl, $mobileUploadStatusUrl, $mobileReplacePhotoIds): void {
+    if (!$mobileReplacePhotoIds) {
+        return;
+    }
     ?>
-    <details class="mt-2 rounded-md border border-slate-200 bg-slate-50" data-sd-mobile-replace data-sd-mobile-photo-type="<?= e($photoType) ?>" data-status-url="<?= e($mobileUploadStatusUrl) ?>">
-        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700">Or replace via phone (QR)</summary>
-        <div class="grid gap-3 border-t border-slate-200 p-3 sm:grid-cols-[96px_1fr]">
+    <button class="mt-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="button" data-sd-replace-modal-open>Replace Before Photos</button>
+    <dialog class="w-full max-w-lg rounded-md border border-slate-200 p-0 backdrop:bg-slate-950/40" data-sd-mobile-replace data-status-url="<?= e($mobileUploadStatusUrl) ?>">
+        <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <p class="text-sm font-semibold text-slate-900">Replace Before Photos</p>
+            <button class="text-sm font-semibold text-slate-500" type="button" data-sd-replace-modal-close>Close</button>
+        </div>
+        <div class="grid gap-4 p-5 sm:grid-cols-[110px_1fr]">
             <img class="h-auto w-full rounded-md border border-slate-200 bg-white p-1" src="<?= e($mobileUploadQrUrl) ?>" alt="Mobile upload QR code">
             <div>
-                <p class="text-xs leading-5 text-slate-600">Scan to upload a new <?= e(smile_design_photo_type_options()[$photoType] ?? $photoType) ?> photo from your phone. Expires in 2 hours.</p>
-                <a class="mt-1 inline-flex text-xs font-semibold text-slate-700 underline" href="<?= e($mobileUploadUrl) ?>" target="_blank" rel="noreferrer">Open mobile upload link</a>
-                <p class="mt-2 text-xs text-slate-500" data-sd-mobile-replace-status>Waiting for phone upload.</p>
-                <div class="mt-2 flex items-center gap-2">
-                    <button class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700" type="button" data-sd-mobile-replace-refresh>Refresh</button>
-                    <form method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_mobile_replace.php')) ?>">
-                        <?= csrf_input() ?>
-                        <input type="hidden" name="photo_id" value="<?= e((string)$photoId) ?>">
-                        <input type="hidden" name="mobile_upload_token" value="<?= e($mobileUploadToken) ?>">
-                        <button class="rounded-md bg-slate-950 px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" type="submit" data-sd-mobile-replace-use disabled>Use This Photo</button>
-                    </form>
+                <p class="text-xs leading-5 text-slate-600">Scan once with a phone, then upload any of Front, Left 45, or Right 45. Each row below unlocks its own "Use This Photo" as soon as that upload is ready. Link expires in 2 hours.</p>
+                <div class="mt-2 flex items-center gap-3">
+                    <a class="text-xs font-semibold text-slate-700 underline" href="<?= e($mobileUploadUrl) ?>" target="_blank" rel="noreferrer">Open mobile upload link</a>
+                    <button class="text-xs font-semibold text-slate-700 underline" type="button" data-sd-mobile-replace-refresh>Refresh status</button>
                 </div>
             </div>
         </div>
-    </details>
+        <div class="grid gap-3 border-t border-slate-200 p-5">
+            <?php foreach ($mobileReplacePhotoIds as $mobileReplaceType => $mobileReplacePhotoId): ?>
+                <div class="grid grid-cols-[64px_1fr_auto] items-center gap-3 rounded-md border border-slate-200 p-3" data-sd-mobile-replace-slot="<?= e($mobileReplaceType) ?>">
+                    <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url($mobileReplacePhotoId)) ?>" alt="<?= e(smile_design_photo_type_options()[$mobileReplaceType] ?? $mobileReplaceType) ?> current photo">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-800"><?= e(smile_design_photo_type_options()[$mobileReplaceType] ?? $mobileReplaceType) ?></p>
+                        <form class="mt-1" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="photo_id" value="<?= e((string)$mobileReplacePhotoId) ?>">
+                            <input type="hidden" name="photo_action" value="replace">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input name="replacement_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="block max-w-[180px] rounded-md border border-slate-300 px-2 py-1 text-xs">
+                                <button class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700" type="submit">Replace file</button>
+                            </div>
+                        </form>
+                        <p class="mt-1.5 text-xs text-slate-500" data-sd-mobile-replace-status>Waiting for phone upload.</p>
+                    </div>
+                    <form method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_mobile_replace.php')) ?>">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="photo_id" value="<?= e((string)$mobileReplacePhotoId) ?>">
+                        <input type="hidden" name="mobile_upload_token" value="<?= e($mobileUploadToken) ?>">
+                        <button class="rounded-md bg-slate-950 px-2 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" type="submit" data-sd-mobile-replace-use disabled>Use Phone Photo</button>
+                    </form>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </dialog>
+    <script>
+    (function () {
+        const openButtons = document.querySelectorAll('[data-sd-replace-modal-open]');
+        const dialog = document.querySelector('[data-sd-mobile-replace]');
+        if (!dialog) return;
+        openButtons.forEach(function (button) {
+            button.addEventListener('click', function () { dialog.showModal(); });
+        });
+        const closeButton = dialog.querySelector('[data-sd-replace-modal-close]');
+        if (closeButton) closeButton.addEventListener('click', function () { dialog.close(); });
+        dialog.addEventListener('click', function (event) {
+            if (event.target === dialog) dialog.close();
+        });
+    })();
+    </script>
     <?php
 };
 $previewLinks = smile_design_preview_links($caseId, true, 10);
@@ -321,15 +375,8 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <p class="text-sm font-semibold text-slate-900">Primary before photo</p>
                                     <p class="mt-1 text-xs text-slate-500"><?= e(smile_design_photo_type_options()[(string)($displayBeforePhoto['photo_type'] ?? 'front')] ?? 'Front') ?> ? #<?= e((string)$displayBeforePhoto['id']) ?></p>
                                 </div>
-                                <form method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>" class="flex flex-wrap items-center gap-2">
-                                    <?= csrf_input() ?>
-                                    <input type="hidden" name="photo_id" value="<?= e((string)$displayBeforePhoto['id']) ?>">
-                                    <input type="hidden" name="photo_action" value="replace">
-                                    <input name="replacement_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="block max-w-[220px] rounded-md border border-slate-300 px-3 py-2 text-xs">
-                                    <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit">Replace</button>
-                                </form>
+                                <?php $renderMobileReplacePanel(); ?>
                             </div>
-                            <?php $renderMobileReplacePanel((int)$displayBeforePhoto['id'], (string)($displayBeforePhoto['photo_type'] ?? 'front')); ?>
                         </div>
                     <?php else: ?>
                         <div class="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No before photo uploaded yet.</div>
@@ -338,22 +385,18 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                             <?php foreach ($uploadedBeforePhotos as $photo): ?>
                                 <div class="rounded-md border border-slate-200 p-3">
-                                    <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" alt="Before photo thumbnail" data-lightbox-src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" data-lightbox-alt="<?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> before photo">
+                                    <div class="relative">
+                                        <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" alt="Before photo thumbnail" data-lightbox-src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" data-lightbox-alt="<?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> before photo">
+                                        <form class="absolute right-1.5 top-1.5" method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>" data-confirm="Delete this before photo? If it is linked to after versions, delete will be blocked and you should replace it instead.">
+                                            <?= csrf_input() ?>
+                                            <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
+                                            <input type="hidden" name="photo_action" value="delete">
+                                            <button class="flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 bg-white/90 text-rose-600 shadow-sm hover:bg-rose-50" type="submit" title="Delete this photo" aria-label="Delete this photo">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 2a1 1 0 00-1 1v1H4a1 1 0 000 2h12a1 1 0 100-2h-3V3a1 1 0 00-1-1H8zM5 7a1 1 0 011 1v8a2 2 0 002 2h4a2 2 0 002-2V8a1 1 0 112 0v8a4 4 0 01-4 4H8a4 4 0 01-4-4V8a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                                            </button>
+                                        </form>
+                                    </div>
                                     <p class="mt-2 text-xs font-semibold text-slate-600"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> Â· #<?= e((string)$photo['id']) ?></p>
-                                    <form class="mt-3 grid gap-2" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>">
-                                        <?= csrf_input() ?>
-                                        <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
-                                        <input type="hidden" name="photo_action" value="replace">
-                                        <input name="replacement_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="block w-full rounded-md border border-slate-300 px-3 py-2 text-xs">
-                                        <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" type="submit">Replace</button>
-                                    </form>
-                                    <?php $renderMobileReplacePanel((int)$photo['id'], (string)($photo['photo_type'] ?? 'front')); ?>
-                                    <form class="mt-2" method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>" data-confirm="Delete this before photo? If it is linked to after versions, delete will be blocked and you should replace it instead.">
-                                        <?= csrf_input() ?>
-                                        <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
-                                        <input type="hidden" name="photo_action" value="delete">
-                                        <button class="w-full rounded-md border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700" type="submit">Delete</button>
-                                    </form>
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -513,10 +556,15 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
         </section>
         <script>
         (function () {
-            const panels = Array.from(document.querySelectorAll('[data-sd-mobile-replace]'));
-            if (!panels.length) return;
-            const statusUrl = panels[0].dataset.statusUrl;
-            let timer = null;
+            // One shared "Replace Before Photos" dialog covers all photo types
+            // (see $renderMobileReplacePanel) - dialog elements don't fire a
+            // native "toggle" event the way <details> does, so status is
+            // refreshed explicitly on open (via the trigger buttons) and then
+            // polled while the dialog is actually open.
+            const dialog = document.querySelector('[data-sd-mobile-replace]');
+            if (!dialog) return;
+            const statusUrl = dialog.dataset.statusUrl;
+            const rows = Array.from(dialog.querySelectorAll('[data-sd-mobile-replace-slot]'));
             async function refresh() {
                 if (!statusUrl) return;
                 try {
@@ -524,15 +572,15 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     const data = await response.json();
                     if (!response.ok || !data.ok) return;
                     const slots = data.slots || {};
-                    panels.forEach(function (panel) {
-                        const photoType = panel.dataset.sdMobilePhotoType;
+                    rows.forEach(function (row) {
+                        const photoType = row.dataset.sdMobileReplaceSlot;
                         const slot = slots[photoType] || null;
                         const ready = !!(slot && slot.ready);
-                        const statusEl = panel.querySelector('[data-sd-mobile-replace-status]');
-                        const useButton = panel.querySelector('[data-sd-mobile-replace-use]');
+                        const statusEl = row.querySelector('[data-sd-mobile-replace-status]');
+                        const useButton = row.querySelector('[data-sd-mobile-replace-use]');
                         if (statusEl) {
                             statusEl.textContent = ready
-                                ? 'Ready from phone' + (slot.original_name ? ': ' + slot.original_name : '.') + ' Click Use This Photo to replace.'
+                                ? 'Ready from phone' + (slot.original_name ? ': ' + slot.original_name : '.') + ' Click Use Phone Photo to replace.'
                                 : 'Waiting for phone upload.';
                             statusEl.classList.toggle('text-emerald-700', ready);
                             statusEl.classList.toggle('text-slate-500', !ready);
@@ -543,16 +591,13 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     // Silent - the manual Refresh button and next poll tick will retry.
                 }
             }
-            panels.forEach(function (panel) {
-                const refreshButton = panel.querySelector('[data-sd-mobile-replace-refresh]');
-                if (refreshButton) refreshButton.addEventListener('click', refresh);
-                panel.addEventListener('toggle', function () {
-                    if (panel.open) refresh();
-                });
+            const refreshButton = dialog.querySelector('[data-sd-mobile-replace-refresh]');
+            if (refreshButton) refreshButton.addEventListener('click', refresh);
+            document.querySelectorAll('[data-sd-replace-modal-open]').forEach(function (button) {
+                button.addEventListener('click', refresh);
             });
-            timer = window.setInterval(function () {
-                const anyOpen = panels.some(function (panel) { return panel.open; });
-                if (anyOpen && !document.hidden) refresh();
+            window.setInterval(function () {
+                if (dialog.open && !document.hidden) refresh();
             }, 5000);
         })();
         </script>

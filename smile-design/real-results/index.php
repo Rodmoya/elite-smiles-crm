@@ -13,6 +13,8 @@ $results = db_all('SELECT * FROM real_result_cases ORDER BY is_featured DESC, cr
             <div><p class="text-xs uppercase tracking-[0.24em] text-white/50">Actual Patient Result</p><h1 class="text-3xl font-semibold">Real Patient Results</h1><p class="mt-2 text-sm text-white/60">Individual results may vary.</p></div>
             <div class="flex gap-2"><a class="rounded-md border border-white/25 px-4 py-2 text-sm font-semibold" href="<?= e(base_url('smile-design')) ?>">Dashboard</a><a class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-black" href="<?= e(base_url('smile-design/real-results/new')) ?>">New Real Result</a></div>
         </div>
+        <?php if ($message = flash_get('success')): ?><div class="mb-5 rounded-md border border-emerald-300/25 bg-emerald-400/10 px-4 py-3 text-sm leading-6 text-emerald-100"><?= e($message) ?></div><?php endif; ?>
+        <?php if ($message = flash_get('error')): ?><div class="mb-5 rounded-md border border-red-300/25 bg-red-400/10 px-4 py-3 text-sm leading-6 text-red-100"><?= e($message) ?></div><?php endif; ?>
         <div class="mb-5 grid gap-2 text-sm md:grid-cols-5">
             <?php foreach (['Procedure', 'LVI style', 'Full Head / Smile Close-Up', 'Doctor approved', 'Marketing approved'] as $filter): ?><button class="rounded-md border border-white/20 px-3 py-2 text-white/75" type="button"><?= e($filter) ?></button><?php endforeach; ?>
         </div>

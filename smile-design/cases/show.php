@@ -77,7 +77,7 @@ $renderMobileReplacePanel = static function () use ($mobileUploadToken, $mobileU
         <div class="grid gap-3 border-t border-slate-200 p-5">
             <?php foreach ($mobileReplacePhotoIds as $mobileReplaceType => $mobileReplacePhotoId): ?>
                 <div class="grid grid-cols-[64px_1fr_auto] items-center gap-3 rounded-md border border-slate-200 p-3" data-sd-mobile-replace-slot="<?= e($mobileReplaceType) ?>">
-                    <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url($mobileReplacePhotoId)) ?>" alt="<?= e(smile_design_photo_type_options()[$mobileReplaceType] ?? $mobileReplaceType) ?> current photo">
+                    <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url($mobileReplacePhotoId, '', 'thumb')) ?>" alt="<?= e(smile_design_photo_type_options()[$mobileReplaceType] ?? $mobileReplaceType) ?> current photo">
                     <div>
                         <p class="text-xs font-semibold text-slate-800"><?= e(smile_design_photo_type_options()[$mobileReplaceType] ?? $mobileReplaceType) ?></p>
                         <form class="mt-1" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>">
@@ -368,7 +368,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                         Use a real <span class="font-semibold text-slate-800">Front</span> photo first. Add real <span class="font-semibold text-slate-800">Left 45</span>, <span class="font-semibold text-slate-800">Right 45</span>, and smile close-up photos only when you have them. We are not generating those reference angles with AI.
                     </div>
                     <?php if ($displayBeforePhoto): ?>
-                        <img class="aspect-[4/3] w-full rounded-md border border-slate-200 bg-slate-50 object-contain" src="<?= e(smile_design_photo_url((int)$displayBeforePhoto['id'])) ?>" alt="Primary before photo" data-lightbox-src="<?= e(smile_design_photo_url((int)$displayBeforePhoto['id'])) ?>" data-lightbox-alt="Primary before photo">
+                        <img class="aspect-[4/3] w-full rounded-md border border-slate-200 bg-slate-50 object-contain" src="<?= e(smile_design_photo_url((int)$displayBeforePhoto['id'], '', 'thumb')) ?>" alt="Primary before photo" data-lightbox-src="<?= e(smile_design_photo_url((int)$displayBeforePhoto['id'])) ?>" data-lightbox-alt="Primary before photo">
                         <div class="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                             <div class="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -386,7 +386,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             <?php foreach ($uploadedBeforePhotos as $photo): ?>
                                 <div class="rounded-md border border-slate-200 p-3">
                                     <div class="relative">
-                                        <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" alt="Before photo thumbnail" data-lightbox-src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" data-lightbox-alt="<?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> before photo">
+                                        <img class="aspect-square w-full rounded object-cover" src="<?= e(smile_design_photo_url((int)$photo['id'], '', 'thumb')) ?>" alt="Before photo thumbnail" data-lightbox-src="<?= e(smile_design_photo_url((int)$photo['id'])) ?>" data-lightbox-alt="<?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Before') ?> before photo">
                                         <form class="absolute right-1.5 top-1.5" method="POST" action="<?= e(base_url('app/actions/smile_design_before_photo_update.php')) ?>" data-confirm="Delete this before photo? If it is linked to after versions, delete will be blocked and you should replace it instead.">
                                             <?= csrf_input() ?>
                                             <input type="hidden" name="photo_id" value="<?= e((string)$photo['id']) ?>">
@@ -708,7 +708,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             <div class="rounded-md border <?= $workingAfter ? 'border-slate-300 bg-slate-50' : 'border-dashed border-slate-300 bg-white' ?> p-3">
                                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><?= e((string)$item['label']) ?></p>
                                 <?php if ($workingAfter): ?>
-                                    <img class="mt-2 h-24 w-full rounded-md bg-white object-contain" src="<?= e(smile_design_after_url((int)$workingAfter['id'])) ?>" alt="<?= e((string)$item['label']) ?> selected after" data-lightbox-src="<?= e(smile_design_after_url((int)$workingAfter['id'])) ?>" data-lightbox-alt="<?= e((string)$item['label']) ?> selected after">
+                                    <img class="mt-2 h-24 w-full rounded-md bg-white object-contain" src="<?= e(smile_design_after_url((int)$workingAfter['id'], '', 'thumb')) ?>" alt="<?= e((string)$item['label']) ?> selected after" data-lightbox-src="<?= e(smile_design_after_url((int)$workingAfter['id'])) ?>" data-lightbox-alt="<?= e((string)$item['label']) ?> selected after">
                                     <p class="mt-2 text-sm font-semibold text-slate-900">#<?= e((string)$workingAfter['version_number']) ?> <?= e((string)$workingAfter['version_title']) ?></p>
                                     <p class="mt-1 text-xs text-emerald-700">Selected for simulation</p>
                                 <?php else: ?>
@@ -784,7 +784,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <div class="mt-4 grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2">
                                         <div class="bg-black p-2">
                                             <?php if ($compareBeforePhoto): ?>
-                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'])) ?>" alt="<?= e((string)$set['label']) ?> before" data-lightbox-src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> before">
+                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> before" data-lightbox-src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> before">
                                             <?php else: ?>
                                                 <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">Before missing</div>
                                             <?php endif; ?>
@@ -792,7 +792,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                         </div>
                                         <div class="bg-black p-2">
                                             <?php if ($frontSetVersion): ?>
-                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_after_url((int)$frontSetVersion['id'])) ?>" alt="<?= e((string)$set['label']) ?> front after" data-lightbox-src="<?= e(smile_design_after_url((int)$frontSetVersion['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> front after">
+                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_after_url((int)$frontSetVersion['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> front after" data-lightbox-src="<?= e(smile_design_after_url((int)$frontSetVersion['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> front after">
                                             <?php else: ?>
                                                 <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">After missing</div>
                                             <?php endif; ?>
@@ -902,7 +902,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                                 <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"></path></svg>
                                             </span>
                                         <?php endif; ?>
-                                        <img class="h-44 w-full rounded-md bg-slate-100 object-contain" src="<?= e(smile_design_after_url((int)$version['id'])) ?>" alt="After version" data-lightbox-src="<?= e(smile_design_after_url((int)$version['id'])) ?>" data-lightbox-alt="#<?= e((string)$version['version_number']) ?> <?= e((string)$version['version_title']) ?>">
+                                        <img class="h-44 w-full rounded-md bg-slate-100 object-contain" src="<?= e(smile_design_after_url((int)$version['id'], '', 'thumb')) ?>" alt="After version" data-lightbox-src="<?= e(smile_design_after_url((int)$version['id'])) ?>" data-lightbox-alt="#<?= e((string)$version['version_number']) ?> <?= e((string)$version['version_title']) ?>">
                                         <div class="mt-3 flex items-start justify-between gap-3">
                                             <div class="flex min-w-0 items-start gap-2">
                                                 <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border <?= $isVersionSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-400' ?>" title="<?= $isVersionSelected ? 'Selected for simulation' : 'Not selected' ?>">

@@ -186,7 +186,7 @@ if ($case) {
                     $imageUrl = base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$image['id'] . $tokenQuery);
                     ?>
                     <button type="button" class="gallery-catalog-tile" data-lvi-fullscreen="<?= e($imageUrl) ?>" data-lvi-title="<?= e($imageTitle !== '' ? $imageTitle : $styleTitle) ?>" aria-label="Open <?= e($styleTitle) ?> LVI reference image">
-                        <img src="<?= e($imageUrl) ?>" alt="<?= e($imageTitle !== '' ? $imageTitle : $styleTitle) ?>" loading="eager">
+                        <img src="<?= e(smile_design_url_with_variant($imageUrl, 'thumb')) ?>" alt="<?= e($imageTitle !== '' ? $imageTitle : $styleTitle) ?>" loading="eager">
                         <span class="gallery-catalog-caption">
                             <span class="block text-sm font-bold leading-tight"><?= e($styleTitle) ?></span>
                         </span>
@@ -235,7 +235,7 @@ if ($case) {
                 ?>
                 <a class="gallery-lvi-card group" href="<?= e(base_url('smile-design/gallery?catalog=lvi' . ($query !== '' ? '&q=' . rawurlencode($query) : '') . $tokenQuery)) ?>">
                     <?php if ($lviHeroUrl !== ''): ?>
-                        <img src="<?= e($lviHeroUrl) ?>" alt="LVI Catalog" loading="eager">
+                        <img src="<?= e(smile_design_url_with_variant($lviHeroUrl, 'thumb')) ?>" alt="LVI Catalog" loading="eager">
                     <?php endif; ?>
                     <span class="gallery-lvi-card-content">
                         <span class="block text-xs font-bold uppercase tracking-[0.22em] text-white/55">Shape Reference</span>
@@ -252,10 +252,10 @@ if ($case) {
                     <a class="group rounded-md border border-white/10 bg-white/[0.04] p-2 transition hover:border-white/35 hover:bg-white/[0.07]" href="<?= e(base_url('smile-design/gallery?case_id=' . (int)$galleryCase['id'] . ($query !== '' ? '&q=' . rawurlencode($query) : '') . $tokenQuery)) ?>">
                         <div class="grid grid-cols-2 gap-2">
                             <div class="aspect-[4/5] overflow-hidden rounded bg-white/5">
-                                <?php if ($frontBefore): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_photo_url((int)$frontBefore['id'], $isGalleryTokenAccess ? $galleryToken : '')) ?>" alt="Before"><?php endif; ?>
+                                <?php if ($frontBefore): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_photo_url((int)$frontBefore['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="Before"><?php endif; ?>
                             </div>
                             <div class="aspect-[4/5] overflow-hidden rounded bg-white/5">
-                                <?php if ($frontAfter): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'], $isGalleryTokenAccess ? $galleryToken : '')) ?>" alt="After"><?php endif; ?>
+                                <?php if ($frontAfter): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="After"><?php endif; ?>
                             </div>
                         </div>
                         <div class="mt-3 flex items-start justify-between gap-3 px-1 pb-1">
@@ -292,7 +292,7 @@ if ($case) {
                             <?php $thumbAlignment = (string)json_encode($thumb['alignment'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>
                             <button type="button" class="gallery-angle" data-gallery-angle="<?= e($photoType) ?>" data-before-url="<?= e((string)$thumb['before_url']) ?>" data-after-url="<?= e((string)$thumb['after_url']) ?>" data-before-label="<?= e((string)$thumb['label']) ?>" data-after-label="<?= e((string)$thumb['after_label']) ?>" data-alignment="<?= e($thumbAlignment) ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
                                 <div class="aspect-[4/3] overflow-hidden rounded bg-white/5">
-                                    <?php if ($thumb['before_url'] !== ''): ?><img class="h-full w-full object-cover" src="<?= e((string)$thumb['before_url']) ?>" alt="<?= e((string)$thumb['label']) ?> before"><?php endif; ?>
+                                    <?php if ($thumb['before_url'] !== ''): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_url_with_variant((string)$thumb['before_url'], 'thumb')) ?>" alt="<?= e((string)$thumb['label']) ?> before"><?php endif; ?>
                                 </div>
                                 <div class="mt-2 flex items-center justify-between gap-2">
                                     <span class="text-xs font-bold text-white"><?= e((string)$thumb['label']) ?></span>

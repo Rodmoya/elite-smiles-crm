@@ -2002,11 +2002,14 @@ function smile_design_case_activity(int $caseId, int $limit = 25): array
     );
 }
 
-function smile_design_after_url(int $versionId, string $token = ''): string
+function smile_design_after_url(int $versionId, string $token = '', string $variant = ''): string
 {
     $query = 'after_id=' . $versionId;
     if ($token !== '') {
         $query .= '&token=' . rawurlencode($token);
+    }
+    if ($variant !== '') {
+        $query .= '&variant=' . rawurlencode($variant);
     }
     return base_url('app/actions/smile_design_photo.php?' . $query);
 }
@@ -2650,11 +2653,30 @@ function smile_design_convert_heic_upload_to_jpeg(string $tmp, string $target): 
     return smile_design_convert_heic_with_cli($tmp, $target);
 }
 
-function smile_design_photo_url(int $photoId, string $token = ''): string
+/**
+ * Append (or override) a `variant` query param on an already-built photo
+ * URL. Used where a full-resolution URL is needed for one purpose (e.g.
+ * swapping the main before/after viewer, or a lightbox/full-view link) but a
+ * small thumbnail of the very same photo is also rendered on the page - lets
+ * both reuse one URL-building call instead of constructing two.
+ */
+function smile_design_url_with_variant(string $url, string $variant): string
+{
+    if ($url === '' || $variant === '') {
+        return $url;
+    }
+    $separator = str_contains($url, '?') ? '&' : '?';
+    return $url . $separator . 'variant=' . rawurlencode($variant);
+}
+
+function smile_design_photo_url(int $photoId, string $token = '', string $variant = ''): string
 {
     $query = 'photo_id=' . $photoId;
     if ($token !== '') {
         $query .= '&token=' . rawurlencode($token);
+    }
+    if ($variant !== '') {
+        $query .= '&variant=' . rawurlencode($variant);
     }
     return base_url('app/actions/smile_design_photo.php?' . $query);
 }

@@ -716,20 +716,28 @@ function smile_design_shade_screen_contract(array $detail): string
     }
 
     if ($valueStep <= 7) {
-        return implode(' ', [
-            'SCREEN SHADE CONTRACT: this is a natural-white porcelain group, not natural tooth color.',
-            'Render it clearly whiter and cleaner than the before photo, with a controlled step-down from Chromascop 110 rather than a return to yellow enamel.',
-            'This shade contract applies to every LVI style equally; do not make Natural or Mature styles yellower just because the shape language is softer.',
-            'Warmth is allowed only as a subtle porcelain undertone; visible yellow pigment, stain, cream patches, and old-tooth coloration are not allowed.',
-        ]);
+        $label = (string)($detail['label'] ?? '');
+        $title = (string)($detail['title'] ?? '');
+        $description = (string)($detail['description'] ?? '');
+        return implode(' ', array_values(array_filter([
+            'SCREEN SHADE CONTRACT: render the exact target color of ' . trim($label . ' - ' . $title) . ', not a whitened or bleached version of it.',
+            $description !== '' ? 'Target appearance: ' . $description : '',
+            'Do not push the value toward Chromascop 110 or Elite Smiles Ultra White brightness — match this shade\'s own value and warmth exactly.',
+            'This shade contract applies to every LVI style equally; LVI style changes tooth form only, never this color target.',
+            'Still fully replace the original tooth surface with clean, uniform, stain-free finished porcelain at this target color; do not leave the original yellowing, mottling, craze lines, or enamel defects visible.',
+        ], static fn(string $value): bool => trim($value) !== '')));
     }
 
-    return implode(' ', [
-        'SCREEN SHADE CONTRACT: this is a lower-value restorative blend, but it must still read as clean finished porcelain.',
-        'Reduce brightness from Chromascop 110 according to the shade step while preserving a polished, uniform, stain-free ceramic surface.',
-        'This shade contract applies to every LVI style equally; LVI style changes tooth form, while Chromascop controls color value.',
-        'Do not let age-aware warmth become yellowing, mottling, or old enamel bleed-through.',
-    ]);
+    $label = (string)($detail['label'] ?? '');
+    $title = (string)($detail['title'] ?? '');
+    $description = (string)($detail['description'] ?? '');
+    return implode(' ', array_values(array_filter([
+        'SCREEN SHADE CONTRACT: render the exact target color of ' . trim($label . ' - ' . $title) . ', not a whitened or bleached version of it.',
+        $description !== '' ? 'Target appearance: ' . $description : '',
+        'Do not brighten this shade toward Chromascop 110 or Elite Smiles Ultra White — this is a deliberately lower-value, warmer restorative blend, not a conservative attempt at a bright shade.',
+        'This shade contract applies to every LVI style equally; LVI style changes tooth form, Chromascop controls color value.',
+        'Still deliver clean, uniform, stain-free finished porcelain at this target color; do not let it look like unedited natural enamel, mottling, or old restorative material.',
+    ], static fn(string $value): bool => trim($value) !== '')));
 }
 
 function smile_design_treatment_scope_options(): array

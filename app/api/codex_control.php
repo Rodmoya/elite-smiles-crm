@@ -17,6 +17,7 @@ require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
 require_once dirname(__DIR__) . '/leads/lead_email.php';
 require_once dirname(__DIR__) . '/leads/lead_ai.php';
+require_once dirname(__DIR__) . '/leads/lead_agent.php';
 require_once dirname(__DIR__) . '/ai/elite_ai_service.php';
 require_once dirname(__DIR__) . '/smile_design/smile_design_service.php';
 require_once dirname(__DIR__) . '/dentrix/dentrix_bridge.php';
@@ -148,6 +149,18 @@ if (!function_exists('codex_api_has_explicit_stage_approval')) {
             '/\b(?:move|advance|set|change|shift)\s+(?:lead|card|lead\s+to|them|them\s+to|it|it\s+to|this\s+lead\s+to)?\s*(?:stage|status|pipeline)\b|\b(?:move|set|advance|change)\s+(?:this|the|lead|leads|them)?\s*(?:to|into)\s+(?:new[_ ]?lead|contacted|in[_ ]?contact|follow[_ ]?up[_ ]?needed|follow[_ ]?up|scheduling|consultation[_ ]?booked|consultation[_ ]?completed|no[_ ]?show|reschedule|no[_ ]?show[_ ]?reschedule|treatment[_ ]?accepted|no[_ ]?answer|nurture|lost)\b|\b(?:change|set)\s+lead\s+status\b/i',
             $instruction
         );
+    }
+}
+
+if (!function_exists('codex_api_has_explicit_hold_approval')) {
+    function codex_api_has_explicit_hold_approval(array $request): bool
+    {
+        if (filter_var($request['hold_approved'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || filter_var($request['hold_approval'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $executionMode = strtolower(trim((string)($request['execution_mode'] ?? '')));
+        return in_array($executionMode, ['hold', 'hold_approved', 'patient_hold'], true);
     }
 }
 
@@ -451,6 +464,7 @@ if (!function_exists('codex_api_capabilities')) {
             'safety_rules' => [
                 'patient_facing_send_requires_explicit_approval' => true,
                 'stage_change_requires_explicit_stage_approval' => true,
+                'patient_hold_requires_explicit_hold_approval' => true,
                 'draft_before_send' => true,
                 'notes_and_read_actions_allowed' => true,
                 'no_phone_numbers_in_message_body_policy' => true,
@@ -466,7 +480,7 @@ if (!function_exists('codex_api_capabilities')) {
             ],
             'write_actions' => [
                 'create_lead', 'import_meta_leads', 'add_note',
-                'mark_notification_reviewed', 'update_lead', 'delete_lead', 'move_stage',
+                'mark_notification_reviewed', 'update_lead', 'delete_lead', 'move_stage', 'hold_lead_until',
                 'prepare_sms_followup', 'draft_email', 'send_sms', 'nurture_reactivation_send',
                 'send_email', 'send_internal_sms', 'merge_leads',
                 'elite_ai_cancel_draft', 'mobile_push_test',
@@ -477,6 +491,7 @@ if (!function_exists('codex_api_capabilities')) {
                 'send_email' => ['send_approved' => true],
                 'delete_lead' => ['delete_approved' => true],
                 'move_stage' => ['stage_approved' => true],
+                'hold_lead_until' => ['hold_approved' => true],
             ],
         ]);
     }
@@ -2498,6 +2513,44 @@ if (!function_exists('codex_api_move_stage')) {
     }
 }
 
+if (!function_exists('codex_api_hold_lead_until')) {
+    function codex_api_hold_lead_until(): void
+    {
+        $request = (array)codex_api_body();
+        $leadId = (int)codex_api_value('lead_id', 0);
+        $holdUntil = trim((string)codex_api_value('hold_until', ''));
+        if (!codex_api_has_explicit_hold_approval($request)) {
+            codex_api_response([
+                'ok' => false,
+                'message' => 'A patient-requested hold requires explicit hold approval.',
+                'approval_required' => 'hold_approved',
+                'lead_id' => $leadId,
+            ], 409);
+        }
+        if ($leadId <= 0 || $holdUntil === '') {
+            codex_api_response(['ok' => false, 'message' => 'lead_id and hold_until are required.'], 422);
+        }
+
+        $lead = codex_api_load_lead($leadId);
+        $result = lead_agent_hold_until($leadId, $holdUntil, 'codex_api');
+        if (empty($result['ok'])) {
+            codex_api_response($result + ['lead_id' => $leadId], 422);
+        }
+        $state = db_one("SELECT status, next_action_at, pause_reason, last_decision, human_takeover
+            FROM lead_agent_states WHERE lead_id = :lead_id LIMIT 1", ['lead_id' => $leadId]) ?: [];
+
+        codex_api_response([
+            'ok' => true,
+            'message' => 'Lead Agent hold saved. No automated SMS or email will be sent before the hold date.',
+            'lead_id' => $leadId,
+            'lead_name' => (string)($lead['full_name'] ?? ''),
+            'hold_until' => (string)($result['hold_until'] ?? ''),
+            'lead' => codex_api_load_lead($leadId),
+            'agent_state' => $state,
+        ]);
+    }
+}
+
 if (!function_exists('codex_api_delete_lead')) {
     function codex_api_delete_lead(int $leadId): void
     {
@@ -3255,6 +3308,10 @@ try {
 
     if ($action === 'move_stage') {
         codex_api_move_stage((int) codex_api_value('lead_id', 0), trim((string) codex_api_value('status', '')));
+    }
+
+    if ($action === 'hold_lead_until') {
+        codex_api_hold_lead_until();
     }
 
     if ($action === 'update_lead') {

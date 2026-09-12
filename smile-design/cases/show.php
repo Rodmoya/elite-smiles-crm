@@ -625,18 +625,13 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             </div>
                         </div>
                         <label class="block text-sm font-semibold">Version title<input name="version_title" value="After Preview" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-                        <label class="block text-sm font-semibold">Procedure<input name="procedure_label" value="<?= e((string)$case['procedure_interest']) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-                        <?php if ($isLipRepositionOnlyCase): ?>
-                            <input type="hidden" name="lvi_style_key" value="">
-                            <input type="hidden" name="shade_goal" value="<?= e((string)$caseShadeDetail['code']) ?>">
-                            <input type="hidden" name="treatment_scope" value="<?= e((string)$caseTreatmentScope) ?>">
-                            <input type="hidden" name="smile_width_goal" value="<?= e((string)$caseSmileWidthGoal) ?>">
-                        <?php else: ?>
+                        <label class="block text-sm font-semibold">Procedure<select name="procedure_label" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" data-procedure-select><?php foreach (smile_design_procedure_options() as $key => $label): ?><option value="<?= e($label) ?>" <?= (string)($case['procedure_interest'] ?? '') === (string)$label ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                        <div class="contents" data-lvi-fields>
                             <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> Â· <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
                             <label class="block text-sm font-semibold">Veneer shade<select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseShadeDetail['code'] === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
-                            <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseTreatmentScope === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
-                            <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseSmileWidthGoal === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
-                        <?php endif; ?>
+                        </div>
+                        <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseTreatmentScope === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                        <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseSmileWidthGoal === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                         <label class="block text-sm font-semibold md:col-span-2">Custom request<textarea name="custom_request" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Example: upper veneers only, natural white, close small gaps, keep it subtle. Do not change face, hair, skin, lips, or overall identity."></textarea></label>
                         <label class="flex items-center gap-2 text-sm font-semibold md:col-span-2"><input type="checkbox" name="refresh_analysis" value="1" class="h-4 w-4 rounded border-slate-300"> Re-run AI case analysis before generating</label>
                         <label class="block text-sm font-semibold md:col-span-2">Internal notes<textarea name="notes" rows="2" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional note saved on the generated version."></textarea></label>
@@ -970,16 +965,13 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <p class="mt-3 text-xs leading-5 text-slate-500">Only uploaded real angles are sent. Generated afters are saved with the same angle so Compare can switch the matching before/after pair.</p>
                 </div>
                 <label class="block text-sm font-semibold">Version title<input name="version_title" value="After Preview" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-                <label class="block text-sm font-semibold">Procedure<input name="procedure_label" value="<?= e((string)$case['procedure_interest']) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
+                <label class="block text-sm font-semibold">Procedure<select name="procedure_label" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" data-procedure-select><?php foreach (smile_design_procedure_options() as $key => $label): ?><option value="<?= e($label) ?>" <?= (string)($case['procedure_interest'] ?? '') === (string)$label ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                 <label class="block text-sm font-semibold">Treatment scope<select name="treatment_scope" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_treatment_scope_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseTreatmentScope === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                 <label class="block text-sm font-semibold">Smile width<select name="smile_width_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_smile_width_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseSmileWidthGoal === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
-                <?php if ($isLipRepositionOnlyCase): ?>
-                    <input type="hidden" name="lvi_style_key" value="">
-                    <input type="hidden" name="shade_goal" value="<?= e((string)$caseShadeDetail['code']) ?>">
-                <?php else: ?>
+                <div class="contents" data-lvi-fields>
                     <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= ((string)($case['selected_style'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === (string)$key || (string)($case['lvi_style_key'] ?? '') === 'LVI ' . $styleTitle || (string)($case['lvi_style_key'] ?? '') === $styleTitle) ? 'selected' : '' ?>><?= e($styleTitle) ?> Â· <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
                     <label class="block text-sm font-semibold">Veneer shade<select name="shade_goal" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_shade_options() as $key => $label): ?><option value="<?= e($key) ?>" <?= (string)$caseShadeDetail['code'] === (string)$key ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
-                <?php endif; ?>
+                </div>
                 <label class="block text-sm font-semibold md:col-span-2">Custom request<textarea name="custom_request" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Example: upper veneers only, natural white, close small gaps, keep it subtle. Do not change face, hair, skin, lips, or overall identity."></textarea></label>
                 <label class="flex items-center gap-2 text-sm font-semibold md:col-span-2"><input type="checkbox" name="refresh_analysis" value="1" class="h-4 w-4 rounded border-slate-300"> Re-run AI case analysis before generating</label>
                 <label class="block text-sm font-semibold md:col-span-2">Internal notes<textarea name="notes" rows="2" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional note saved on the generated version."></textarea></label>
@@ -1267,12 +1259,10 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                 <label class="block text-sm font-semibold">Match before photo<select name="before_photo_id" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach ($uploadedBeforePhotos as $photo): ?><option value="<?= e((string)$photo['id']) ?>"><?= e(smile_design_photo_type_options()[(string)($photo['photo_type'] ?? 'front')] ?? 'Front') ?> Â· #<?= e((string)$photo['id']) ?></option><?php endforeach; ?></select></label>
                                 <label class="block text-sm font-semibold">Photo type / angle<select name="photo_type" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_photo_type_options() as $key => $label): ?><option value="<?= e($key) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
                                 <label class="block text-sm font-semibold">Version title<input name="version_title" value="Real After" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-                                <label class="block text-sm font-semibold">Procedure<input name="procedure_label" value="<?= e((string)$case['procedure_interest']) ?>" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-                                <?php if ($isLipRepositionOnlyCase): ?>
-                                    <input type="hidden" name="lvi_style_key" value="">
-                                <?php else: ?>
-                                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><option value="<?= e($key) ?>" <?= (string)$case['lvi_style_key'] === (string)$key ? 'selected' : '' ?>><?= e((string)($meta['key'] ?? $key)) ?> Â· <?= e((string)($meta['name'] ?? $key)) ?></option><?php endforeach; ?></select></label>
-                                <?php endif; ?>
+                                <label class="block text-sm font-semibold">Procedure<select name="procedure_label" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" data-procedure-select><?php foreach (smile_design_procedure_options() as $key => $label): ?><option value="<?= e($label) ?>" <?= (string)($case['procedure_interest'] ?? '') === (string)$label ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                                <div class="contents" data-lvi-fields>
+                                    <label class="block text-sm font-semibold">LVI style<select name="lvi_style_key" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"><?php foreach (smile_design_lvi_catalog() as $key => $meta): ?><?php $styleTitle = (string)($meta['title'] ?? $key); ?><option value="<?= e($key) ?>" <?= (string)($case['lvi_style_key'] ?? '') === (string)$key ? 'selected' : '' ?>><?= e($styleTitle) ?> Â· <?= e((string)($meta['category'] ?? 'Style')) ?></option><?php endforeach; ?></select></label>
+                                </div>
                                 <label class="block text-sm font-semibold md:col-span-2">After image<input required name="after_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2"></label>
                                 <label class="block text-sm font-semibold md:col-span-2">Notes<textarea name="notes" rows="3" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Completed treatment note, date, shade, or any clinical context."></textarea></label>
                                 <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" name="approve_preview" value="1" class="h-4 w-4 rounded border-slate-300"> Use on customer link</label>
@@ -1337,6 +1327,27 @@ document.addEventListener('DOMContentLoaded', function () {
     caseProcedureSelect.addEventListener('change', syncCasePreferenceFields);
     syncCasePreferenceFields();
   }
+  // Generate/resend/upload-real-after forms each carry their own Procedure
+  // select (independent of the Case Details one above, since a specific
+  // generation can target a different procedure than what's currently saved
+  // on the case) - each one's LVI style/shade fields show or hide live based
+  // on that form's own selection, so choosing "Veneers + Lip Repositioning"
+  // right here is enough without needing to save Case Details first.
+  document.querySelectorAll('[data-procedure-select]').forEach(function (select) {
+    const form = select.closest('form');
+    if (!form) return;
+    const lviFields = form.querySelectorAll('[data-lvi-fields]');
+    function syncGenerationFields() {
+      const hideDentalStyle = isLipRepositionOnly(select.value);
+      // Inline style rather than a "hidden" class: these wrappers rely on
+      // display:contents to stay transparent to the parent grid layout, and
+      // an inline style always wins the cascade regardless of class order,
+      // instead of risking a specificity tie between "contents" and "hidden".
+      lviFields.forEach(function (field) { field.style.display = hideDentalStyle ? 'none' : ''; });
+    }
+    select.addEventListener('change', syncGenerationFields);
+    syncGenerationFields();
+  });
   function closeLightbox() {
     if (!lightbox || !lightboxImage) return;
     lightbox.classList.add('hidden');

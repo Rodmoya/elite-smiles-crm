@@ -32,14 +32,14 @@ smile_design_page_header('LVI Standard Library', 'Doctor closing-tool reference 
         ?>
         <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <?php if ($heroImage): ?>
-                <img class="aspect-[4/3] w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$heroImage['id'])) ?>" alt="<?= e((string)$heroImage['title']) ?>">
+                <img class="aspect-[4/3] w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$heroImage['id'] . '&variant=thumb')) ?>" alt="<?= e((string)$heroImage['title']) ?>">
             <?php else: ?>
                 <div class="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sample image</div>
             <?php endif; ?>
             <?php if ($styleImages !== []): ?>
                 <div class="mt-3 grid grid-cols-3 gap-2">
                     <?php foreach (array_slice($styleImages, 0, 3) as $image): ?>
-                        <img class="h-16 w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$image['id'])) ?>" alt="<?= e((string)$image['title']) ?>">
+                        <img class="h-16 w-full rounded-md object-cover" src="<?= e(base_url('app/actions/smile_design_photo.php?lvi_sample_id=' . (int)$image['id'] . '&variant=thumb')) ?>" alt="<?= e((string)$image['title']) ?>">
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>

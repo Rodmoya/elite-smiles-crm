@@ -19,7 +19,7 @@ smile_design_page_header('Smile Cases', 'All internal smile design cases and int
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-3">
                                 <?php if ($frontAfter): ?>
-                                    <img class="h-14 w-14 shrink-0 rounded-md border border-slate-200 bg-slate-50 object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'])) ?>" alt="Front after thumbnail for <?= e((string)$case['patient_name']) ?>">
+                                    <img class="h-14 w-14 shrink-0 rounded-md border border-slate-200 bg-slate-50 object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'], '', 'thumb')) ?>" alt="Front after thumbnail for <?= e((string)$case['patient_name']) ?>">
                                 <?php else: ?>
                                     <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-400" aria-label="No front after photo">
                                         <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">

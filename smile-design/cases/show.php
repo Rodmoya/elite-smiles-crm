@@ -297,15 +297,19 @@ foreach ($afterSets as $setKey => $set) {
 $activeSimulationUsesMixedSets = count(array_unique($activeAfterSetKeys)) > 1;
 uasort($afterSets, static fn(array $a, array $b): int => (int)$b['number'] <=> (int)$a['number']);
 
+// [label, tab key (also the hash used for deep-linking), panel to show,
+// optional element id to scroll into view within that panel]. Compare Sets
+// lives inside the Generate panel's markup, so its tab shares that panel
+// and just scrolls to its own block instead of hiding/showing separately.
 $sectionLinks = [
-    ['Source', '#source'],
-    ['Generate', '#generate'],
-    ['Compare Sets', '#compare-sets'],
-    ['Compare', '#compare'],
-    ['Adjustments', '#adjustments'],
-    ['Share', '#share'],
-    ['Activity', '#activity'],
-    ['Versions', '#versions'],
+    ['Source', 'source', 'source', null],
+    ['Generate', 'generate', 'generate', null],
+    ['Compare Sets', 'compare-sets', 'generate', 'compare-sets'],
+    ['Compare', 'compare', 'compare', null],
+    ['Adjustments', 'adjustments', 'adjustments', null],
+    ['Share', 'share', 'share', null],
+    ['Activity', 'activity', 'activity', null],
+    ['Versions', 'versions', 'versions', null],
 ];
 $casesListUrl = rtrim(base_url('smile-design/cases'), '/') . '/';
 
@@ -336,9 +340,9 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
     </div>
 </section>
 
-<nav class="mb-5 flex flex-wrap gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm" aria-label="Smile case workspace">
-    <?php foreach ($sectionLinks as [$label, $href]): ?>
-        <a class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700" href="<?= e($href) ?>"><?= e($label) ?></a>
+<nav class="mb-5 flex flex-wrap gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm" aria-label="Smile case workspace" data-case-tabs>
+    <?php foreach ($sectionLinks as [$label, $tabKey, $panelId, $scrollTo]): ?>
+        <button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700" data-case-tab="<?= e($tabKey) ?>" data-case-tab-panel="<?= e($panelId) ?>" data-case-tab-scroll="<?= e((string)$scrollTo) ?>"><?= e($label) ?></button>
     <?php endforeach; ?>
     <div class="ml-auto flex flex-wrap gap-2">
         <a class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" href="<?= e($casesListUrl) ?>">All Cases</a>
@@ -352,9 +356,8 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
     </div>
 </nav>
 
-<div class="grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
-    <div class="space-y-5">
-        <section id="source" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+<div class="space-y-5">
+        <section id="source" data-case-panel="source" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Source</p>
@@ -602,7 +605,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
         })();
         </script>
 
-        <section id="generate" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="generate" data-case-panel="generate" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <?php if ($afterVersions): ?>
                 <div>
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Generate</p>
@@ -983,7 +986,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
             <?php endif; ?>
         </section>
 
-        <section id="compare" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="compare" data-case-panel="compare" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare</p>
@@ -1033,7 +1036,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
             </div>
         </section>
 
-        <section id="adjustments" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="adjustments" data-case-panel="adjustments" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Adjustments</p>
@@ -1056,10 +1059,8 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                 </div>
             </div>
         </section>
-    </div>
 
-    <div class="space-y-5">
-        <section id="share" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="share" data-case-panel="share" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Share</p>
             <h2 class="mt-2 text-lg font-semibold">Open patient preview link</h2>
             <p class="mt-2 text-sm leading-6 text-slate-600">Keep one branded public preview link on for the patient, copy it to your phone, or scan the QR code when you are ready to text or share it.</p>
@@ -1199,7 +1200,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
             </div>
         </section>
 
-        <section id="activity" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="activity" data-case-panel="activity" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <details>
                 <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
                     <div>
@@ -1238,7 +1239,7 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
             </details>
         </section>
 
-                <section id="versions" class="mt-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+                <section id="versions" data-case-panel="versions" class="mt-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
                     <button type="button" class="flex w-full items-center justify-between gap-3 text-left" data-toggle-target="versions-panel" data-toggle-label="versions-toggle-label" aria-expanded="false" aria-controls="versions-panel">
                         <div>
                             <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Versions</p>
@@ -1273,11 +1274,9 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                             <div class="mt-5 rounded-md border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600">
                                 Generated AI previews and correction forms now live in the Generate section above. Use Versions only for completed real after uploads, archiving, and late-stage records.
                             </div>
-                        </div>
                     </div>
                 </section>
 
-    </div>
 </div>
 
 
@@ -1348,6 +1347,76 @@ document.addEventListener('DOMContentLoaded', function () {
     select.addEventListener('change', syncGenerationFields);
     syncGenerationFields();
   });
+
+  // Workspace tabs: Source/Generate/Compare Sets/Compare/Adjustments/Share/
+  // Activity/Versions used to be one long two-column page with anchor links
+  // that just scrolled you to a section - everything was always rendered and
+  // visible at once. This switches to real tabs (one panel shown at a time,
+  // matching the Input/Result/Compare/B-A mode buttons already used inside
+  // the viewer below) while keeping every section's markup and forms exactly
+  // where they were, so nothing else on the page has to change.
+  (function () {
+    const tabButtons = Array.from(document.querySelectorAll('[data-case-tab]'));
+    const panels = Array.from(document.querySelectorAll('[data-case-panel]'));
+    if (!tabButtons.length || !panels.length) return;
+    const knownTabKeys = tabButtons.map(function (btn) { return btn.getAttribute('data-case-tab'); });
+
+    function activateTab(tabKey, options) {
+      const button = tabButtons.find(function (btn) { return btn.getAttribute('data-case-tab') === tabKey; });
+      if (!button) return;
+      const panelId = button.getAttribute('data-case-tab-panel');
+      const scrollToId = button.getAttribute('data-case-tab-scroll');
+      panels.forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-case-panel') !== panelId;
+      });
+      tabButtons.forEach(function (btn) {
+        const isActivePanel = btn.getAttribute('data-case-tab-panel') === panelId;
+        btn.setAttribute('aria-pressed', isActivePanel ? 'true' : 'false');
+        // Same class-name-order-vs-specificity trap as the LVI fields above:
+        // toggle each pair of same-property utilities explicitly rather than
+        // letting an "active" class coexist with the base one.
+        btn.classList.toggle('bg-slate-950', isActivePanel);
+        btn.classList.toggle('text-white', isActivePanel);
+        btn.classList.toggle('border-slate-950', isActivePanel);
+        btn.classList.toggle('border-slate-300', !isActivePanel);
+        btn.classList.toggle('text-slate-700', !isActivePanel);
+      });
+      if (!options || options.updateHash !== false) {
+        history.replaceState(null, '', '#' + tabKey);
+      }
+      const scrollTarget = scrollToId ? document.getElementById(scrollToId) : null;
+      if (scrollTarget) {
+        // Panel just became visible - wait a frame so layout has caught up
+        // before measuring where to scroll.
+        requestAnimationFrame(function () { scrollTarget.scrollIntoView({ block: 'start' }); });
+      } else if (!options || options.scrollNavIntoView !== false) {
+        const nav = document.querySelector('[data-case-tabs]');
+        if (nav) nav.scrollIntoView({ block: 'start' });
+      }
+    }
+
+    tabButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        activateTab(button.getAttribute('data-case-tab'));
+      });
+    });
+
+    // Existing in-page links such as "Jump to Compare" / "Back to Generate"
+    // point at these same hashes - hijack them into tab switches too instead
+    // of letting the browser jump-scroll a hidden section into view.
+    document.addEventListener('click', function (event) {
+      const link = event.target.closest('a[href^="#"]');
+      if (!link) return;
+      const key = link.getAttribute('href').slice(1);
+      if (knownTabKeys.indexOf(key) === -1) return;
+      event.preventDefault();
+      activateTab(key);
+    });
+
+    const initialKey = knownTabKeys.indexOf(location.hash.slice(1)) !== -1 ? location.hash.slice(1) : knownTabKeys[0];
+    activateTab(initialKey, { updateHash: false, scrollNavIntoView: false });
+  })();
+
   function closeLightbox() {
     if (!lightbox || !lightboxImage) return;
     lightbox.classList.add('hidden');

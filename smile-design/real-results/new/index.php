@@ -3,7 +3,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/_bootstrap.php';
 $user = smile_design_internal_boot('New Real Result');
 smile_design_render_shell_start('New Real Result');
-smile_design_page_header('New Real Result', 'Add shell metadata for a future real-patient before/after pair.');
+smile_design_page_header('New Real Result', 'Create a real-patient before/after case. Photos are saved only from this form - there is no way to add or replace them afterward.');
 ?>
 <form class="max-w-4xl rounded-md border border-slate-200 bg-white p-5 shadow-sm" method="POST" enctype="multipart/form-data" action="<?= e(base_url('app/actions/smile_design_real_result_create.php')) ?>">
     <?= csrf_input() ?>
@@ -14,7 +14,10 @@ smile_design_page_header('New Real Result', 'Add shell metadata for a future rea
         <label class="block text-sm font-semibold">Style<input name="style_label" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
     </div>
     <label class="mt-4 block text-sm font-semibold">Story<textarea name="story" rows="5" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></textarea></label>
-    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+    <div class="mt-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+        Have both photos ready for each pair below before you submit. A pair only saves if its Before and After are uploaded together right now - this page cannot be reopened afterward to add or change photos.
+    </div>
+    <div class="mt-3 grid gap-4 sm:grid-cols-2">
         <label class="block text-sm font-semibold">Full Head BEFORE<input name="full_head_before" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
         <label class="block text-sm font-semibold">Full Head AFTER<input name="full_head_after" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>
         <label class="block text-sm font-semibold">Smile Close-Up BEFORE<input name="smile_close_up_before" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"></label>

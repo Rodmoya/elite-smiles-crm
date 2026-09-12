@@ -4566,6 +4566,76 @@ function smile_design_replace_before_photo(int $photoId, array $file, ?int $user
     return ['ok' => true, 'case_id' => $caseId, 'photo_id' => $photoId];
 }
 
+/**
+ * Same effect as smile_design_replace_before_photo(), but sources the
+ * replacement from a phone-uploaded photo (same QR mobile-upload flow used
+ * on Staff Intake) instead of a $_FILES upload. Matches the mobile upload
+ * to the existing photo's own photo_type, so scanning the QR and taking a
+ * new Front photo only replaces the Front slot, etc.
+ */
+function smile_design_replace_before_photo_from_mobile_upload(int $photoId, string $token, ?int $userId = null): array
+{
+    $link = smile_design_verify_token($token, 'mobile_upload');
+    if (!$link) {
+        return ['ok' => false, 'message' => 'This upload link is expired. Please scan a fresh QR code.'];
+    }
+
+    $photo = db_one("SELECT * FROM smile_case_photos WHERE id = :id AND kind = 'before' LIMIT 1", ['id' => $photoId]);
+    if (!$photo) {
+        return ['ok' => false, 'message' => 'Before photo not found.'];
+    }
+
+    $caseId = (int)$photo['case_id'];
+    $photoType = (string)($photo['photo_type'] ?? 'front');
+    $uploads = smile_design_mobile_uploads_for_token($token, true);
+    $upload = $uploads[$photoType] ?? null;
+    if (!$upload) {
+        return ['ok' => false, 'message' => 'No phone upload found yet for this photo type. Scan the QR and upload from your phone first.'];
+    }
+
+    $oldStorageKey = (string)($photo['storage_key'] ?? '');
+    $oldFilePath = $oldStorageKey !== '' ? smile_design_safe_storage_path($oldStorageKey) : null;
+
+    db_execute(
+        "UPDATE smile_case_photos
+         SET storage_key = :storage_key,
+             original_name = :original_name,
+             mime_type = :mime_type,
+             file_size = :file_size,
+             width = :width,
+             height = :height
+         WHERE id = :id",
+        [
+            'id' => $photoId,
+            'storage_key' => (string)$upload['storage_key'],
+            'original_name' => (string)($upload['original_name'] ?? 'mobile-photo'),
+            'mime_type' => (string)$upload['mime_type'],
+            'file_size' => (int)$upload['file_size'],
+            'width' => isset($upload['width']) ? (int)$upload['width'] : null,
+            'height' => isset($upload['height']) ? (int)$upload['height'] : null,
+        ]
+    );
+
+    if ($oldFilePath && is_file($oldFilePath)) {
+        @unlink($oldFilePath);
+    }
+
+    db_execute(
+        'UPDATE smile_mobile_uploads SET imported_case_id = :case_id, imported_photo_id = :photo_id, imported_at = NOW() WHERE id = :id',
+        ['case_id' => $caseId, 'photo_id' => $photoId, 'id' => (int)$upload['id']]
+    );
+
+    smile_design_audit($caseId, 'before_photo_replaced', [
+        'photo_id' => $photoId,
+        'photo_type' => $photoType,
+        'old_storage_key' => $oldStorageKey,
+        'new_storage_key' => (string)$upload['storage_key'],
+        'source' => 'mobile_upload',
+    ], $userId);
+
+    return ['ok' => true, 'case_id' => $caseId, 'photo_id' => $photoId];
+}
+
 function smile_design_delete_before_photo(int $photoId, ?int $userId = null): array
 {
     $photo = db_one("SELECT * FROM smile_case_photos WHERE id = :id AND kind = 'before' LIMIT 1", ['id' => $photoId]);

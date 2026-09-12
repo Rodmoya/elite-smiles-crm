@@ -55,12 +55,16 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $defaultPhotoType = trim((string)($options['photo_type'] ?? ($inputGallery[0]['photo_type'] ?? 'front')));
     $zoomPresetForPhotoType = static function (string $photoType): array {
         $normalized = strtolower(trim($photoType));
+        // Fallback framing used only when smile-focus detection fails on both images.
+        // Scale is deliberately less aggressive than before (was 1.38-1.45) so the
+        // full mouth - both the upper and lower lip - has room to stay in frame even
+        // when the anchor point isn't perfectly centered on a given photo.
         return match ($normalized) {
-            'front' => ['x' => 50, 'y' => 88, 'scale' => 1.45, 'pan_x' => 0, 'pan_y' => 0],
-            'left_45', 'left45' => ['x' => 50, 'y' => 82, 'scale' => 1.38, 'pan_x' => 0, 'pan_y' => 0],
-            'right_45', 'right45' => ['x' => 50, 'y' => 82, 'scale' => 1.38, 'pan_x' => 0, 'pan_y' => 0],
-            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 70, 'scale' => 1.18, 'pan_x' => 0, 'pan_y' => 0],
-            default => ['x' => 50, 'y' => 86, 'scale' => 1.42, 'pan_x' => 0, 'pan_y' => 0],
+            'front' => ['x' => 50, 'y' => 80, 'scale' => 1.22, 'pan_x' => 0, 'pan_y' => 0],
+            'left_45', 'left45' => ['x' => 50, 'y' => 76, 'scale' => 1.18, 'pan_x' => 0, 'pan_y' => 0],
+            'right_45', 'right45' => ['x' => 50, 'y' => 76, 'scale' => 1.18, 'pan_x' => 0, 'pan_y' => 0],
+            'smile_close_up', 'close_up_smile', 'closeup', 'close_up' => ['x' => 50, 'y' => 66, 'scale' => 1.1, 'pan_x' => 0, 'pan_y' => 0],
+            default => ['x' => 50, 'y' => 78, 'scale' => 1.2, 'pan_x' => 0, 'pan_y' => 0],
         };
     };
     $zoomPreset = $zoomPresetForPhotoType($defaultPhotoType);
@@ -69,7 +73,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
         $assetsPrinted = true;
         ?>
         <style>
-            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 88%; --sd-zoom-scale: 1.45; --sd-zoom-pan-x: 0%; --sd-zoom-pan-y: 0%; }
+            .sd-viewer-wrap { --sd-before-zoom: 1; --sd-before-x: 0%; --sd-before-y: 0%; --sd-before-rotate: 0deg; --sd-after-zoom: 1; --sd-after-x: 0%; --sd-after-y: 0%; --sd-after-rotate: 0deg; --sd-frame-aspect: 4 / 3; --sd-zoom-x: 50%; --sd-zoom-y: 80%; --sd-zoom-scale: 1.22; --sd-zoom-pan-x: 0%; --sd-zoom-pan-y: 0%; }
             .sd-viewer-shell { display: grid; gap: 12px; }
             .sd-viewer-shell.has-gallery { grid-template-columns: minmax(148px, 180px) minmax(0, 1fr); align-items: start; }
             .sd-viewer { overflow: hidden; border-radius: 8px; background: #050505; color: #fff; }
@@ -165,18 +169,19 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 return width + ' / ' + height;
             }
             function zoomPresetForPhotoType(value) {
+                // Keep in sync with the PHP $zoomPresetForPhotoType fallback above.
                 const photoType = String(value || '').trim().toLowerCase();
-                if (photoType === 'front') return { x: 50, y: 88, scale: 1.45, panX: 0, panY: 0 };
+                if (photoType === 'front') return { x: 50, y: 80, scale: 1.22, panX: 0, panY: 0 };
                 if (photoType === 'left_45' || photoType === 'left45') {
-                    return { x: 50, y: 82, scale: 1.38, panX: 0, panY: 0 };
+                    return { x: 50, y: 76, scale: 1.18, panX: 0, panY: 0 };
                 }
                 if (photoType === 'right_45' || photoType === 'right45') {
-                    return { x: 50, y: 82, scale: 1.38, panX: 0, panY: 0 };
+                    return { x: 50, y: 76, scale: 1.18, panX: 0, panY: 0 };
                 }
                 if (photoType === 'smile_close_up' || photoType === 'close_up_smile' || photoType === 'closeup' || photoType === 'close_up') {
-                    return { x: 50, y: 70, scale: 1.18, panX: 0, panY: 0 };
+                    return { x: 50, y: 66, scale: 1.1, panX: 0, panY: 0 };
                 }
-                return { x: 50, y: 86, scale: 1.42, panX: 0, panY: 0 };
+                return { x: 50, y: 78, scale: 1.2, panX: 0, panY: 0 };
             }
             function applyZoomPreset(wrap, photoType) {
                 if (!wrap) return;
@@ -258,26 +263,38 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     if (widthRatio < 0.08 || heightRatio < 0.012) return null;
                     const centerX = ((best.minX + best.maxX) / 2) / canvas.width * 100;
                     const centerY = ((best.minY + best.maxY) / 2) / canvas.height * 100;
+                    // The detected band is teeth only; the upper and lower lip sit just
+                    // outside it on either side. A small downward nudge (rather than the
+                    // previous +13, which combined with the old tighter zoom scale could
+                    // push the crop past the lower lip) keeps the anchor close to the true
+                    // mouth center so both lips stay inside the frame.
                     return {
                         x: clamp(centerX, 25, 75),
-                        y: clamp(centerY + 13, 58, 94),
+                        y: clamp(centerY + 5, 50, 86),
                         confidence: clamp(best.score / (canvas.width * Math.max(1, best.maxY - best.minY + 1)), 0, 1)
                     };
                 } catch (error) {
                     return null;
                 }
             }
-            function applySmileFocus(img) {
-                if (!img || img.dataset.sdSmileFocusSrc === img.currentSrc) return;
-                if (!imageReady(img)) {
-                    img.addEventListener('load', function () {
-                        img.dataset.sdSmileFocusSrc = '';
-                        applySmileFocus(img);
+            // detectFromImg lets the after image reuse a focus point detected on a
+            // different (the before) image, instead of running its own independent
+            // detection. The patient's mouth position doesn't move between before and
+            // after, so detecting once and sharing the result keeps both frames aligned
+            // instead of letting each image drift to its own guess.
+            function applySmileFocus(img, detectFromImg) {
+                if (!img) return;
+                const sourceImg = detectFromImg || img;
+                const sourceKey = sourceImg.currentSrc || sourceImg.src || '';
+                if (img.dataset.sdSmileFocusSrc === sourceKey) return;
+                if (!imageReady(sourceImg)) {
+                    sourceImg.addEventListener('load', function () {
+                        applySmileFocus(img, detectFromImg);
                     }, { once: true });
                     return;
                 }
-                const focus = detectSmileFocus(img);
-                img.dataset.sdSmileFocusSrc = img.currentSrc || img.src || '';
+                const focus = detectSmileFocus(sourceImg);
+                img.dataset.sdSmileFocusSrc = sourceKey;
                 if (!focus) {
                     img.removeAttribute('data-sd-smile-focus');
                     img.style.removeProperty('--sd-detected-smile-x');
@@ -290,7 +307,11 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             }
             function applySmileFocusForViewer(viewer) {
                 if (!viewer) return;
-                viewer.querySelectorAll('[data-sd-mode-panel="zoom"] img[data-sd-before-image], [data-sd-mode-panel="zoom"] img[data-sd-after-image]').forEach(applySmileFocus);
+                const beforeImg = viewer.querySelector('[data-sd-mode-panel="zoom"] img[data-sd-before-image]');
+                const afterImg = viewer.querySelector('[data-sd-mode-panel="zoom"] img[data-sd-after-image]');
+                if (!beforeImg) return;
+                applySmileFocus(beforeImg, beforeImg);
+                applySmileFocus(afterImg, beforeImg);
             }
             function setSlider(viewer, percent) {
                 percent = Math.max(0, Math.min(100, percent));

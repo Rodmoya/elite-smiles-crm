@@ -1415,6 +1415,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const initialKey = knownTabKeys.indexOf(location.hash.slice(1)) !== -1 ? location.hash.slice(1) : knownTabKeys[0];
     activateTab(initialKey, { updateHash: false, scrollNavIntoView: false });
+
+    // A tab click only ever replaces the hash (no new history entry, so back/
+    // forward leaves the case page rather than cycling through tabs) - but
+    // the hash can still change without a full reload from elsewhere (a
+    // pasted/bookmarked #hash link opened while already on this exact page,
+    // or the browser's own back/forward crossing an earlier replaceState).
+    // Follow it so the visible tab never drifts from the URL.
+    window.addEventListener('hashchange', function () {
+      const key = location.hash.slice(1);
+      if (knownTabKeys.indexOf(key) !== -1) activateTab(key, { updateHash: false });
+    });
   })();
 
   function closeLightbox() {

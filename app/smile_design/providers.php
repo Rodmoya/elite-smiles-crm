@@ -399,8 +399,13 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             }
         }
         $porcelainFinishReferenceIncluded = false;
-        if ($isVeneerSimulation && function_exists('smile_design_private_root')) {
-            $porcelainFinishReferencePath = smile_design_private_root() . DIRECTORY_SEPARATOR . 'references' . DIRECTORY_SEPARATOR . 'flawless-veneer-finish.png';
+        if ($isVeneerSimulation) {
+            // Tracked repo asset (not the private per-patient storage tree) so it
+            // ships through the normal deploy pipeline instead of living only on
+            // the server. A real Dr. Meden e.max/Chromascop 110 case photo, not a
+            // stock image, so the model has genuine material/gloss to anchor to.
+            $assetRoot = defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__, 2);
+            $porcelainFinishReferencePath = $assetRoot . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'smile-design' . DIRECTORY_SEPARATOR . 'veneer-material-reference.jpg';
             if (is_file($porcelainFinishReferencePath)) {
                 $imagePaths[] = [
                     'path' => $porcelainFinishReferencePath,

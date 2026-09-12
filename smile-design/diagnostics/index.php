@@ -12,6 +12,7 @@ if (is_post() && post('action') === 'run_schema_check') {
     flash_set('success', 'Schema check completed.');
     redirect(base_url('smile-design/diagnostics'));
 }
+$canRunSchemaCheck = !function_exists('auth_has_role') || auth_has_role('admin');
 $diagnosticError = '';
 try {
     $health = smile_design_health();
@@ -54,7 +55,11 @@ smile_design_page_header('Diagnostics', 'Internal health check for Smile Design 
     <section class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <div class="flex items-center justify-between gap-3">
             <h2 class="text-lg font-semibold">System</h2>
-            <form method="POST"><?= csrf_input() ?><input type="hidden" name="action" value="run_schema_check"><button class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Run Schema Check</button></form>
+            <?php if ($canRunSchemaCheck): ?>
+                <form method="POST"><?= csrf_input() ?><input type="hidden" name="action" value="run_schema_check"><button class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Run Schema Check</button></form>
+            <?php else: ?>
+                <span class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-slate-400" title="Only admins can run a schema check">Admin only</span>
+            <?php endif; ?>
         </div>
         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div class="rounded-md bg-slate-50 p-3"><dt class="text-slate-500">Database</dt><dd class="font-semibold"><?= $health['database'] ? 'Connected' : 'Unavailable' ?></dd></div>

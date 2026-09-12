@@ -102,12 +102,6 @@ smile_design_page_header('Doctor Consult Tool', 'Patient selector, viewer modes,
                 <?php if ($case): ?>
                     <form method="POST" action="<?= e(base_url('app/actions/smile_design_preview_link.php')) ?>"><?= csrf_input() ?><input type="hidden" name="case_id" value="<?= e((string)$case['id']) ?>"><button class="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Create Patient Preview Link</button></form>
                     <a class="rounded-md border border-slate-300 px-3 py-2 text-center text-sm font-semibold" href="<?= e(base_url('smile-design/cases/' . (int)$case['id'] . '/present')) ?>">Present</a>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Copy Preview Link placeholder</button>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">View as Patient placeholder</button>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Add Note placeholder</button>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Mark Interested placeholder</button>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Schedule Consultation placeholder</button>
-                    <button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Create Treatment Plan placeholder</button>
                 <?php endif; ?>
             </div>
         </div>

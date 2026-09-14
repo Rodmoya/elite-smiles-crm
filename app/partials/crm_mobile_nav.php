@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$mobilePrimaryKeys = ['leads', 'dashboard'];
+$mobilePrimaryKeys = ['dashboard', 'leads'];
 $mobilePrimaryItems = array_values(array_filter(
     $crmNavItems ?? [],
     static fn(array $item): bool => in_array((string)($item['key'] ?? ''), $mobilePrimaryKeys, true)
@@ -37,7 +37,7 @@ $mobilePrimaryItems = array_values(array_filter(
 </style>
 
 <header class="fixed inset-x-0 top-0 z-[60] flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur lg:hidden">
-    <a href="<?= e(base_url('leads.php')) ?>" class="flex min-w-0 items-center gap-3" aria-label="Elite Smiles leads">
+    <a href="<?= e(base_url('dashboard.php')) ?>" class="flex min-w-0 items-center gap-3" aria-label="Elite Smiles Command Center">
         <img src="<?= e((string)$logoUrl) ?>" alt="Elite Smiles" class="h-auto w-[112px] shrink-0">
         <span class="truncate border-l border-slate-200 pl-3 text-sm font-semibold text-slate-900"><?= e((string)$pageTitle) ?></span>
     </a>
@@ -100,6 +100,9 @@ $mobilePrimaryItems = array_values(array_filter(
     document.querySelectorAll('[data-crm-mobile-menu-close]').forEach((button) => button.addEventListener('click', () => setOpen(false)));
     document.querySelectorAll('[data-crm-mobile-ai]').forEach((button) => button.addEventListener('click', () => { if (window.eliteAiSetOpen) window.eliteAiSetOpen(true); }));
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+    drawer?.querySelectorAll('a[href]').forEach(link => link.addEventListener('click', () => setOpen(false)));
+    window.addEventListener('pageshow', () => setOpen(false));
+    window.addEventListener('resize', () => { if (window.innerWidth >= 1024) setOpen(false); });
 })();
 
 document.addEventListener('DOMContentLoaded', () => {

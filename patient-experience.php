@@ -244,6 +244,7 @@ if (is_post() && post('action') === 'continue_intake') {
 if ($selectedReview) {
     $activeTab = 'patients';
 }
+$currentPage = $activeTab === 'contracts' ? 'patient_contracts' : 'patient_experience';
 $formatPatientNumber = static fn(int $id): string => 'Patient #' . str_pad((string)max(1, $id), 4, '0', STR_PAD_LEFT);
 $tabUrl = static function (string $tab, array $query = []): string {
     return base_url('patient-experience.php?' . http_build_query(array_merge(['tab' => $tab], $query)));

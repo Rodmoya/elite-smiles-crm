@@ -19,6 +19,9 @@ try {
     $kioskApiMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/api/patient_experience_kiosk.php');
     $legacySidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar.php');
     $sidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar_live.php');
+    $navigationMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_nav_items.php');
+    $sidebarMarkup .= $navigationMarkup;
+    $legacySidebarMarkup .= $navigationMarkup;
     $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
     $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-3 gap-1.5');
     $tabsMarkup = $tabsStart === false ? '' : substr($patientExperienceMarkup, $tabsStart, 2200);

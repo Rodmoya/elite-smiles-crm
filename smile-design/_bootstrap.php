@@ -71,6 +71,9 @@ function smile_design_page_header(string $title, string $subtitle = ''): void
 
 function smile_design_render_shell_start(string $title): void
 {
+    // Includes inherit this function's local scope, not the bootstrap globals.
+    $currentPage = 'smile_design';
+    $pageTitle = $title;
     ?>
     <!DOCTYPE html>
     <html lang="en">

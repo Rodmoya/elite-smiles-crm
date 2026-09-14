@@ -1,4 +1,4 @@
-const CACHE_NAME = 'elite-smiles-kiosk-shell-v1';
+const CACHE_NAME = 'elite-smiles-kiosk-shell-v2';
 const SHELL_ASSETS = [
   '/crm/patient-experience/kiosk/',
   '/crm/patient-experience/manifest.webmanifest',
@@ -21,7 +21,7 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys().then(function (keys) {
       return Promise.all(keys.map(function (key) {
-        if (key !== CACHE_NAME) {
+        if (key.startsWith('elite-smiles-kiosk-shell-') && key !== CACHE_NAME) {
           return caches.delete(key);
         }
         return Promise.resolve(true);
@@ -35,7 +35,8 @@ self.addEventListener('activate', function (event) {
 self.addEventListener('fetch', function (event) {
   const url = new URL(event.request.url);
   const isApi = url.pathname.indexOf('/app/api/patient_experience_kiosk.php') !== -1;
-  if (event.request.method !== 'GET' || isApi || event.request.mode === 'navigate' && url.pathname.includes('/patient-experience/setup/')) {
+  // Never cache authenticated pages, patient-specific links, or API responses.
+  if (event.request.method !== 'GET' || isApi || url.search || url.origin !== location.origin || !SHELL_ASSETS.includes(url.pathname)) {
     return;
   }
 

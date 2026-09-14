@@ -53,6 +53,7 @@ function response(category, fields) {
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     await page.route('**/app/api/patient_experience_kiosk.php**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(testCase.data) }));
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
+    await page.locator('#start-forms').click();
     await page.locator('#kiosk-form').waitFor();
     const metrics = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

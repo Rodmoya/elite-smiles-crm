@@ -23,10 +23,10 @@ try {
     $sidebarMarkup .= $navigationMarkup;
     $legacySidebarMarkup .= $navigationMarkup;
     $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
-    $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-3 gap-1.5');
+    $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-2 gap-1.5');
     $tabsMarkup = $tabsStart === false ? '' : substr($patientExperienceMarkup, $tabsStart, 2200);
     $contractsTabPosition = strpos($tabsMarkup, '>Contracts</a>');
-    $patientsTabPosition = strpos($tabsMarkup, '>Intake & Patients</a>');
+    $patientsTabPosition = strpos($tabsMarkup, '>Patient Forms</a>');
     contract_expect(str_contains($creatorMarkup, '@page { size: letter; margin: 0; }'), 'Contract print layout is not locked to borderless letter size.');
     contract_expect(!str_contains($creatorMarkup, '<section class="space-y-6 no-print">'), 'The printable contract is hidden by its parent wrapper.');
     contract_expect(str_contains($creatorMarkup, 'padding-top: 1.65in'), 'Preprinted letterhead spacing is missing.');
@@ -37,9 +37,9 @@ try {
     contract_expect(str_contains($patientExperienceMarkup, "get('tab', 'patients')"), 'Patient Experience does not open Intake by default.');
     contract_expect(str_contains($patientExperienceMarkup, "\$activeTab = 'patients';"), 'Invalid Patient Experience tabs do not fall back to Intake.');
     contract_expect(str_contains($legacySidebarMarkup, "patient-experience.php?tab=patients"), 'Legacy Patient Experience navigation does not open Intake first.');
-    contract_expect(str_contains($patientExperienceMarkup, 'walk_in=1') && str_contains($patientExperienceMarkup, 'walkInIntakeQrUrl'), 'Permanent walk-in intake QR is missing.');
+    contract_expect(str_contains($patientExperienceMarkup, "base_url('patient-experience/kiosk/')") && str_contains($patientExperienceMarkup, 'walkInIntakeQrUrl'), 'Permanent office intake QR is missing.');
     contract_expect(str_contains($patientExperienceMarkup, 'patient_experience_contract_qr_data_url($walkInIntakeUrl)'), 'Walk-in intake QR is not generated locally.');
-    contract_expect(str_contains($kioskMarkup, 'kioskToken ? beginSession : beginDirectSession'), 'Walk-in QR does not start a new intake automatically.');
+    contract_expect(str_contains($kioskMarkup, 'id="start-forms"') && str_contains($kioskMarkup, 'else renderIdle();'), 'Office forms must wait for Start Forms, not create a patient on load.');
     contract_expect(str_contains($kioskMarkup, 'grid-template-columns: repeat(3, minmax(0, 1fr))'), 'Patient intake does not use the compact three-column desktop form layout.');
     contract_expect(str_contains($kioskMarkup, "'radio', 'yes_no'") && str_contains($kioskMarkup, 'form-choice-grid') && str_contains($kioskMarkup, '--choice-columns:'), 'Radio and yes/no choices must span the form and use responsive option columns.');
     contract_expect(str_contains($kioskMarkup, "const isConsent = category === 'consent'"), 'Patient forms do not switch into a dedicated consent-document mode.');

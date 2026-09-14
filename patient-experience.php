@@ -9,6 +9,10 @@ require_once __DIR__ . '/app/core/twilio.php';
 require_once __DIR__ . '/app/patient_experience/patient_experience_service.php';
 
 require_auth();
+if (!auth_has_role('admin', 'marketing_manager', 'staff')) {
+    http_response_code(403);
+    exit('Patient Experience is available to authorized staff only.');
+}
 
 if (is_post() && post('action') === 'logout') {
     require_csrf();
@@ -26,6 +30,13 @@ $successMessage = flash_get('success') ?? '';
 $errorMessage = flash_get('error') ?? '';
 $setupPreviewDeviceId = (int)get('setup_device_id', '0');
 $setupPreviewToken = trim((string)get('setup_token', ''));
+
+if (is_post() && in_array(post('action'), ['archive_packet', 'restore_packet'], true)) {
+    require_csrf();
+    $result = patient_experience_archive_session((int)post('session_id', '0'), auth_user_id(), post('action') === 'restore_packet');
+    flash_set($result['ok'] ? 'success' : 'error', $result['message']);
+    redirect(base_url('patient-experience.php?tab=patients' . (post('action') === 'restore_packet' ? '&archived=1' : '')));
+}
 
 if (is_post() && post('action') === 'start_checkin') {
     require_csrf();
@@ -206,7 +217,8 @@ if (is_post() && post('action') === 'send_contract') {
     redirect(base_url('patient-experience.php?tab=contracts&contract_id=' . $contractId));
 }
 
-$recentSessions = patient_experience_recent_sessions(100);
+$showArchived = get('archived', '') === '1';
+$recentSessions = patient_experience_recent_sessions(100, $showArchived);
 $selectedSessionId = (int)get('session_id', '0');
 $selectedReview = $selectedSessionId > 0 ? patient_experience_staff_review_context($selectedSessionId) : null;
 $kioskUrl = base_url('patient-experience/kiosk/');
@@ -218,7 +230,7 @@ $secureConsentUrl = $secureConsentToken !== ''
     ? base_url('patient-experience/kiosk/?direct=1&auto_begin=1&kiosk_token=' . rawurlencode($secureConsentToken))
     : '';
 $secureConsentQrUrl = $secureConsentUrl !== '' ? patient_experience_contract_qr_data_url($secureConsentUrl) : '';
-$walkInIntakeUrl = base_url('patient-experience/kiosk/?direct=1&auto_begin=1&walk_in=1');
+$walkInIntakeUrl = base_url('patient-experience/kiosk/');
 $walkInIntakeQrUrl = patient_experience_contract_qr_data_url($walkInIntakeUrl);
 $contractDefinitions = patient_experience_contract_definitions();
 $contractPatients = patient_experience_contract_patient_options();
@@ -227,7 +239,7 @@ $selectedContractId = (int)get('contract_id', '0');
 $selectedContract = $selectedContractId > 0 ? patient_experience_contract_by_id($selectedContractId) : null;
 $contractShareUrl = (string)(flash_get('contract_share_url') ?? '');
 $activeTab = strtolower(trim((string)get('tab', 'patients')));
-if (!in_array($activeTab, ['setup', 'patients', 'contracts'], true)) {
+if (!in_array($activeTab, ['patients', 'contracts'], true)) {
     $activeTab = 'patients';
 }
 
@@ -293,16 +305,15 @@ $pageHeading = match ($activeTab) {
                     <p class="mt-3 text-sm leading-6 text-slate-600"><?= e($pageHeading[1]) ?></p>
                 </div>
                 <?php if ($activeTab === 'patients'): ?>
-                    <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">New Patient Forms</button>
+                    <button id="open-intake-modal" type="button" class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Send Forms Remotely</button>
                 <?php endif; ?>
             </div>
         </section>
 
         <div class="mb-6 max-w-3xl rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-print">
-            <div class="grid grid-cols-3 gap-1.5">
-                <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Intake & Patients</a>
+            <div class="grid grid-cols-2 gap-1.5">
+                <a href="<?= e($tabUrl('patients')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'patients' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Patient Forms</a>
                 <a href="<?= e($tabUrl('contracts')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'contracts' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Contracts</a>
-                <a href="<?= e($tabUrl('setup')) ?>" class="rounded-xl px-4 py-3 text-center text-sm font-semibold transition <?= $activeTab === 'setup' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' ?>">Kiosk Setup</a>
             </div>
         </div>
 
@@ -361,18 +372,16 @@ $pageHeading = match ($activeTab) {
                     </div>
                 </div>
 
-                <div class="mb-6 grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[160px_1fr] sm:items-center sm:p-6 lg:grid-cols-[160px_1fr_auto]">
-                    <?php if ($walkInIntakeQrUrl !== ''): ?>
-                        <div class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                            <img src="<?= e($walkInIntakeQrUrl) ?>" alt="Scan to start walk-in patient forms" class="mx-auto h-32 w-32">
+                <div class="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                    <div><h2 class="text-xl font-semibold">Office iPad forms</h2><p class="mt-1 text-sm text-slate-600">Start Forms → Information → Read and Sign → Submit. Ready for the next patient automatically.</p></div>
+                    <a href="<?= e($walkInIntakeUrl) ?>" target="_blank" class="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white">Open Patient Forms</a>
+                    <details class="w-full border-t border-slate-200 pt-3">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-600">Set Up Office iPad — one time</summary>
+                        <div class="mt-4 flex flex-wrap items-center gap-5">
+                            <img src="<?= e($walkInIntakeQrUrl) ?>" alt="Open office patient forms on the iPad" class="h-32 w-32">
+                            <div class="text-sm leading-7 text-slate-600"><p>1. Scan this QR with the office iPad and open in Safari.</p><p>2. Tap Share → Add to Home Screen.</p><p>3. Open the saved icon and tap Start Forms for each patient. No additional QR or kiosk assignment is needed.</p><p class="font-semibold">An internet connection is required to save forms.</p></div>
                         </div>
-                    <?php endif; ?>
-                    <div>
-                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Walk-in intake</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Scan to start patient forms</h2>
-                        <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">No patient record is required. Scanning creates a secure intake, opens Patient Information immediately, and saves the completed forms and signatures to the new patient chart.</p>
-                    </div>
-                    <a href="<?= e($walkInIntakeUrl) ?>" target="_blank" class="inline-flex min-h-12 items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 sm:col-span-2 lg:col-span-1">Open Forms on This Device</a>
+                    </details>
                 </div>
 
                 <div class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -393,6 +402,10 @@ $pageHeading = match ($activeTab) {
                     </div>
 
                     <div id="patient-form-list" class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                        <div class="flex gap-4 border-b border-slate-200 p-4 text-sm font-semibold">
+                            <a href="<?= e($tabUrl('patients')) ?>" <?= !$showArchived ? 'aria-current="page"' : '' ?>>Patient Forms</a>
+                            <a href="<?= e($tabUrl('patients', ['archived' => '1'])) ?>" <?= $showArchived ? 'aria-current="page"' : '' ?>>Trash / Archive</a>
+                        </div>
                         <?php if (!$recentSessions): ?>
                             <div class="bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No patient intake records yet.</div>
                         <?php else: ?>
@@ -437,7 +450,7 @@ $pageHeading = match ($activeTab) {
                                             <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full <?= $status === 'completed' ? 'bg-emerald-500' : 'bg-slate-900' ?>" style="width: <?= e((string)$progressPercent) ?>%"></div></div>
                                         </div>
                                         <div class="flex shrink-0 flex-wrap gap-2 xl:justify-end">
-                                            <?php if (!$reviewIsComplete && $status !== 'completed'): ?>
+                                            <?php if (!$showArchived && !$reviewIsComplete && $status !== 'completed'): ?>
                                                 <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" target="_blank">
                                                     <?= csrf_input() ?>
                                                     <input type="hidden" name="action" value="continue_intake">
@@ -446,6 +459,17 @@ $pageHeading = match ($activeTab) {
                                                 </form>
                                             <?php endif; ?>
                                             <a href="<?= e($tabUrl('patients', ['session_id' => $sessionId])) ?>#consent-review" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">View Chart</a>
+                                            <?php if ((!$isSigned && $status !== 'completed') || auth_has_role('admin')): ?>
+                                                <form method="POST" class="packet-archive-form" data-message="<?= e($showArchived ? 'Restore this patient packet to the active list?' : (($isSigned || $status === 'completed') ? 'Archive this signed packet? Signatures and all records will be preserved.' : 'Move this unfinished packet to Trash? You can restore it later.')) ?>">
+                                                    <?= csrf_input() ?>
+                                                    <input type="hidden" name="action" value="<?= $showArchived ? 'restore_packet' : 'archive_packet' ?>">
+                                                    <input type="hidden" name="session_id" value="<?= $sessionId ?>">
+                                                    <button class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" type="submit">
+                                                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>
+                                                        <?= $showArchived ? 'Restore' : (($isSigned || $status === 'completed') ? 'Archive' : 'Trash') ?>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         <?php if ($isSigned): ?>
                                                 <a href="<?= e(base_url('patient-experience-print.php?session_id=' . $sessionId)) ?>" target="_blank" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Print Forms</a>
                                         <?php endif; ?>
@@ -465,43 +489,6 @@ $pageHeading = match ($activeTab) {
             </section>
         <?php elseif ($activeTab === 'contracts'): ?>
             <?php require __DIR__ . '/app/patient_experience/contract_creator.php'; ?>
-        <?php elseif ($activeTab === 'setup'): ?>
-            <section class="mb-8 max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm no-print">
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Kiosk Setup</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-900">Connect the waiting-room iPad</h2>
-                        <p class="mt-2 text-sm text-slate-600">Create one setup QR, scan it on the iPad, and add the kiosk to the Home Screen.</p>
-                    </div>
-                    <a href="<?= e($kioskUrl) ?>" target="_blank" class="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Open kiosk</a>
-                </div>
-
-                <div class="mt-6 grid gap-6 <?= ($setupPreviewDeviceId > 0 && $setupPreviewToken !== '') ? 'lg:grid-cols-[0.8fr_1.2fr]' : 'max-w-xl' ?>">
-                    <form method="POST" action="<?= e(base_url('patient-experience.php')) ?>" class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                        <?= csrf_input() ?>
-                        <input type="hidden" name="action" value="create_kiosk_device">
-                        <input type="hidden" name="location_label" value="Waiting Room">
-                        <div>
-                            <label class="mb-1.5 block text-sm font-medium text-slate-700" for="device-label">iPad name</label>
-                            <input id="device-label" name="device_label" required class="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" value="Waiting Room iPad">
-                        </div>
-                        <button class="mt-4 min-h-12 w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Generate setup QR</button>
-                    </form>
-                    <?php if ($setupPreviewDeviceId > 0 && $setupPreviewToken !== ''): ?>
-                        <?php $setupPreviewUrl = patient_experience_kiosk_setup_url($setupPreviewToken); ?>
-                        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                            <div class="flex flex-col gap-4 md:flex-row md:items-center">
-                                <img src="<?= e(patient_experience_kiosk_setup_qr_url($setupPreviewToken)) ?>" alt="Kiosk setup QR code" class="h-44 w-44 rounded-2xl border border-slate-200 bg-white p-2">
-                                <div class="min-w-0 flex-1 space-y-3">
-                                    <p class="font-semibold text-emerald-900">QR ready</p>
-                                    <p class="text-sm text-emerald-800">Scan this once with the iPad camera.</p>
-                                    <button type="button" class="copy-setup-link min-h-11 w-full rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100" data-copy-value="<?= e($setupPreviewUrl) ?>">Copy setup link</button>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </section>
         <?php endif; ?>
 
         <?php if ($selectedReview): ?>
@@ -677,6 +664,13 @@ $pageHeading = match ($activeTab) {
         <?php endif; ?>
     </main>
     <script>
+        document.querySelectorAll('.packet-archive-form').forEach(form => {
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                if (!window.crmConfirm) return;
+                if (await window.crmConfirm(form.dataset.message, {title:'Patient packet', tone:'danger'})) form.submit();
+            });
+        });
         document.querySelectorAll('.copy-setup-link').forEach(function (button) {
             button.addEventListener('click', async function () {
                 const value = button.getAttribute('data-copy-value') || '';

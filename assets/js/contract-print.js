@@ -11,7 +11,8 @@
       .contract-reorder { display:inline-flex; gap:4px; margin-right:6px; }
       .contract-reorder button { padding:2px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
       @media print {
-        @page { size:letter; margin:.35in 0; }
+        /* Keep browser-generated date, page title, URL and page numbers off the sheet. */
+        @page { size:letter; margin:0; }
         body > :not(.contract-print-copy) { display:none !important; }
         html, body { margin:0 !important; padding:0 !important; height:auto !important; overflow:visible !important; }
         body > .contract-print-copy { display:block !important; }
@@ -24,12 +25,17 @@
           display:block !important; font-size:12pt !important; line-height:1.2 !important;
         }
         #contract-preview.contract-print-copy.preprinted .contract-paper-body,
-        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:1.3in !important; }
+        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:1.65in !important; }
         #contract-preview.contract-print-copy .contract-legal-copy, #agreement-document.contract-print-copy .agreement-legal-copy { font-size:12pt !important; line-height:1.2 !important; }
         #contract-preview.contract-print-copy .contract-payment-notice, #agreement-document.contract-print-copy .agreement-payment-notice { font-size:11pt !important; white-space:normal !important; }
         .contract-print-copy .contract-cancellation-bottom, .contract-print-copy .contract-cancellation-bottom p,
         .contract-print-copy .agreement-cancellation-bottom, .contract-print-copy .agreement-cancellation-bottom p { font-size:11pt !important; line-height:1.15 !important; }
-        .contract-print-copy .contract-reorder { display:none !important; }
+        .contract-print-copy .contract-reorder, .contract-print-copy [data-print-exclude],
+        .contract-print-copy button { display:none !important; }
+        .contract-print-copy.preprinted .contract-digital-letterhead,
+        .contract-print-copy.preprinted .contract-digital-footer,
+        .contract-print-copy.preprinted .digital-letterhead,
+        .contract-print-copy.preprinted .digital-footer { display:none !important; }
         .contract-print-copy li, .contract-print-copy .contract-signature-original,
         .contract-print-copy .agreement-signature-original { break-inside:avoid; }
         .contract-print-copy .contract-closing-block, .contract-print-copy .agreement-closing-block { break-inside:avoid; }
@@ -50,7 +56,11 @@
         if (!source) return;
         copy = source.cloneNode(true);
         copy.classList.add('contract-print-copy');
-        copy.querySelectorAll('.contract-reorder').forEach(el => el.remove());
+        copy.querySelectorAll('.contract-reorder, [data-print-exclude], button').forEach(el => el.remove());
+        copy.querySelectorAll('[draggable]').forEach(el => el.removeAttribute('draggable'));
+        if (copy.classList.contains('preprinted')) {
+            copy.querySelectorAll('.contract-digital-letterhead, .contract-digital-footer, .digital-letterhead, .digital-footer').forEach(el => el.remove());
+        }
         document.body.append(copy);
     });
     window.addEventListener('afterprint', () => { copy?.remove(); copy = null; });

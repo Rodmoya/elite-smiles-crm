@@ -220,7 +220,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                     <button type="button" data-preview-mode="preprinted" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-slate-600">Preprinted paper</button>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" data-print-contract class="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200"><?= $signature ? 'Print signed copy' : 'Print preview' ?></button>
+                    <button type="button" data-print-contract="<?= $signature ? 'preview' : 'wet' ?>" class="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200"><?= $signature ? 'Print signed copy' : 'Print for wet signature' ?></button>
                     <button type="button" data-open-digital-sign <?= !$contract || $status === 'signed' ? 'disabled' : '' ?> class="min-h-11 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-300" title="<?= !$contract ? 'Save the contract draft before requesting a signature.' : ($status === 'signed' ? 'This agreement is already signed.' : 'Email, text, or show a QR code for signing.') ?>"><?= $status === 'signed' ? 'Signed' : 'Digital Sign' ?></button>
                 </div>
             </div>
@@ -691,7 +691,12 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
             other.classList.toggle('bg-white', active); other.classList.toggle('shadow-sm', active); other.classList.toggle('text-slate-900', active); other.classList.toggle('text-slate-600', !active);
         });
     }));
-    document.querySelector('[data-print-contract]')?.addEventListener('click', () => window.print());
+    document.querySelector('[data-print-contract]')?.addEventListener('click', event => {
+        if (event.currentTarget.dataset.printContract === 'wet') {
+            document.querySelector('[data-preview-mode="preprinted"]')?.click();
+        }
+        window.print();
+    });
     const digitalSignModal = document.getElementById('digital-sign-modal');
     const setDigitalSignModal = open => {
         if (!digitalSignModal) return;
@@ -724,4 +729,4 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     syncPreview();
 })();
 </script>
-<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914c"></script>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914d"></script>

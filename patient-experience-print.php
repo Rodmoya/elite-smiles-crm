@@ -8,9 +8,19 @@ require_once __DIR__ . '/app/core/auth.php';
 require_once __DIR__ . '/app/patient_experience/patient_experience_forms.php';
 require_once __DIR__ . '/app/patient_experience/patient_experience_service.php';
 
-require_auth();
-
-$sessionId = max(0, (int)get('session_id', '0'));
+header('Cache-Control: no-store, private');
+header('Referrer-Policy: no-referrer');
+header('X-Robots-Tag: noindex, nofollow');
+$printToken = is_post() ? trim((string)post('print_token', '')) : '';
+$sessionId = max(0, (int)($printToken !== '' ? post('session_id', '0') : get('session_id', '0')));
+if ($printToken !== '') {
+    // Only the just-completed packet may be printed from the patient iPad.
+    $allowed = patient_experience_can_print_completed($sessionId, $printToken);
+    if (!$allowed) { http_response_code(403); exit('This print link has expired. Please ask the office to print your saved forms.'); }
+} else {
+    require_auth();
+    if (!auth_has_role('admin', 'marketing_manager', 'staff')) { http_response_code(403); exit('Staff access required.'); }
+}
 $signedPacket = $sessionId > 0 ? patient_experience_signed_packet_for_session($sessionId) : null;
 if (!$signedPacket) {
     http_response_code(404);
@@ -123,8 +133,13 @@ $isChoiceType = static fn(string $type): bool => in_array($type, ['radio', 'yes_
 </head>
 <body>
     <div class="toolbar no-print">
-        <button type="button" onclick="window.print()">Print Signed Forms</button>
-        <a href="<?= e(base_url('patient-experience.php?tab=patients&session_id=' . $sessionId . '#consent-review')) ?>">Back to Patient Chart</a>
+        <button type="button" onclick="window.print()">Print All Signed Forms</button>
+        <?php if ($printToken === ''): ?>
+            <a href="<?= e(base_url('patient-experience.php?tab=patients&session_id=' . $sessionId . '#consent-review')) ?>">Back to Patient Chart</a>
+        <?php else: ?>
+            <button type="button" onclick="window.close()">Close After Printing</button>
+            <span>Close this tab before handing the iPad to the next patient.</span>
+        <?php endif; ?>
     </div>
     <main class="packet">
         <?php foreach ((array)($definition['sections'] ?? []) as $section): ?>
@@ -220,5 +235,8 @@ $isChoiceType = static fn(string $type): bool => in_array($type, ['radio', 'yes_
             </section>
         <?php endforeach; ?>
     </main>
+<?php if ($printToken !== ''): ?>
+<script>window.addEventListener('load', function () { window.print(); });</script>
+<?php endif; ?>
 </body>
 </html>

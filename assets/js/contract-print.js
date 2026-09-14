@@ -7,6 +7,7 @@
       #contract-preview .contract-paper-body, #agreement-document .paper-body,
       #contract-preview .contract-legal-copy, #agreement-document .agreement-legal-copy { font-size:12pt; line-height:1.2; }
       #contract-preview .contract-payment-notice, #agreement-document .agreement-payment-notice { font-size:11pt; white-space:normal; }
+      #contract-preview .contract-secondary-term, #agreement-document .contract-secondary-term { font-size:11pt !important; line-height:1.15 !important; }
       .contract-reorder { display:inline-flex; gap:4px; margin-right:6px; }
       .contract-reorder button { padding:2px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
       @media print {

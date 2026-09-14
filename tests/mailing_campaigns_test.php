@@ -21,6 +21,7 @@ $cronCli = file_get_contents($root . '/bin/mailing-campaign-cron.php') ?: '';
 $e2eCli = file_get_contents($root . '/bin/mailing-campaign-e2e.php') ?: '';
 $auth = file_get_contents($root . '/app/core/auth.php') ?: '';
 $sidebar = file_get_contents($root . '/app/partials/crm_sidebar.php') ?: '';
+$sidebar .= file_get_contents($root . '/app/partials/crm_nav_items.php') ?: '';
 $htaccess = file_get_contents($root . '/.htaccess') ?: '';
 
 mailing_assert(

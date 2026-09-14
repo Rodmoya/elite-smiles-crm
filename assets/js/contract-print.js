@@ -20,12 +20,14 @@
           position:static !important; inset:auto !important; width:8.5in !important;
           height:auto !important; min-height:0 !important; max-height:none !important;
           overflow:visible !important; aspect-ratio:auto !important; margin:0 !important;
+          /* Internal padding repeats on continuation pages without enabling browser headers. */
+          padding:.35in 0 !important; box-decoration-break:clone; -webkit-box-decoration-break:clone;
         }
         #contract-preview.contract-print-copy .contract-paper-body, #agreement-document.contract-print-copy .paper-body {
           display:block !important; font-size:12pt !important; line-height:1.2 !important;
         }
         #contract-preview.contract-print-copy.preprinted .contract-paper-body,
-        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:1.65in !important; }
+        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:1.3in !important; }
         #contract-preview.contract-print-copy .contract-legal-copy, #agreement-document.contract-print-copy .agreement-legal-copy { font-size:12pt !important; line-height:1.2 !important; }
         #contract-preview.contract-print-copy .contract-payment-notice, #agreement-document.contract-print-copy .agreement-payment-notice { font-size:11pt !important; white-space:normal !important; }
         .contract-print-copy .contract-cancellation-bottom, .contract-print-copy .contract-cancellation-bottom p,

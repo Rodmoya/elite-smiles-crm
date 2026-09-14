@@ -33,7 +33,8 @@
         .contract-print-copy .agreement-signature-original { break-inside:avoid; }
         .contract-print-copy .contract-closing-block, .contract-print-copy .agreement-closing-block { break-inside:avoid; }
       }`;
-    document.head.append(style);
+    // Follow the legacy inline body stylesheet so @page margins win too.
+    document.body.append(style);
     const source = document.querySelector('#contract-preview, #agreement-document');
     if (source) {
         const notice = document.createElement('p');

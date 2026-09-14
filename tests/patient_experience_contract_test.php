@@ -123,7 +123,7 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'class="contract-secondary-term"><strong>Treatment Plan Cancellation.'), 'Signing cancellation language must share the smaller type style.');
     contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation contract-secondary-term"'), 'Signing sedation language must share the smaller type style.');
     $printStyles = (string)file_get_contents(dirname(__DIR__) . '/assets/js/contract-print.js');
-    contract_expect(str_contains($printStyles, '.contract-secondary-term { font-size:11pt !important; line-height:1.15 !important; }'), 'Both paragraphs must be 11pt, one point below the 12pt body.');
+    contract_expect(str_contains($printStyles, '.contract-secondary-term { font-size:9pt !important; line-height:1.15 !important; }'), 'Both paragraphs must use the requested 9pt size.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');

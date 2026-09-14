@@ -93,7 +93,7 @@ try {
     contract_expect(str_contains($creatorMarkup, 'id="preview-signature-patient"'), 'Patient name is missing beneath the preview signature line.');
     contract_expect(str_contains($creatorMarkup, 'align-items:start; margin:8pt 0 20px;'), 'Preview signature and date are not aligned or moved ten more pixels above the note.');
     contract_expect(str_contains($creatorMarkup, '.contract-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Contract preview signature and cancellation language are not anchored together at the bottom.');
-    contract_expect(str_contains($creatorMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language was not reduced by one point.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-secondary-term"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language must share the smaller type style.');
     contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
@@ -106,7 +106,7 @@ try {
     contract_expect(str_contains($creatorMarkup, '.contract-payment-notice { margin-bottom:16pt;'), 'Preview needs more space between the payment notice and procedures.');
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list { margin:0 0 16pt;'), 'Preview needs more space between procedures and legal language.');
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list li { margin:0 0 3pt;'), 'Preview procedures do not have the requested subtle row spacing.');
-    contract_expect(str_contains($creatorMarkup, 'class="contract-sedation"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language is not red.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-sedation contract-secondary-term"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language must remain red and use the smaller type style.');
     contract_expect(str_contains($creatorMarkup, '<strong>Optional</strong>'), 'Preview sedation language does not bold Optional.');
     contract_expect(str_contains($creatorMarkup, "<strong><?= e((string)\$originalTerms['discount_acceptance']) ?></strong>"), 'Preview discounted-price language is not bold.');
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
@@ -120,7 +120,10 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'agreement-signature-patient') && str_contains($publicContractMarkup, "\$agreement['patient_name']"), 'Patient name is missing beneath the public signature line.');
     contract_expect(str_contains($publicContractMarkup, 'align-items:start; margin:8pt 0 20px;'), 'Public signature and date are not aligned or moved ten more pixels above the note.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Signing-document signature and cancellation language are not anchored together at the bottom.');
-    contract_expect(str_contains($publicContractMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Signing contract cancellation language was not reduced by one point.');
+    contract_expect(str_contains($publicContractMarkup, 'class="contract-secondary-term"><strong>Treatment Plan Cancellation.'), 'Signing cancellation language must share the smaller type style.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation contract-secondary-term"'), 'Signing sedation language must share the smaller type style.');
+    $printStyles = (string)file_get_contents(dirname(__DIR__) . '/assets/js/contract-print.js');
+    contract_expect(str_contains($printStyles, '.contract-secondary-term { font-size:11pt !important; line-height:1.15 !important; }'), 'Both paragraphs must be 11pt, one point below the 12pt body.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');
@@ -129,7 +132,7 @@ try {
     contract_expect(str_contains($publicContractMarkup, '.agreement-payment-notice { margin-bottom:16pt;'), 'Signing document needs more space between the payment notice and procedures.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list { margin:0 0 16pt;'), 'Signing document needs more space between procedures and legal language.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list li { margin:0 0 3pt;'), 'Signing-document procedures do not have the requested subtle row spacing.');
-    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation contract-secondary-term"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
     contract_expect(str_contains($publicContractMarkup, '<strong>Optional</strong>'), 'Signing-document sedation language does not bold Optional.');
     contract_expect(str_contains($publicContractMarkup, "<strong><?= e((string)\$terms['discount_acceptance']) ?></strong>"), 'Signing-document discounted-price language is not bold.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {

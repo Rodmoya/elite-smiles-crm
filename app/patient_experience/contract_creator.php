@@ -242,7 +242,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                         <p><?= e((string)$originalTerms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$originalTerms['insurance_responsibility']) ?></p>
                         <p id="preview-insurance-language" class="hidden"><?= e((string)$originalTerms['insurance_estimate']) ?></p>
-                        <p class="contract-sedation"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
+                        <p class="contract-sedation contract-secondary-term"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
                         <p><strong><?= e((string)$originalTerms['discount_acceptance']) ?></strong></p>
                     </div>
                     <div class="contract-closing-block">
@@ -252,7 +252,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                         </div>
                         <div class="contract-cancellation-bottom">
                             <p class="mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
-                            <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
+                            <p class="contract-secondary-term"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
                         </div>
                     </div>
                 </div>
@@ -724,4 +724,4 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     syncPreview();
 })();
 </script>
-<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914"></script>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914b"></script>

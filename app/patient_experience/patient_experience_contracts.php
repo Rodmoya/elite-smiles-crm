@@ -790,7 +790,7 @@ if (!function_exists('patient_experience_contract_from_token')) {
             FROM patient_experience_contracts c INNER JOIN patient_experience_contract_versions v ON v.id=c.current_version_id
             WHERE c.delivery_token_hash=:token_hash AND c.voided_at IS NULL AND (c.expires_at IS NULL OR c.expires_at>NOW()) LIMIT 1", ['token_hash' => hash('sha256', $token)]);
         if (!$row) return null;
-        if ($markViewed && empty($row['viewed_at'])) db_execute("UPDATE patient_experience_contracts SET viewed_at=NOW(), status=IF(status='sent','viewed',status) WHERE id=:id", ['id' => (int)$row['id']]);
+        if ($markViewed && empty($row['viewed_at'])) db_execute("UPDATE patient_experience_contracts SET viewed_at=NOW(), status=IF(status IN ('sent','ready','delivery_failed'),'viewed',status) WHERE id=:id", ['id' => (int)$row['id']]);
         $row = patient_experience_contract_hydrate($row);
         $row['snapshot'] = json_decode((string)$row['snapshot_json'], true) ?: [];
         $row['signature'] = db_one('SELECT * FROM patient_experience_contract_signatures WHERE contract_id=:contract_id AND contract_version_id=:version_id LIMIT 1', ['contract_id' => (int)$row['id'], 'version_id' => (int)$row['version_id']]);

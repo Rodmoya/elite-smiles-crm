@@ -26,8 +26,12 @@
         #contract-preview.contract-print-copy .contract-paper-body, #agreement-document.contract-print-copy .paper-body {
           display:block !important; font-size:12pt !important; line-height:1.2 !important;
         }
+        /* The outer print box clones its padding at every page break. Reserve the
+           full preprinted letterhead area there, not only at the start of the body. */
+        #contract-preview.contract-print-copy.preprinted,
+        #agreement-document.contract-print-copy.preprinted { padding-top:1.65in !important; }
         #contract-preview.contract-print-copy.preprinted .contract-paper-body,
-        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:1.3in !important; }
+        #agreement-document.contract-print-copy.preprinted .paper-body { padding-top:0 !important; }
         #contract-preview.contract-print-copy .contract-legal-copy, #agreement-document.contract-print-copy .agreement-legal-copy { font-size:12pt !important; line-height:1.2 !important; }
         #contract-preview.contract-print-copy .contract-payment-notice, #agreement-document.contract-print-copy .agreement-payment-notice { font-size:11pt !important; white-space:normal !important; }
         .contract-print-copy .contract-cancellation-bottom, .contract-print-copy .contract-cancellation-bottom p,

@@ -729,4 +729,4 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     syncPreview();
 })();
 </script>
-<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914d"></script>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914e"></script>

@@ -235,5 +235,5 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     </script>
 <?php endif; ?>
 </body>
-<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914d"></script>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914e"></script>
 </html>

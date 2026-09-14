@@ -251,6 +251,12 @@ try {
     contract_expect(!empty($delivery['ok']), 'Immutable delivery version was not created.');
     contract_expect((int)db_value('SELECT COUNT(*) FROM patient_experience_contract_versions WHERE contract_id=:id', ['id' => $contractId]) === 1, 'Contract version count is incorrect.');
     parse_str((string)parse_url((string)$delivery['url'], PHP_URL_QUERY), $query);
+    contract_expect((string)db_value('SELECT status FROM patient_experience_contracts WHERE id=:id', ['id'=>$contractId]) === 'ready', 'Link-only preparation must not claim sent delivery.');
+    $resend = patient_experience_contract_prepare_delivery($contractId, [], null);
+    contract_expect($resend['url'] === $delivery['url'], 'Resending must preserve the signing link.');
+    contract_expect($resend['version_id'] === $delivery['version_id'], 'Resending must preserve the immutable version.');
+    $ordered = patient_experience_contract_input(['patient_name'=>'Order test','treatment_key'=>'veneers','line_items'=>['veneers','gingivectomy'],'line_item_teeth'=>['veneers'=>[6],'gingivectomy'=>[7]],'line_item_order'=>'["gingivectomy","veneers"]','final_price'=>1000]);
+    contract_expect(array_column($ordered['line_items'], 'key') === ['gingivectomy','veneers'], 'Preview order must survive server normalization.');
     $token = (string)($query['t'] ?? '');
     $resolved = patient_experience_contract_from_token($token, false);
     contract_expect((bool)$resolved, 'Secure contract token did not resolve.');

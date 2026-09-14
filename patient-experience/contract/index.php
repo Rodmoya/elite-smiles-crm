@@ -47,7 +47,8 @@ $lineItemAreaLabel = static function (array $item) use ($legacyAreaLabel): strin
     return $legacyAreaLabel;
 };
 $hasOriginalTerms = isset($terms['cashier_check']);
-$financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($financials['final_price'] ?? 0) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
+$outOfPocket = (int)($snapshot['schema_version'] ?? 0) >= 5 ? ($financials['patient_responsibility'] ?? 0) : ($financials['final_price'] ?? 0);
+$financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($outOfPocket) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
 if ((float)($financials['insurance_estimate'] ?? 0) > 0) $financialLanguage .= 'Your insurance estimated payment is ' . $money($financials['insurance_estimate']) . '. ';
 $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaining_balance'] ?? 0) . ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';
 ?>
@@ -234,4 +235,5 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     </script>
 <?php endif; ?>
 </body>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914"></script>
 </html>

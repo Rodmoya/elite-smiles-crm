@@ -174,6 +174,7 @@ if (is_post() && post('action') === 'revoke_setup_token') {
 }
 
 if (is_post() && post('action') === 'save_contract') {
+    require_role('admin', 'marketing_manager', 'staff');
     require_csrf();
     $result = patient_experience_contract_save($_POST, auth_user_id());
     if (!empty($result['ok'])) {
@@ -187,6 +188,7 @@ if (is_post() && post('action') === 'save_contract') {
 }
 
 if (is_post() && post('action') === 'send_contract') {
+    require_role('admin', 'marketing_manager', 'staff');
     require_csrf();
     $contractId = (int)post('contract_id', '0');
     $channels = array_values(array_intersect((array)($_POST['channels'] ?? []), ['sms', 'email']));

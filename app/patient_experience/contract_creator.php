@@ -19,6 +19,13 @@ $signature = $contract ? patient_experience_contract_latest_signature((int)($con
 $signingQrDataUrl = $shareUrl !== '' ? patient_experience_contract_qr_data_url($shareUrl) : '';
 $money = static fn(mixed $amount): string => number_format((float)$amount, 2, '.', '');
 $originalTerms = patient_experience_contract_original_terms();
+if ($contract && !$isEditable && !empty($contract['current_version_id'])) {
+    $version = db_one('SELECT snapshot_json FROM patient_experience_contract_versions WHERE id=:id AND contract_id=:contract_id', ['id' => (int)$contract['current_version_id'], 'contract_id' => (int)$contract['id']]);
+    $savedSnapshot = json_decode((string)($version['snapshot_json'] ?? ''), true) ?: [];
+    $originalTerms = (array)($savedSnapshot['terms'] ?? $originalTerms);
+    $contract = array_merge($contract, (array)($savedSnapshot['contract'] ?? []), (array)($savedSnapshot['financials'] ?? []));
+    $contract['cancellation_text'] = $originalTerms['cancellation_text'] ?? $contract['cancellation_text'];
+}
 $sedationBody = preg_replace('/^Optional\s*-?\s*/i', '', (string)$originalTerms['sedation']) ?? (string)$originalTerms['sedation'];
 $agreementDate = trim((string)($contract['agreement_date'] ?? ''));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date('Y-m-d');
@@ -94,9 +101,10 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
             <?= csrf_input() ?>
             <input type="hidden" name="action" value="save_contract">
             <input type="hidden" name="contract_id" value="<?= e((string)($contract['id'] ?? 0)) ?>">
+            <input type="hidden" name="line_item_order" id="contract-item-order" value="<?= e(json_encode(array_column((array)($contract['line_items'] ?? []), 'key'))) ?>">
 
             <?php if (!$isEditable): ?>
-                <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-800">This version is locked because it was sent or signed. Create a new contract to make changes.</div>
+                <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-800">This version is locked because a signing link was prepared or it was signed. Delivery failures can be retried without changing the document. Create a new contract to revise it.</div>
             <?php endif; ?>
 
             <fieldset <?= $isEditable ? '' : 'disabled' ?> class="space-y-4 disabled:opacity-70">
@@ -407,7 +415,8 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         q('preview-treatment-title').textContent = 'Dental Treatment for ' + patient + ':';
         q('preview-date').textContent = agreementDate;
         q('preview-signature-patient').textContent = patient;
-        let financialLanguage = patient + ', Your estimated out of pocket portion of your Dental Treatment cost will be ' + formatMoney(finalPrice) + ' after a professional discount is applied. A deposit of ' + formatMoney(deposit) + ' will be made prior to your appointment. ';
+        const outOfPocket = <?= !$isEditable && (int)($savedSnapshot['schema_version'] ?? 0) < 5 ? 'finalPrice' : 'responsibility' ?>;
+        let financialLanguage = patient + ', Your estimated out of pocket portion of your Dental Treatment cost will be ' + formatMoney(outOfPocket) + ' after a professional discount is applied. A deposit of ' + formatMoney(deposit) + ' will be made prior to your appointment. ';
         if (insurance > 0) financialLanguage += 'Your insurance estimated payment is ' + formatMoney(insurance) + '. ';
         financialLanguage += 'Your remaining balance of ' + formatMoney(balance) + ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';
         q('preview-opening').textContent = financialLanguage;
@@ -415,17 +424,50 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         q('financial-responsibility').textContent = formatMoney(responsibility);
         q('financial-balance').textContent = formatMoney(balance);
 
-        const items = Array.from(form.querySelectorAll('[data-treatment-option]')).filter(card => card.querySelector('input[name="line_items[]"]:checked:not(:disabled)')).map(card => {
+        let items = Array.from(form.querySelectorAll('[data-treatment-option]')).filter(card => card.querySelector('input[name="line_items[]"]:checked:not(:disabled)')).map(card => {
             const summary = card.querySelector('[data-area-summary]')?.textContent?.trim() || '';
-            return card.dataset.optionLabel + (summary && !summary.startsWith('Select ') ? ' — ' + summary : '');
+            return {key:card.dataset.optionKey, label:card.dataset.optionLabel + (summary && !summary.startsWith('Select ') ? ' — ' + summary : '')};
         });
-        q('contract-custom-items').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).forEach(line => items.push(line));
+        q('contract-custom-items').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).forEach((line, index) => items.push({key:'custom_' + index, label:line}));
+        <?php if (!$isEditable): ?>
+        items = <?= json_encode(array_map(static fn(array $item): array => ['key' => $item['key'], 'label' => $item['label'] . (!empty($item['teeth']) ? ' — Teeth ' . patient_experience_contract_format_teeth($item['teeth']) : (!empty($item['arch_scope']) ? ' — ' . ucfirst($item['arch_scope']) . ' arch' : ''))], (array)($contract['line_items'] ?? [])), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+        <?php endif; ?>
+        const orderField = q('contract-item-order');
+        let order = JSON.parse(orderField.value || '[]');
+        order = order.filter(key => items.some(item => item.key === key));
+        items.forEach(item => { if (!order.includes(item.key)) order.push(item.key); });
+        items.sort((a,b) => order.indexOf(a.key) - order.indexOf(b.key));
+        orderField.value = JSON.stringify(order);
         const list = q('preview-line-items');
         list.replaceChildren();
-        (items.length ? items : ['Select included treatment items']).forEach(item => {
+        const move = (key, position) => {
+            order.splice(order.indexOf(key), 1);
+            order.splice(position, 0, key);
+            orderField.value = JSON.stringify(order);
+            syncPreview();
+        };
+        (items.length ? items : [{label:'Select included treatment items'}]).forEach((item, index) => {
             const li = document.createElement('li');
-            li.textContent = item;
+            li.textContent = item.label;
             li.className = 'list-disc';
+            if (item.key && <?= $isEditable ? 'true' : 'false' ?>) {
+                li.draggable = true;
+                li.dataset.itemKey = item.key;
+                li.addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', item.key));
+                li.addEventListener('dragover', event => event.preventDefault());
+                li.addEventListener('drop', event => { event.preventDefault(); const key = event.dataTransfer.getData('text/plain'); if (order.includes(key)) move(key, index); });
+                const controls = document.createElement('span');
+                controls.className = 'contract-reorder';
+                [-1, 1].forEach(direction => {
+                    const button = document.createElement('button');
+                    button.type = 'button'; button.textContent = direction < 0 ? '↑' : '↓';
+                    button.setAttribute('aria-label', 'Move ' + item.label + (direction < 0 ? ' up' : ' down'));
+                    button.disabled = index + direction < 0 || index + direction >= items.length;
+                    button.addEventListener('click', () => move(item.key, index + direction));
+                    controls.append(button);
+                });
+                li.prepend(controls);
+            }
             list.appendChild(li);
         });
     }
@@ -668,8 +710,18 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         event.currentTarget.textContent = 'Copied';
     });
     <?php if ($shareUrl !== ''): ?>setDigitalSignModal(true);<?php endif; ?>
+    ['contract-original-price', 'contract-discount'].forEach(id => q(id).addEventListener('input', () => {
+        const original = money(q('contract-original-price').value);
+        if (original > 0) q('contract-final-price').value = Math.max(0, original - money(q('contract-discount').value)).toFixed(2);
+        syncPreview();
+    }));
+    q('contract-final-price').addEventListener('input', () => {
+        const original = money(q('contract-original-price').value);
+        if (original > 0) q('contract-discount').value = Math.max(0, original - money(q('contract-final-price').value)).toFixed(2);
+    });
     syncTreatmentControls();
     syncCustomItems();
     syncPreview();
 })();
 </script>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914"></script>

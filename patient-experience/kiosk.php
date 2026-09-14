@@ -360,15 +360,21 @@ $setupHintUrl = base_url('patient-experience.php');
                 }
             }
 
-            function renderComplete() {
+            function renderComplete(result = {}) {
                 clearPatientSession();
                 setProgress(100, 'Completed');
                 app.className = 'flex min-h-[680px] flex-col items-center justify-center text-center';
                 app.innerHTML = '<p class="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Complete</p>'
                     + '<h1 class="mt-5 text-4xl font-semibold tracking-tight lg:text-6xl">Thank you.</h1>'
                     + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Your forms and signatures were saved securely. The office can review and print your completed packet.</p>';
-                app.innerHTML += '<button type="button" id="next-patient" class="mt-8 min-h-14 rounded-2xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white">Next Patient</button>';
-                const resetTimer = window.setTimeout(() => renderIdle(), 6500);
+                if (result.print_token && result.print_session_id) {
+                    app.innerHTML += '<form method="POST" target="_blank" rel="noopener" action="<?= e(base_url('patient-experience-print.php')) ?>" class="mt-8">'
+                        + '<input type="hidden" name="session_id" value="' + escapeHtml(result.print_session_id) + '">'
+                        + '<input type="hidden" name="print_token" value="' + escapeHtml(result.print_token) + '">'
+                        + '<button type="submit" class="min-h-14 rounded-2xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white">Print All Signed Forms</button></form>';
+                }
+                app.innerHTML += '<button type="button" id="next-patient" class="mt-4 min-h-14 rounded-2xl border border-slate-300 px-8 py-4 text-lg font-semibold">Next Patient</button><p class="mt-4 text-sm text-slate-500">Please hand the iPad to our team. This screen resets after one minute; the office can reprint your saved forms anytime.</p>';
+                const resetTimer = window.setTimeout(() => renderIdle(), 60000);
                 app.querySelector('#next-patient').addEventListener('click', () => { window.clearTimeout(resetTimer); renderIdle(); });
             }
 
@@ -849,7 +855,7 @@ $setupHintUrl = base_url('patient-experience.php');
                     return;
                 }
                 if (data.completed) {
-                    renderComplete();
+                    renderComplete(data);
                     return;
                 }
                 renderForm(data);

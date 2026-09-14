@@ -23,5 +23,13 @@ try {
     office_expect(patient_experience_archive_session($session['id'], $admin)['ok'], 'Admin can archive signed packet');
     office_expect((int)db_value('SELECT COUNT(*) FROM patient_experience_signatures WHERE checkin_session_id=:id', ['id'=>$session['id']]) === 1, 'Signature preserved');
     office_expect(patient_experience_archive_session($session['id'], $admin, true)['ok'], 'Admin can restore signed packet');
+    $resumed = patient_experience_resume_session($session['id'], $admin);
+    office_expect(!patient_experience_can_print_completed($session['id'], $resumed['token']), 'Unfinished packet cannot use completion print');
+    db_execute("UPDATE patient_experience_checkin_sessions SET status='completed', completed_at=NOW() WHERE id=:id", ['id'=>$session['id']]);
+    office_expect(patient_experience_can_print_completed($session['id'], $resumed['token']), 'Completed packet allows its own print token');
+    office_expect(!patient_experience_can_print_completed($session['id'], 'bad-token'), 'Wrong print token denied');
+    office_expect(!patient_experience_can_print_completed(0, $resumed['token']), 'Other packet denied');
+    db_execute("UPDATE patient_experience_checkin_sessions SET completed_at=DATE_SUB(NOW(), INTERVAL 31 MINUTE) WHERE id=:id", ['id'=>$session['id']]);
+    office_expect(!patient_experience_can_print_completed($session['id'], $resumed['token']), 'Expired print token denied');
 } finally { db_rollBack(); }
 echo "Office patient packet archive tests passed.\n";

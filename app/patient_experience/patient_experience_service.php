@@ -1231,6 +1231,14 @@ if (!function_exists('patient_experience_recent_sessions')) {
     }
 }
 
+// Short-lived patient access to one completed packet; staff reprints use CRM authentication.
+function patient_experience_can_print_completed(int $sessionId, string $token): bool
+{
+    patient_experience_ensure_schema();
+    if ($sessionId <= 0 || $token === '') return false;
+    return (bool)db_one("SELECT id FROM patient_experience_checkin_sessions WHERE id=:id AND session_token_hash=:token AND status='completed' AND archived_at IS NULL AND completed_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)", ['id'=>$sessionId, 'token'=>patient_experience_token_hash($token)]);
+}
+
 // Recoverable removal: never delete answers, signatures, or signed snapshots.
 function patient_experience_archive_session(int $sessionId, int $userId, bool $restore = false): array
 {
@@ -1941,7 +1949,7 @@ if (!function_exists('patient_experience_save_step')) {
         if ($isComplete) {
             patient_experience_store_signed_packet((int)$session['id']);
             patient_experience_audit('session_completed', [], (int)$session['id'], (int)($session['lead_id'] ?? 0) ?: null);
-            return ['ok' => true, 'completed' => true, 'message' => 'Check-in completed.'];
+            return ['ok' => true, 'completed' => true, 'message' => 'Check-in completed.', 'print_session_id' => (int)$session['id'], 'print_token' => $kioskToken];
         }
 
         $updated = $deviceToken !== ''

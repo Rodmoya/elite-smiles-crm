@@ -246,6 +246,9 @@ if (!function_exists('patient_experience_contract_ensure_schema')) {
         if (!patient_experience_contract_column_exists('agreement_date')) {
             db_query('ALTER TABLE patient_experience_contracts ADD COLUMN agreement_date DATE NULL AFTER contract_number');
         }
+        if (!patient_experience_contract_column_exists('delivery_token_encrypted')) {
+            db_query('ALTER TABLE patient_experience_contracts ADD COLUMN delivery_token_encrypted TEXT NULL');
+        }
 
         db_query("CREATE TABLE IF NOT EXISTS patient_experience_contract_versions (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -427,6 +430,11 @@ if (!function_exists('patient_experience_contract_input')) {
             if ($line !== '') $lineItems[] = ['key' => 'custom_' . $index, 'label' => mb_substr($line, 0, 240)];
         }
 
+        $order = json_decode((string)($input['line_item_order'] ?? '[]'), true);
+        if (is_array($order)) {
+            $ranks = array_flip(array_values(array_filter($order, 'is_string')));
+            usort($lineItems, static fn(array $a, array $b): int => ($ranks[$a['key']] ?? PHP_INT_MAX) <=> ($ranks[$b['key']] ?? PHP_INT_MAX));
+        }
         $originalPrice = patient_experience_contract_money($input['original_price'] ?? 0);
         $discountAmount = patient_experience_contract_money($input['discount_amount'] ?? 0);
         $finalPrice = patient_experience_contract_money($input['final_price'] ?? 0);
@@ -490,6 +498,7 @@ if (!function_exists('patient_experience_contract_validate')) {
         if ((float)($data['final_price'] ?? 0) <= 0) $errors['final_price'] = 'Enter the final approved treatment price.';
         if ((float)($data['original_price'] ?? 0) > 0 && (float)$data['final_price'] > (float)$data['original_price']) $errors['final_price'] = 'Final price cannot exceed the original price.';
         if ((float)($data['insurance_estimate'] ?? 0) > (float)($data['final_price'] ?? 0)) $errors['insurance_estimate'] = 'Insurance estimate cannot exceed the final price.';
+        if ((float)($data['original_price'] ?? 0) > 0 && abs(round((float)$data['original_price'] - (float)$data['discount_amount'] - (float)$data['final_price'], 2)) > 0.009) $errors['discount_amount'] = 'Original price minus discount must equal the final approved price.';
         if ((float)($data['deposit_amount'] ?? 0) > (float)($data['patient_responsibility'] ?? 0)) $errors['deposit_amount'] = 'Deposit cannot exceed the patient responsibility.';
         return $errors;
     }
@@ -512,8 +521,24 @@ if (!function_exists('patient_experience_contract_db_params')) {
     }
 }
 
-if (!function_exists('patient_experience_contract_save')) {
-    function patient_experience_contract_save(array $input, ?int $userId = null): array
+function patient_experience_contract_locked(int $id, callable $operation): array
+{
+    if ($id <= 0) return $operation();
+    $name = 'patient_contract_' . $id;
+    if ((int)db_value('SELECT GET_LOCK(:name, 5)', ['name' => $name]) !== 1) {
+        return ['ok' => false, 'message' => 'This agreement is being updated. Please try again.'];
+    }
+    try { return $operation(); }
+    finally { db_value('SELECT RELEASE_LOCK(:name)', ['name' => $name]); }
+}
+
+function patient_experience_contract_save(array $input, ?int $userId = null): array
+{
+    return patient_experience_contract_locked((int)($input['contract_id'] ?? 0), static fn(): array => patient_experience_contract_save_locked($input, $userId));
+}
+
+if (!function_exists('patient_experience_contract_save_locked')) {
+    function patient_experience_contract_save_locked(array $input, ?int $userId = null): array
     {
         patient_experience_contract_ensure_schema();
         $data = patient_experience_contract_input($input);
@@ -610,7 +635,7 @@ if (!function_exists('patient_experience_contract_snapshot')) {
         $agreementDate = trim((string)($contract['agreement_date'] ?? ''));
         $agreementTimestamp = preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate) ? strtotime($agreementDate . ' 12:00:00') : time();
         return [
-            'schema_version' => 4,
+            'schema_version' => 5,
             'terms_version' => 2,
             'practice' => [
                 'name' => 'Elite Smiles',
@@ -649,36 +674,54 @@ if (!function_exists('patient_experience_contract_snapshot')) {
     }
 }
 
-if (!function_exists('patient_experience_contract_prepare_delivery')) {
-    function patient_experience_contract_prepare_delivery(int $contractId, array $channels, ?int $userId = null): array
+function patient_experience_contract_prepare_delivery(int $contractId, array $channels, ?int $userId = null): array
+{
+    return patient_experience_contract_locked($contractId, static fn(): array => patient_experience_contract_prepare_delivery_locked($contractId, $channels, $userId));
+}
+
+if (!function_exists('patient_experience_contract_prepare_delivery_locked')) {
+    function patient_experience_contract_prepare_delivery_locked(int $contractId, array $channels, ?int $userId = null): array
     {
         $contract = patient_experience_contract_by_id($contractId);
         if (!$contract) return ['ok' => false, 'message' => 'Contract not found.'];
         if ((string)$contract['status'] === 'signed') return ['ok' => false, 'message' => 'Signed contracts cannot be resent or changed.'];
+        if (!empty($contract['voided_at'])) return ['ok' => false, 'message' => 'This agreement was voided.'];
 
         $definitions = patient_experience_contract_definitions();
         $data = $contract;
         $data['tooth_mode'] = (string)($definitions[(string)$contract['treatment_key']]['tooth_mode'] ?? 'teeth_optional');
-        $errors = patient_experience_contract_validate($data);
+        // Existing approved versions are not reinterpreted against a changed catalog.
+        $errors = empty($contract['current_version_id']) ? patient_experience_contract_validate($data) : [];
         if ($errors) return ['ok' => false, 'message' => reset($errors), 'errors' => $errors];
 
-        $snapshot = patient_experience_contract_snapshot($contract);
-        $snapshotJson = json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if (!is_string($snapshotJson)) return ['ok' => false, 'message' => 'Could not create the immutable contract snapshot.'];
-        $version = (int)db_value('SELECT COALESCE(MAX(version_number),0)+1 FROM patient_experience_contract_versions WHERE contract_id=:id', ['id' => $contractId]);
-        $hash = hash('sha256', $snapshotJson);
-        db_execute('INSERT INTO patient_experience_contract_versions (contract_id, version_number, snapshot_json, snapshot_hash, created_by_user_id, created_at) VALUES (:contract_id,:version,:snapshot,:hash,:user_id,NOW())', [
-            'contract_id' => $contractId, 'version' => $version, 'snapshot' => $snapshotJson, 'hash' => $hash, 'user_id' => $userId,
-        ]);
-        $versionId = (int)db()->lastInsertId();
-        $token = bin2hex(random_bytes(32));
-        db_execute("UPDATE patient_experience_contracts SET current_version_id=:version_id, delivery_token_hash=:token_hash, status='sent', sent_at=NOW(), expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY), updated_by_user_id=:user_id WHERE id=:id", [
-            'version_id' => $versionId, 'token_hash' => hash('sha256', $token), 'user_id' => $userId, 'id' => $contractId,
+        $versionId = (int)($contract['current_version_id'] ?? 0);
+        if ($versionId === 0) {
+            $snapshot = patient_experience_contract_snapshot($contract);
+            $snapshotJson = json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (!is_string($snapshotJson)) return ['ok' => false, 'message' => 'Could not create the immutable contract snapshot.'];
+            $version = (int)db_value('SELECT COALESCE(MAX(version_number),0)+1 FROM patient_experience_contract_versions WHERE contract_id=:id', ['id' => $contractId]);
+            $hash = hash('sha256', $snapshotJson);
+            db_execute('INSERT INTO patient_experience_contract_versions (contract_id, version_number, snapshot_json, snapshot_hash, created_by_user_id, created_at) VALUES (:contract_id,:version,:snapshot,:hash,:user_id,NOW())', [
+                'contract_id' => $contractId, 'version' => $version, 'snapshot' => $snapshotJson, 'hash' => $hash, 'user_id' => $userId,
+            ]);
+            $versionId = (int)db()->lastInsertId();
+        }
+        $envelope = json_decode((string)($contract['delivery_token_encrypted'] ?? ''), true);
+        $token = $envelope ? patient_experience_decrypt_sensitive_value($envelope) : null;
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token) || !hash_equals((string)($contract['delivery_token_hash'] ?? ''), hash('sha256', $token))) {
+            // Legacy links stored only a hash; rotate once, keeping the same version.
+            $token = bin2hex(random_bytes(32));
+        }
+        $encrypted = json_encode(patient_experience_encrypt_sensitive_value($token), JSON_THROW_ON_ERROR);
+        db_execute("UPDATE patient_experience_contracts SET current_version_id=:version_id, delivery_token_hash=:token_hash, delivery_token_encrypted=:encrypted, status=IF(status='viewed','viewed','ready'), expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY), updated_by_user_id=:user_id WHERE id=:id", [
+            'version_id' => $versionId, 'token_hash' => hash('sha256', $token), 'encrypted' => $encrypted, 'user_id' => $userId, 'id' => $contractId,
         ]);
         $url = base_url('patient-experience/contract/?t=' . rawurlencode($token));
         $sent = [];
         $issues = [];
         foreach (array_unique($channels) as $channel) {
+            if ($channel === 'sms' && trim((string)$contract['patient_phone']) === '') $issues[] = 'No phone number: text was not sent.';
+            if ($channel === 'email' && !filter_var((string)$contract['patient_email'], FILTER_VALIDATE_EMAIL)) $issues[] = 'No valid email address: email was not sent.';
             if ($channel === 'sms' && trim((string)$contract['patient_phone']) !== '') {
                 $body = 'Elite Smiles treatment agreement for ' . $contract['patient_name'] . ': ' . $url;
                 $result = elite_twilio_send_sms((string)$contract['patient_phone'], $body, ['source' => 'patient_experience_contract']);
@@ -700,6 +743,8 @@ if (!function_exists('patient_experience_contract_prepare_delivery')) {
             }
         }
         if (function_exists('patient_experience_audit')) patient_experience_audit('contract_sent', ['contract_id' => $contractId, 'version_id' => $versionId, 'channels' => $sent, 'issues' => $issues], null, (int)$contract['lead_id'] ?: null, $userId);
+        $deliveryStatus = $sent ? 'sent' : ($issues ? 'delivery_failed' : 'ready');
+        db_execute("UPDATE patient_experience_contracts SET status=IF(status IN ('signed','viewed'),status,:status), sent_at=IF(:was_sent=1,NOW(),sent_at) WHERE id=:id", ['status' => $deliveryStatus, 'was_sent' => $sent ? 1 : 0, 'id' => $contractId]);
         return ['ok' => true, 'url' => $url, 'sent' => $sent, 'issues' => $issues, 'version_id' => $versionId];
     }
 }
@@ -753,8 +798,15 @@ if (!function_exists('patient_experience_contract_from_token')) {
     }
 }
 
-if (!function_exists('patient_experience_contract_sign')) {
-    function patient_experience_contract_sign(string $token, array $input): array
+function patient_experience_contract_sign(string $token, array $input): array
+{
+    $contract = patient_experience_contract_from_token($token, false);
+    if (!$contract) return ['ok' => false, 'message' => 'This secure contract link is invalid or expired.'];
+    return patient_experience_contract_locked((int)$contract['id'], static fn(): array => patient_experience_contract_sign_locked($token, $input));
+}
+
+if (!function_exists('patient_experience_contract_sign_locked')) {
+    function patient_experience_contract_sign_locked(string $token, array $input): array
     {
         $contract = patient_experience_contract_from_token($token, true);
         if (!$contract) return ['ok' => false, 'message' => 'This secure contract link is invalid or expired.'];

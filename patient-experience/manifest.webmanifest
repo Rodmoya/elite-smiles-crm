@@ -1,7 +1,7 @@
 {
-  "name": "Elite Smiles Check-In",
-  "short_name": "Check-In",
-  "description": "Elite Smiles patient check-in kiosk.",
+  "name": "Elite Smiles Patient Forms",
+  "short_name": "Patient Forms",
+  "description": "Patient information and signed consents for the office iPad.",
   "start_url": "/crm/patient-experience/kiosk/",
   "scope": "/crm/patient-experience/",
   "display": "standalone",

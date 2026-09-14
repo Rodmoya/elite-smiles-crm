@@ -250,6 +250,7 @@ if (!function_exists('patient_experience_upgrade_schema')) {
     function patient_experience_upgrade_schema(): void
     {
         foreach ([
+            'archived_at' => "ALTER TABLE patient_experience_checkin_sessions ADD COLUMN archived_at DATETIME NULL",
             'current_step_key' => "ALTER TABLE patient_experience_checkin_sessions ADD COLUMN current_step_key VARCHAR(120) NOT NULL DEFAULT 'welcome' AFTER staff_notes",
             'progress_percent' => "ALTER TABLE patient_experience_checkin_sessions ADD COLUMN progress_percent TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER current_step_key",
             'review_status' => "ALTER TABLE patient_experience_checkin_sessions ADD COLUMN review_status VARCHAR(40) NOT NULL DEFAULT 'pending' AFTER progress_percent",
@@ -1214,7 +1215,7 @@ if (!function_exists('patient_experience_active_session')) {
 }
 
 if (!function_exists('patient_experience_recent_sessions')) {
-    function patient_experience_recent_sessions(int $limit = 20): array
+    function patient_experience_recent_sessions(int $limit = 20, bool $archived = false): array
     {
         patient_experience_ensure_schema();
         $limit = max(1, min(100, $limit));
@@ -1223,14 +1224,34 @@ if (!function_exists('patient_experience_recent_sessions')) {
              FROM patient_experience_checkin_sessions s
              LEFT JOIN users u ON u.id = s.started_by_user_id
              LEFT JOIN patient_experience_kiosk_devices d ON d.id = s.kiosk_device_id
+             WHERE s.archived_at IS " . ($archived ? 'NOT NULL' : 'NULL') . "
              ORDER BY s.created_at DESC, s.id DESC
              LIMIT {$limit}"
         );
     }
 }
 
+// Recoverable removal: never delete answers, signatures, or signed snapshots.
+function patient_experience_archive_session(int $sessionId, int $userId, bool $restore = false): array
+{
+    patient_experience_ensure_schema();
+    $user = db_one('SELECT role FROM users WHERE id = :id AND is_active = 1', ['id' => $userId]);
+    if (!in_array($user['role'] ?? '', ['admin', 'marketing_manager', 'staff'], true)) {
+        return ['ok' => false, 'message' => 'You do not have permission to manage patient packets.'];
+    }
+    $session = patient_experience_session_by_id($sessionId);
+    if (!$session) return ['ok' => false, 'message' => 'Patient packet not found.'];
+    $signed = $session['status'] === 'completed' || (int)db_value('SELECT COUNT(*) FROM patient_experience_signatures WHERE checkin_session_id = :id', ['id' => $sessionId]) > 0;
+    if ($signed && $user['role'] !== 'admin') {
+        return ['ok' => false, 'message' => 'Only an administrator can archive or restore signed patient packets.'];
+    }
+    db_execute('UPDATE patient_experience_checkin_sessions SET archived_at = ' . ($restore ? 'NULL' : 'NOW()') . ', session_token_hash = :token, updated_at = NOW() WHERE id = :id', ['id' => $sessionId, 'token' => patient_experience_token_hash(patient_experience_token())]);
+    patient_experience_audit($restore ? 'packet_restored' : 'packet_archived', ['signed' => $signed], $sessionId, (int)($session['lead_id'] ?? 0) ?: null, $userId);
+    return ['ok' => true, 'message' => $restore ? 'Packet restored. Use Open Forms to continue an unfinished packet.' : 'Packet moved to Trash / Archive. Its information and signatures are preserved.'];
+}
+
 if (!function_exists('patient_experience_start_placeholder_session')) {
-    function patient_experience_start_placeholder_session(?int $leadId, string $patientName, ?int $userId, ?int $kioskDeviceId = null): array
+    function patient_experience_start_placeholder_session(?int $leadId, string $patientName, ?int $userId, ?int $kioskDeviceId = null, ?string $startToken = null): array
     {
         patient_experience_ensure_schema();
         $deviceId = $kioskDeviceId && $kioskDeviceId > 0 ? $kioskDeviceId : null;
@@ -1240,7 +1261,7 @@ if (!function_exists('patient_experience_start_placeholder_session')) {
                 return ['id' => 0, 'token' => '', 'expires_at' => '', 'error' => 'Selected kiosk is not ready.'];
             }
         }
-        $token = patient_experience_token(32);
+        $token = $startToken !== null && preg_match('/^[a-f0-9]{64}$/D', $startToken) ? $startToken : patient_experience_token(32);
         $tokenHash = patient_experience_token_hash($token);
         $expiresAt = date('Y-m-d H:i:s', time() + 7200);
         $sessionId = db_insert(
@@ -1274,8 +1295,8 @@ if (!function_exists('patient_experience_resume_session')) {
     {
         patient_experience_ensure_schema();
         $session = patient_experience_session_by_id($sessionId);
-        if (!$session) {
-            return ['ok' => false, 'message' => 'Could not find that patient form session.'];
+        if (!$session || !empty($session['archived_at'])) {
+            return ['ok' => false, 'message' => 'Could not find an active patient form session. Restore it from Trash / Archive first.'];
         }
         if ((string)($session['status'] ?? '') === 'completed') {
             return ['ok' => false, 'message' => 'This patient packet is already complete.'];
@@ -1377,6 +1398,7 @@ if (!function_exists('patient_experience_session_by_kiosk_token')) {
             "SELECT *
              FROM patient_experience_checkin_sessions
              WHERE session_token_hash = :token
+               AND archived_at IS NULL
                AND status IN ('waiting', 'in_progress')
                AND expires_at > NOW()
              LIMIT 1",

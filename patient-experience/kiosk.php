@@ -15,13 +15,13 @@ $setupHintUrl = base_url('patient-experience.php');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Elite Smiles | Check-In Kiosk</title>
+    <title>Elite Smiles | Patient Forms</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <meta name="robots" content="noindex,nofollow">
     <meta name="theme-color" content="#050505">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Elite Smiles Check-In">
+    <meta name="apple-mobile-web-app-title" content="Patient Forms">
     <link rel="manifest" href="<?= e($manifestUrl) ?>">
     <link rel="apple-touch-icon" href="<?= e($logoUrl) ?>">
     <style>
@@ -190,28 +190,14 @@ $setupHintUrl = base_url('patient-experience.php');
                 }
             }
 
-            try {
-                deviceToken = window.localStorage.getItem(deviceTokenStorageKey) || '';
-            } catch (error) {
-                deviceToken = '';
-            }
-            if (!deviceToken) {
-                deviceToken = readCookie('patient_experience_device_token') || '';
-            }
-            if (deviceToken) {
-                setDeviceToken(deviceToken);
-            }
-            if (!directMode && !deviceToken) {
-                directMode = true;
-            }
-            if (directMode && directKioskToken) {
+            // The office app is self-starting; old device registration is no longer required.
+            directMode = true;
+            deviceToken = '';
+            if (directKioskToken) {
                 kioskToken = directKioskToken;
                 currentSessionId = 0;
-            } else if (directMode && !deviceToken) {
-                kioskToken = '';
-                currentSessionId = 0;
-                window.sessionStorage.removeItem('patient_experience_kiosk_token');
-                window.sessionStorage.removeItem('patient_experience_session_id');
+                window.sessionStorage.setItem('patient_experience_kiosk_token', kioskToken);
+                window.history.replaceState(null, '', window.location.pathname);
             }
 
             function escapeHtml(value) {
@@ -300,22 +286,30 @@ $setupHintUrl = base_url('patient-experience.php');
                 return [];
             }
 
-            function renderIdle() {
+            function clearPatientSession() {
                 kioskToken = '';
                 currentSessionId = 0;
                 autoBeginTriggered = false;
                 window.sessionStorage.removeItem('patient_experience_kiosk_token');
                 window.sessionStorage.removeItem('patient_experience_session_id');
-                setProgress(0, 'Ready for intake QR');
-                app.className = 'flex min-h-[680px] flex-col items-center justify-center text-center';
-                const deviceLabel = currentDevice && currentDevice.label ? escapeHtml(currentDevice.label) : 'This iPad';
-                const locationLabel = currentDevice && currentDevice.location_label ? '<p class="mt-2 text-sm uppercase tracking-[0.2em] text-slate-400">' + escapeHtml(currentDevice.location_label) + '</p>' : '';
-                app.innerHTML = '<div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl font-semibold text-amber-800">ES</div>'
-                    + '<h1 class="mt-8 text-4xl font-semibold tracking-tight lg:text-6xl">Patient intake forms</h1>'
-                    + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Scan the secure patient QR created in Patient Experience to open the forms.</p>'
-                    + locationLabel
-                    + '<div class="mt-4 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">' + deviceLabel + ' installed</div>'
-                    + '<div class="mt-10 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-500 shadow-sm">Ready for intake QR</div>';
+                window.sessionStorage.removeItem('patient_experience_start_token');
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+
+            function renderIdle(message = '') {
+                setProgress(0, 'Patient forms');
+                app.className = 'flex min-h-[520px] flex-col items-center justify-center text-center';
+                app.innerHTML = '<h1 class="text-4xl font-semibold tracking-tight">Welcome to Elite Smiles</h1>'
+                    + '<p class="mt-5 max-w-xl text-lg leading-8 text-slate-600">Enter your information, read the consent forms, and sign. Please ask our team if you need help.</p>'
+                    + '<p role="alert" class="mt-4 text-red-700">' + escapeHtml(message) + '</p>'
+                    + (kioskToken ? '<button type="button" id="resume-forms" class="mt-6 min-h-14 rounded-2xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white">Continue current forms</button>' : '')
+                    + '<button type="button" id="start-forms" class="mt-4 min-h-14 rounded-2xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white">' + (kioskToken ? 'Start a different patient' : 'Start Forms') + '</button>'
+                    + '<p class="mt-6 text-sm text-slate-500">Your information is private. Hand the iPad to our team when finished.</p>';
+                app.querySelector('#resume-forms')?.addEventListener('click', beginSession);
+                app.querySelector('#start-forms').addEventListener('click', () => {
+                    if (kioskToken) clearPatientSession();
+                    beginDirectSession();
+                });
             }
 
             function renderSetupRequired(message) {
@@ -367,12 +361,15 @@ $setupHintUrl = base_url('patient-experience.php');
             }
 
             function renderComplete() {
+                clearPatientSession();
                 setProgress(100, 'Completed');
                 app.className = 'flex min-h-[680px] flex-col items-center justify-center text-center';
                 app.innerHTML = '<p class="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Complete</p>'
                     + '<h1 class="mt-5 text-4xl font-semibold tracking-tight lg:text-6xl">Thank you.</h1>'
                     + '<p class="mt-6 max-w-2xl text-xl leading-9 text-slate-600">Your forms and signatures were saved securely. The office can review and print your completed packet.</p>';
-                window.setTimeout(renderIdle, 6500);
+                app.innerHTML += '<button type="button" id="next-patient" class="mt-8 min-h-14 rounded-2xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white">Next Patient</button>';
+                const resetTimer = window.setTimeout(() => renderIdle(), 6500);
+                app.querySelector('#next-patient').addEventListener('click', () => { window.clearTimeout(resetTimer); renderIdle(); });
             }
 
             function renderReviewSummary(review) {
@@ -573,6 +570,10 @@ $setupHintUrl = base_url('patient-experience.php');
                 const form = payload.form || {};
                 const step = form.step || {};
                 const session = payload.session || {};
+                kioskToken = payload.kiosk_token || session.kiosk_token || kioskToken;
+                currentSessionId = Number(session.id || currentSessionId || 0);
+                window.sessionStorage.setItem('patient_experience_kiosk_token', kioskToken);
+                window.sessionStorage.setItem('patient_experience_session_id', String(currentSessionId));
                 const fields = Array.isArray(step.fields) ? step.fields : [];
                 const answers = form.answers || {};
                 const review = form.review || null;
@@ -766,15 +767,29 @@ $setupHintUrl = base_url('patient-experience.php');
                 }
             });
 
+            let requestBusy = false;
             async function post(action, body) {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify(Object.assign({ action: action, kiosk_token: kioskToken, device_token: deviceToken, direct_mode: directMode ? 1 : 0 }, body || {}))
-                });
-                return response.json();
+                if (requestBusy) return {ok:false, message:'Please wait for the current save.'};
+                requestBusy = true;
+                const controls = [...app.querySelectorAll('button')].filter(button => !button.disabled);
+                controls.forEach(button => button.disabled = true);
+                const controller = new AbortController();
+                const timeout = window.setTimeout(() => controller.abort(), 25000);
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST', credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+                        headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+                        body: JSON.stringify(Object.assign({action, kiosk_token:kioskToken, device_token:'', direct_mode:1}, body || {}))
+                    });
+                    const data = await response.json();
+                    return data && typeof data.ok === 'boolean' ? data : {ok:false, message:'Could not save. Please try again.'};
+                } catch (_) {
+                    return {ok:false, message:'Connection interrupted. Your entries are still here. Please reconnect and try again.'};
+                } finally {
+                    window.clearTimeout(timeout);
+                    requestBusy = false;
+                    controls.forEach(button => button.disabled = false);
+                }
             }
 
             async function beginSession() {
@@ -787,22 +802,26 @@ $setupHintUrl = base_url('patient-experience.php');
                 if (data.ok) {
                     renderForm(data);
                 } else {
-                    renderIdle();
+                    if (isInactiveSessionMessage(data.message)) clearPatientSession();
+                    renderIdle(data.message || 'Could not open the forms. Please try again.');
                 }
                 polling = true;
             }
 
             async function beginDirectSession() {
                 polling = false;
-                const data = await post('direct_begin', { patient_name: 'Walk-in Patient' });
+                let startToken = window.sessionStorage.getItem('patient_experience_start_token');
+                if (!startToken) {
+                    startToken = [...crypto.getRandomValues(new Uint8Array(32))].map(n => n.toString(16).padStart(2, '0')).join('');
+                    window.sessionStorage.setItem('patient_experience_start_token', startToken);
+                }
+                const data = await post('direct_begin', { patient_name: 'Walk-in Patient', start_token: startToken });
                 if (data.ok) {
                     data.session = data.session || {};
                     data.session.kiosk_token = data.kiosk_token || '';
                     renderForm(data);
-                } else if (isInactiveSessionMessage(data.message)) {
-                    renderIdle();
                 } else {
-                    renderIdle();
+                    renderIdle(data.message || 'Could not start forms. Please try again.');
                 }
                 polling = true;
             }
@@ -819,6 +838,7 @@ $setupHintUrl = base_url('patient-experience.php');
                 const data = await post('save_step', { step_key: stepKey, answers: collectAnswers() });
                 if (!data.ok) {
                     if (directMode && isInactiveSessionMessage(data.message)) {
+                        clearPatientSession();
                         renderIdle();
                         return;
                     }
@@ -841,6 +861,12 @@ $setupHintUrl = base_url('patient-experience.php');
                     return;
                 }
                 const data = await post('cancel');
+                if (!data.ok && !isInactiveSessionMessage(data.message)) {
+                    const error = document.getElementById('form-error');
+                    if (error) { error.textContent = data.message; error.classList.remove('hidden'); }
+                    return;
+                }
+                clearPatientSession();
                 if (directMode && data && !data.ok && isInactiveSessionMessage(data.message)) {
                     renderIdle();
                     return;
@@ -897,12 +923,9 @@ $setupHintUrl = base_url('patient-experience.php');
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register(serviceWorkerUrl).catch(function () {});
             }
-            if (directMode) {
-                window.setTimeout(kioskToken ? beginSession : beginDirectSession, 60);
-            } else {
-                poll();
-                window.setInterval(poll, 3000);
-            }
+            window.addEventListener('pageshow', event => { if (event.persisted) window.location.reload(); });
+            if (directKioskToken) beginSession();
+            else renderIdle();
         })();
     </script>
 </body>

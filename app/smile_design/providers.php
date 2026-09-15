@@ -207,6 +207,73 @@ if (!function_exists('smile_design_build_overlay_preview')) {
     }
 }
 
+if (!function_exists('smile_design_smile_geometry_prompt_lines')) {
+    /**
+     * Facial-landmark geometry framework for veneer generation. The LVI style
+     * governs tooth shape language and the Chromascop shade governs color; this
+     * block governs where the teeth sit and how they are proportioned relative
+     * to the patient's face. Without it the image model retextures the existing
+     * tooth mass in place and inherits every positional flaw of the before
+     * (midline shift or cant, uneven incisal plane, flat arc) - the "overlay"
+     * look. The universal targets always emit; the patient-specific deviations
+     * and corrections are appended when the case analysis measured them.
+     */
+    function smile_design_smile_geometry_prompt_lines(array $analysis, string $targetPhotoType): array
+    {
+        $isFront = $targetPhotoType === 'front';
+        $lines = [
+            'Smile geometry framework (binding, applied before style and shade): the LVI style controls tooth shape language and the Chromascop shade controls color, but this framework controls where the teeth sit and how they are proportioned relative to this patient\'s face. The style expresses itself inside this framework, never against it.',
+            $isFront
+                ? 'Dental midline: the vertical contact line between the two upper central incisors must be perfectly vertical and centered on the facial midline (the line through the glabella, the bridge and tip of the nose, the philtrum groove, and the center of the chin). A horizontal offset of up to about 2 mm is tolerable only if the line stays vertical; any tilt or cant of the midline is a failure.'
+                : 'Midline and pupil alignment are judged on the front view. On this angled view, keep the arch position, smile arc, proportions, embrasures, and inclination consistent with a correctly centered front result.',
+            $isFront
+                ? 'Incisal plane: the biting edges of the upper front teeth must form a level plane parallel to the interpupillary line (the horizontal line through the centers of both pupils). If one side of the before sits higher or lower, level it in the after.'
+                : '',
+            'Smile arc: the incisal edges from canine to canine must follow the upward curve of the lower lip (a consonant smile arc) - centrals slightly longer than laterals, canines rising gently toward the corners. A flat or reversed downward arc reads older and artificial and is a failure. Achieve this within the resting-upper-lip length ceiling, never by lengthening beyond it.',
+            'Central incisor proportion: each upper central incisor must have a width-to-length ratio of roughly 75 to 80 percent - not wide and stubby, not long like bunny teeth. The two centrals are the dominant focal pair and must mirror each other in width, length, and outline.',
+            'Golden progression: seen from the front, the visible width of each lateral incisor is about 62 percent of the central, and each canine about 62 percent of the lateral. Visible widths step down progressively away from the midline and mirror across it; no single tooth may break the sequence.',
+            'Incisal embrasures: the small V-shaped spaces between the biting edges are smallest between the two centrals and become progressively larger and deeper toward the canines.',
+            'Axial inclination: the long axis of each tooth tilts subtly and progressively toward the midline moving outward; no flared, splayed, or leaning teeth.',
+            'Gingival zeniths: the highest point of the gum line on each central and canine sits at the same height, with the laterals about 1 mm lower, symmetric across the midline. Shape the visible cervical contour of the porcelain to read this way as far as veneer margins allow; do not simulate gum surgery.',
+            'Buccal corridor: keep a slight natural dark space at the outer corners of the smile - neither wide black voids beside the last visible teeth nor an unbroken wall of teeth with no corridor at all.',
+            'Correct, do not inherit: the after must not carry over the before photo\'s midline shift or cant, uneven incisal edges, flat or reversed arc, mismatched central widths, broken width progression, or asymmetric gum heights. If the new teeth simply sit where the old teeth sat with new porcelain on top, the geometry has failed even when the shade and material are perfect.',
+        ];
+
+        $geometry = is_array($analysis['smile_geometry'] ?? null) ? $analysis['smile_geometry'] : [];
+        $measured = [];
+        foreach ([
+            'dental_midline' => 'midline',
+            'incisal_plane' => 'incisal plane',
+            'smile_arc' => 'smile arc',
+            'central_incisor_proportion' => 'central incisors',
+            'lateral_canine_progression' => 'lateral/canine progression',
+            'embrasures' => 'embrasures',
+            'axial_inclination' => 'axial inclination',
+            'gingival_zeniths' => 'gingival zeniths',
+            'buccal_corridor' => 'buccal corridor',
+        ] as $key => $label) {
+            $value = trim((string)($geometry[$key] ?? ''));
+            if ($value !== '') {
+                $measured[] = $label . ': ' . rtrim($value, '.');
+            }
+        }
+        if ($measured !== []) {
+            $lines[] = 'Measured on this patient\'s before photo (case analysis): ' . implode('; ', $measured) . '.';
+        }
+
+        $corrections = array_values(array_filter(array_map('trim', (array)($geometry['corrections'] ?? []))));
+        if ($corrections !== []) {
+            $numbered = [];
+            foreach ($corrections as $index => $correction) {
+                $numbered[] = ($index + 1) . ') ' . rtrim($correction, '.');
+            }
+            $lines[] = 'Required geometry corrections for this patient, on top of the framework above: ' . implode('; ', $numbered) . '.';
+        }
+
+        return array_values(array_filter($lines, static fn(string $line): bool => $line !== ''));
+    }
+}
+
 if (!function_exists('smile_design_refine_edit_prompt_with_openai')) {
     function smile_design_refine_edit_prompt_with_openai(array $imagePaths, array $context = []): array
     {
@@ -518,6 +585,10 @@ final class GoogleGeminiSmileDesignImageProvider implements SmileDesignImageProv
             'Outside the smile zone, treat the image as locked. Forehead, eyes, brows, nose, cheeks, skin pores, hair, ears, jawline, neck, clothing, jewelry, and background must remain visually unchanged from the source photo.',
             'The after must read like the exact same photo with only the smile edited. In a before/after slider or opacity overlay, the face outside the mouth should align and appear unchanged.',
             'Do not retouch, smooth, relight, recolor, beautify, or reshape any non-dental region. Keep the lips unchanged except for the minimal natural contour contact needed around the visible teeth and smile line.',
+            // Geometry sits between the identity locks and the style/shade rules on
+            // purpose: the framework decides placement and proportion first, then the
+            // LVI style and Chromascop shade dress the teeth inside that frame.
+            ...($isVeneerSimulation ? smile_design_smile_geometry_prompt_lines($analysis, $targetPhotoType) : []),
             ($styleReferenceCount > 0 ? 'The last ' . $styleReferenceCount . ' reference image(s) are LVI ' . $styleName . ' sample smiles. Use them only for tooth anatomy, incisal step, embrasures, line angles, canine character, and smile-width expression. Do not copy the reference patient, lips, gingiva, face, lighting, or camera treatment.' : ''),
             ($porcelainFinishReferenceIncluded ? 'One additional reference image shows the desired final veneer material finish. Use it only for IPS e.max-style lithium disilicate glass-ceramic surface quality: flawless brand-new veneers, clean high-value body shade, glazed ceramic gloss, enamel-like optical depth, smooth polished finish, no yellow pigment, no stains, no mottling, and subtle translucent incisal edge only at the bottom tips. Do not copy that reference image crop, lips, skin, gums, smile shape, lighting, or face.' : ''),
             ($porcelainFinishReferenceIncluded ? 'Shade hierarchy rule: when the selected shade is Elite Smiles 100 / Ultra White, use the porcelain reference as the maximum wow-factor brightness anchor. When the selected shade is Chromascop 110, match a clinical Hollywood-white porcelain anchor just below Ultra White. For every other Chromascop shade, keep the same flawless porcelain material but reduce brightness according to the selected shade target. Do not let the material reference force every shade to 100 or 110.' : ''),
@@ -877,6 +948,7 @@ final class OpenAISmileDesignImageProvider implements SmileDesignImageProvider
             'Outside the smile zone, treat the image as locked. Forehead, eyes, brows, nose, cheeks, skin pores, hair, ears, jawline, neck, clothing, jewelry, and background must remain visually unchanged from the source photo.',
             'The after must read like the exact same photo with only the smile edited. In a before/after slider or opacity overlay, the face outside the mouth should align and appear unchanged.',
             'Do not retouch, smooth, relight, recolor, beautify, or reshape any non-dental region. Keep the lips unchanged except for the minimal natural contour contact needed around the visible teeth and smile line.',
+            ...($isVeneerSimulation ? smile_design_smile_geometry_prompt_lines($analysis, $targetPhotoType) : []),
             ($styleReferenceCount > 0 ? 'The last ' . $styleReferenceCount . ' reference image(s) are LVI ' . $styleName . ' sample smiles. Use them only for tooth morphology, embrasures, incisal step, line angles, canine energy, and smile-width feel. Never copy the reference face, lips, gingiva, crop, or lighting.' : ''),
             $isLipRepositionOnly
                 ? 'Improve the visible smile by reducing gummy-smile display through lip repositioning only: make the upper lip appear less retracted and less curled upward, visibly lower, more softly unfolded/full, and with the bottom edge of the superior lip beginning around the arches/cervical contour of the upper teeth; do not apply an LVI tooth style.'

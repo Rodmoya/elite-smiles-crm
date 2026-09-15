@@ -3260,6 +3260,38 @@ function smile_design_run_case_analysis(int $caseId, int $beforePhotoId, ?int $u
             'constraints' => ['type' => 'array', 'items' => ['type' => 'string']],
             'risk_flags' => ['type' => 'array', 'items' => ['type' => 'string']],
             'doctor_review_notes' => ['type' => 'array', 'items' => ['type' => 'string']],
+            // Facial-landmark measurements of the before photo. The image step
+            // renders these as explicit placement/proportion corrections, so the
+            // generated smile is centered and proportioned to this face instead of
+            // retextured over wherever the old teeth happened to sit.
+            'smile_geometry' => [
+                'type' => 'object',
+                'additionalProperties' => false,
+                'properties' => [
+                    'dental_midline' => ['type' => 'string'],
+                    'incisal_plane' => ['type' => 'string'],
+                    'smile_arc' => ['type' => 'string'],
+                    'central_incisor_proportion' => ['type' => 'string'],
+                    'lateral_canine_progression' => ['type' => 'string'],
+                    'embrasures' => ['type' => 'string'],
+                    'axial_inclination' => ['type' => 'string'],
+                    'gingival_zeniths' => ['type' => 'string'],
+                    'buccal_corridor' => ['type' => 'string'],
+                    'corrections' => ['type' => 'array', 'items' => ['type' => 'string']],
+                ],
+                'required' => [
+                    'dental_midline',
+                    'incisal_plane',
+                    'smile_arc',
+                    'central_incisor_proportion',
+                    'lateral_canine_progression',
+                    'embrasures',
+                    'axial_inclination',
+                    'gingival_zeniths',
+                    'buccal_corridor',
+                    'corrections',
+                ],
+            ],
         ],
         'required' => [
             'source_before_photo_id',
@@ -3279,6 +3311,7 @@ function smile_design_run_case_analysis(int $caseId, int $beforePhotoId, ?int $u
             'constraints',
             'risk_flags',
             'doctor_review_notes',
+            'smile_geometry',
         ],
     ];
 
@@ -3314,6 +3347,19 @@ Rules:
 - For Not Sure Yet, stay conservative: identify likely treatment direction, but do not invent an aggressive irreversible plan.
 - When procedure-specific direction is provided, include it in recommended_generation_focus, primary_changes, constraints, and doctor_review_notes where relevant.
 
+Smile geometry assessment (fill smile_geometry for every case - it decides where the generated teeth are placed, not just how they look):
+- Measure the before photo against facial landmarks, never against the existing teeth themselves.
+- dental_midline: where the contact line between the upper central incisors sits relative to the facial midline (glabella, nose bridge and tip, philtrum groove, chin center) - estimated offset in mm and direction, and critically whether that line is vertical or canted (tilted). A vertical line offset up to about 2 mm is acceptable; any cant is a defect the eye notices immediately.
+- incisal_plane: whether the upper incisal edges run parallel to the interpupillary line, and if canted, which side sits higher and by roughly how much.
+- smile_arc: consonant (edges follow the lower-lip curve), flat, or reversed.
+- central_incisor_proportion: estimated width-to-length ratio of the centrals versus the 75-80 percent ideal (too wide/short, too long, or in range) and whether the two centrals match each other.
+- lateral_canine_progression: whether visible widths step down by roughly 62 percent from central to lateral to canine, or which tooth breaks the sequence.
+- embrasures: whether the incisal embrasures grow progressively from the midline outward, are absent (a flat wall of edges), or irregular.
+- axial_inclination: progressive mesial tilt present, teeth upright, or flared/splayed.
+- gingival_zeniths: whether central and canine zeniths are level with the laterals about 1 mm lower and symmetric, or uneven; include gum display in mm above the upper teeth (1-2 mm ideal, 3 mm or more is a gummy smile).
+- buccal_corridor: slight (ideal), wide and dark, or absent.
+- corrections: concrete imperative instructions the image step must apply to fix the measured defects, for example "shift the dental midline about 1.5 mm to the patient's right so it sits under the philtrum and keep it perfectly vertical", "level the incisal plane - the left side currently sits about 2 mm higher than the right", "create a consonant smile arc; the before arc is flat". List only defects the selected procedure can realistically correct, and say plainly when a defect needs orthodontics, surgery, or lip repositioning instead.
+
 Return only structured JSON matching the schema.
 PROMPT;
     $userPrompt = implode(' ', array_values(array_filter([
@@ -3323,6 +3369,7 @@ PROMPT;
         'Determine what treatment direction appears most appropriate from visible evidence, whether a cosmetic AI preview is appropriate, whether the preview should be upper-only or broader, whether lower teeth should remain untouched, whether missing or compromised teeth are visible, and the main constraints the image-generation step must obey.',
         'If this is Lip Repositioning only, explicitly evaluate gingival display and whether the after preview should simulate restricted upper-lip elevation: the inferior border of the upper lip should descend to the cervical line / gingival-zenith level of the upper teeth to cover the exposed gum band; the lip will appear 5 to 6 mm taller due to unfolding of the curled vermilion; teeth must be preserved unchanged.',
         'If this is Veneers + Lip Repositioning, evaluate both the tooth design needs and the lip-line / gum-display correction.',
+        'Also measure the smile geometry against facial landmarks - facial versus dental midline and any cant, incisal plane versus the interpupillary line, smile arc versus the lower lip, central incisor width-to-length, lateral and canine width progression, embrasures, axial inclination, gingival zeniths and gum display, and buccal corridor - and list the concrete corrections the after image must apply so the new smile is centered and proportioned to this face rather than overlaid on the old tooth positions.',
         'Add concise doctor review notes that would help staff prepare the case.',
         'Set source_before_photo_id to ' . $beforePhotoId . '.',
     ], static fn(string $value): bool => trim($value) !== '')));

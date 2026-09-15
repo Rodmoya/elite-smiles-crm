@@ -298,13 +298,13 @@ $activeSimulationUsesMixedSets = count(array_unique($activeAfterSetKeys)) > 1;
 uasort($afterSets, static fn(array $a, array $b): int => (int)$b['number'] <=> (int)$a['number']);
 
 // [label, tab key (also the hash used for deep-linking), panel to show,
-// optional element id to scroll into view within that panel]. Compare Sets
-// lives inside the Generate panel's markup, so its tab shares that panel
-// and just scrolls to its own block instead of hiding/showing separately.
+// optional element id to scroll into view within that panel - unused now
+// that every tab maps to its own independent panel, kept so activateTab()
+// doesn't need a special case for a scroll-only tab].
 $sectionLinks = [
     ['Source', 'source', 'source', null],
     ['Generate', 'generate', 'generate', null],
-    ['Compare Sets', 'compare-sets', 'generate', 'compare-sets'],
+    ['Compare Sets', 'compare-sets', 'compare-sets', null],
     ['Compare', 'compare', 'compare', null],
     ['Adjustments', 'adjustments', 'adjustments', null],
     ['Share', 'share', 'share', null],
@@ -723,107 +723,6 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     </div>
                 </div>
 
-                <?php if ($afterSets): ?>
-                    <section id="compare-sets" class="mt-5 rounded-md border border-slate-200 bg-white p-4">
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare Sets</p>
-                                <h3 class="mt-2 text-lg font-semibold text-slate-900">Generated set comparison</h3>
-                                <p class="mt-1 text-sm leading-6 text-slate-600">Use this view to compare versions side by side and pick the smile set that should load in Compare.</p>
-                            </div>
-                            <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" href="#generate">Back to Generate</a>
-                        </div>
-                        <div class="mt-5 grid gap-4 xl:grid-cols-2">
-                            <?php foreach ($afterSets as $setKey => $set): ?>
-                                <?php
-                                $setSelectedCount = (int)($set['selected_count'] ?? 0);
-                                $setVersionCount = count($set['versions']);
-                                $setIsFullyActive = $setVersionCount > 0 && $setSelectedCount === $setVersionCount;
-                                $frontSetVersion = null;
-                                foreach ($set['versions'] as $candidateVersion) {
-                                    if ((string)($candidateVersion['photo_type'] ?? '') === 'front') {
-                                        $frontSetVersion = $candidateVersion;
-                                        break;
-                                    }
-                                }
-                                $frontSetVersion = $frontSetVersion ?: ($set['versions'][0] ?? null);
-                                $compareBeforePhoto = null;
-                                if ($frontSetVersion) {
-                                    $compareBeforePhoto = $beforePhotosById[(int)($frontSetVersion['before_photo_id'] ?? 0)] ?? null;
-                                }
-                                if (!$compareBeforePhoto) {
-                                    $compareBeforePhoto = $frontViewerPhoto ?: $displayBeforePhoto;
-                                }
-                                ?>
-                                <article class="rounded-md border <?= $setIsFullyActive ? 'border-slate-950 bg-slate-50' : 'border-slate-200 bg-white' ?> p-4">
-                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <h4 class="text-base font-semibold text-slate-900"><?= e((string)$set['label']) ?></h4>
-                                                <?php if ($setIsFullyActive): ?>
-                                                    <span class="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">In use</span>
-                                                <?php elseif ($setSelectedCount > 0): ?>
-                                                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">Part active</span>
-                                                <?php endif; ?>
-                                                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600"><?= e((string)$setVersionCount) ?> angle<?= $setVersionCount === 1 ? '' : 's' ?></span>
-                                            </div>
-                                            <?php if ($frontSetVersion): ?>
-                                                <p class="mt-1 text-sm text-slate-500">Front after #<?= e((string)$frontSetVersion['version_number']) ?> <?= e((string)$frontSetVersion['version_title']) ?></p>
-                                            <?php endif; ?>
-                                        </div>
-                                        <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_set_select.php')) ?>" data-preserve-open-sets>
-                                            <?= csrf_input() ?>
-                                            <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
-                                            <input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#compare-sets')) ?>">
-                                            <?php foreach ($set['ids'] as $setVersionId): ?>
-                                                <input type="hidden" name="after_version_ids[]" value="<?= e((string)$setVersionId) ?>">
-                                            <?php endforeach; ?>
-                                            <button class="rounded-md <?= $setIsFullyActive ? 'border border-slate-300 bg-white text-slate-500' : 'bg-slate-950 text-white' ?> px-3 py-2 text-xs font-semibold" type="submit" <?= $setIsFullyActive ? 'disabled' : '' ?>>
-                                                <?= $setIsFullyActive ? 'Using This Set' : 'Use This Set' ?>
-                                            </button>
-                                        </form>
-                                    </div>
-
-                                    <div class="mt-4 grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2">
-                                        <div class="bg-black p-2">
-                                            <?php if ($compareBeforePhoto): ?>
-                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> before" data-lightbox-src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> before">
-                                            <?php else: ?>
-                                                <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">Before missing</div>
-                                            <?php endif; ?>
-                                            <p class="mt-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">Before</p>
-                                        </div>
-                                        <div class="bg-black p-2">
-                                            <?php if ($frontSetVersion): ?>
-                                                <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_after_url((int)$frontSetVersion['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> front after" data-lightbox-src="<?= e(smile_design_after_url((int)$frontSetVersion['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> front after">
-                                            <?php else: ?>
-                                                <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">After missing</div>
-                                            <?php endif; ?>
-                                            <p class="mt-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">After</p>
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 flex flex-wrap gap-2">
-                                        <?php foreach ($set['versions'] as $version): ?>
-                                            <?php
-                                            $versionPhotoType = (string)($version['photo_type'] ?? 'front');
-                                            $isVersionSelected = (int)($version['selected_by_doctor'] ?? 0) === 1;
-                                            ?>
-                                            <span class="rounded-full <?= $isVersionSelected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600' ?> px-2.5 py-1 text-xs font-semibold">
-                                                #<?= e((string)$version['version_number']) ?> <?= e(smile_design_photo_type_options()[$versionPhotoType] ?? $versionPhotoType) ?>
-                                            </span>
-                                        <?php endforeach; ?>
-                                        <?php foreach ($set['missing_angles'] as $missingAngle): ?>
-                                            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-400"><?= e((string)$missingAngle) ?> missing</span>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </article>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-                <?php endif; ?>
-
-
                 <div class="mt-5 space-y-3">
                     <?php $firstSetKey = array_key_first($afterSets); ?>
                     <?php foreach ($afterSets as $setKey => $set): ?>
@@ -944,7 +843,6 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     </article>
                                 <?php endforeach; ?>
                             </div>
-                        </section>
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
@@ -983,6 +881,111 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                     <span data-ai-label>Generate Available Angles</span>
                 </button>
             </form>
+            <?php endif; ?>
+        </section>
+
+        <section id="compare-sets" data-case-panel="compare-sets" class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+            <?php if ($afterSets): ?>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare Sets</p>
+                        <h2 class="mt-2 text-lg font-semibold text-slate-900">Generated set comparison</h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-600">Use this view to compare versions side by side and pick the smile set that should load in Compare.</p>
+                    </div>
+                    <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" href="#generate">Back to Generate</a>
+                </div>
+                <div class="mt-5 grid gap-4 xl:grid-cols-2">
+                    <?php foreach ($afterSets as $setKey => $set): ?>
+                        <?php
+                        $setSelectedCount = (int)($set['selected_count'] ?? 0);
+                        $setVersionCount = count($set['versions']);
+                        $setIsFullyActive = $setVersionCount > 0 && $setSelectedCount === $setVersionCount;
+                        $frontSetVersion = null;
+                        foreach ($set['versions'] as $candidateVersion) {
+                            if ((string)($candidateVersion['photo_type'] ?? '') === 'front') {
+                                $frontSetVersion = $candidateVersion;
+                                break;
+                            }
+                        }
+                        $frontSetVersion = $frontSetVersion ?: ($set['versions'][0] ?? null);
+                        $compareBeforePhoto = null;
+                        if ($frontSetVersion) {
+                            $compareBeforePhoto = $beforePhotosById[(int)($frontSetVersion['before_photo_id'] ?? 0)] ?? null;
+                        }
+                        if (!$compareBeforePhoto) {
+                            $compareBeforePhoto = $frontViewerPhoto ?: $displayBeforePhoto;
+                        }
+                        ?>
+                        <article class="rounded-md border <?= $setIsFullyActive ? 'border-slate-950 bg-slate-50' : 'border-slate-200 bg-white' ?> p-4">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h4 class="text-base font-semibold text-slate-900"><?= e((string)$set['label']) ?></h4>
+                                        <?php if ($setIsFullyActive): ?>
+                                            <span class="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">In use</span>
+                                        <?php elseif ($setSelectedCount > 0): ?>
+                                            <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">Part active</span>
+                                        <?php endif; ?>
+                                        <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600"><?= e((string)$setVersionCount) ?> angle<?= $setVersionCount === 1 ? '' : 's' ?></span>
+                                    </div>
+                                    <?php if ($frontSetVersion): ?>
+                                        <p class="mt-1 text-sm text-slate-500">Front after #<?= e((string)$frontSetVersion['version_number']) ?> <?= e((string)$frontSetVersion['version_title']) ?></p>
+                                    <?php endif; ?>
+                                </div>
+                                <form method="POST" action="<?= e(base_url('app/actions/smile_design_after_set_select.php')) ?>" data-preserve-open-sets>
+                                    <?= csrf_input() ?>
+                                    <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
+                                    <input type="hidden" name="return_url" value="<?= e(base_url('smile-design/cases/' . $caseId . '#compare-sets')) ?>">
+                                    <?php foreach ($set['ids'] as $setVersionId): ?>
+                                        <input type="hidden" name="after_version_ids[]" value="<?= e((string)$setVersionId) ?>">
+                                    <?php endforeach; ?>
+                                    <button class="rounded-md <?= $setIsFullyActive ? 'border border-slate-300 bg-white text-slate-500' : 'bg-slate-950 text-white' ?> px-3 py-2 text-xs font-semibold" type="submit" <?= $setIsFullyActive ? 'disabled' : '' ?>>
+                                        <?= $setIsFullyActive ? 'Using This Set' : 'Use This Set' ?>
+                                    </button>
+                                </form>
+                            </div>
+
+                            <div class="mt-4 grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2">
+                                <div class="bg-black p-2">
+                                    <?php if ($compareBeforePhoto): ?>
+                                        <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> before" data-lightbox-src="<?= e(smile_design_photo_url((int)$compareBeforePhoto['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> before">
+                                    <?php else: ?>
+                                        <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">Before missing</div>
+                                    <?php endif; ?>
+                                    <p class="mt-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">Before</p>
+                                </div>
+                                <div class="bg-black p-2">
+                                    <?php if ($frontSetVersion): ?>
+                                        <img class="aspect-[4/3] w-full bg-black object-contain" src="<?= e(smile_design_after_url((int)$frontSetVersion['id'], '', 'thumb')) ?>" alt="<?= e((string)$set['label']) ?> front after" data-lightbox-src="<?= e(smile_design_after_url((int)$frontSetVersion['id'])) ?>" data-lightbox-alt="<?= e((string)$set['label']) ?> front after">
+                                    <?php else: ?>
+                                        <div class="flex aspect-[4/3] items-center justify-center bg-black text-xs font-semibold text-white/60">After missing</div>
+                                    <?php endif; ?>
+                                    <p class="mt-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">After</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <?php foreach ($set['versions'] as $version): ?>
+                                    <?php
+                                    $versionPhotoType = (string)($version['photo_type'] ?? 'front');
+                                    $isVersionSelected = (int)($version['selected_by_doctor'] ?? 0) === 1;
+                                    ?>
+                                    <span class="rounded-full <?= $isVersionSelected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600' ?> px-2.5 py-1 text-xs font-semibold">
+                                        #<?= e((string)$version['version_number']) ?> <?= e(smile_design_photo_type_options()[$versionPhotoType] ?? $versionPhotoType) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                                <?php foreach ($set['missing_angles'] as $missingAngle): ?>
+                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-400"><?= e((string)$missingAngle) ?> missing</span>
+                                <?php endforeach; ?>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Compare Sets</p>
+                <h2 class="mt-2 text-lg font-semibold text-slate-900">No generated sets yet</h2>
+                <p class="mt-2 text-sm leading-6 text-slate-600">Generate a full set of angles from the Generate tab, and the sets you create will be compared side by side here.</p>
+                <a class="mt-4 inline-block rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700" href="#generate">Go to Generate</a>
             <?php endif; ?>
         </section>
 

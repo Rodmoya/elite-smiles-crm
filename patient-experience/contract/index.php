@@ -47,7 +47,8 @@ $lineItemAreaLabel = static function (array $item) use ($legacyAreaLabel): strin
     return $legacyAreaLabel;
 };
 $hasOriginalTerms = isset($terms['cashier_check']);
-$financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($financials['final_price'] ?? 0) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
+$outOfPocket = (int)($snapshot['schema_version'] ?? 0) >= 5 ? ($financials['patient_responsibility'] ?? 0) : ($financials['final_price'] ?? 0);
+$financialLanguage = (string)($agreement['patient_name'] ?? '') . ', Your estimated out of pocket portion of your Dental Treatment cost will be ' . $money($outOfPocket) . ' after a professional discount is applied. A deposit of ' . $money($financials['deposit_amount'] ?? 0) . ' will be made prior to your appointment. ';
 if ((float)($financials['insurance_estimate'] ?? 0) > 0) $financialLanguage .= 'Your insurance estimated payment is ' . $money($financials['insurance_estimate']) . '. ';
 $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaining_balance'] ?? 0) . ' is due the day of your procedure. The Payment would be in a form of a cashier’s check made to Walter Meden DDS.';
 ?>
@@ -166,7 +167,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                         <p><?= e((string)$terms['treatment_changes']) ?></p>
                         <p class="font-semibold"><?= e((string)$terms['insurance_responsibility']) ?></p>
                         <?php if ((float)($financials['insurance_estimate'] ?? 0) > 0): ?><p><?= e((string)$terms['insurance_estimate']) ?></p><?php endif; ?>
-                        <p class="agreement-sedation"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
+                        <p class="agreement-sedation contract-secondary-term"><strong>Optional</strong> - <?= e($sedationBody) ?></p>
                         <p><strong><?= e((string)$terms['discount_acceptance']) ?></strong></p>
                     <?php else: ?>
                         <p><?= e((string)($terms['insurance'] ?? '')) ?></p><p><?= e((string)($terms['treatment_changes'] ?? '')) ?></p><p><?= e((string)($terms['payment'] ?? '')) ?></p><p><?= e((string)($terms['sedation'] ?? '')) ?></p>
@@ -179,7 +180,7 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
                     </section>
                     <div class="agreement-cancellation-bottom">
                         <?php if ($hasOriginalTerms): ?><p class="mb-[8pt] font-semibold"><?= e((string)$terms['original_cancellation']) ?></p><?php endif; ?>
-                        <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
+                        <p class="contract-secondary-term"><strong>Treatment Plan Cancellation.</strong> <?= e((string)($terms['cancellation_text'] ?? '')) ?></p>
                     </div>
                 </div>
             </div>
@@ -234,4 +235,5 @@ $financialLanguage .= 'Your remaining balance of ' . $money($financials['remaini
     </script>
 <?php endif; ?>
 </body>
+<script src="<?= e(base_url('assets/js/contract-print.js')) ?>?v=20260914e"></script>
 </html>

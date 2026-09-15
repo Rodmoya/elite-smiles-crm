@@ -7,6 +7,7 @@ require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../patient_experience/patient_experience_service.php';
 
 patient_experience_ensure_schema();
+header('Cache-Control: no-store, private');
 
 if (request_method() === 'GET') {
     $deviceToken = get('device_token', '');
@@ -40,11 +41,25 @@ if ($action === 'begin') {
 }
 
 if ($action === 'direct_begin') {
-    $patientName = trim((string)($payload['patient_name'] ?? ''));
-    if ($patientName === '') {
-        $patientName = 'Walk-in Patient';
+    // Retry the same start after a lost response without creating duplicate patients.
+    $startToken = trim((string)($payload['start_token'] ?? ''));
+    if ($startToken !== '' && !preg_match('/^[a-f0-9]{64}$/D', $startToken)) {
+        json_response(['ok' => false, 'message' => 'Invalid start request. Please reopen Patient Forms.'], 400);
     }
-    $session = patient_experience_start_placeholder_session(null, $patientName, null, null);
+    $startLock = 'pe_start_' . substr(hash('sha256', $startToken), 0, 48);
+    if ($startToken !== '' && (int)db_value('SELECT GET_LOCK(:name, 5)', ['name' => $startLock]) !== 1) {
+        json_response(['ok' => false, 'message' => 'Still starting your forms. Please try again.'], 409);
+    }
+    try {
+        $existing = $startToken !== '' ? db_one('SELECT id FROM patient_experience_checkin_sessions WHERE session_token_hash = :hash', ['hash' => patient_experience_token_hash($startToken)]) : null;
+        $patientName = trim((string)($payload['patient_name'] ?? ''));
+        if ($patientName === '') {
+            $patientName = 'Walk-in Patient';
+        }
+        $session = $existing ? ['id' => $existing['id'], 'token' => $startToken] : patient_experience_start_placeholder_session(null, $patientName, null, null, $startToken ?: null);
+    } finally {
+        if ($startToken !== '') db_value('SELECT RELEASE_LOCK(:name)', ['name' => $startLock]);
+    }
     if (!empty($session['error'])) {
         json_response(['ok' => false, 'message' => (string)$session['error']], 400);
     }

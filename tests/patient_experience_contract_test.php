@@ -19,11 +19,14 @@ try {
     $kioskApiMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/api/patient_experience_kiosk.php');
     $legacySidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar.php');
     $sidebarMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_sidebar_live.php');
+    $navigationMarkup = (string)file_get_contents(dirname(__DIR__) . '/app/partials/crm_nav_items.php');
+    $sidebarMarkup .= $navigationMarkup;
+    $legacySidebarMarkup .= $navigationMarkup;
     $patientExperienceMarkup = (string)file_get_contents(dirname(__DIR__) . '/patient-experience.php');
-    $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-3 gap-1.5');
+    $tabsStart = strpos($patientExperienceMarkup, 'grid grid-cols-2 gap-1.5');
     $tabsMarkup = $tabsStart === false ? '' : substr($patientExperienceMarkup, $tabsStart, 2200);
     $contractsTabPosition = strpos($tabsMarkup, '>Contracts</a>');
-    $patientsTabPosition = strpos($tabsMarkup, '>Intake & Patients</a>');
+    $patientsTabPosition = strpos($tabsMarkup, '>Patient Forms</a>');
     contract_expect(str_contains($creatorMarkup, '@page { size: letter; margin: 0; }'), 'Contract print layout is not locked to borderless letter size.');
     contract_expect(!str_contains($creatorMarkup, '<section class="space-y-6 no-print">'), 'The printable contract is hidden by its parent wrapper.');
     contract_expect(str_contains($creatorMarkup, 'padding-top: 1.65in'), 'Preprinted letterhead spacing is missing.');
@@ -34,9 +37,9 @@ try {
     contract_expect(str_contains($patientExperienceMarkup, "get('tab', 'patients')"), 'Patient Experience does not open Intake by default.');
     contract_expect(str_contains($patientExperienceMarkup, "\$activeTab = 'patients';"), 'Invalid Patient Experience tabs do not fall back to Intake.');
     contract_expect(str_contains($legacySidebarMarkup, "patient-experience.php?tab=patients"), 'Legacy Patient Experience navigation does not open Intake first.');
-    contract_expect(str_contains($patientExperienceMarkup, 'walk_in=1') && str_contains($patientExperienceMarkup, 'walkInIntakeQrUrl'), 'Permanent walk-in intake QR is missing.');
+    contract_expect(str_contains($patientExperienceMarkup, "base_url('patient-experience/kiosk/')") && str_contains($patientExperienceMarkup, 'walkInIntakeQrUrl'), 'Permanent office intake QR is missing.');
     contract_expect(str_contains($patientExperienceMarkup, 'patient_experience_contract_qr_data_url($walkInIntakeUrl)'), 'Walk-in intake QR is not generated locally.');
-    contract_expect(str_contains($kioskMarkup, 'kioskToken ? beginSession : beginDirectSession'), 'Walk-in QR does not start a new intake automatically.');
+    contract_expect(str_contains($kioskMarkup, 'id="start-forms"') && str_contains($kioskMarkup, 'else renderIdle();'), 'Office forms must wait for Start Forms, not create a patient on load.');
     contract_expect(str_contains($kioskMarkup, 'grid-template-columns: repeat(3, minmax(0, 1fr))'), 'Patient intake does not use the compact three-column desktop form layout.');
     contract_expect(str_contains($kioskMarkup, "'radio', 'yes_no'") && str_contains($kioskMarkup, 'form-choice-grid') && str_contains($kioskMarkup, '--choice-columns:'), 'Radio and yes/no choices must span the form and use responsive option columns.');
     contract_expect(str_contains($kioskMarkup, "const isConsent = category === 'consent'"), 'Patient forms do not switch into a dedicated consent-document mode.');
@@ -90,7 +93,7 @@ try {
     contract_expect(str_contains($creatorMarkup, 'id="preview-signature-patient"'), 'Patient name is missing beneath the preview signature line.');
     contract_expect(str_contains($creatorMarkup, 'align-items:start; margin:8pt 0 20px;'), 'Preview signature and date are not aligned or moved ten more pixels above the note.');
     contract_expect(str_contains($creatorMarkup, '.contract-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Contract preview signature and cancellation language are not anchored together at the bottom.');
-    contract_expect(str_contains($creatorMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language was not reduced by one point.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-secondary-term"><strong>Treatment Plan Cancellation.'), 'Contract preview cancellation language must share the smaller type style.');
     contract_expect(!str_contains($creatorMarkup, '>Included treatment<'), 'Contract preview still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($creatorMarkup, 'height:11in !important'), 'Contract preview print output is not constrained to one Letter page.');
     contract_expect(!str_contains($creatorMarkup, '>Financial summary<'), 'The contract preview still contains the non-original financial summary box.');
@@ -103,7 +106,7 @@ try {
     contract_expect(str_contains($creatorMarkup, '.contract-payment-notice { margin-bottom:16pt;'), 'Preview needs more space between the payment notice and procedures.');
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list { margin:0 0 16pt;'), 'Preview needs more space between procedures and legal language.');
     contract_expect(str_contains($creatorMarkup, '.contract-treatment-list li { margin:0 0 3pt;'), 'Preview procedures do not have the requested subtle row spacing.');
-    contract_expect(str_contains($creatorMarkup, 'class="contract-sedation"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language is not red.');
+    contract_expect(str_contains($creatorMarkup, 'class="contract-sedation contract-secondary-term"') && str_contains($creatorMarkup, '.contract-sedation { color:#b91c1c; }'), 'Preview sedation language must remain red and use the smaller type style.');
     contract_expect(str_contains($creatorMarkup, '<strong>Optional</strong>'), 'Preview sedation language does not bold Optional.');
     contract_expect(str_contains($creatorMarkup, "<strong><?= e((string)\$originalTerms['discount_acceptance']) ?></strong>"), 'Preview discounted-price language is not bold.');
     $creatorScriptPosition = strpos($creatorMarkup, '<script>');
@@ -117,7 +120,10 @@ try {
     contract_expect(str_contains($publicContractMarkup, 'agreement-signature-patient') && str_contains($publicContractMarkup, "\$agreement['patient_name']"), 'Patient name is missing beneath the public signature line.');
     contract_expect(str_contains($publicContractMarkup, 'align-items:start; margin:8pt 0 20px;'), 'Public signature and date are not aligned or moved ten more pixels above the note.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-closing-block { margin-top:auto; margin-bottom:5px; }'), 'Signing-document signature and cancellation language are not anchored together at the bottom.');
-    contract_expect(str_contains($publicContractMarkup, 'class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.'), 'Signing contract cancellation language was not reduced by one point.');
+    contract_expect(str_contains($publicContractMarkup, 'class="contract-secondary-term"><strong>Treatment Plan Cancellation.'), 'Signing cancellation language must share the smaller type style.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation contract-secondary-term"'), 'Signing sedation language must share the smaller type style.');
+    $printStyles = (string)file_get_contents(dirname(__DIR__) . '/assets/js/contract-print.js');
+    contract_expect(str_contains($printStyles, '.contract-secondary-term { font-size:9pt !important; line-height:1.15 !important; }'), 'Both paragraphs must use the requested 9pt size.');
     contract_expect(!str_contains($publicContractMarkup, '>Included treatment<'), 'Signing contract still contains a modern section heading that is absent from the originals.');
     contract_expect(str_contains($publicContractMarkup, 'height:11in'), 'Signing contract print output is not constrained to one Letter page.');
     contract_expect(str_contains($publicContractMarkup, 'w-[147px]') && str_contains($publicContractMarkup, 'text-[10px]'), 'The digital branded signing header was not reduced by about 30%.');
@@ -126,7 +132,7 @@ try {
     contract_expect(str_contains($publicContractMarkup, '.agreement-payment-notice { margin-bottom:16pt;'), 'Signing document needs more space between the payment notice and procedures.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list { margin:0 0 16pt;'), 'Signing document needs more space between procedures and legal language.');
     contract_expect(str_contains($publicContractMarkup, '.agreement-treatment-list li { margin:0 0 3pt;'), 'Signing-document procedures do not have the requested subtle row spacing.');
-    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
+    contract_expect(str_contains($publicContractMarkup, 'class="agreement-sedation contract-secondary-term"') && str_contains($publicContractMarkup, '.agreement-sedation { color:#b91c1c; }'), 'Signing-document sedation language is not red.');
     contract_expect(str_contains($publicContractMarkup, '<strong>Optional</strong>'), 'Signing-document sedation language does not bold Optional.');
     contract_expect(str_contains($publicContractMarkup, "<strong><?= e((string)\$terms['discount_acceptance']) ?></strong>"), 'Signing-document discounted-price language is not bold.');
     foreach (['cashier_check', 'credit_card', 'treatment_changes', 'insurance_responsibility', 'sedation', 'discount_acceptance', 'original_cancellation'] as $termKey) {
@@ -251,6 +257,12 @@ try {
     contract_expect(!empty($delivery['ok']), 'Immutable delivery version was not created.');
     contract_expect((int)db_value('SELECT COUNT(*) FROM patient_experience_contract_versions WHERE contract_id=:id', ['id' => $contractId]) === 1, 'Contract version count is incorrect.');
     parse_str((string)parse_url((string)$delivery['url'], PHP_URL_QUERY), $query);
+    contract_expect((string)db_value('SELECT status FROM patient_experience_contracts WHERE id=:id', ['id'=>$contractId]) === 'ready', 'Link-only preparation must not claim sent delivery.');
+    $resend = patient_experience_contract_prepare_delivery($contractId, [], null);
+    contract_expect($resend['url'] === $delivery['url'], 'Resending must preserve the signing link.');
+    contract_expect($resend['version_id'] === $delivery['version_id'], 'Resending must preserve the immutable version.');
+    $ordered = patient_experience_contract_input(['patient_name'=>'Order test','treatment_key'=>'veneers','line_items'=>['veneers','gingivectomy'],'line_item_teeth'=>['veneers'=>[6],'gingivectomy'=>[7]],'line_item_order'=>'["gingivectomy","veneers"]','final_price'=>1000]);
+    contract_expect(array_column($ordered['line_items'], 'key') === ['gingivectomy','veneers'], 'Preview order must survive server normalization.');
     $token = (string)($query['t'] ?? '');
     $resolved = patient_experience_contract_from_token($token, false);
     contract_expect((bool)$resolved, 'Secure contract token did not resolve.');

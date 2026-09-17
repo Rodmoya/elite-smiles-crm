@@ -54,3 +54,12 @@ RewriteRule ^dental-models/?$ dental-models/index.php [L,QSA]
 RewriteRule ^dental-models/new/?$ dental-models/new.php [L,QSA]
 RewriteRule ^dental-models/([0-9]+)/builder/?$ dental-models/builder.php?id=$1 [L,QSA]
 RewriteRule ^dental-models/([0-9]+)/download-original/?$ app/actions/dental_model_file.php?id=$1&download=1 [L,QSA]
+
+# Dentrix Schedule Bridge routes (Phase 1: manual PDF upload only).
+RewriteRule ^dentrix-schedule/?$ dentrix-schedule/index.php [L,QSA]
+RewriteRule ^dentrix-schedule/upload/?$ dentrix-schedule/upload.php [L,QSA]
+
+# Dentrix Schedule Bridge JSON API (Phase 2: consult slot engine).
+RewriteRule ^api/dentrix-schedule/availability/?$ app/api/dentrix_schedule_availability.php [L,QSA]
+RewriteRule ^api/dentrix-schedule/block-slot/?$ app/api/dentrix_schedule_block_slot.php [L,QSA]
+RewriteRule ^api/dentrix-schedule/unblock-slot/?$ app/api/dentrix_schedule_unblock_slot.php [L,QSA]

@@ -14,7 +14,7 @@ if (!function_exists('lead_playbook_sms_templates')) {
         return [
             'first_follow_up' => [
                 'label' => 'First Follow-Up',
-                'body' => 'Hi {first_name}, this is Rod with Elite Smiles. I saw your request about veneers/smile options. What are you hoping to improve most: color, shape, spacing, worn teeth, or just exploring what is possible? Reply STOP to opt out.',
+                'body' => 'Hi {first_name}, this is Rod with Elite Smiles. I saw your request about improving your smile. What are you hoping to improve most: replacing missing teeth, the shape or color of your teeth, how your gums and lips frame your smile, or just exploring what is possible? Reply STOP to opt out.',
             ],
             'price_objection' => [
                 'label' => 'Price Question',
@@ -42,7 +42,7 @@ if (!function_exists('lead_playbook_sms_templates')) {
             ],
             'appointment_confirmation' => [
                 'label' => 'Appointment Confirmation',
-                'body' => 'Perfect, {first_name}. I have you scheduled for {appointment_time} with Dr. Meden for your free dental implant consultation. We will see you at 11762 South State, Suite 300, Draper, UT 84020. If you need a quick call before then or anything changes, just let me know.',
+                'body' => 'Perfect, {first_name}. I have you scheduled for {appointment_time} with Dr. Meden for your free consultation. We will see you at 11762 South State, Suite 300, Draper, UT 84020. Directions: https://maps.app.goo.gl/ZXg2nV5ARpC7NHLUA. If you need a quick call before then or anything changes, just let me know.',
             ],
         ];
     }

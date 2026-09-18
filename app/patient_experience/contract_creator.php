@@ -39,18 +39,21 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
     .contract-treatment-list li:last-child { margin-bottom:0; }
     .contract-original-copy > p, .contract-legal-copy > p { margin:0 0 8pt; }
     .contract-closing-block { margin-top:auto; margin-bottom:5px; }
-    .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.25in; align-items:start; margin:8pt 0 20px; }
+    .contract-signature-original { display:grid; grid-template-columns:minmax(0,1fr) 1.65in; gap:.2in; align-items:start; margin:10px 0 18px; }
     .contract-signature-primary { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.08in; align-items:end; }
+    .contract-signature-date-row { grid-column:2; align-items:end; margin-top:10px; }
     .contract-signature-patient { grid-column:2; margin-top:2px; font-size:9pt; line-height:1.1; }
     .contract-signature-rule { min-height:.3in; border-bottom:1px solid #111827; }
     .contract-cancellation-bottom { margin:0; }
+    .contract-cancellation-bottom .contract-cancellation-headline,
+    .contract-cancellation-bottom p:last-child { font-size:9pt; line-height:1.15; }
     .contract-page.preprinted .contract-digital-letterhead,
-    .contract-page.preprinted .contract-digital-footer { display: none; }
+    .contract-page.preprinted .contract-digital-letterhead { padding-top:0.07in; }
     .contract-page.preprinted .contract-paper-body { padding-top: 1.65in; }
     .contract-tooth input:checked + span { background:#0f172a; border-color:#0f172a; color:#fff; box-shadow:0 0 0 3px rgba(15,23,42,.12); }
     .contract-option input:checked + span { background:#eff6ff; border-color:#2563eb; color:#1e3a8a; }
     .contract-payment-notice { margin-bottom:16pt; background:#fef3c7; border:1px solid #fcd34d; white-space:nowrap; font-size:10.5px; line-height:1.25; }
-    .contract-sedation { color:#b91c1c; }
+    .contract-sedation { color:#b91c1c; font-size:9pt; line-height:1.15; }
     @media print {
         @page { size: letter; margin: 0; }
         body * { visibility:hidden !important; }
@@ -60,10 +63,13 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
         #contract-preview .contract-digital-letterhead img { width:1.20in !important; }
         #contract-preview .contract-paper-body { padding-right:1in !important; padding-bottom:0.58in !important; padding-left:1in !important; font-size:11pt !important; line-height:1.08 !important; }
         #contract-preview:not(.preprinted) .contract-paper-body { padding-top:0.35in !important; }
-        #contract-preview.preprinted .contract-paper-body { padding-top:1.65in !important; }
+        #contract-preview.preprinted .contract-paper-body { padding-top:1.35in !important; }
         #contract-preview .contract-treatment-list li, #contract-preview .contract-signature { break-inside:avoid; page-break-inside:avoid; }
         #contract-preview .contract-legal-copy { font-size:11pt !important; line-height:1.08 !important; }
         #contract-preview .contract-payment-notice { white-space:nowrap !important; font-size:10.5px !important; line-height:1.25 !important; }
+        #contract-preview .contract-sedation,
+        #contract-preview .contract-cancellation-bottom p,
+        #contract-preview .contract-cancellation-bottom .contract-cancellation-headline { font-size:9pt !important; line-height:1.15 !important; }
         .contract-preview-tools { display:none !important; }
     }
     @media (max-width: 700px) { .contract-payment-notice { white-space:normal; } }
@@ -248,11 +254,11 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $agreementDate)) $agreementDate = date(
                     <div class="contract-closing-block">
                         <div class="contract-signature contract-signature-original">
                             <div class="contract-signature-primary"><span class="whitespace-nowrap">Patient Signature/Responsible Party:</span><span class="contract-signature-rule min-w-0"><?php if ($signature): ?><img src="<?= e((string)$signature['signature_data']) ?>" alt="Patient signature" class="max-h-[.42in] max-w-full object-contain object-left-bottom"><?php endif; ?></span><span id="preview-signature-patient" class="contract-signature-patient">Patient name</span></div>
-                            <div class="flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
+                            <div class="contract-signature-date-row flex items-end gap-2"><span>Date:</span><span class="contract-signature-rule min-w-0 flex-1"><?= $signature ? e(format_datetime((string)$signature['signed_at'])) : '' ?></span></div>
                         </div>
                         <div class="contract-cancellation-bottom">
-                            <p class="mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
-                            <p class="contract-secondary-term"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
+                            <p class="contract-cancellation-headline mb-[8pt] font-semibold"><?= e((string)$originalTerms['original_cancellation']) ?></p>
+                            <p class="text-[9pt] leading-[1.15]"><strong>Treatment Plan Cancellation.</strong> <?= e(patient_experience_contract_cancellation_text()) ?></p>
                         </div>
                     </div>
                 </div>

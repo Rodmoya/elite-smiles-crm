@@ -42,6 +42,7 @@
 
         <form id="quizForm" method="POST" action="<?= e($formAction) ?>" class="space-y-6" data-track-form="quiz_form">
             <?= csrf_input() ?>
+            <?= function_exists('lp_honeypot_field') ? lp_honeypot_field() : '' ?>
             <?php
             $attributionFields = is_array($modal['attribution'] ?? null) ? $modal['attribution'] : [];
             foreach ($attributionFields as $attrName => $attrValue):

@@ -92,6 +92,7 @@ $miniLandingGate = (bool) ($landingContext['miniLandingGate'] ?? false);
             <?php else: ?>
                 <form id="quickLeadForm" method="POST" action="<?= e($quickFormAction) ?>" class="mt-6 max-w-xl rounded-[1.25rem] border border-eliteBorder bg-[#fbfaf8] p-4 shadow-sm sm:p-5" data-track-form="quick_lead_form">
                     <?= csrf_input() ?>
+                    <?= function_exists('lp_honeypot_field') ? lp_honeypot_field() : '' ?>
                     <?php foreach ($quickAttribution as $attrName => $attrValue): ?>
                         <?php if (!is_scalar($attrValue)) continue; ?>
                         <input type="hidden" name="<?= e((string) $attrName) ?>" value="<?= e((string) $attrValue) ?>">

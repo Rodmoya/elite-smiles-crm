@@ -87,6 +87,7 @@ $partialsDir = __DIR__ . '/../partials';
 
                 <form method="POST" action="<?= e($formAction) ?>">
                     <?= csrf_input() ?>
+                    <?= function_exists('lp_honeypot_field') ? lp_honeypot_field() : '' ?>
 
                     <div class="field">
                         <label for="full_name">Full Name</label>

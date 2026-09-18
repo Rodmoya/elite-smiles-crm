@@ -31,9 +31,37 @@ if (!function_exists('lp_handle_post')) {
             return $result;
         }
 
-        try {
-            require_csrf();
+        // A stale or missing CSRF token used to hard-exit through require_csrf()
+        // with a bare "419 Invalid CSRF token" text page - so a visitor whose
+        // 2-hour session expired while the tab sat open lost the lead with no way
+        // back. Re-render the branded page instead: csrf_input() mints a fresh
+        // token on this render and the typed values are carried back into the
+        // form, so pressing the button again simply works.
+        $csrfToken = post('_csrf_token');
+        if (!csrf_validate(is_string($csrfToken) ? $csrfToken : null)) {
+            $result['error'] = 'This page sat open a little too long and the security check expired. Please press the button once more to send your request.';
+            $result['standardForm'] = lp_form_from_post($ctx);
+            return $result;
+        }
 
+        // Bots fill every field they can see and submit within a second of the
+        // page loading; humans do neither. Show the bot a normal thank-you so it
+        // has nothing to adapt to, but store nothing and notify no one.
+        $spamReason = lp_spam_check();
+        if ($spamReason !== '') {
+            if (function_exists('esm_log')) {
+                esm_log('landing_spam', 'Landing form submission dropped as automated.', [
+                    'slug' => (string) ($ctx['slug'] ?? ''),
+                    'reason' => $spamReason,
+                    'ip' => function_exists('client_ip') ? client_ip() : '',
+                ]);
+            }
+            $result['success'] = true;
+            $result['successMessage'] = 'Thank you - we received your information. Rod with Elite Smiles will text or call you shortly.';
+            return $result;
+        }
+
+        try {
             if ($ctx['layoutVariant'] === 'voucher_compact') {
                 return lp_handle_voucher_post($ctx, $result);
             } else {
@@ -47,6 +75,70 @@ if (!function_exists('lp_handle_post')) {
         }
     }
 
+}
+
+if (!function_exists('lp_honeypot_field')) {
+    /**
+     * Anti-bot fields rendered inside every landing form, next to csrf_input().
+     * The text input is moved off-screen (not display:none, which some bots
+     * honor) and carries a deliberately meaningless name so browser autofill
+     * never touches it. The timestamp lets lp_spam_check() reject submissions
+     * that arrive faster than a person could possibly type a name and phone.
+     */
+    function lp_honeypot_field(): string
+    {
+        $renderedAt = htmlspecialchars((string) time(), ENT_QUOTES, 'UTF-8');
+        return '<div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">'
+            . '<label>Leave this field empty <input type="text" name="lp_contact_ref" value="" tabindex="-1" autocomplete="off"></label>'
+            . '<input type="hidden" name="lp_rendered_at" value="' . $renderedAt . '">'
+            . '</div>';
+    }
+}
+
+if (!function_exists('lp_spam_check')) {
+    /** Returns a short reason when the POST looks automated, or '' for a real person. */
+    function lp_spam_check(): string
+    {
+        if (trim((string) post('lp_contact_ref')) !== '') {
+            return 'honeypot_filled';
+        }
+        // A missing timestamp (older cached markup, stripped by a proxy) is not
+        // evidence of anything - only an implausibly fast round trip is.
+        $renderedAt = (int) post('lp_rendered_at', 0);
+        if ($renderedAt > 0 && (time() - $renderedAt) < 3) {
+            return 'submitted_too_fast';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('lp_form_from_post')) {
+    /**
+     * The standard form's fields as the visitor submitted them. Used both to
+     * process a submission and to hand the typed values back to the template
+     * when the submission has to be re-rendered (validation or CSRF failure).
+     */
+    function lp_form_from_post(array $ctx): array
+    {
+        $sf = $ctx['standardForm'];
+        $sf['first_name']         = trim((string) post('first_name'));
+        $sf['last_name']          = trim((string) post('last_name'));
+        $sf['email']              = trim((string) post('email'));
+        $sf['phone']              = trim((string) post('phone'));
+        $sf['procedure_interest'] = trim((string) post('procedure_interest', $ctx['procedureLabel']));
+        $sf['financing_needed']   = trim((string) post('financing_needed', 'unsure'));
+        $sf['preferred_contact']  = trim((string) post('preferred_contact'));
+        $sf['sms_consent']        = post('sms_consent') === 'yes' ? 'yes' : '';
+        $sf['preferred_language']  = strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
+        $sf['preferred_language_source'] = lp_language_preference_source((string) post('preferred_language_source', 'landing_page_default'));
+
+        foreach ($ctx['quizSteps'] as $step) {
+            $field = (string) ($step['field'] ?? '');
+            if ($field !== '') $sf[$field] = trim((string) post($field));
+        }
+
+        return $sf;
+    }
 }
 
 if (!function_exists('lp_language_preference_source')) {
@@ -78,22 +170,7 @@ if (!function_exists('lp_handle_standard_post')) {
 
     function lp_handle_standard_post(array $ctx, array $result): array
     {
-        $sf = $ctx['standardForm'];
-        $sf['first_name']         = trim((string) post('first_name'));
-        $sf['last_name']          = trim((string) post('last_name'));
-        $sf['email']              = trim((string) post('email'));
-        $sf['phone']              = trim((string) post('phone'));
-        $sf['procedure_interest'] = trim((string) post('procedure_interest', $ctx['procedureLabel']));
-        $sf['financing_needed']   = trim((string) post('financing_needed', 'unsure'));
-        $sf['preferred_contact']  = trim((string) post('preferred_contact'));
-        $sf['sms_consent']        = post('sms_consent') === 'yes' ? 'yes' : '';
-        $sf['preferred_language']  = strtolower(trim((string) post('preferred_language', 'en'))) === 'es' ? 'es' : 'en';
-        $sf['preferred_language_source'] = lp_language_preference_source((string) post('preferred_language_source', 'landing_page_default'));
-
-        foreach ($ctx['quizSteps'] as $step) {
-            $field = (string) ($step['field'] ?? '');
-            if ($field !== '') $sf[$field] = trim((string) post($field));
-        }
+        $sf = lp_form_from_post($ctx);
 
         // Validate
         if ($sf['first_name'] === '') throw new RuntimeException('Please enter your first name.');

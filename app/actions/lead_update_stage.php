@@ -1,34 +1,36 @@
-<?php
-declare(strict_types=1);
-
-/**
- * Elite Smiles CRM
- * File: /app/actions/lead_update_stage.php
- *
- * AJAX endpoint to save lead stage changes.
- */
-
-require_once dirname(__DIR__) . '/config/config.php';
-require_once dirname(__DIR__) . '/core/helpers.php';
-require_once dirname(__DIR__) . '/core/db.php';
+<?php
+declare(strict_types=1);
+
+/**
+ * Elite Smiles CRM
+ * File: /app/actions/lead_update_stage.php
+ *
+ * AJAX endpoint to save lead stage changes.
+ */
+
+require_once dirname(__DIR__) . '/config/config.php';
+require_once dirname(__DIR__) . '/core/helpers.php';
+require_once dirname(__DIR__) . '/core/db.php';
 require_once dirname(__DIR__) . '/core/auth.php';
 require_once dirname(__DIR__) . '/core/mailer.php';
 require_once dirname(__DIR__) . '/leads/lead_meta.php';
 require_once dirname(__DIR__) . '/leads/lead_service.php';
 require_once dirname(__DIR__) . '/leads/lead_communications.php';
+require_once dirname(__DIR__) . '/leads/lead_email.php';
+require_once dirname(__DIR__) . '/leads/consultation_patient_reminders.php';
 require_once dirname(__DIR__) . '/leads/lead_agent_observability.php';
-
-header('Content-Type: application/json; charset=utf-8');
-
-if (!auth_check()) {
-    http_response_code(401);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Unauthorized.',
-    ]);
-    exit;
-}
-
+
+header('Content-Type: application/json; charset=utf-8');
+
+if (!auth_check()) {
+    http_response_code(401);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Unauthorized.',
+    ]);
+    exit;
+}
+
 if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
 
     http_response_code(403);
@@ -48,68 +50,68 @@ if (!function_exists('auth_can_manage_leads') || !auth_can_manage_leads()) {
 
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Method not allowed.',
-    ]);
-    exit;
-}
-
-try {
-    require_csrf();
-} catch (Throwable $e) {
-    http_response_code(419);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Invalid session token.',
-    ]);
-    exit;
-}
-
-if (!leads_table_exists()) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Leads table not found.',
-    ]);
-    exit;
-}
-
+    http_response_code(405);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Method not allowed.',
+    ]);
+    exit;
+}
+
+try {
+    require_csrf();
+} catch (Throwable $e) {
+    http_response_code(419);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Invalid session token.',
+    ]);
+    exit;
+}
+
+if (!leads_table_exists()) {
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Leads table not found.',
+    ]);
+    exit;
+}
+
 $leadId = (int) post('lead_id');
 $newStage = trim((string) post('status'));
 $displayStage = trim((string) post('display_stage'));
 $orderedIds = $_POST['ordered_ids'] ?? [];
 $sourceOrderedIds = $_POST['source_ordered_ids'] ?? [];
-
-if ($leadId <= 0) {
-    http_response_code(422);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Invalid lead selected.',
-    ]);
-    exit;
-}
-
-if ($newStage === '' || $newStage === '_blank') {
-    http_response_code(422);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Invalid stage selected.',
-    ]);
-    exit;
-}
-
+
+if ($leadId <= 0) {
+    http_response_code(422);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Invalid lead selected.',
+    ]);
+    exit;
+}
+
+if ($newStage === '' || $newStage === '_blank') {
+    http_response_code(422);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Invalid stage selected.',
+    ]);
+    exit;
+}
+
 $allowedStages = lead_stage_labels();
-if (!isset($allowedStages[$newStage])) {
-    http_response_code(422);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Stage is not allowed.',
-    ]);
-    exit;
-}
-
+if (!isset($allowedStages[$newStage])) {
+    http_response_code(422);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Stage is not allowed.',
+    ]);
+    exit;
+}
+
 try {
     lead_pipeline_ensure_schema();
     lead_comm_ensure_schema();
@@ -118,12 +120,12 @@ try {
         ['id' => $leadId]
     );
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Could not verify lead.',
-    ]);
-    exit;
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Could not verify lead.',
+    ]);
+    exit;
 }
 $displayStages = function_exists('lead_conversion_stage_labels') ? lead_conversion_stage_labels() : [];
 if ($displayStage !== '') {
@@ -144,23 +146,23 @@ if (!$existingLead) {
     http_response_code(404);
     echo json_encode([
         'ok' => false,
-        'message' => 'Lead not found.',
-    ]);
-    exit;
-}
-
-$setParts = [];
-$params = [
-    'id' => $leadId,
-    'status' => $newStage,
-];
-
-if (leads_has_column('status')) {
-    $setParts[] = "status = :status";
-}
-
-if (leads_has_column('updated_at')) {
-    $setParts[] = "updated_at = :updated_at";
+        'message' => 'Lead not found.',
+    ]);
+    exit;
+}
+
+$setParts = [];
+$params = [
+    'id' => $leadId,
+    'status' => $newStage,
+];
+
+if (leads_has_column('status')) {
+    $setParts[] = "status = :status";
+}
+
+if (leads_has_column('updated_at')) {
+    $setParts[] = "updated_at = :updated_at";
     $params['updated_at'] = now();
 }
 
@@ -188,14 +190,14 @@ if ($displayStage === 'scheduling' && leads_has_column('consultation_status')) {
 }
 
 if (empty($setParts)) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'No compatible stage field available to update.',
-    ]);
-    exit;
-}
-
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'No compatible stage field available to update.',
+    ]);
+    exit;
+}
+
 try {
     db_execute(
         "UPDATE leads SET " . implode(', ', $setParts) . " WHERE id = :id LIMIT 1",
@@ -268,6 +270,23 @@ try {
                         'created_by' => auth_name(),
                     ]);
                 }
+                // Patient confirmation when a lead is moved into Booked and a
+                // consultation date is already on file. Moving the stage without
+                // a date sends nothing - the details save fires it once the date
+                // is entered.
+                if ($oldStage !== 'consultation_booked' && function_exists('consultation_booking_confirmation_send')) {
+                    try {
+                        $confirmationLead = db_one('SELECT * FROM leads WHERE id = :id LIMIT 1', ['id' => $leadId]);
+                        if ($confirmationLead && trim((string) ($confirmationLead['consultation_date'] ?? '')) !== '') {
+                            consultation_booking_confirmation_send($confirmationLead, ['source' => 'lead_update_stage']);
+                        }
+                    } catch (Throwable $confirmationError) {
+                        esm_log('appointment_confirmation', 'Stage moved to booked, but patient confirmation failed.', [
+                            'lead_id' => $leadId,
+                            'error' => $confirmationError->getMessage(),
+                        ]);
+                    }
+                }
             }
         }
 
@@ -281,19 +300,19 @@ try {
 
     echo json_encode([
         'ok' => true,
-        'message' => 'Lead stage updated.',
-        'lead_id' => $leadId,
+        'message' => 'Lead stage updated.',
+        'lead_id' => $leadId,
         'status' => $newStage,
         'status_label' => $displayStage !== '' ? ($displayStages[$displayStage] ?? $displayStage) : ($allowedStages[$newStage] ?? $newStage),
         'display_stage' => $displayStage,
         'display_stage_label' => $displayStage !== '' ? ($displayStages[$displayStage] ?? $displayStage) : '',
-    ]);
-    exit;
-} catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Failed to update lead stage.',
-    ]);
-    exit;
+    ]);
+    exit;
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'message' => 'Failed to update lead stage.',
+    ]);
+    exit;
 }

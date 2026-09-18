@@ -377,7 +377,13 @@ if (!function_exists('meta_lead_prepare_input')) {
             $procedure = meta_lead_guess_procedure((string)meta_lead_value($normalized, ['campaign_name', 'campaign', 'source_campaign']));
         }
         if ($procedure === '') {
-            $procedure = 'Veneers';
+            // The instant form does not ask what the person wants to improve and
+            // the ad now covers veneers, implants, All-on-X, and lip
+            // repositioning. Labeling these "Veneers" made the first text pitch
+            // a veneers consultation to someone who may have missing teeth.
+            // "Meta" tells staff where the lead came from and tells the agent
+            // the procedure is unknown, so it asks instead of assuming.
+            $procedure = 'Meta';
         }
 
         $campaign = trim((string)meta_lead_value($normalized, ['campaign_name', 'campaign', 'source_campaign']));

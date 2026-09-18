@@ -307,9 +307,23 @@ function consultation_reminder_send_doctor_sms(array $lead, array $event): array
     ];
 }
 
-$configuredSecret = trim((string)ELITE_CONSULTATION_REMINDER_CRON_SECRET);
-if ($configuredSecret === '' || !hash_equals($configuredSecret, consultation_reminder_secret())) {
-    consultation_reminder_json(['ok' => false, 'message' => 'Unauthorized.'], 401);
+// Server cron runs this directly with the CLI PHP binary (same pattern as
+// bin/lead-agent-cron.php): a CLI caller is already the account user, so no
+// shared secret is needed and none has to sit in the crontab. HTTP callers
+// (the GitHub fallback workflow) still must present the secret.
+if (PHP_SAPI === 'cli') {
+    $cliOptions = getopt('', ['doctor-only::', 'limit::']);
+    if (array_key_exists('doctor-only', $cliOptions)) {
+        $_GET['doctor_only'] = $cliOptions['doctor-only'] === false ? '1' : (string)$cliOptions['doctor-only'];
+    }
+    if (isset($cliOptions['limit']) && is_numeric($cliOptions['limit'])) {
+        $_GET['limit'] = (string)(int)$cliOptions['limit'];
+    }
+} else {
+    $configuredSecret = trim((string)ELITE_CONSULTATION_REMINDER_CRON_SECRET);
+    if ($configuredSecret === '' || !hash_equals($configuredSecret, consultation_reminder_secret())) {
+        consultation_reminder_json(['ok' => false, 'message' => 'Unauthorized.'], 401);
+    }
 }
 
 try {

@@ -550,6 +550,56 @@ smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case work
                                     <?php if (!empty($caseAnalysis['analysis']['doctor_review_notes']) && is_array($caseAnalysis['analysis']['doctor_review_notes'])): ?>
                                         <div><span class="font-semibold text-slate-800">Doctor review notes:</span> <?= e(implode(' | ', array_map('strval', $caseAnalysis['analysis']['doctor_review_notes']))) ?></div>
                                     <?php endif; ?>
+                                    <?php
+                                    // What the analysis actually measured against the face. Without this
+                                    // on screen the geometry the generator is being told to correct is
+                                    // invisible, and a result can only be judged by eye.
+                                    $smileGeometry = is_array($caseAnalysis['analysis']['smile_geometry'] ?? null)
+                                        ? $caseAnalysis['analysis']['smile_geometry']
+                                        : [];
+                                    $geometryLabels = [
+                                        'dental_midline' => 'Midline',
+                                        'incisal_plane' => 'Incisal plane',
+                                        'smile_arc' => 'Smile arc',
+                                        'central_incisor_proportion' => 'Central proportion',
+                                        'lateral_canine_progression' => 'Width progression',
+                                        'embrasures' => 'Embrasures',
+                                        'axial_inclination' => 'Axial inclination',
+                                        'gingival_zeniths' => 'Gingival zeniths',
+                                        'buccal_corridor' => 'Buccal corridor',
+                                    ];
+                                    $geometryRows = [];
+                                    foreach ($geometryLabels as $geometryKey => $geometryLabel) {
+                                        $geometryValue = trim((string)($smileGeometry[$geometryKey] ?? ''));
+                                        if ($geometryValue !== '') {
+                                            $geometryRows[$geometryLabel] = $geometryValue;
+                                        }
+                                    }
+                                    $geometryCorrections = array_values(array_filter(array_map(
+                                        static fn($correction): string => trim((string)$correction),
+                                        (array)($smileGeometry['corrections'] ?? [])
+                                    )));
+                                    ?>
+                                    <?php if ($geometryRows !== [] || $geometryCorrections !== []): ?>
+                                        <div class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                                            <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Smile geometry measured</p>
+                                            <div class="mt-2 grid gap-1 sm:grid-cols-2">
+                                                <?php foreach ($geometryRows as $geometryLabel => $geometryValue): ?>
+                                                    <div><span class="font-semibold text-slate-800"><?= e((string)$geometryLabel) ?>:</span> <?= e($geometryValue) ?></div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <?php if ($geometryCorrections !== []): ?>
+                                                <p class="mt-2 font-semibold text-slate-800">Corrections sent to the generator</p>
+                                                <ol class="mt-1 list-decimal space-y-0.5 pl-4">
+                                                    <?php foreach ($geometryCorrections as $correction): ?>
+                                                        <li><?= e($correction) ?></li>
+                                                    <?php endforeach; ?>
+                                                </ol>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php elseif (!empty($caseAnalysis['analysis'])): ?>
+                                        <div class="mt-2 text-[11px] text-slate-500">Smile geometry was not measured on this analysis. Re-run the analysis to capture midline, incisal plane, arc, and proportion.</div>
+                                    <?php endif; ?>
                                 </div>
                             <?php endif; ?>
                         </div>

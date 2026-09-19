@@ -885,10 +885,145 @@ if (!function_exists('lead_agent_classify_inbound')) {
     }
 }
 
+if (!function_exists('lead_agent_clock_to_minutes')) {
+    /** "4:30" + "pm" -> 990 minutes past midnight. Null when it cannot be read. */
+    function lead_agent_clock_to_minutes(int $hour, int $minute, string $meridian): ?int
+    {
+        $meridian = strtolower(str_replace('.', '', trim($meridian)));
+        if ($hour < 1 || $hour > 12 || $minute < 0 || $minute > 59 || $meridian === '') {
+            return null;
+        }
+        $hour %= 12;
+        if (str_starts_with($meridian, 'p')) {
+            $hour += 12;
+        }
+        return ($hour * 60) + $minute;
+    }
+}
+
+if (!function_exists('lead_agent_minutes_to_clock')) {
+    /** 1020 -> "5:00 PM". */
+    function lead_agent_minutes_to_clock(int $minutes): string
+    {
+        $minutes = max(0, min((24 * 60) - 1, $minutes));
+        $hour = intdiv($minutes, 60);
+        $meridian = $hour >= 12 ? 'PM' : 'AM';
+        $display = $hour % 12;
+        if ($display === 0) {
+            $display = 12;
+        }
+        return $display . ':' . str_pad((string) ($minutes % 60), 2, '0', STR_PAD_LEFT) . ' ' . $meridian;
+    }
+}
+
+if (!function_exists('lead_agent_scheduling_constraint')) {
+    /**
+     * Recognizes a message describing when the patient is NOT free - "my work
+     * schedule is from 6:00am, to 4:30 pm Monday thru Saturday".
+     *
+     * Without this the preference parser takes the first weekday and the first
+     * clock time it sees, so a stated work shift came back as a requested
+     * appointment and the agent confirmed "Monday 6:00 AM sounds good" - the
+     * exact hours the person had just said they cannot come, and outside the
+     * office hours the same agent had quoted a message earlier.
+     *
+     * Deliberately narrow: it keys on phrases like "my work schedule" and "at
+     * work", never on a bare "work", because "Tuesday afternoon works best"
+     * is a preference, not a constraint.
+     */
+    function lead_agent_scheduling_constraint(string $body): array
+    {
+        $none = ['has_constraint' => false, 'busy_start' => null, 'busy_end' => null, 'matched' => ''];
+        $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? ''));
+        if ($text === '') {
+            return $none;
+        }
+
+        // "after work" / "off work" describe when they ARE free.
+        if (preg_match('/\b(?:after\s+work|off\s+work|get\s+off|when\s+i\s+get\s+out|despu[eé]s\s+del\s+trabajo)\b/u', $text)) {
+            return $none;
+        }
+
+        $busy = '/(?:\bmy\s+(?:work\s+)?schedule\b|\bwork\s+schedule\b|\bi\s+work\b|\bi\s*[\'’]?m\s+at\s+work\b|\bi\s+am\s+at\s+work\b|\bat\s+work\b|\bi\s*[\'’]?m\s+working\b|\bi\s+am\s+working\b|\bmy\s+shift\b|\bon\s+the\s+clock\b|\bbusy\b|\bunavailable\b|\bnot\s+available\b|\btied\s+up\b|\bmi\s+horario\b|\bestoy\s+trabajando\b|\btrabajo\s+de\b|\bocupad[oa]\b)/u';
+        if (!preg_match($busy, $text)) {
+            return $none;
+        }
+
+        // "\ba\b" covers the Spanish "de 7:00 am a 3:00 pm"; it can only match
+        // between two clock times, so it cannot swallow an English "a.m.".
+        $range = '/(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)?\s*,?\s*(?:-|–|—|\bto\b|\buntil\b|\bthru\b|\bthrough\b|\bhasta\b|\ba\b)\s*(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)/i';
+        if (!preg_match($range, $text, $matches)) {
+            // Busy wording with a single bare time ("I'm at work 6am") still must
+            // never become a requested time, even though no window is derivable.
+            if (preg_match('/\b(1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)\b/i', $text, $single)) {
+                return ['has_constraint' => true, 'busy_start' => null, 'busy_end' => null, 'matched' => (string) $single[0]];
+            }
+            return $none;
+        }
+
+        $endMeridian = (string) ($matches[6] ?? '');
+        $startMeridian = (string) ($matches[3] ?? '');
+        if ($startMeridian === '') {
+            // "6 to 4:30 pm": a start reading later than the end began in the morning.
+            $startMeridian = ((int) $matches[1] > (int) $matches[4]) ? 'am' : $endMeridian;
+        }
+
+        return [
+            'has_constraint' => true,
+            'busy_start' => lead_agent_clock_to_minutes((int) $matches[1], (int) ($matches[2] ?? 0), $startMeridian),
+            'busy_end' => lead_agent_clock_to_minutes((int) $matches[4], (int) ($matches[5] ?? 0), $endMeridian),
+            'matched' => (string) $matches[0],
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_constraint_offer_times')) {
+    /**
+     * Bookable start times that survive the patient's stated busy window - the
+     * intersection of "when they are free" and office hours. Someone who
+     * finishes at 4:30 PM should be offered 5:00 and 5:30 PM, not asked again
+     * which day works.
+     */
+    function lead_agent_constraint_offer_times(array $constraint, int $limit = 2): array
+    {
+        $busyEnd = $constraint['busy_end'] ?? null;
+        if (!is_int($busyEnd)) {
+            return [];
+        }
+        $office = lead_agent_office_minutes();
+        $slot = max(15, (int) $office['slot']);
+        // One slot of headroom so we never propose the minute they clock out.
+        $first = max((int) $office['open'], (int) (ceil(($busyEnd + $slot) / $slot) * $slot));
+        $times = [];
+        for ($minute = $first; $minute <= (int) $office['last_start'] && count($times) < max(1, $limit); $minute += $slot) {
+            $times[] = lead_agent_minutes_to_clock($minute);
+        }
+        return $times;
+    }
+}
+
 if (!function_exists('lead_agent_scheduling_preferences')) {
     function lead_agent_scheduling_preferences(string $body): array
     {
         $text = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
+
+        // A message describing a work shift states unavailability. Reading any
+        // day or time out of it produces a confirmation for hours the patient
+        // just ruled out, so stop before extraction and let the acknowledgment
+        // offer times that actually fit around it.
+        $constraint = lead_agent_scheduling_constraint($body);
+        if (!empty($constraint['has_constraint'])) {
+            return [
+                'day' => '',
+                'period' => '',
+                'specific_time' => '',
+                'has_preference' => false,
+                'ready_for_availability' => false,
+                'constraint' => $constraint,
+                'time_outside_office_hours' => false,
+            ];
+        }
+
         // Preserve positive alternatives while removing only a specifically
         // rejected "next week" window from preference extraction.
         $dayText = preg_replace([
@@ -930,12 +1065,26 @@ if (!function_exists('lead_agent_scheduling_preferences')) {
             $specificTime = (int) $matches[1] . ':' . ($minutes !== '' ? $minutes : '00') . ' ' . strtoupper(str_replace('.', '', (string) ($matches[3] ?? '')));
         }
 
+        // A requested time the office cannot actually book must never be
+        // answered with "sounds good" - the agent quotes 9:00 AM to 6:00 PM in
+        // the very same conversation.
+        $outsideOfficeHours = false;
+        if ($specificTime !== '' && preg_match('/^(\d{1,2}):([0-5]\d)\s*(AM|PM)$/i', $specificTime, $parts)) {
+            $office = lead_agent_office_minutes();
+            $requested = lead_agent_clock_to_minutes((int) $parts[1], (int) $parts[2], (string) $parts[3]);
+            $outsideOfficeHours = $requested === null
+                || $requested < (int) $office['open']
+                || $requested > (int) $office['last_start'];
+        }
+
         return [
             'day' => $day,
             'period' => $period,
             'specific_time' => $specificTime,
             'has_preference' => $day !== '' || $period !== '' || $specificTime !== '',
-            'ready_for_availability' => $day !== '' && ($period !== '' || $specificTime !== ''),
+            'ready_for_availability' => $day !== '' && !$outsideOfficeHours && ($period !== '' || $specificTime !== ''),
+            'constraint' => $constraint,
+            'time_outside_office_hours' => $outsideOfficeHours,
         ];
     }
 }
@@ -961,6 +1110,20 @@ if (!function_exists('lead_agent_merge_scheduling_preferences')) {
             || trim((string) ($newer['period'] ?? '')) !== ''
             || trim((string) ($newer['specific_time'] ?? '')) !== '';
         $newer['ready_for_availability'] = lead_agent_scheduling_preferences_complete($newer);
+
+        // The newest message wins when it states unavailability: remembering an
+        // older "Monday" and pairing it with a work shift is how a busy window
+        // turns back into a booking.
+        $constraint = is_array($newer['constraint'] ?? null) ? $newer['constraint'] : [];
+        if (!empty($constraint['has_constraint'])) {
+            $newer['day'] = '';
+            $newer['period'] = '';
+            $newer['specific_time'] = '';
+            $newer['has_preference'] = false;
+            $newer['ready_for_availability'] = false;
+        } elseif (!empty($newer['time_outside_office_hours'])) {
+            $newer['ready_for_availability'] = false;
+        }
         return $newer;
     }
 }
@@ -1340,7 +1503,47 @@ if (!function_exists('lead_agent_scheduling_acknowledgment')) {
         $hasDay = $day !== '';
         $hasTime = $period !== '' || $specificTime !== '';
         $name = $first !== '' ? ', ' . $first : '';
-        if (lead_language_is_spanish($lead)) {
+        $spanish = lead_language_is_spanish($lead);
+
+        // The patient told us when they are busy. Answer with the times that
+        // survive inside office hours instead of asking which day works - they
+        // already said, and re-asking is what makes the thread feel automated.
+        $constraint = is_array($preferences['constraint'] ?? null) ? $preferences['constraint'] : [];
+        if (!empty($constraint['has_constraint'])) {
+            $offers = lead_agent_constraint_offer_times($constraint);
+            $busyEnd = is_int($constraint['busy_end'] ?? null) ? lead_agent_minutes_to_clock((int) $constraint['busy_end']) : '';
+            if ($offers !== []) {
+                $choices = count($offers) > 1
+                    ? implode($spanish ? ' o ' : ' or ', $offers)
+                    : (string) $offers[0];
+                if ($spanish) {
+                    return 'Gracias' . $name . '. '
+                        . ($busyEnd !== '' ? 'Como termina a las ' . $busyEnd . ', ' : '')
+                        . 'las ' . $choices . ' serían las mejores opciones para su consulta. ¿Alguna de esas le funciona?';
+                }
+                return 'Thanks' . $name . '. '
+                    . ($busyEnd !== '' ? 'Since you finish at ' . $busyEnd . ', ' : '')
+                    . $choices . ' would fit best for your consultation. Would either of those work?';
+            }
+            if ($spanish) {
+                return 'Gracias por avisarme' . $name . '. Para no proponerle una hora que no le sirve, '
+                    . '¿qué horas suele tener libres? Programamos consultas desde las 9:00 AM hasta la última consulta a las 6:00 PM.';
+            }
+            return 'Thanks for letting me know' . $name . '. So I do not suggest a time you cannot make, '
+                . 'what hours are usually free for you? We schedule consultations from 9:00 AM through our last consultation at 6:00 PM.';
+        }
+
+        // A requested time the office cannot book gets corrected, never confirmed.
+        if (!empty($preferences['time_outside_office_hours'])) {
+            if ($spanish) {
+                return 'Gracias' . $name . '. Programamos consultas desde las 9:00 AM hasta la última consulta a las 6:00 PM, '
+                    . 'así que ' . $specificTime . ' queda fuera de ese horario. ¿Le funcionaría alguna hora dentro de ese rango?';
+            }
+            return 'Thanks' . $name . '. We schedule consultations from 9:00 AM through our last consultation at 6:00 PM, '
+                . 'so ' . $specificTime . ' falls outside that. Would a time inside those hours work for you?';
+        }
+
+        if ($spanish) {
             $spanishDays = [
                 'monday' => 'lunes', 'tuesday' => 'martes', 'wednesday' => 'miércoles',
                 'thursday' => 'jueves', 'friday' => 'viernes', 'saturday' => 'sábado',
@@ -3037,10 +3240,14 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
             lead_agent_historical_scheduling_preferences($leadId),
             lead_agent_scheduling_preferences($body)
         );
-        if (trim((string) ($preferences['day'] ?? '')) === '' && trim((string) ($lead['scheduling_preferred_day'] ?? '')) !== '') {
+        // Only reuse what the lead record remembers when the newest message did
+        // not just tell us when they are unavailable. Back-filling a stored day
+        // and time onto a work-shift message recreates the same wrong booking.
+        $statedConstraint = is_array($preferences['constraint'] ?? null) && !empty($preferences['constraint']['has_constraint']);
+        if (!$statedConstraint && trim((string) ($preferences['day'] ?? '')) === '' && trim((string) ($lead['scheduling_preferred_day'] ?? '')) !== '') {
             $preferences['day'] = strtolower(trim((string) $lead['scheduling_preferred_day']));
         }
-        if (trim((string) ($preferences['specific_time'] ?? '')) === '' && trim((string) ($preferences['period'] ?? '')) === '') {
+        if (!$statedConstraint && trim((string) ($preferences['specific_time'] ?? '')) === '' && trim((string) ($preferences['period'] ?? '')) === '') {
             $knownTime = trim((string) ($lead['scheduling_preferred_time'] ?? ''));
             if (in_array(strtolower($knownTime), ['morning', 'afternoon', 'evening'], true)) {
                 $preferences['period'] = strtolower($knownTime);
@@ -3051,7 +3258,9 @@ if (!function_exists('lead_agent_handle_scheduling_intent')) {
         $preferences['has_preference'] = trim((string) ($preferences['day'] ?? '')) !== ''
             || trim((string) ($preferences['period'] ?? '')) !== ''
             || trim((string) ($preferences['specific_time'] ?? '')) !== '';
-        $preferences['ready_for_availability'] = lead_agent_scheduling_preferences_complete($preferences);
+        $preferences['ready_for_availability'] = lead_agent_scheduling_preferences_complete($preferences)
+            && !$statedConstraint
+            && empty($preferences['time_outside_office_hours']);
         lead_agent_save_scheduling_preferences($leadId, $preferences);
         lead_lifecycle_mark_scheduling($leadId, 'lead_agent_scheduling_intent');
         $message = lead_agent_scheduling_acknowledgment($lead, $preferences);

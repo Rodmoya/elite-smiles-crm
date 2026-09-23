@@ -5,3 +5,7 @@ Rod clarified that the 48-hour unanswered outreach cooldown applies only to auto
 The production policy file is not tracked in main, and the working development checkout contains unrelated changes. The targeted workflow therefore downloads the reviewed live policy over verified FTPS, checks its exact SHA-256, changes only the cooldown condition to require `$automated`, runs behavioral PHP tests, saves and verifies a recoverable backup, and atomically replaces that single file. It fails if the live revision changes. The normal full-site deployment is excluded when this targeted option is selected.
 
 The underlying policy still needs to be reconciled into the main repository along with its existing calling code before a full-site deployment can be assumed to reproduce production.
+
+## Follow-up: manual send blocked by silent attempt limit
+
+The production SMS composer does not supply the development checkout's optional staff override flag. After the cooldown fix, two SMS messages plus the initial email reached the separate three-attempt limit. Staff classification must not depend on that optional flag: after the shared contact checks, non-automated sends can proceed without the automatic sequence-count, age or conversation-plan gates. Explicit reactivation approvals retain their safeguards. Both SMS and email are covered, and automated follow-up limits remain enforced. The regression test reproduces the reported three-message history without sending any real messages.

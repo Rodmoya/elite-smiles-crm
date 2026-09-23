@@ -10,10 +10,16 @@ import sys
 import tempfile
 import uuid
 
-SOURCE_SHA = 'b785ae6e630b3475092316ecbcd8ee612432581cc3e18c53c2eec2e0723f0d0a'
+SOURCE_SHA = 'b5737e18a15ba9f01ed8e233e218d769e5b9d731ef98f9e5a21df59a4922162b'
 TARGET = os.environ.get('FTP_SERVER_DIR', '/').rstrip('/') + '/app/leads/lead_outreach_policy.php'
-OLD = b'if ($lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch && !$staffManualSend) {'
-NEW = b'if ($automated && $lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch && !$staffManualSend) {'
+OLD = b"$created = strtotime((string)($lead['created_at'] ?? '')) ?: 0;"
+NEW = b"""// Staff-reviewed sends are not automatic follow-up attempts. Shared
+    // permission, opt-out, delivery and appointment checks have already passed.
+    // An explicit reactivation request keeps its separate approval safeguards.
+    if (!$automated && !$reactivationApproved) {
+        return '';
+    }
+    $created = strtotime((string)($lead['created_at'] ?? '')) ?: 0;"""
 
 
 def download(ftp, path):
@@ -32,8 +38,9 @@ def main():
         if hashlib.sha256(original).hexdigest() != SOURCE_SHA:
             raise RuntimeError('Live policy differs from the reviewed revision; no files changed. SHA256: ' + hashlib.sha256(original).hexdigest())
         if original.count(OLD) != 1:
-            raise RuntimeError('Expected exactly one cooldown condition; no files changed.')
-        patched = original.replace(OLD, NEW, 1)
+            raise RuntimeError('Expected exactly one automation sequence boundary; no files changed.')
+        newline = b'\r\n' if b'\r\n' in original else b'\n'
+        patched = original.replace(OLD, NEW.replace(b'\n', newline), 1)
         with tempfile.TemporaryDirectory() as temporary:
             policy = Path(temporary) / 'lead_outreach_policy.php'
             policy.write_bytes(patched)
@@ -58,7 +65,7 @@ def main():
             raise RuntimeError('Live verification failed; restore the recorded backup.')
         print('Verified live policy SHA256:', hashlib.sha256(patched).hexdigest())
         print('Recoverable original:', backup)
-        print('Only the automation condition changed. No messages sent.')
+        print('Only the manual/automated sequence boundary changed. No messages sent.')
 
 
 if __name__ == '__main__':

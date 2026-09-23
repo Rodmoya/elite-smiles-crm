@@ -195,4 +195,5 @@ jobs:
         env:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR || '/hi.elitesmilesutah.com/crm/' }}
         run: python3 bin/deploy-staff-cooldown.py

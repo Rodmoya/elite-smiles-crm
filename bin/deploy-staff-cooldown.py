@@ -11,7 +11,7 @@ import tempfile
 import uuid
 
 SOURCE_SHA = '1507a4b7f64cd56c41e43ada26a6dc50643b7cc7d18e15d92a7c1243833a376d'
-TARGET = '/crm/app/leads/lead_outreach_policy.php'
+TARGET = os.environ.get('FTP_SERVER_DIR', '/crm/').rstrip('/') + '/app/leads/lead_outreach_policy.php'
 OLD = b'if ($lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch) {'
 NEW = b'if ($automated && $lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch) {'
 

@@ -20,4 +20,30 @@ foreach (['sms', 'email'] as $previous) {
         verify_cooldown(lead_outreach_decision($lead, $history, $channel, true, false, $now) === '', 'Agent eligible at exact 48-hour boundary');
     }
 }
-echo "Staff SMS/email, cross-channel automation, opt-outs and exact 48-hour boundary passed.\n";
+$history = [
+    ['direction' => 'outbound', 'channel' => 'sms', 'body' => 'Initial SMS', 'created_at' => '2026-09-22 15:27:00', 'delivery_status' => 'delivered'],
+    ['direction' => 'outbound', 'channel' => 'email', 'body' => 'Initial email', 'created_at' => '2026-09-22 15:27:00', 'delivery_status' => 'sent'],
+    ['direction' => 'outbound', 'channel' => 'sms', 'body' => 'Second SMS', 'created_at' => '2026-09-22 19:37:00', 'delivery_status' => 'delivered'],
+];
+foreach (['sms', 'email'] as $channel) {
+    // Mirrors the reported two-SMS/one-email lead. No staff override flags.
+    verify_cooldown(lead_outreach_decision($lead, $history, $channel, false, false, $now) === '', "Staff $channel allowed after three unanswered messages");
+    verify_cooldown(lead_outreach_decision($lead, $history, $channel, true, false, $now + 3 * 86400) === 'silent_attempt_limit_reached', 'Agent attempt limit remains enforced after cooldown');
+    $oldLead = array_replace($lead, ['created_at' => '2026-08-01 12:00:00']);
+    verify_cooldown(lead_outreach_decision($oldLead, [], $channel, false, false, $now) === '', 'Staff may review and contact an older lead');
+    verify_cooldown(lead_outreach_decision($oldLead, [], $channel, true, false, $now) === 'staff_reactivation_review_required', 'Agent cannot restart older leads');
+    $conversation = [
+        ['direction' => 'inbound', 'channel' => $channel, 'body' => 'Tell me more', 'created_at' => '2026-09-20 09:00:00'],
+        ['direction' => 'outbound', 'channel' => $channel, 'body' => 'Staff response', 'created_at' => '2026-09-20 10:00:00', 'delivery_status' => 'delivered'],
+    ];
+    verify_cooldown(lead_outreach_decision($lead, $conversation, $channel, false, false, $now) === '', 'Staff can continue a reviewed conversation');
+    verify_cooldown(lead_outreach_decision($lead, $conversation, $channel, true, false, $now) === 'conversation_requires_staff_plan', 'Automatic conversation gate preserved');
+    foreach (['STOP' => 'opt_out', "I'll contact you when ready" => 'patient_will_initiate'] as $body => $reason) {
+        $held = [['direction' => 'inbound', 'channel' => $channel, 'body' => $body, 'created_at' => '2026-09-23 11:59:00']];
+        verify_cooldown(lead_outreach_decision($lead, $held, $channel, false, false, $now) === $reason, 'Patient-requested restriction preserved');
+    }
+    $failed = [['direction' => 'outbound', 'channel' => $channel, 'body' => 'Earlier attempt', 'created_at' => '2026-09-22 11:00:00', 'delivery_status' => 'failed']];
+    verify_cooldown(lead_outreach_decision($lead, $failed, $channel, false, false, $now) === 'delivery_review_required', 'Delivery recovery hold preserved');
+    verify_cooldown(lead_outreach_decision(array_replace($lead, ['consultation_date' => '2026-09-24 10:00:00']), [], $channel, false, false, $now) === 'outreach_on_hold', 'Appointment restriction preserved');
+}
+echo "Staff SMS/email, three-attempt sequence, older leads, conversation gates, shared restrictions and automated cooldown tests passed.\n";

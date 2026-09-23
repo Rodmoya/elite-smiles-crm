@@ -1,6 +1,31 @@
 <?php
 declare(strict_types=1);
 
+/** Status callbacks can arrive late or concurrently; never regress a receipt. */
+function elite_twilio_status_should_advance(string $current, string $incoming, ?string $deliveredAt = null): bool
+{
+    $current = strtolower(trim($current));
+    $incoming = strtolower(trim($incoming));
+    $rank = ['accepted' => 1, 'scheduled' => 2, 'queued' => 3, 'sending' => 4, 'sent' => 5, 'delivered' => 6, 'read' => 7];
+    $failed = ['failed', 'undelivered', 'canceled'];
+    if (!isset($rank[$incoming]) && !in_array($incoming, $failed, true)) {
+        return false;
+    }
+    if ($incoming === $current) {
+        return false;
+    }
+    if (trim((string) $deliveredAt) !== '' && !in_array($incoming, ['delivered', 'read'], true)) {
+        return false;
+    }
+    if (in_array($current, $failed, true) || $current === 'read') {
+        return false;
+    }
+    if ($current === 'delivered') {
+        return $incoming === 'read';
+    }
+    return in_array($incoming, $failed, true) || ($rank[$incoming] ?? 0) > ($rank[$current] ?? 0);
+}
+
 /**
  * Elite Smiles CRM
  * File: app/core/twilio.php

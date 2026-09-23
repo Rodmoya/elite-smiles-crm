@@ -13,6 +13,8 @@ import tempfile
 import uuid
 
 BASE = 'a6ce9ea'
+TEST = 'tests/lead_agent_language_reply_test.php'
+LABEL = 'Language reply and SMS takeover bookkeeping'
 FILES = {
     'app/leads/lead_agent.php': 'b93e038fc196a01fab296f96411d92d8ea248e2fd9f9b2f7133c8d9ced35be80',
     'app/actions/lead_send_sms.php': 'ee13443322a6cc0b573a30d85b95f2cad03acccfb9c80974366bda00a8ba3832',
@@ -60,7 +62,7 @@ def main():
                 local.write_bytes(candidate)
                 subprocess.run(['php', '-l', str(local)], check=True)
                 candidates.append((remote, original, candidate))
-            subprocess.run(['php', 'tests/lead_agent_language_reply_test.php'], check=True)
+            subprocess.run(['php', TEST], check=True)
             if '--check-only' in sys.argv:
                 print('Both live candidates verified; no remote writes or patient messages.')
                 return
@@ -87,7 +89,7 @@ def main():
                     ftp.storbinary('STOR ' + rollback, io.BytesIO(original))
                     ftp.rename(rollback, remote)
                 raise
-            print('Only language handling, diagnostics and SMS takeover bookkeeping changed. No messages sent.')
+            print(LABEL + ' deployed. No messages sent.')
 
 if __name__ == '__main__':
     main()

@@ -32,11 +32,37 @@ jobs:
     name: validate-and-deploy
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      targeted_only: ${{ steps.deployment-scope.outputs.targeted_only }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
+
+      - name: Determine deployment scope
+        id: deployment-scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          targeted_only=false
+          if [[ "$EVENT_NAME" == "push" ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            mapfile -t changed < <(git diff --name-only "$BEFORE" "$AFTER")
+            if (( ${#changed[@]} > 0 )); then
+              targeted_only=true
+              for path in "${changed[@]}"; do
+                case "$path" in
+                  .github/workflows/deploy.yml|bin/deploy-staff-cooldown.py|bin/verify-staff-cooldown.php|docs/staff-cooldown-fix.md) ;;
+                  *) targeted_only=false ;;
+                esac
+              done
+            fi
+          fi
+          echo "targeted_only=$targeted_only" >> "$GITHUB_OUTPUT"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
@@ -68,7 +94,7 @@ jobs:
 
   deploy:
     name: deploy-production
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy == true && inputs.outreach_cooldown_only != true))
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push' && needs.validate.outputs.targeted_only != 'true') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true && inputs.outreach_cooldown_only != true))
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -154,7 +180,7 @@ jobs:
 
   staff-cooldown:
     name: Deploy staff cooldown fix only
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy == true && inputs.outreach_cooldown_only == true
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy == true && inputs.outreach_cooldown_only == true
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10

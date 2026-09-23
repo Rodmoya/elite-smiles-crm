@@ -45,17 +45,25 @@ if ($sid === '') {
 }
 
 lead_comm_ensure_schema();
+// Initialize schema before taking row locks: MySQL DDL can implicitly commit.
+lead_agent_observability_ensure_schema();
+$internalFailure = null;
+$leadFailure = null;
 
 try {
+    db_begin();
     // Internal notifications use the same callback endpoint. Update their
     // delivery audit first because they are not stored in lead_messages.
     $internalMessage = null;
     try {
-        $internalMessage = db_one('SELECT * FROM internal_sms_logs WHERE twilio_sid = :sid LIMIT 1', ['sid' => $sid]);
+        $internalMessage = db_one('SELECT * FROM internal_sms_logs WHERE twilio_sid = :sid LIMIT 1 FOR UPDATE', ['sid' => $sid]);
     } catch (Throwable $e) {
         // The internal alert table may not exist on older deployments yet.
+        if ((string) $e->getCode() !== '42S02') {
+            throw $e;
+        }
     }
-    if (is_array($internalMessage)) {
+    if (is_array($internalMessage) && elite_twilio_status_should_advance((string) ($internalMessage['twilio_status'] ?? ''), $status)) {
         $previousInternalStatus = strtolower(trim((string) ($internalMessage['twilio_status'] ?? '')));
         db_execute(
             'UPDATE internal_sms_logs SET twilio_status = :status, error_message = :error_message WHERE id = :id LIMIT 1',
@@ -67,21 +75,14 @@ try {
         );
         if (in_array($status, ['failed', 'undelivered'], true) && $previousInternalStatus !== $status
             && function_exists('elite_send_pushover_notification')) {
-            $recipientName = trim((string) ($internalMessage['recipient_name'] ?? 'internal recipient'));
-            elite_send_pushover_notification(
-                'Internal SMS delivery failed',
-                'Twilio could not deliver an Elite Smiles internal alert to ' . $recipientName
-                    . ($errorCode !== '' ? ' (' . $errorCode . ')' : '') . '. Open the CRM notification log.',
-                base_url('crm-settings.php'),
-                'Open notification settings'
-            );
+            $internalFailure = $internalMessage;
         }
     }
 
-    $message = db_one('SELECT * FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1', ['sid' => $sid]);
-    if ($message) {
+    $message = db_one('SELECT * FROM lead_messages WHERE twilio_message_sid = :sid LIMIT 1 FOR UPDATE', ['sid' => $sid]);
+    if ($message && elite_twilio_status_should_advance((string) ($message['twilio_status'] ?? ''), $status, $message['delivered_at'] ?? null)) {
         $previousStatus = strtolower(trim((string) ($message['twilio_status'] ?? '')));
-        $deliveredAt = $status === 'delivered' ? now() : ($message['delivered_at'] ?? null);
+        $deliveredAt = in_array($status, ['delivered', 'read'], true) ? (($message['delivered_at'] ?? null) ?: now()) : ($message['delivered_at'] ?? null);
         db_query(
             'UPDATE lead_messages
              SET twilio_status = :status,
@@ -102,15 +103,41 @@ try {
 
         $leadId = (int)($message['lead_id'] ?? 0);
         if ($leadId > 0 && in_array($status, ['failed', 'undelivered'], true) && $previousStatus !== $status) {
-            lead_agent_mark_sms_delivery_attention($leadId, $status, $errorCode, $errorMessage, [
-                'event_key' => 'twilio-status-' . $sid . '-' . $status,
-                'source' => 'twilio_status_callback',
-                'twilio_sid' => $sid,
-            ]);
+            $leadFailure = $leadId;
         }
     }
+    db_commit();
 } catch (Throwable $e) {
+    db_rollBack();
     esm_log('twilio_status', 'Could not update SMS status callback.', [
+        'sid' => $sid, 'status' => $status, 'error' => $e->getMessage(),
+    ]);
+    http_response_code(500);
+    echo 'status update failed';
+    exit;
+}
+
+// External notifications run after the serialized status update is committed.
+try {
+    if ($internalFailure !== null) {
+        $recipientName = trim((string) ($internalFailure['recipient_name'] ?? 'internal recipient'));
+        elite_send_pushover_notification(
+            'Internal SMS delivery failed',
+            'Twilio could not deliver an Elite Smiles internal alert to ' . $recipientName
+                . ($errorCode !== '' ? ' (' . $errorCode . ')' : '') . '. Open the CRM notification log.',
+            base_url('crm-settings.php'),
+            'Open notification settings'
+        );
+    }
+    if ($leadFailure !== null) {
+        lead_agent_mark_sms_delivery_attention($leadFailure, $status, $errorCode, $errorMessage, [
+            'event_key' => 'twilio-status-' . $sid . '-' . $status,
+            'source' => 'twilio_status_callback',
+            'twilio_sid' => $sid,
+        ]);
+    }
+} catch (Throwable $e) {
+    esm_log('twilio_status', 'Status saved but delivery notification failed.', [
         'sid' => $sid,
         'status' => $status,
         'error' => $e->getMessage(),

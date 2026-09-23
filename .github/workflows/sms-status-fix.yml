@@ -1,0 +1,30 @@
+name: Deploy SMS status ordering fix
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: elite-sms-status-repair
+  cancel-in-progress: false
+jobs:
+  repair:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45
+        with:
+          php-version: '8.4'
+          extensions: mbstring
+          coverage: none
+      - run: php tests/twilio_status_order_test.php
+      - name: Deploy only verified SMS status changes
+        env:
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR || '/hi.elitesmilesutah.com/crm/' }}
+        run: python3 bin/deploy-sms-status.py

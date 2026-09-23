@@ -61,7 +61,16 @@ jobs:
                 esac
               done
               # This reviewed hotfix must not overwrite unrelated live-only work.
-              if printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-language-reply.py'; then
+              if printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-sms-status.py'; then
+                targeted_only=true
+                for path in "${changed[@]}"; do
+                  case "$path" in
+                    .github/workflows/deploy.yml|.github/workflows/sms-status-fix.yml|bin/deploy-language-reply.py|bin/deploy-sms-status.py|app/core/twilio.php|app/api/twilio_sms_status.php|tests/twilio_status_order_test.php) ;;
+                    *) targeted_only=false ;;
+                  esac
+                done
+              fi
+              if printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-language-reply.py' && ! printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-sms-status.py'; then
                 targeted_only=true
                 for path in "${changed[@]}"; do
                   case "$path" in

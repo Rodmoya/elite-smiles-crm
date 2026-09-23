@@ -3515,6 +3515,47 @@ if (!function_exists('lead_agent_handle_dob_reply')) {
     }
 }
 
+if (!function_exists('lead_agent_language_only_reply')) {
+    /** Match only a language choice, never a clinical question, stop, or booking request. */
+    function lead_agent_language_only_reply(string $body): ?array
+    {
+        $text = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $body) ?? $body));
+        if (!preg_match('/^(?:en |in |prefiero |i prefer )?(español|espanol|spanish|english|inglés|ingles)(?:[, ]+(?:por favor|please))?[.! ]*$/u', $text, $match)) {
+            return null;
+        }
+        $spanish = in_array($match[1], ['español', 'espanol', 'spanish'], true);
+        return [
+            'subject' => $spanish ? 'Elite Smiles — en español' : 'Elite Smiles — in English',
+            'body' => $spanish
+                ? 'Claro, con gusto te atendemos en español. ¿En qué te podemos ayudar?'
+                : 'Of course, we can continue in English. How can we help you?',
+        ];
+    }
+}
+
+if (!function_exists('lead_agent_reply_failure_reason')) {
+    function lead_agent_reply_failure_reason(?array $draft, array $ai, array $flags): string
+    {
+        if ($flags !== []) {
+            return 'Inbound reply blocked by content policy: ' . implode(', ', $flags);
+        }
+        if ($draft !== null && trim((string) ($draft['body'] ?? '')) !== '') {
+            return '';
+        }
+        if (empty($ai['ok'])) {
+            return 'Inbound reply generation failed or AI provider was unavailable.';
+        }
+        $data = (array) ($ai['data'] ?? []);
+        if (!empty($data['needs_human_review'])) {
+            return 'Inbound reply explicitly flagged for human review by AI.';
+        }
+        if ((float) ($data['confidence'] ?? 0) < (float) ELITE_AI_MIN_CONFIDENCE) {
+            return 'Inbound reply confidence below threshold: ' . (float) ($data['confidence'] ?? 0) . ' < ' . (float) ELITE_AI_MIN_CONFIDENCE;
+        }
+        return 'Inbound reply generation returned an empty message.';
+    }
+}
+
 if (!function_exists('lead_agent_handle_inbound')) {
     function lead_agent_handle_inbound(int $leadId, string $body, string $channel = 'sms', string $eventKey = ''): array
     {
@@ -3648,8 +3689,12 @@ if (!function_exists('lead_agent_handle_inbound')) {
             lead_agent_record_learning_outcome($intent, $channel, 'ready_to_schedule');
             return lead_agent_handle_scheduling_intent($lead, $body, $channel, $eventKey);
         }
-        $draft = null;
-        if ($intent === 'cost_redirect') {
+        // Existing opt-out, staff ownership and scheduling checks run first.
+        $draft = lead_agent_language_only_reply($body);
+        $ai = [];
+        if ($draft !== null) {
+            $intent = 'language_preference';
+        } elseif ($intent === 'cost_redirect') {
             $draft = lead_agent_cost_redirect($lead, $channel);
         } else {
             $leadAiPath = __DIR__ . '/lead_ai.php';
@@ -3685,9 +3730,11 @@ if (!function_exists('lead_agent_handle_inbound')) {
             $draft += lead_agent_draft_conversion_meta($draft, $conversionMemory);
         }
 
-        if (!$draft || lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? '')) !== []) {
+        $replyFlags = lead_agent_policy_flags((string) ($draft['subject'] ?? '') . ' ' . (string) ($draft['body'] ?? ''));
+        $failureReason = lead_agent_reply_failure_reason($draft, $ai, $replyFlags);
+        if ($failureReason !== '') {
             lead_agent_record_learning($intent, $channel, 'human_review');
-            return lead_agent_internal_handoff($lead, 'needs_attention', 'AI response was low confidence or failed a policy gate.') + ['intent' => $intent, 'handled' => true];
+            return lead_agent_internal_handoff($lead, 'needs_attention', $failureReason) + ['intent' => $intent, 'handled' => true];
         }
 
         $sendKey = 'reply-' . $eventKey;

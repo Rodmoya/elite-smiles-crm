@@ -60,6 +60,16 @@ jobs:
                   *) targeted_only=false ;;
                 esac
               done
+              # This reviewed hotfix must not overwrite unrelated live-only work.
+              if printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-language-reply.py'; then
+                targeted_only=true
+                for path in "${changed[@]}"; do
+                  case "$path" in
+                    .github/workflows/deploy.yml|.github/workflows/language-reply-fix.yml|bin/deploy-language-reply.py|app/leads/lead_agent.php|app/actions/lead_send_sms.php|tests/lead_agent_language_reply_test.php) ;;
+                    *) targeted_only=false ;;
+                  esac
+                done
+              fi
             fi
           fi
           echo "targeted_only=$targeted_only" >> "$GITHUB_OUTPUT"

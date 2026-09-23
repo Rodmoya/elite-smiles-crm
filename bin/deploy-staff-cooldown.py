@@ -10,10 +10,10 @@ import sys
 import tempfile
 import uuid
 
-SOURCE_SHA = '1507a4b7f64cd56c41e43ada26a6dc50643b7cc7d18e15d92a7c1243833a376d'
-TARGET = os.environ.get('FTP_SERVER_DIR', '/crm/').rstrip('/') + '/app/leads/lead_outreach_policy.php'
-OLD = b'if ($lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch) {'
-NEW = b'if ($automated && $lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch) {'
+SOURCE_SHA = 'b785ae6e630b3475092316ecbcd8ee612432581cc3e18c53c2eec2e0723f0d0a'
+TARGET = os.environ.get('FTP_SERVER_DIR', '/').rstrip('/') + '/app/leads/lead_outreach_policy.php'
+OLD = b'if ($lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch && !$staffManualSend) {'
+NEW = b'if ($automated && $lastOut && $now - $lastOut < 48 * 3600 && !$initialFormSubmission && !$sameDaySecondTouch && !$staffManualSend) {'
 
 
 def download(ftp, path):
@@ -30,7 +30,7 @@ def main():
         ftp.prot_p()
         original = download(ftp, TARGET)
         if hashlib.sha256(original).hexdigest() != SOURCE_SHA:
-            raise RuntimeError('Live policy differs from the reviewed revision; no files changed.')
+            raise RuntimeError('Live policy differs from the reviewed revision; no files changed. SHA256: ' + hashlib.sha256(original).hexdigest())
         if original.count(OLD) != 1:
             raise RuntimeError('Expected exactly one cooldown condition; no files changed.')
         patched = original.replace(OLD, NEW, 1)

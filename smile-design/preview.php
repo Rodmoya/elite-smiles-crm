@@ -166,7 +166,7 @@ $practiceAddress2 = 'Draper, UT 84020';
             <?php else: ?>
                 <?php [$label, $disclaimer] = smile_design_after_label($displayAfter); ?>
                 <div class="overflow-hidden border-y border-stone-200 bg-white p-0 shadow-sm sm:rounded-xl sm:border sm:p-5 lg:p-6">
-                    <?php smile_before_after_viewer($beforeUrl, $afterUrl, ['title' => 'Your Smile Preview', 'mode' => 'ba', 'alignment' => $alignment, 'watermark' => false, 'input_gallery' => $inputGallery, 'video_url' => $latestRevealVideoUrl]); ?>
+                    <?php smile_before_after_viewer($beforeUrl, $afterUrl, ['title' => 'Your Smile Preview', 'mode' => 'ba', 'alignment' => $alignment, 'watermark' => false, 'input_gallery' => $inputGallery, 'video_url' => $latestRevealVideoUrl, 'patient_loading' => true]); ?>
                 </div>
                 <div class="mt-6 grid gap-6 px-4 sm:px-0 lg:grid-cols-[1.2fr_.8fr]">
                     <div class="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">

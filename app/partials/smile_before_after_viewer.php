@@ -47,6 +47,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
     $hasVideo = $videoUrl !== '';
     $canGenerateVideo = !empty($videoGenerate);
     $canDeleteVideo = !empty($videoDelete);
+    $patientLoading = !empty($options['patient_loading']);
     $hasAfter = $afterUrl !== '' && $afterUrl !== $beforeUrl;
     $defaultInputLabel = (string)($options['before_label'] ?? 'Original photo');
     if ($inputGallery !== [] && $defaultInputLabel === 'Original photo') {
@@ -132,6 +133,10 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             .sd-video-actions button { border-radius: 6px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; padding: 9px 13px; font-size: 12px; font-weight: 800; }
             .sd-video-actions button.sd-danger { border-color: rgba(248,113,113,.42); color: #fecaca; }
             .sd-placeholder { display: flex; height: 100%; min-height: 280px; align-items: center; justify-content: center; border: 1px dashed rgba(255,255,255,.35); color: rgba(255,255,255,.75); text-align: center; padding: 24px; }
+            .sd-patient-loading { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; background: rgba(5,5,5,.78); color: #fff; text-align: center; font-size: 15px; font-weight: 700; }
+            .sd-patient-loading-spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: sd-patient-spin .8s linear infinite; }
+            .sd-patient-retry { border: 1px solid rgba(255,255,255,.55); border-radius: 6px; padding: 9px 14px; color: #fff; font-size: 13px; font-weight: 700; }
+            @keyframes sd-patient-spin { to { transform: rotate(360deg); } }
             .sd-hidden { display: none !important; }
             .sd-align-tools { margin-top: 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; padding: 14px; }
             .sd-align-tools label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: #334155; }
@@ -320,6 +325,26 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 if (after) after.style.clipPath = 'inset(0 ' + (100 - percent) + '% 0 0)';
                 if (handle) handle.style.left = percent + '%';
             }
+            function syncPatientLoading(wrap) {
+                const status = wrap && wrap.querySelector('[data-sd-patient-loading]');
+                const image = wrap && wrap.querySelector('[data-sd-mode-panel="ba"] [data-sd-after-image]');
+                if (!status || !image) return;
+                const hasSource = !!image.getAttribute('src');
+                const ready = hasSource && image.complete && image.naturalWidth > 0;
+                const failed = hasSource && image.complete && !ready;
+                status.classList.toggle('sd-hidden', !hasSource || ready);
+                const label = status.querySelector('[data-sd-patient-loading-text]');
+                if (label) label.textContent = failed ? 'The after photo could not load.' : 'Your before-and-after is loading...';
+                const retry = status.querySelector('[data-sd-patient-retry]');
+                if (retry) retry.classList.toggle('sd-hidden', !failed);
+                const spinner = status.querySelector('[data-sd-patient-spinner]');
+                if (spinner) spinner.classList.toggle('sd-hidden', failed);
+                if (wrap.dataset.sdPatientLoadingBound !== 'true') {
+                    wrap.dataset.sdPatientLoadingBound = 'true';
+                    image.addEventListener('load', function () { syncPatientLoading(wrap); });
+                    image.addEventListener('error', function () { syncPatientLoading(wrap); });
+                }
+            }
             function setMode(viewer, mode) {
                 viewer.querySelectorAll('[data-sd-mode-panel]').forEach(function (panel) {
                     panel.classList.toggle('sd-hidden', panel.dataset.sdModePanel !== mode);
@@ -417,6 +442,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     wrap.style.setProperty('--sd-frame-aspect', aspectToCss(nextAlignment.crop_aspect_ratio || '4:3'));
                 }
                 const viewer = wrap.querySelector('[data-sd-viewer]');
+                syncPatientLoading(wrap);
                 if (viewer) {
                     window.requestAnimationFrame(function () {
                         applySmileFocusForViewer(viewer);
@@ -430,6 +456,18 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 });
             }
             document.addEventListener('click', function (event) {
+                const retry = event.target.closest('[data-sd-patient-retry]');
+                if (retry) {
+                    const wrap = retry.closest('[data-sd-viewer-wrap]');
+                    const image = wrap && wrap.querySelector('[data-sd-mode-panel="ba"] [data-sd-after-image]');
+                    if (image && image.getAttribute('src')) {
+                        const url = new URL(image.getAttribute('src'), window.location.href);
+                        url.searchParams.set('retry', String(Date.now()));
+                        image.setAttribute('src', url.toString());
+                        syncPatientLoading(wrap);
+                    }
+                    return;
+                }
                 const alignToggle = event.target.closest('[data-sd-align-toggle]');
                 if (alignToggle) {
                     const wrap = alignToggle.closest('[data-sd-viewer-wrap]');
@@ -614,6 +652,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 <?php if ($beforeUrl !== ''): ?><img class="sd-base sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before photo"><?php else: ?><div class="sd-placeholder">Before photo will appear here.</div><?php endif; ?>
                 <div class="sd-after-layer <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-layer><img class="sd-align-after" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After preview" fetchpriority="high"></div><div class="sd-handle <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-handle></div>
                 <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
+                <?php if ($patientLoading && $hasAfter): ?><div class="sd-patient-loading" data-sd-patient-loading role="status" aria-live="polite"><span class="sd-patient-loading-spinner" data-sd-patient-spinner aria-hidden="true"></span><span data-sd-patient-loading-text>Your before-and-after is loading...</span><button type="button" class="sd-patient-retry sd-hidden" data-sd-patient-retry>Try loading the photo again</button></div><?php endif; ?>
                 <div class="sd-focus-mask" aria-hidden="true"></div>
                 <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>
             </div>

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/smile_design/smile_design_service.php';
+require_once dirname(__DIR__) . '/app/partials/smile_before_after_viewer.php';
 
 function media_expect(bool $condition, string $message): void
 {
@@ -32,6 +33,11 @@ media_expect(str_contains($gallery, "shell.querySelector('[data-sd-mode=\"ba\"]'
 media_expect(str_contains($patientPreview, "smile_design_after_url((int)\$displayAfter['id'], \$token, 'display')"), 'Shared previews must initially request the lighter after image.');
 media_expect(str_contains($patientPreview, "'thumb_url' => smile_design_photo_url((int)\$photo['id'], \$token, 'thumb')"), 'Shared preview angle thumbnails must use the thumbnail variant.');
 media_expect(str_contains($viewer, "img.getAttribute('src') !== afterUrl"), 'Viewer startup must not restart an already-loading after image.');
+ob_start();
+smile_before_after_viewer('https://example.test/before.jpg', 'https://example.test/after.jpg', ['patient_loading' => true]);
+$patientViewer = (string)ob_get_clean();
+media_expect(str_contains($patientViewer, 'data-sd-patient-loading'), 'A patient preview must render its image-loading state.');
+media_expect(str_contains($patientViewer, 'Try loading the photo again'), 'A patient preview must offer image retry without refreshing the page.');
 
 if (extension_loaded('gd')) {
     $directory = sys_get_temp_dir() . '/esm-media-test-' . bin2hex(random_bytes(6));

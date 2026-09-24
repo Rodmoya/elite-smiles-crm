@@ -2263,11 +2263,12 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
         'Preserve realistic human anatomy, natural facial motion, clean soft portrait lighting, a simple neutral background, and premium cosmetic dentistry polish.',
         'Do not change identity, hair, lips, facial proportions, age, gender, or the veneer design. Do not add captions, watermarks, objects, or environmental action.',
         'Only animate the subject face, eyes, head angle, and smile. Do not introduce anything that is not already visible in the selected reference portraits.',
+        'The completed veneers stay fixed inside the mouth throughout; never show removable dentures, prostheses, dental appliances, loose teeth, or teeth being held, inserted, or removed.',
         'The video must be silent and presentation-ready for a doctor to show on a big screen.',
     ]);
     @set_time_limit(600);
     $result = elite_gemini_generate_video_from_references($imagePaths, $prompt, [
-        'model' => defined('GOOGLE_GEMINI_VIDEO_MODEL') ? GOOGLE_GEMINI_VIDEO_MODEL : 'veo-3.1-generate-preview',
+        'model' => 'veo-3.1-fast-generate-preview',
         'duration_seconds' => 8,
         'aspect_ratio' => '16:9',
         'resolution' => '1080p',
@@ -2284,10 +2285,16 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
     $videoBinary = (string)$result['video_binary'];
     $videoMimeType = (string)($result['mime_type'] ?? 'video/mp4');
     $silentVideo = smile_design_strip_video_audio_binary($videoBinary, $videoMimeType);
-    if (!empty($silentVideo['ok'])) {
-        $videoBinary = (string)$silentVideo['binary'];
-        $videoMimeType = (string)($silentVideo['mime_type'] ?? 'video/mp4');
+    if (empty($silentVideo['ok'])) {
+        $message = (string)($silentVideo['message'] ?? 'Video post-processing failed.');
+        smile_design_audit($caseId, 'case_reveal_video_failed', [
+            'message' => $message,
+            'model' => (string)($result['model'] ?? ''),
+        ], $userId);
+        return ['ok' => false, 'message' => $message];
     }
+    $videoBinary = (string)$silentVideo['binary'];
+    $videoMimeType = (string)($silentVideo['mime_type'] ?? 'video/mp4');
 
     $stored = smile_design_store_case_video_binary(
         $caseId,
@@ -2564,14 +2571,17 @@ function smile_design_shell_command_exists(string $command): bool
         return false;
     }
 
-    $path = @shell_exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null');
+    $lookup = PHP_OS_FAMILY === 'Windows'
+        ? 'where ' . escapeshellarg($command) . ' 2>NUL'
+        : 'command -v ' . escapeshellarg($command) . ' 2>/dev/null';
+    $path = @shell_exec($lookup);
     return is_string($path) && trim($path) !== '';
 }
 
 function smile_design_strip_video_audio_binary(string $binary, string $mimeType = 'video/mp4'): array
 {
     if ($binary === '' || !function_exists('shell_exec') || !smile_design_shell_command_exists('ffmpeg')) {
-        return ['ok' => false, 'message' => 'Silent video post-processing is not available.'];
+        return ['ok' => false, 'message' => 'FFmpeg is required to make the reveal video silent and web-ready. The existing video was not replaced.'];
     }
 
     $tmpBase = rtrim((string)sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'esm_silent_video_' . bin2hex(random_bytes(8));
@@ -2583,25 +2593,40 @@ function smile_design_strip_video_audio_binary(string $binary, string $mimeType 
             return ['ok' => false, 'message' => 'Could not prepare generated video for audio removal.'];
         }
 
-        $commands = [
-            'ffmpeg -y -i ' . escapeshellarg($input) . ' -map 0:v:0 -c:v copy -an ' . escapeshellarg($output),
-            'ffmpeg -y -i ' . escapeshellarg($input) . ' -map 0:v:0 -an -c:v libx264 -pix_fmt yuv420p ' . escapeshellarg($output),
-        ];
+        $commands = smile_design_video_postprocess_commands($input, $output);
+        $best = null;
+        $bestMethod = '';
 
-        foreach ($commands as $command) {
+        foreach ($commands as $method => $command) {
             if (is_file($output)) {
                 @unlink($output);
             }
             @shell_exec($command . ' 2>&1');
-            if (is_file($output) && (int)filesize($output) > 0) {
+            clearstatcache(true, $output);
+            if (is_file($output) && (int)filesize($output) > 1024) {
                 $silent = @file_get_contents($output);
-                if (is_string($silent) && $silent !== '') {
-                    return ['ok' => true, 'binary' => $silent, 'mime_type' => 'video/mp4'];
+                if (is_string($silent) && ($best === null || strlen($silent) < strlen($best))) {
+                    $best = $silent;
+                    $bestMethod = $method;
+                }
+                if ($method === 'h264_crf22' && is_string($silent) && strlen($silent) < strlen($binary)) {
+                    break;
                 }
             }
         }
 
-        return ['ok' => false, 'message' => 'Could not remove audio from the generated video.'];
+        if ($best !== null) {
+            return [
+                'ok' => true,
+                'binary' => $best,
+                'mime_type' => 'video/mp4',
+                'method' => $bestMethod,
+                'source_size' => strlen($binary),
+                'output_size' => strlen($best),
+            ];
+        }
+
+        return ['ok' => false, 'message' => 'Could not compress or remove audio from the generated video. The existing video was not replaced.'];
     } finally {
         if (is_file($input)) {
             @unlink($input);
@@ -2610,6 +2635,18 @@ function smile_design_strip_video_audio_binary(string $binary, string $mimeType 
             @unlink($output);
         }
     }
+}
+
+function smile_design_video_postprocess_commands(string $input, string $output): array
+{
+    $source = escapeshellarg($input);
+    $target = escapeshellarg($output);
+    $common = 'ffmpeg -hide_banner -loglevel error -nostdin -y -i ' . $source . ' -map 0:v:0 -an ';
+
+    return [
+        'h264_crf22' => $common . '-c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -movflags +faststart ' . $target,
+        'stream_copy' => $common . '-c:v copy -movflags +faststart ' . $target,
+    ];
 }
 
 function smile_design_converted_jpeg_result(string $target): array

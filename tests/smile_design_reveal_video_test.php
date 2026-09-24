@@ -17,7 +17,8 @@ $reveal = substr($source, strpos($source, 'function smile_design_generate_case_r
 smile_video_expect(str_contains($reveal, "'model' => 'veo-3.1-fast-generate-preview'"), 'Reveal generation must use Veo Fast even when the server still has a Standard model environment setting.');
 smile_video_expect(str_contains($reveal, 'removable dentures, prostheses, dental appliances'), 'The reveal prompt must exclude removable prostheses and appliances.');
 smile_video_expect(str_contains($reveal, 'teeth being held, inserted, or removed'), 'The reveal prompt must exclude teeth appearing outside the mouth.');
-smile_video_expect(str_contains($reveal, 'if (empty($silentVideo[\'ok\']))'), 'Post-processing failure must not replace an existing video with an unprocessed one.');
+smile_video_expect(str_contains($reveal, "'case_reveal_video_postprocess_skipped'"), 'A completed Veo render must remain savable when host-side FFmpeg is unavailable.');
+smile_video_expect(str_contains($reveal, "'operation_name' => (string)(\$result['operation_name'] ?? '')"), 'The Veo operation ID must be recorded when post-processing is skipped.');
 
 $commands = smile_design_video_postprocess_commands('source.mp4', 'ready.mp4');
 smile_video_expect(array_keys($commands) === ['h264_crf22', 'stream_copy'], 'Compression must be attempted before a silent stream-copy fallback.');

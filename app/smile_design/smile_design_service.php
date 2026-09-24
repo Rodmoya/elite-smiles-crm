@@ -2286,15 +2286,18 @@ function smile_design_generate_case_reveal_video(int $caseId, ?int $userId = nul
     $videoMimeType = (string)($result['mime_type'] ?? 'video/mp4');
     $silentVideo = smile_design_strip_video_audio_binary($videoBinary, $videoMimeType);
     if (empty($silentVideo['ok'])) {
-        $message = (string)($silentVideo['message'] ?? 'Video post-processing failed.');
-        smile_design_audit($caseId, 'case_reveal_video_failed', [
-            'message' => $message,
+        // A successful paid Veo render must not disappear just because this
+        // host cannot run FFmpeg. The player is muted; preserve the original
+        // MP4 and record that compression/audio removal was unavailable.
+        smile_design_audit($caseId, 'case_reveal_video_postprocess_skipped', [
+            'message' => (string)($silentVideo['message'] ?? 'Video post-processing unavailable.'),
             'model' => (string)($result['model'] ?? ''),
+            'operation_name' => (string)($result['operation_name'] ?? ''),
         ], $userId);
-        return ['ok' => false, 'message' => $message];
+    } else {
+        $videoBinary = (string)$silentVideo['binary'];
+        $videoMimeType = (string)($silentVideo['mime_type'] ?? 'video/mp4');
     }
-    $videoBinary = (string)$silentVideo['binary'];
-    $videoMimeType = (string)($silentVideo['mime_type'] ?? 'video/mp4');
 
     $stored = smile_design_store_case_video_binary(
         $caseId,

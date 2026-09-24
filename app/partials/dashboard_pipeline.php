@@ -149,6 +149,10 @@ $consultationOptions = [
 ?>
 
 <style>
+.lead-drag-handle { cursor: grab; }
+.lead-drag-handle:active { cursor: grabbing; }
+#pipeline-stage-dialog { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; border: 0; border-radius: 18px; padding: 0; box-shadow: 0 24px 70px rgba(15,23,42,.28); }
+#pipeline-stage-dialog::backdrop { background: rgba(15,23,42,.58); }
 .lead-card-needs-attention {
     border-color: #ef4444 !important;
     box-shadow: 0 0 0 2px rgba(248, 113, 113, .55), 0 0 18px rgba(220, 38, 38, .28), 0 10px 22px rgba(127, 29, 29, .10) !important;
@@ -613,6 +617,26 @@ $consultationOptions = [
     </div>
 
 </section>
+
+<dialog id="pipeline-stage-dialog" aria-labelledby="pipeline-stage-dialog-title">
+    <form id="pipeline-stage-form" method="dialog" class="p-5 sm:p-6">
+        <p class="text-[11px] font-bold uppercase tracking-[.18em] text-blue-700">Pipeline stage</p>
+        <h2 id="pipeline-stage-dialog-title" class="mt-1 text-xl font-semibold text-slate-950">Move lead</h2>
+        <p class="mt-2 text-sm text-slate-600">Choose a stage for <strong id="pipeline-stage-lead-name" class="text-slate-900"></strong>.</p>
+        <label for="pipeline-stage-select" class="mt-5 block text-xs font-semibold uppercase tracking-[.12em] text-slate-600">Move to</label>
+        <select id="pipeline-stage-select" class="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+            <?php foreach ($stageMap as $moveStageKey => $moveStageLabel): ?>
+                <?php $moveLegacyStage = function_exists('lead_conversion_stage_legacy_target') ? lead_conversion_stage_legacy_target((string)$moveStageKey) : (string)$moveStageKey; ?>
+                <option value="<?= e((string)$moveStageKey) ?>" data-legacy-stage="<?= e($moveLegacyStage) ?>"><?= e((string)$moveStageLabel) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p id="pipeline-stage-status" class="mt-3 min-h-5 text-sm text-slate-600" role="status" aria-live="polite"></p>
+        <div class="mt-5 flex justify-end gap-2">
+            <button type="button" id="pipeline-stage-cancel" class="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="submit" id="pipeline-stage-submit" class="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Move lead</button>
+        </div>
+    </form>
+</dialog>
 
 
 
@@ -3031,6 +3055,13 @@ $consultationOptions = [
     let autoScrollRaf = null;
 
     let isSaving = false;
+    let stageMoveInFlight = false;
+    let quickMoveCard = null;
+    const stageMoveDialog = document.getElementById('pipeline-stage-dialog');
+    const stageMoveForm = document.getElementById('pipeline-stage-form');
+    const stageMoveSelect = document.getElementById('pipeline-stage-select');
+    const stageMoveSubmit = document.getElementById('pipeline-stage-submit');
+    const stageMoveStatus = document.getElementById('pipeline-stage-status');
 
     let isCreatingLead = false;
 
@@ -9050,6 +9081,7 @@ function applyCommunicationViewportFit() {
 
 
     board.addEventListener('click', function (event) {
+        if (event.target.closest('[data-stage-move-trigger], [data-lead-drag-handle]')) return;
         const openButton = event.target.closest('[data-open-lead-modal]');
         if (!openButton) return;
         const card = openButton.closest('.lead-card');
@@ -9088,6 +9120,106 @@ function applyCommunicationViewportFit() {
         }
     });
 
+    function pipelineColumnForDisplayStage(stageKey) {
+        return stageKey ? board.querySelector('.pipeline-column[data-display-stage-key="' + CSS.escape(stageKey) + '"]') : null;
+    }
+
+    function syncStageMoveSubmit() {
+        if (!stageMoveSubmit || !stageMoveSelect) return;
+        const currentStage = quickMoveCard?.closest('.pipeline-column')?.dataset.displayStageKey || '';
+        stageMoveSubmit.disabled = stageMoveInFlight || !stageMoveSelect.value || stageMoveSelect.value === currentStage;
+    }
+
+    function openStageMoveDialog(card) {
+        if (!card || !stageMoveDialog || !stageMoveSelect || stageMoveInFlight || isSaving || isDeletingLead) return;
+        quickMoveCard = card;
+        document.getElementById('pipeline-stage-lead-name').textContent = card.dataset.leadName || 'this lead';
+        stageMoveSelect.value = card.closest('.pipeline-column')?.dataset.displayStageKey || '';
+        if (stageMoveStatus) stageMoveStatus.textContent = 'Choose a different stage, then select Move lead.';
+        syncStageMoveSubmit();
+        stageMoveDialog.showModal();
+        stageMoveSelect.focus();
+    }
+
+    async function movePipelineCardToColumn(card, targetColumn) {
+        if (!card || !targetColumn || stageMoveInFlight || isSaving || isDeletingLead) return false;
+        const originDropzone = card.parentElement;
+        const originColumn = originDropzone?.closest('.pipeline-column');
+        const targetDropzone = targetColumn.querySelector('.pipeline-dropzone');
+        const oldDisplayStage = originColumn?.dataset.displayStageKey || '';
+        const newDisplayStage = targetColumn.dataset.displayStageKey || '';
+        if (!originDropzone || !targetDropzone || !newDisplayStage || oldDisplayStage === newDisplayStage) return false;
+
+        const originNextSibling = card.nextSibling;
+        const originOrder = getDropzoneLeadIds(originDropzone);
+        const newStage = targetColumn.dataset.stageKey || '';
+        const newLabel = targetColumn.dataset.displayStageLabel || targetColumn.dataset.stageLabel || newDisplayStage;
+        stageMoveInFlight = true;
+        card.classList.add('opacity-60');
+        targetDropzone.prepend(card);
+        updateColumnCounts();
+        try {
+            await saveLeadStage(card, newStage, newLabel, {
+                displayStageKey: newDisplayStage,
+                orderedIds: getDropzoneLeadIds(targetDropzone),
+                sourceOrderedIds: originOrder.filter((id) => id !== (card.dataset.leadId || '')),
+            });
+            if (activeCard === card && leadStageInput) leadStageInput.value = newStage;
+            card.classList.add('ring-2', 'ring-emerald-400');
+            window.setTimeout(() => card.classList.remove('ring-2', 'ring-emerald-400'), 1600);
+            return true;
+        } catch (error) {
+            originDropzone.insertBefore(card, originNextSibling?.parentNode === originDropzone ? originNextSibling : null);
+            updateColumnCounts();
+            throw error;
+        } finally {
+            card.classList.remove('opacity-60');
+            stageMoveInFlight = false;
+        }
+    }
+
+    board.addEventListener('click', function (event) {
+        const trigger = event.target.closest('[data-stage-move-trigger]');
+        if (trigger) {
+            event.preventDefault();
+            event.stopPropagation();
+            openStageMoveDialog(trigger.closest('.lead-card'));
+            return;
+        }
+        if (event.target.closest('[data-lead-drag-handle]')) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    });
+    stageMoveSelect?.addEventListener('change', syncStageMoveSubmit);
+    document.getElementById('pipeline-stage-cancel')?.addEventListener('click', () => stageMoveDialog?.close());
+    stageMoveDialog?.addEventListener('close', () => { quickMoveCard = null; });
+    stageMoveForm?.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const card = quickMoveCard;
+        const targetColumn = pipelineColumnForDisplayStage(stageMoveSelect?.value || '');
+        if (!card || !targetColumn || stageMoveInFlight) return;
+        stageMoveSubmit.disabled = true;
+        stageMoveSelect.disabled = true;
+        if (stageMoveStatus) stageMoveStatus.textContent = 'Moving lead...';
+        try {
+            const moved = await movePipelineCardToColumn(card, targetColumn);
+            if (moved) {
+                stageMoveDialog.close();
+                if (pipelineMobileStageFilter && window.matchMedia('(max-width: 640px)').matches) {
+                    pipelineMobileStageFilter.value = targetColumn.dataset.displayStageKey || '';
+                    applyPipelineBoardMobileMode();
+                }
+                card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        } catch (error) {
+            if (stageMoveStatus) stageMoveStatus.textContent = error.message || 'Could not move the lead. Please try again.';
+        } finally {
+            stageMoveSelect.disabled = false;
+            syncStageMoveSubmit();
+        }
+    });
+
     const boundPipelineCards = new WeakSet();
     const boundPipelineColumns = new WeakSet();
 
@@ -9095,7 +9227,14 @@ function applyCommunicationViewportFit() {
         if (!card || boundPipelineCards.has(card)) return;
         boundPipelineCards.add(card);
 
-        card.addEventListener('dragstart', function () {
+        card.addEventListener('dragstart', function (event) {
+            if (!event.target.closest('[data-lead-drag-handle]') || stageMoveInFlight || isSaving || isDeletingLead) {
+                event.preventDefault();
+                return;
+            }
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', card.dataset.leadId || '');
+            event.dataTransfer.setDragImage(card, 24, 24);
 
             draggedCard = card;
 
@@ -9161,7 +9300,10 @@ function applyCommunicationViewportFit() {
 
         column.addEventListener('dragover', function (event) {
 
+            if (!draggedCard || stageMoveInFlight) return;
+
             event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
 
             column.classList.add('ring-2', 'ring-slate-300', 'bg-slate-100');
 
@@ -9169,7 +9311,9 @@ function applyCommunicationViewportFit() {
 
 
 
-        column.addEventListener('dragleave', function () {
+        column.addEventListener('dragleave', function (event) {
+
+            if (event.relatedTarget && column.contains(event.relatedTarget)) return;
 
             column.classList.remove('ring-2', 'ring-slate-300', 'bg-slate-100');
 
@@ -9185,61 +9329,12 @@ function applyCommunicationViewportFit() {
 
 
 
-            if (!draggedCard || !sourceDropzone) return;
-
-
-
-            const oldStageKey = draggedCard.dataset.stageKey || '';
-            const oldDisplayStageKey = draggedCard.dataset.leadConversionStage
-                || sourceDropzone.closest('.pipeline-column')?.dataset.displayStageKey
-                || oldStageKey;
-
-            const newStageKey = column.dataset.stageKey || '';
-            const newDisplayStageKey = column.dataset.displayStageKey || newStageKey;
-
-            const newStageLabel = column.dataset.displayStageLabel || column.dataset.stageLabel || newDisplayStageKey;
-
-
-
-            if (!newStageKey || (oldStageKey === newStageKey && oldDisplayStageKey === newDisplayStageKey)) return;
-
-            const sourceOrderBeforeMove = getDropzoneLeadIds(sourceDropzone);
-
-
-            const emptyState = dropzone.querySelector('.empty-state');
-
-            if (emptyState) emptyState.remove();
-
-
-
-            dropzone.prepend(draggedCard);
-
-            updateColumnCounts();
-
-
-
+            const movingCard = draggedCard;
+            if (!movingCard || !sourceDropzone) return;
             try {
-
-                await saveLeadStage(draggedCard, newStageKey, newStageLabel, {
-                    displayStageKey: newDisplayStageKey,
-                    orderedIds: getDropzoneLeadIds(dropzone),
-                    sourceOrderedIds: sourceOrderBeforeMove.filter((id) => id !== (draggedCard.dataset.leadId || '')),
-                });
-
-                if (activeCard && activeCard === draggedCard && leadStageInput) {
-
-                    leadStageInput.value = newStageKey;
-
-                }
-
+                await movePipelineCardToColumn(movingCard, column);
             } catch (error) {
-
-                sourceDropzone.prepend(draggedCard);
-
-                updateColumnCounts();
-
                 alert(error.message || 'Failed to update lead stage.');
-
             }
 
         });
@@ -9461,6 +9556,8 @@ function applyCommunicationViewportFit() {
             typeof isDraftingEmail !== 'undefined' && isDraftingEmail,
             typeof isDraftingBoth !== 'undefined' && isDraftingBoth,
             typeof draggedCard !== 'undefined' && !!draggedCard,
+            typeof stageMoveInFlight !== 'undefined' && stageMoveInFlight,
+            typeof stageMoveDialog !== 'undefined' && !!stageMoveDialog?.open,
         ];
 
         return busyFlags.some(Boolean);

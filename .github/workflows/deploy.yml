@@ -88,6 +88,15 @@ jobs:
                   esac
                 done
               fi
+              if printf '%s\n' "${changed[@]}" | grep -qx 'bin/deploy-smile-name-compat.py'; then
+                targeted_only=true
+                for path in "${changed[@]}"; do
+                  case "$path" in
+                    .github/workflows/deploy.yml|.github/workflows/smile-name-compat-fix.yml|bin/deploy-smile-name-compat.py|app/smile_design/smile_design_service.php|tests/smile_design_name_correction_test.php) ;;
+                    *) targeted_only=false ;;
+                  esac
+                done
+              fi
             fi
           fi
           echo "targeted_only=$targeted_only" >> "$GITHUB_OUTPUT"

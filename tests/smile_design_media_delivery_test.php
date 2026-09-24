@@ -21,12 +21,17 @@ media_expect(smile_design_video_byte_range('bytes=0-10,20-30', 8000) === null, '
 
 $endpoint = (string)file_get_contents(dirname(__DIR__) . '/app/actions/smile_design_photo.php');
 $gallery = (string)file_get_contents(dirname(__DIR__) . '/smile-design/gallery/index.php');
+$patientPreview = (string)file_get_contents(dirname(__DIR__) . '/smile-design/preview.php');
+$viewer = (string)file_get_contents(dirname(__DIR__) . '/app/partials/smile_before_after_viewer.php');
 media_expect(str_contains($endpoint, 'smile_design_image_delivery_variant($path, $variant)'), 'Photo delivery must use cached display variants.');
 media_expect(str_contains($endpoint, "http_response_code(206)"), 'Video requests must return partial-content status.');
 media_expect(str_contains($gallery, "smile_design_url_with_variant(\$beforeFullUrl, 'display')"), 'Consult Room should load a bounded delivery image first.');
 media_expect(str_contains($gallery, 'syncGalleryMediaQuality(shell)'), 'Consult Room should upgrade to full resolution when needed.');
 media_expect(str_contains($gallery, 'loading="lazy" decoding="async"'), 'The Consult Room case picker should defer off-screen thumbnails.');
 media_expect(str_contains($gallery, "shell.querySelector('[data-sd-mode=\"ba\"]')"), 'Phone-sized Consult Room should start with the larger B/A slider.');
+media_expect(str_contains($patientPreview, "smile_design_after_url((int)\$displayAfter['id'], \$token, 'display')"), 'Shared previews must initially request the lighter after image.');
+media_expect(str_contains($patientPreview, "'thumb_url' => smile_design_photo_url((int)\$photo['id'], \$token, 'thumb')"), 'Shared preview angle thumbnails must use the thumbnail variant.');
+media_expect(str_contains($viewer, "img.getAttribute('src') !== afterUrl"), 'Viewer startup must not restart an already-loading after image.');
 
 if (extension_loaded('gd')) {
     $directory = sys_get_temp_dir() . '/esm-media-test-' . bin2hex(random_bytes(6));

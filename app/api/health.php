@@ -33,5 +33,13 @@ try {
 }
 
 $ok = !in_array(false, $checks, true);
+$videoCapabilities = [
+    'shell_exec' => function_exists('shell_exec'),
+    'ffmpeg' => false,
+];
+if ($videoCapabilities['shell_exec']) {
+    $ffmpegPath = @shell_exec('command -v ffmpeg 2>/dev/null');
+    $videoCapabilities['ffmpeg'] = is_string($ffmpegPath) && trim($ffmpegPath) !== '';
+}
 http_response_code($ok ? 200 : 503);
-echo json_encode(['ok' => $ok, 'service' => 'elite-smiles-crm', 'checks' => $checks], JSON_UNESCAPED_SLASHES);
+echo json_encode(['ok' => $ok, 'service' => 'elite-smiles-crm', 'checks' => $checks, 'video_capabilities' => $videoCapabilities], JSON_UNESCAPED_SLASHES);

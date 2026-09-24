@@ -2640,6 +2640,104 @@ function smile_design_strip_video_audio_binary(string $binary, string $mimeType 
     }
 }
 
+/** Return a private, reusable delivery copy; the case master is never rewritten. */
+function smile_design_image_delivery_variant(string $sourcePath, string $variant): ?array
+{
+    if (!in_array($variant, ['thumb', 'display', 'share'], true) || !function_exists('imagecreatefromstring')) {
+        return null;
+    }
+    $sourceSize = @filesize($sourcePath);
+    $sourceMtime = @filemtime($sourcePath);
+    if ($sourceSize === false || $sourceMtime === false) {
+        return null;
+    }
+    $useWebp = $variant === 'display' && function_exists('imagewebp');
+    $mime = $useWebp ? 'image/webp' : 'image/jpeg';
+    $ext = $useWebp ? 'webp' : 'jpg';
+    // Keep derivatives with their private source so case deletion can remove
+    // both together, instead of leaving orphaned patient images in a global cache.
+    $cacheDir = dirname($sourcePath) . '/.delivery-cache';
+    if (!ensure_directory($cacheDir)) {
+        return null;
+    }
+    $cacheKey = hash('sha256', $sourcePath . '|' . $sourceSize . '|' . $sourceMtime . '|' . $variant . '|v1');
+    $targetPath = $cacheDir . '/' . $cacheKey . '.' . $ext;
+    if (is_file($targetPath) && filesize($targetPath) > 0) {
+        return ['path' => $targetPath, 'mime_type' => $mime];
+    }
+
+    $bytes = @file_get_contents($sourcePath);
+    $source = is_string($bytes) && $bytes !== '' ? @imagecreatefromstring($bytes) : false;
+    if (!$source) {
+        return null;
+    }
+    $sourceWidth = imagesx($source);
+    $sourceHeight = imagesy($source);
+    if ($sourceWidth < 1 || $sourceHeight < 1) {
+        unset($source);
+        return null;
+    }
+    if ($variant === 'share') {
+        $width = 1200;
+        $height = 630;
+    } else {
+        $limit = $variant === 'thumb' ? 480 : 2048;
+        $scale = min(1.0, $limit / max($sourceWidth, $sourceHeight));
+        $width = max(1, (int)round($sourceWidth * $scale));
+        $height = max(1, (int)round($sourceHeight * $scale));
+    }
+    $image = imagecreatetruecolor($width, $height);
+    if (!$image) {
+        unset($source);
+        return null;
+    }
+    // JPEG cannot retain transparency; the white backing also matches the
+    // photo viewer if an uploaded PNG contains transparent pixels.
+    $background = imagecolorallocate($image, $variant === 'share' ? 248 : 255, $variant === 'share' ? 247 : 255, $variant === 'share' ? 244 : 255);
+    imagefill($image, 0, 0, $background);
+    if ($variant === 'share') {
+        $scale = min(1.0, 1120 / $sourceWidth, 590 / $sourceHeight);
+        $renderWidth = max(1, (int)round($sourceWidth * $scale));
+        $renderHeight = max(1, (int)round($sourceHeight * $scale));
+        imagecopyresampled($image, $source, (int)floor(($width - $renderWidth) / 2), (int)floor(($height - $renderHeight) / 2), 0, 0, $renderWidth, $renderHeight, $sourceWidth, $sourceHeight);
+    } else {
+        imagecopyresampled($image, $source, 0, 0, 0, 0, $width, $height, $sourceWidth, $sourceHeight);
+    }
+    unset($source);
+
+    $tempPath = $targetPath . '.' . bin2hex(random_bytes(4)) . '.tmp';
+    $written = $useWebp ? @imagewebp($image, $tempPath, 92) : @imagejpeg($image, $tempPath, $variant === 'thumb' ? 78 : ($variant === 'share' ? 88 : 92));
+    unset($image);
+    if (!$written || !is_file($tempPath) || filesize($tempPath) === 0) {
+        @unlink($tempPath);
+        return null;
+    }
+    if (!@rename($tempPath, $targetPath) && !is_file($targetPath)) {
+        @unlink($tempPath);
+        return null;
+    }
+    @unlink($tempPath);
+    return ['path' => $targetPath, 'mime_type' => $mime];
+}
+
+/** A single RFC 7233 byte range, or null when the header is invalid. */
+function smile_design_video_byte_range(string $header, int $size): ?array
+{
+    if ($size < 1 || !preg_match('/^bytes=(\d*)-(\d*)$/i', trim($header), $matches)) {
+        return null;
+    }
+    if ($matches[1] === '' && $matches[2] === '') {
+        return null;
+    }
+    if ($matches[1] === '') {
+        $suffix = (int)$matches[2];
+        return $suffix > 0 ? [max(0, $size - $suffix), $size - 1] : null;
+    }
+    $start = (int)$matches[1];
+    $end = $matches[2] === '' ? $size - 1 : min($size - 1, (int)$matches[2]);
+    return $start < $size && $end >= $start ? [$start, $end] : null;
+}
+
 function smile_design_video_postprocess_commands(string $input, string $output): array
 {
     $source = escapeshellarg($input);

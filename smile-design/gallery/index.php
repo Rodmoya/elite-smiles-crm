@@ -74,8 +74,12 @@ if ($case) {
         $selectedAfter = smile_design_selected_after_version($caseId, $selectedAngle) ?: smile_design_selected_after_version($caseId);
     }
 
-    $beforeUrl = $selectedBefore ? smile_design_photo_url((int)$selectedBefore['id'], $isGalleryTokenAccess ? $galleryToken : '') : '';
-    $afterUrl = $selectedAfter ? smile_design_after_url((int)$selectedAfter['id'], $isGalleryTokenAccess ? $galleryToken : '') : '';
+    $beforeFullUrl = $selectedBefore ? smile_design_photo_url((int)$selectedBefore['id'], $isGalleryTokenAccess ? $galleryToken : '') : '';
+    $afterFullUrl = $selectedAfter ? smile_design_after_url((int)$selectedAfter['id'], $isGalleryTokenAccess ? $galleryToken : '') : '';
+    // Consult Room begins with a high-quality, bounded delivery copy on phones.
+    // The original master is loaded for desktop, fullscreen, or Zoom.
+    $beforeUrl = $beforeFullUrl !== '' ? smile_design_url_with_variant($beforeFullUrl, 'display') : '';
+    $afterUrl = $afterFullUrl !== '' ? smile_design_url_with_variant($afterFullUrl, 'display') : '';
     $alignment = $selectedAfter ? smile_design_alignment_for_after($selectedAfter) : smile_design_alignment_defaults();
     $latestVideo = smile_design_latest_case_video($caseId);
     $videoUrl = $latestVideo ? smile_design_case_video_url((int)$latestVideo['id'], $isGalleryTokenAccess ? $galleryToken : '') : '';
@@ -235,7 +239,7 @@ if ($case) {
                 ?>
                 <a class="gallery-lvi-card group" href="<?= e(base_url('smile-design/gallery?catalog=lvi' . ($query !== '' ? '&q=' . rawurlencode($query) : '') . $tokenQuery)) ?>">
                     <?php if ($lviHeroUrl !== ''): ?>
-                        <img src="<?= e(smile_design_url_with_variant($lviHeroUrl, 'thumb')) ?>" alt="LVI Catalog" loading="eager">
+                        <img src="<?= e(smile_design_url_with_variant($lviHeroUrl, 'thumb')) ?>" alt="LVI Catalog" loading="eager" decoding="async">
                     <?php endif; ?>
                     <span class="gallery-lvi-card-content">
                         <span class="block text-xs font-bold uppercase tracking-[0.22em] text-white/55">Shape Reference</span>
@@ -252,10 +256,10 @@ if ($case) {
                     <a class="group rounded-md border border-white/10 bg-white/[0.04] p-2 transition hover:border-white/35 hover:bg-white/[0.07]" href="<?= e(base_url('smile-design/gallery?case_id=' . (int)$galleryCase['id'] . ($query !== '' ? '&q=' . rawurlencode($query) : '') . $tokenQuery)) ?>">
                         <div class="grid grid-cols-2 gap-2">
                             <div class="aspect-[4/5] overflow-hidden rounded bg-white/5">
-                                <?php if ($frontBefore): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_photo_url((int)$frontBefore['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="Before"><?php endif; ?>
+                                <?php if ($frontBefore): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_photo_url((int)$frontBefore['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="Before" loading="lazy" decoding="async"><?php endif; ?>
                             </div>
                             <div class="aspect-[4/5] overflow-hidden rounded bg-white/5">
-                                <?php if ($frontAfter): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="After"><?php endif; ?>
+                                <?php if ($frontAfter): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_after_url((int)$frontAfter['id'], $isGalleryTokenAccess ? $galleryToken : '', 'thumb')) ?>" alt="After" loading="lazy" decoding="async"><?php endif; ?>
                             </div>
                         </div>
                         <div class="mt-3 flex items-start justify-between gap-3 px-1 pb-1">
@@ -292,7 +296,7 @@ if ($case) {
                             <?php $thumbAlignment = (string)json_encode($thumb['alignment'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>
                             <button type="button" class="gallery-angle" data-gallery-angle="<?= e($photoType) ?>" data-before-url="<?= e((string)$thumb['before_url']) ?>" data-after-url="<?= e((string)$thumb['after_url']) ?>" data-before-label="<?= e((string)$thumb['label']) ?>" data-after-label="<?= e((string)$thumb['after_label']) ?>" data-alignment="<?= e($thumbAlignment) ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
                                 <div class="aspect-[4/3] overflow-hidden rounded bg-white/5">
-                                    <?php if ($thumb['before_url'] !== ''): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_url_with_variant((string)$thumb['before_url'], 'thumb')) ?>" alt="<?= e((string)$thumb['label']) ?> before"><?php endif; ?>
+                                    <?php if ($thumb['before_url'] !== ''): ?><img class="h-full w-full object-cover" src="<?= e(smile_design_url_with_variant((string)$thumb['before_url'], 'thumb')) ?>" alt="<?= e((string)$thumb['label']) ?> before" loading="lazy" decoding="async"><?php endif; ?>
                                 </div>
                                 <div class="mt-2 flex items-center justify-between gap-2">
                                     <span class="text-xs font-bold text-white"><?= e((string)$thumb['label']) ?></span>
@@ -378,6 +382,47 @@ document.addEventListener('keydown', function (event) {
     if (image) image.setAttribute('src', '');
 });
 
+function galleryDeliveryUrl(fullUrl) {
+    if (!fullUrl) return '';
+    const url = new URL(fullUrl, window.location.href);
+    url.searchParams.set('variant', 'display');
+    return url.toString();
+}
+
+function syncGalleryMediaQuality(shell) {
+    const selected = shell && shell.querySelector('[data-gallery-angle][aria-pressed="true"]');
+    const viewerWrap = shell && shell.querySelector('[data-sd-viewer-wrap]');
+    if (!selected || !viewerWrap) return;
+    const viewer = viewerWrap.querySelector('[data-sd-viewer]');
+    const zoomActive = !!(viewer && viewer.querySelector('[data-sd-mode="zoom"][aria-pressed="true"]'));
+    const wantFull = window.matchMedia('(min-width: 901px)').matches || !!document.fullscreenElement || zoomActive;
+    [['before', 'data-sd-before-image'], ['after', 'data-sd-after-image']].forEach(function (entry) {
+        const fullUrl = selected.getAttribute('data-' + entry[0] + '-url') || '';
+        if (!fullUrl) return;
+        viewerWrap.querySelectorAll('[' + entry[1] + ']').forEach(function (img) {
+            const alreadyFull = img.getAttribute('data-gallery-full-loaded') === fullUrl;
+            const nextUrl = wantFull || alreadyFull ? fullUrl : galleryDeliveryUrl(fullUrl);
+            if (img.getAttribute('src') !== nextUrl) img.setAttribute('src', nextUrl);
+            if (nextUrl === fullUrl) img.setAttribute('data-gallery-full-loaded', fullUrl);
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.gallery-present').forEach(syncGalleryMediaQuality);
+});
+document.addEventListener('fullscreenchange', function () {
+    document.querySelectorAll('.gallery-present').forEach(syncGalleryMediaQuality);
+});
+window.addEventListener('resize', function () {
+    document.querySelectorAll('.gallery-present').forEach(syncGalleryMediaQuality);
+});
+document.addEventListener('click', function (event) {
+    if (!event.target.closest('[data-sd-mode]')) return;
+    const shell = event.target.closest('.gallery-present');
+    if (shell) syncGalleryMediaQuality(shell);
+});
+
 document.addEventListener('click', function (event) {
     const button = event.target.closest('[data-gallery-angle]');
     if (!button) return;
@@ -395,11 +440,12 @@ document.addEventListener('click', function (event) {
         node.setAttribute('aria-pressed', node === button ? 'true' : 'false');
     });
     viewerWrap.querySelectorAll('[data-sd-before-image]').forEach(function (img) {
-        if (beforeUrl) img.setAttribute('src', beforeUrl);
+        img.removeAttribute('data-gallery-full-loaded');
+        if (!beforeUrl) img.removeAttribute('src');
     });
     viewerWrap.querySelectorAll('[data-sd-after-image]').forEach(function (img) {
+        img.removeAttribute('data-gallery-full-loaded');
         if (afterUrl) {
-            img.setAttribute('src', afterUrl);
             img.classList.remove('sd-hidden');
         } else {
             img.removeAttribute('src');
@@ -418,6 +464,7 @@ document.addEventListener('click', function (event) {
     viewerWrap.querySelectorAll('[data-sd-after-label]').forEach(function (node) {
         node.textContent = afterLabel;
     });
+    syncGalleryMediaQuality(shell);
 
     let alignment = null;
     try { alignment = JSON.parse(button.getAttribute('data-alignment') || ''); } catch (error) { alignment = null; }

@@ -1842,6 +1842,16 @@ function smile_design_update_case_contact(int $caseId, array $data, ?int $userId
     $firstName = trim((string)($data['first_name'] ?? ''));
     $lastName = trim((string)($data['last_name'] ?? ''));
     $patientName = trim((string)($data['patient_name'] ?? ''));
+    $displayChanged = $patientName !== '' && $patientName !== trim((string)($case['patient_name'] ?? ''));
+    $structuredChanged = $firstName !== trim((string)($case['first_name'] ?? ''))
+        || $lastName !== trim((string)($case['last_name'] ?? ''));
+    if ($displayChanged && !$structuredChanged) {
+        $parts = preg_split('/\s+/u', $patientName) ?: [];
+        $firstName = trim((string)array_shift($parts));
+        $lastName = trim(implode(' ', $parts));
+    } elseif (!$displayChanged && $structuredChanged) {
+        $patientName = trim($firstName . ' ' . $lastName);
+    }
     if ($patientName === '') {
         $patientName = trim($firstName . ' ' . $lastName);
     }
@@ -1852,29 +1862,57 @@ function smile_design_update_case_contact(int $caseId, array $data, ?int $userId
     $email = strtolower(trim((string)($data['email'] ?? '')));
     $phone = trim((string)($data['phone'] ?? ''));
 
-    db_execute(
-        "UPDATE smile_cases
-         SET first_name = :first_name,
-             last_name = :last_name,
-             patient_name = :patient_name,
-             email = :email,
-             phone = :phone
-         WHERE id = :id",
-        [
-            'id' => $caseId,
-            'first_name' => $firstName !== '' ? $firstName : null,
-            'last_name' => $lastName !== '' ? $lastName : null,
-            'patient_name' => $patientName,
-            'email' => $email !== '' ? $email : null,
-            'phone' => $phone !== '' ? $phone : null,
-        ]
-    );
+    if (mb_strlen($patientName) > 190 || preg_match('/[\x00-\x1F\x7F]/u', $patientName)) {
+        throw new InvalidArgumentException('Please enter a patient name without line breaks or control characters (190 characters maximum).');
+    }
 
-    smile_design_audit($caseId, 'case_contact_updated', [
-        'patient_name' => $patientName,
-        'email' => $email,
-        'phone' => $phone,
-    ], $userId);
+    // A linked lead is the source of truth when the case next loads. Save a
+    // corrected name on both records in one transaction so the typo cannot return.
+    $nameChanged = $patientName !== trim((string)($case['patient_name'] ?? '')) || $structuredChanged;
+    db_begin();
+    try {
+        if ($nameChanged && (int)($case['lead_id'] ?? 0) > 0) {
+            db_execute(
+                'UPDATE leads SET full_name = :full_name, first_name = :first_name, last_name = :last_name, updated_at = NOW() WHERE id = :id LIMIT 1',
+                [
+                    'id' => (int)$case['lead_id'],
+                    'full_name' => $patientName,
+                    'first_name' => $firstName !== '' ? $firstName : null,
+                    'last_name' => $lastName !== '' ? $lastName : null,
+                ]
+            );
+        }
+
+        db_execute(
+            "UPDATE smile_cases
+             SET first_name = :first_name,
+                 last_name = :last_name,
+                 patient_name = :patient_name,
+                 email = :email,
+                 phone = :phone
+             WHERE id = :id",
+            [
+                'id' => $caseId,
+                'first_name' => $firstName !== '' ? $firstName : null,
+                'last_name' => $lastName !== '' ? $lastName : null,
+                'patient_name' => $patientName,
+                'email' => $email !== '' ? $email : null,
+                'phone' => $phone !== '' ? $phone : null,
+            ]
+        );
+
+        smile_design_audit($caseId, 'case_contact_updated', [
+            'patient_name' => $patientName,
+            'previous_patient_name' => (string)($case['patient_name'] ?? ''),
+            'lead_id' => (int)($case['lead_id'] ?? 0),
+            'email' => $email,
+            'phone' => $phone,
+        ], $userId);
+        db_commit();
+    } catch (Throwable $e) {
+        db_rollBack();
+        throw $e;
+    }
 
     return true;
 }

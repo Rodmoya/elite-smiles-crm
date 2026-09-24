@@ -315,7 +315,27 @@ $casesListUrl = rtrim(base_url('smile-design/cases'), '/') . '/';
 
 smile_design_render_shell_start('Smile Case');
 smile_design_page_header((string)$case['patient_name'], 'Phase 1 smile case workspace for before photos, after versions, compare modes, doctor approval, and patient-ready sharing.');
+$nameParts = preg_split('/\s+/u', trim((string)$case['patient_name'])) ?: [];
+$editFirstName = trim((string)($case['first_name'] ?? '')) ?: trim((string)array_shift($nameParts));
+$editLastName = trim((string)($case['last_name'] ?? '')) ?: trim(implode(' ', $nameParts));
 ?>
+
+<details class="mb-5 rounded-md border border-slate-200 bg-white shadow-sm">
+    <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700">Edit patient name</summary>
+    <form class="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-end" method="POST" action="<?= e(base_url('app/actions/smile_design_case_name_update.php')) ?>">
+        <?= csrf_input() ?>
+        <input type="hidden" name="case_id" value="<?= e((string)$caseId) ?>">
+        <label class="block flex-1 text-xs font-semibold text-slate-600">
+            First name
+            <input name="first_name" value="<?= e($editFirstName) ?>" maxlength="190" required autocomplete="given-name" class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900">
+        </label>
+        <label class="block flex-1 text-xs font-semibold text-slate-600">
+            Last name
+            <input name="last_name" value="<?= e($editLastName) ?>" maxlength="190" autocomplete="family-name" class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900">
+        </label>
+        <button class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Save name</button>
+    </form>
+</details>
 
 <section class="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
     <div class="rounded-md border border-slate-200 bg-white p-5 shadow-sm">

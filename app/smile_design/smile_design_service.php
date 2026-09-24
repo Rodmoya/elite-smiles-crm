@@ -1600,11 +1600,14 @@ function smile_design_sync_case_contact_from_linked_lead(array $case): array
     }
 
     try {
+        $leadColumns = ['id', 'full_name', 'email', 'phone', 'procedure_interest'];
+        foreach (['first_name', 'last_name'] as $optionalColumn) {
+            if (leads_has_column($optionalColumn)) {
+                $leadColumns[] = $optionalColumn;
+            }
+        }
         $lead = db_one(
-            "SELECT id, full_name, first_name, last_name, email, phone, procedure_interest
-             FROM leads
-             WHERE id = :id
-             LIMIT 1",
+            'SELECT ' . implode(', ', $leadColumns) . ' FROM leads WHERE id = :id LIMIT 1',
             ['id' => $leadId]
         );
     } catch (Throwable) {
@@ -1872,14 +1875,25 @@ function smile_design_update_case_contact(int $caseId, array $data, ?int $userId
     db_begin();
     try {
         if ($nameChanged && (int)($case['lead_id'] ?? 0) > 0) {
+            $leadNameUpdates = ['full_name = :full_name'];
+            $leadNameParams = [
+                'id' => (int)$case['lead_id'],
+                'full_name' => $patientName,
+            ];
+            if (leads_has_column('first_name')) {
+                $leadNameUpdates[] = 'first_name = :first_name';
+                $leadNameParams['first_name'] = $firstName !== '' ? $firstName : null;
+            }
+            if (leads_has_column('last_name')) {
+                $leadNameUpdates[] = 'last_name = :last_name';
+                $leadNameParams['last_name'] = $lastName !== '' ? $lastName : null;
+            }
+            if (leads_has_column('updated_at')) {
+                $leadNameUpdates[] = 'updated_at = NOW()';
+            }
             db_execute(
-                'UPDATE leads SET full_name = :full_name, first_name = :first_name, last_name = :last_name, updated_at = NOW() WHERE id = :id LIMIT 1',
-                [
-                    'id' => (int)$case['lead_id'],
-                    'full_name' => $patientName,
-                    'first_name' => $firstName !== '' ? $firstName : null,
-                    'last_name' => $lastName !== '' ? $lastName : null,
-                ]
+                'UPDATE leads SET ' . implode(', ', $leadNameUpdates) . ' WHERE id = :id LIMIT 1',
+                $leadNameParams
             );
         }
 

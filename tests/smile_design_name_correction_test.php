@@ -2,17 +2,28 @@
 declare(strict_types=1);
 
 // In-memory database substitute: verifies both records change together.
-$leadRecord = ['id' => 7, 'full_name' => 'Jhon Smith', 'first_name' => 'Jhon', 'last_name' => 'Smith', 'email' => '', 'phone' => '', 'procedure_interest' => 'Veneers'];
+$leadRecord = ['id' => 7, 'full_name' => 'Jhon Smith', 'email' => '', 'phone' => '', 'procedure_interest' => 'Veneers'];
+$leadColumns = ['id' => true, 'full_name' => true, 'email' => true, 'phone' => true, 'procedure_interest' => true, 'updated_at' => true];
 $caseRecord = ['id' => 12, 'lead_id' => 7, 'patient_name' => 'Jhon Smith', 'first_name' => 'Jhon', 'last_name' => 'Smith', 'email' => '', 'phone' => '', 'procedure_interest' => 'Veneers'];
 $auditRecords = [];
 $snapshot = null;
 $failCaseWrite = false;
 
 function db_one(string $sql, array $params = []): ?array {
+    if (str_contains($sql, 'FROM leads')) {
+        foreach (['first_name', 'last_name'] as $field) {
+            if (str_contains($sql, $field) && !isset($GLOBALS['leadColumns'][$field])) throw new RuntimeException('Unknown lead column: ' . $field);
+        }
+    }
     return str_contains($sql, 'FROM smile_cases') ? $GLOBALS['caseRecord'] : (str_contains($sql, 'FROM leads') ? $GLOBALS['leadRecord'] : null);
 }
 function db_execute(string $sql, array $params = []): int {
     if (str_contains($sql, 'UPDATE smile_cases') && $GLOBALS['failCaseWrite']) throw new RuntimeException('Simulated case write failure');
+    if (str_contains($sql, 'UPDATE leads')) {
+        foreach (['first_name', 'last_name'] as $field) {
+            if (str_contains($sql, $field) && !isset($GLOBALS['leadColumns'][$field])) throw new RuntimeException('Unknown lead column: ' . $field);
+        }
+    }
     $record = str_contains($sql, 'UPDATE leads') ? 'leadRecord' : 'caseRecord';
     foreach (['full_name', 'patient_name', 'first_name', 'last_name', 'email', 'phone'] as $field) {
         if (array_key_exists($field, $params)) $GLOBALS[$record][$field] = $params[$field];
@@ -27,6 +38,7 @@ function db_rollBack(): bool {
     $GLOBALS['snapshot'] = null;
     return true;
 }
+function leads_table_columns(bool $refresh = false): array { return $GLOBALS['leadColumns']; }
 
 require_once dirname(__DIR__) . '/app/smile_design/smile_design_service.php';
 function name_expect(bool $ok, string $message): void { if (!$ok) throw new RuntimeException($message); }
@@ -48,4 +60,14 @@ try {
     name_expect($e->getMessage() === 'Simulated case write failure', 'Original failure propagated');
 }
 name_expect($GLOBALS['leadRecord']['full_name'] === 'Jane Smith' && $GLOBALS['caseRecord']['patient_name'] === 'Jane Smith', 'Partial rename rolled back');
-echo "Smile Design name correction, linked lead sync and rollback tests passed.\n";
+
+// A newer lead table with separate name columns remains supported as well.
+$GLOBALS['failCaseWrite'] = false;
+$GLOBALS['leadColumns']['first_name'] = true;
+$GLOBALS['leadColumns']['last_name'] = true;
+$GLOBALS['leadRecord']['first_name'] = 'Jane';
+$GLOBALS['leadRecord']['last_name'] = 'Smith';
+smile_design_update_case_contact(12, ['first_name' => 'Janet', 'last_name' => 'Smith', 'patient_name' => 'Janet Smith'], 3);
+name_expect($GLOBALS['leadRecord']['first_name'] === 'Janet' && $GLOBALS['leadRecord']['last_name'] === 'Smith', 'Optional lead name columns updated when present');
+name_expect(smile_design_case(12)['patient_name'] === 'Janet Smith', 'Modern lead table reload preserves corrected name');
+echo "Smile Design name correction, legacy/modern linked lead sync and rollback tests passed.\n";

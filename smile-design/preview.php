@@ -44,8 +44,9 @@ foreach ($angleBeforePhotos as $photoType => $photo) {
     }
     $inputGallery[] = [
         'label' => $angleDefinitions[$photoType] ?? (smile_design_photo_type_options()[$photoType] ?? 'Before'),
-        'url' => smile_design_photo_url((int)$photo['id'], $token),
-        'after_url' => $angleAfter ? smile_design_after_url((int)$angleAfter['id'], $token) : '',
+        'url' => smile_design_photo_url((int)$photo['id'], $token, 'display'),
+        'thumb_url' => smile_design_photo_url((int)$photo['id'], $token, 'thumb'),
+        'after_url' => $angleAfter ? smile_design_after_url((int)$angleAfter['id'], $token, 'display') : '',
         'after_label' => $angleAfter ? ('After #' . (string)$angleAfter['version_number']) : 'After pending',
         'before_photo_id' => (int)$photo['id'],
         'after_version_id' => $angleAfter ? (int)$angleAfter['id'] : '',
@@ -72,8 +73,8 @@ if (!$viewerAfterVersion) {
 }
 
 $displayAfter = $viewerAfterVersion;
-$beforeUrl = $frontViewerPhoto ? smile_design_photo_url((int)$frontViewerPhoto['id'], $token) : '';
-$afterUrl = $displayAfter ? smile_design_after_url((int)$displayAfter['id'], $token) : '';
+$beforeUrl = $frontViewerPhoto ? smile_design_photo_url((int)$frontViewerPhoto['id'], $token, 'display') : '';
+$afterUrl = $displayAfter ? smile_design_after_url((int)$displayAfter['id'], $token, 'display') : '';
 $latestRevealVideo = smile_design_latest_case_video($caseId);
 $latestRevealVideoUrl = $latestRevealVideo ? smile_design_case_video_url((int)$latestRevealVideo['id'], $token) : '';
 $alignment = $displayAfter ? smile_design_alignment_for_after($displayAfter) : smile_design_alignment_defaults();
@@ -85,7 +86,7 @@ $previewFirstName = $rawFirstName !== '' ? $rawFirstName : 'Your';
 $readyMessage = $previewFirstName . ', your before and after Smile is ready';
 $shareTitle = $readyMessage;
 $shareDescription = 'Open your private Elite Smiles consultation preview.';
-$shareImageUrl = $shareAfter ? smile_design_after_url((int)$shareAfter['id'], $token) : ($afterUrl !== '' ? $afterUrl : $beforeUrl);
+$shareImageUrl = $shareAfter ? smile_design_after_url((int)$shareAfter['id'], $token) : ($displayAfter ? smile_design_after_url((int)$displayAfter['id'], $token) : ($frontViewerPhoto ? smile_design_photo_url((int)$frontViewerPhoto['id'], $token) : ''));
 if ($shareImageUrl !== '') {
     $shareImageUrl .= (str_contains($shareImageUrl, '?') ? '&' : '?') . 'variant=share';
 }

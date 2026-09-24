@@ -346,7 +346,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                 wrap.querySelectorAll('[data-sd-before-image]').forEach(function (img) {
                     img.dataset.sdSmileFocusSrc = '';
                     img.removeAttribute('data-sd-smile-focus');
-                    if (url) img.setAttribute('src', url);
+                    if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
                 });
                 wrap.querySelectorAll('[data-sd-before-label]').forEach(function (node) {
                     node.textContent = label;
@@ -356,7 +356,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     img.dataset.sdSmileFocusSrc = '';
                     img.removeAttribute('data-sd-smile-focus');
                     if (afterUrl) {
-                        img.setAttribute('src', afterUrl);
+                        if (img.getAttribute('src') !== afterUrl) img.setAttribute('src', afterUrl);
                         img.classList.remove('sd-hidden');
                     } else {
                         img.removeAttribute('src');
@@ -569,7 +569,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
                     $galleryAlignmentJson = $galleryAlignment ? (string)json_encode($galleryAlignment, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
                     ?>
                     <button type="button" class="sd-input-option" data-sd-before-option data-url="<?= e((string)$item['url']) ?>" data-label="<?= e((string)($item['label'] ?? 'Original photo')) ?>" data-after-url="<?= e((string)($item['after_url'] ?? '')) ?>" data-after-label="<?= e((string)($item['after_label'] ?? 'After')) ?>" data-before-photo-id="<?= e((string)($item['before_photo_id'] ?? '')) ?>" data-after-version-id="<?= e((string)($item['after_version_id'] ?? '')) ?>" data-photo-type="<?= e((string)($item['photo_type'] ?? '')) ?>" data-alignment="<?= e($galleryAlignmentJson) ?>" aria-pressed="<?= $index === 0 ? 'true' : 'false' ?>">
-                        <img src="<?= e(smile_design_url_with_variant((string)$item['url'], 'thumb')) ?>" alt="<?= e((string)($item['label'] ?? 'Input')) ?>">
+                        <img src="<?= e((string)($item['thumb_url'] ?? smile_design_url_with_variant((string)$item['url'], 'thumb'))) ?>" alt="<?= e((string)($item['label'] ?? 'Input')) ?>" loading="lazy" decoding="async">
                         <span><?= e((string)($item['label'] ?? 'Input')) ?></span>
                     </button>
                 <?php endforeach; ?>
@@ -612,7 +612,7 @@ function smile_before_after_viewer(?string $beforeUrl, ?string $afterUrl, array 
             <div class="sd-label-row"><span data-sd-before-label><?= e($defaultInputLabel) ?></span><span data-sd-after-label><?= $hasAfter ? 'After' : 'After pending' ?></span></div>
             <div class="sd-frame" data-sd-slider-frame>
                 <?php if ($beforeUrl !== ''): ?><img class="sd-base sd-align-before" data-sd-before-image src="<?= e($beforeUrl) ?>" alt="Before photo"><?php else: ?><div class="sd-placeholder">Before photo will appear here.</div><?php endif; ?>
-                <div class="sd-after-layer <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-layer><img class="sd-align-after" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After preview"></div><div class="sd-handle <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-handle></div>
+                <div class="sd-after-layer <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-after-layer><img class="sd-align-after" data-sd-after-image src="<?= e($hasAfter ? $afterUrl : '') ?>" alt="After preview" fetchpriority="high"></div><div class="sd-handle <?= $hasAfter ? '' : 'sd-hidden' ?>" data-sd-handle></div>
                 <div class="sd-placeholder <?= $hasAfter ? 'sd-hidden' : '' ?>" data-sd-after-placeholder>After image pending.</div>
                 <div class="sd-focus-mask" aria-hidden="true"></div>
                 <?php if ($showWatermark): ?><img class="sd-watermark" src="<?= e($logoUrl) ?>" alt="Elite Smiles"><?php endif; ?>

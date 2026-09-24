@@ -156,9 +156,16 @@ if ($case) {
             .gallery-catalog { height: auto; min-height: 100dvh; overflow: auto; }
             .gallery-catalog-grid { height: auto; grid-template-columns: 1fr; grid-template-rows: none; overflow: visible; }
             .gallery-catalog-tile { aspect-ratio: 4 / 3; }
-            .gallery-present { height: auto; min-height: 100dvh; grid-template-columns: 1fr; overflow: visible; }
-            .gallery-left { grid-template-rows: auto auto auto auto; }
-            .gallery-stage { height: 72dvh; min-height: 520px; }
+            .gallery-present { height: auto; min-height: 100dvh; display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow: visible; }
+            .gallery-left { display: contents; }
+            .gallery-left > div:first-child { order: 0; padding: 8px 8px 0; }
+            .gallery-left > div:nth-child(2) { order: 1; padding: 0 8px 4px; }
+            .gallery-left > div:nth-child(3) { order: 3; min-height: 0; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+            .gallery-left > div:nth-child(3) > .grid { display: flex; width: max-content; gap: 8px; }
+            .gallery-angle { width: 112px; flex: 0 0 112px; padding: 5px; }
+            .gallery-left > div:nth-child(4) { order: 4; display: flex; gap: 8px; }
+            .gallery-left > div:nth-child(4) a { flex: 1; }
+            .gallery-stage { order: 2; height: clamp(360px, 66dvh, 680px); min-height: 0; }
             .gallery-stage .sd-viewer { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
             .gallery-stage .sd-toolbar { grid-column: 1; grid-row: 1; border-left: 0; border-bottom: 1px solid rgba(255,255,255,.1); }
             .gallery-stage .sd-mode-group { display: flex; overflow-x: auto; }

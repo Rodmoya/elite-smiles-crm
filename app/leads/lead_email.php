@@ -1239,3 +1239,90 @@ if (!function_exists('lead_email_maybe_send_first_touch')) {
         ];
     }
 }
+
+if (!function_exists('lead_email_ensure_unmatched_schema')) {
+    function lead_email_ensure_unmatched_schema(): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+
+        db_query("
+            CREATE TABLE IF NOT EXISTS lead_email_unmatched (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                kind VARCHAR(20) NOT NULL DEFAULT 'reply',
+                from_email VARCHAR(255) NOT NULL DEFAULT '',
+                to_email VARCHAR(255) NOT NULL DEFAULT '',
+                subject VARCHAR(255) NOT NULL DEFAULT '',
+                body MEDIUMTEXT NOT NULL,
+                reason VARCHAR(190) NOT NULL DEFAULT '',
+                source_id VARCHAR(190) NOT NULL DEFAULT '',
+                status VARCHAR(20) NOT NULL DEFAULT 'new',
+                received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uniq_source_id (source_id),
+                KEY idx_status_received (status, received_at),
+                KEY idx_from_email (from_email)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        // Only latch once the table really exists, so a failed run retries next poll.
+        $done = true;
+    }
+}
+
+if (!function_exists('lead_email_record_unmatched')) {
+    /**
+     * Retain an inbound message that matched no lead, so review is still possible.
+     * Returns ok=false when it could not be stored; the caller must then leave the
+     * message unread instead of marking it seen, or the reply is lost for good.
+     */
+    function lead_email_record_unmatched(string $fromEmail, string $toEmail, string $subject, string $body, string $sourceId, string $reason, string $kind = 'reply'): array
+    {
+        $sourceId = mb_substr(trim($sourceId), 0, 190);
+
+        try {
+            lead_email_ensure_unmatched_schema();
+
+            if ($sourceId !== '') {
+                $existing = (int) db_value(
+                    'SELECT COUNT(*) FROM lead_email_unmatched WHERE source_id = :source_id',
+                    ['source_id' => $sourceId]
+                );
+                if ($existing > 0) {
+                    return ['ok' => true, 'duplicate' => true];
+                }
+            }
+
+            db_insert(
+                'INSERT INTO lead_email_unmatched (
+                    kind, from_email, to_email, subject, body, reason, source_id, status, received_at
+                 ) VALUES (
+                    :kind, :from_email, :to_email, :subject, :body, :reason, :source_id, :status, :received_at
+                 )',
+                [
+                    'kind' => $kind === 'bounce' ? 'bounce' : 'reply',
+                    'from_email' => mb_substr(strtolower(trim($fromEmail)), 0, 255),
+                    'to_email' => mb_substr(strtolower(trim($toEmail)), 0, 255),
+                    'subject' => mb_substr(trim($subject) !== '' ? trim($subject) : '(no subject)', 0, 255),
+                    'body' => $body,
+                    'reason' => mb_substr(trim($reason) !== '' ? trim($reason) : 'No matching lead.', 0, 190),
+                    'source_id' => $sourceId,
+                    'status' => 'new',
+                    'received_at' => now(),
+                ]
+            );
+
+            return ['ok' => true, 'duplicate' => false];
+        } catch (Throwable $e) {
+            esm_log('lead_email', 'Could not retain unmatched inbound email.', [
+                'error' => $e->getMessage(),
+                'from' => $fromEmail,
+                'source_id' => $sourceId,
+            ]);
+
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+}

@@ -1013,6 +1013,9 @@ if (!function_exists('lead_pipeline_rows')) {
         }
         if (lead_related_table_exists('lead_agent_states')) {
             $selectFields[] = "(SELECT las.scheduling_phase FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_scheduling_phase";
+            $selectFields[] = "(SELECT las.status FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_status";
+            $selectFields[] = "(SELECT las.pause_reason FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_pause_reason";
+            $selectFields[] = "(SELECT las.next_action_at FROM lead_agent_states las WHERE las.lead_id = leads.id LIMIT 1) AS agent_next_action_at";
         }
 
         $limit = max(1, min(1000, $limit));
@@ -1746,6 +1749,12 @@ if (!function_exists('lead_action_queue_rows')) {
                 }
 
                 if ($status === 'treatment_completed' || $stageKey === 'treatment_completed') {
+                    continue;
+                }
+
+                // A patient-requested future hold is intentionally silent and
+                // must not appear as unread/due work before its wake-up date.
+                if (lead_conversion_patient_hold_active($lead)) {
                     continue;
                 }
 

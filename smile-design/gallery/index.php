@@ -168,7 +168,8 @@ if ($case) {
             .gallery-stage { order: 2; height: clamp(360px, 66dvh, 680px); min-height: 0; }
             .gallery-stage .sd-viewer { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
             .gallery-stage .sd-toolbar { grid-column: 1; grid-row: 1; border-left: 0; border-bottom: 1px solid rgba(255,255,255,.1); }
-            .gallery-stage .sd-mode-group { display: flex; overflow-x: auto; }
+            .gallery-stage .sd-mode-group { display: flex; gap: 6px; overflow-x: auto; }
+            .gallery-stage .sd-mode-btn { width: auto; min-width: 66px; flex: 0 0 auto; padding: 8px 10px; }
             .gallery-stage [data-sd-mode-panel] { grid-column: 1; grid-row: 2; }
         }
     </style>
@@ -416,7 +417,15 @@ function syncGalleryMediaQuality(shell) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.gallery-present').forEach(syncGalleryMediaQuality);
+    document.querySelectorAll('.gallery-present').forEach(function (shell) {
+        // A single large before/after slider is clearer than stacking two small
+        // photos on a phone; keep the side-by-side Compare default on desktop.
+        if (window.matchMedia('(max-width: 900px)').matches) {
+            const mobileMode = shell.querySelector('[data-sd-mode="ba"]');
+            if (mobileMode) mobileMode.click();
+        }
+        syncGalleryMediaQuality(shell);
+    });
 });
 document.addEventListener('fullscreenchange', function () {
     document.querySelectorAll('.gallery-present').forEach(syncGalleryMediaQuality);

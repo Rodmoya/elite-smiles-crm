@@ -26,6 +26,7 @@ media_expect(str_contains($endpoint, "http_response_code(206)"), 'Video requests
 media_expect(str_contains($gallery, "smile_design_url_with_variant(\$beforeFullUrl, 'display')"), 'Consult Room should load a bounded delivery image first.');
 media_expect(str_contains($gallery, 'syncGalleryMediaQuality(shell)'), 'Consult Room should upgrade to full resolution when needed.');
 media_expect(str_contains($gallery, 'loading="lazy" decoding="async"'), 'The Consult Room case picker should defer off-screen thumbnails.');
+media_expect(str_contains($gallery, "shell.querySelector('[data-sd-mode=\"ba\"]')"), 'Phone-sized Consult Room should start with the larger B/A slider.');
 
 if (extension_loaded('gd')) {
     $directory = sys_get_temp_dir() . '/esm-media-test-' . bin2hex(random_bytes(6));

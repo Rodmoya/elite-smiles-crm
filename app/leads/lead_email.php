@@ -1326,3 +1326,42 @@ if (!function_exists('lead_email_record_unmatched')) {
         }
     }
 }
+
+if (!function_exists('lead_email_is_report_only_sender')) {
+    /**
+     * True only for mail that is a machine report about our own sending, never a
+     * patient reply: DMARC aggregate reports, and our own address echoed back.
+     *
+     * Deliberately narrow. Bounce notices (mailer-daemon) are NOT matched here -
+     * a dead patient address is real signal and must stay reviewable. A false
+     * positive in this function silently discards someone's reply.
+     */
+    function lead_email_is_report_only_sender(string $fromEmail, string $subject = ''): bool
+    {
+        $fromEmail = strtolower(trim($fromEmail));
+        if ($fromEmail === '' || !str_contains($fromEmail, '@')) {
+            return false;
+        }
+
+        // Our own mailbox echoed back is our outbound copy, not an inbound reply.
+        $ownMailbox = strtolower(trim((string)IMAP_USER));
+        if ($ownMailbox !== '' && $fromEmail === $ownMailbox) {
+            return true;
+        }
+
+        // DMARC reporters identify themselves in the mailbox or the host:
+        // noreply-dmarc-support@google.com, noreply@dmarc.yahoo.com,
+        // dmarcreport@microsoft.com, dmarc-support@alerts.comcast.net.
+        if (str_contains($fromEmail, 'dmarc')) {
+            return true;
+        }
+
+        // RFC 7489 aggregate reports carry a fixed subject shape, sometimes
+        // prefixed by the reporter, e.g. "[Preview] Report Domain: ...".
+        if (preg_match('/^\s*(\[[^\]]*\]\s*)?report domain:/i', $subject) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+}

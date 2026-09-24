@@ -236,11 +236,12 @@ function elite_email_poll_with_php_imap(): array
 {
     $imap = @imap_open(elite_email_imap_mailbox(), (string)IMAP_USER, (string)IMAP_PASS);
     if (!$imap) {
-        return ['ok' => false, 'message' => 'IMAP connection failed: ' . (imap_last_error() ?: 'Unknown error'), 'handled' => 0, 'unmatched' => 0, 'errors' => []];
+        return ['ok' => false, 'message' => 'IMAP connection failed: ' . (imap_last_error() ?: 'Unknown error'), 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'errors' => []];
     }
 
     $handled = 0;
     $unmatched = 0;
+    $skipped = 0;
     $errors = [];
 
     try {
@@ -277,6 +278,11 @@ function elite_email_poll_with_php_imap(): array
                 $result = lead_email_record_inbound($fromEmail, $toEmail, $subject, $body, $sourceId);
                 if (!empty($result['ok'])) {
                     $handled++;
+                } elseif (lead_email_is_report_only_sender($fromEmail, $subject)) {
+                    // DMARC aggregate reports and our own echoed mail are not replies;
+                    // retaining them would bury real unmatched replies in noise.
+                    $skipped++;
+                    esm_log('lead_email', 'Skipped report-only inbound email.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid]);
                 } else {
                     $unmatched++;
                     $stored = lead_email_record_unmatched($fromEmail, $toEmail, $subject, $body, $sourceId, (string)($result['message'] ?? 'No matching lead.'), 'reply');
@@ -300,7 +306,7 @@ function elite_email_poll_with_php_imap(): array
         imap_close($imap);
     }
 
-    return ['ok' => count($errors) === 0, 'message' => 'Checked with PHP IMAP.', 'handled' => $handled, 'unmatched' => $unmatched, 'errors' => $errors];
+    return ['ok' => count($errors) === 0, 'message' => 'Checked with PHP IMAP.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'errors' => $errors];
 }
 
 function elite_email_socket_read_line($socket): string
@@ -368,7 +374,7 @@ function elite_email_poll_with_socket_imap(): array
     $login = elite_email_socket_command($socket, 'A001', 'LOGIN "' . addcslashes((string)IMAP_USER, "\\\"") . '" "' . addcslashes((string)IMAP_PASS, "\\\"") . '"');
     if (!preg_grep('/^A001 OK/i', $login)) {
         fclose($socket);
-        return ['ok' => false, 'message' => 'Socket IMAP login failed.', 'handled' => 0, 'unmatched' => 0, 'errors' => ['login failed']];
+        return ['ok' => false, 'message' => 'Socket IMAP login failed.', 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'errors' => ['login failed']];
     }
 
     elite_email_socket_command($socket, 'A002', 'SELECT INBOX');
@@ -382,6 +388,7 @@ function elite_email_poll_with_socket_imap(): array
 
     $handled = 0;
     $unmatched = 0;
+    $skipped = 0;
     $errors = [];
     $counter = 4;
     foreach ($uids as $uid) {
@@ -404,6 +411,11 @@ function elite_email_poll_with_socket_imap(): array
             $result = lead_email_record_inbound($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId);
             if (!empty($result['ok'])) {
                 $handled++;
+            } elseif (lead_email_is_report_only_sender($parsed['from'], $parsed['subject'])) {
+                // DMARC aggregate reports and our own echoed mail are not replies;
+                // retaining them would bury real unmatched replies in noise.
+                $skipped++;
+                esm_log('lead_email', 'Skipped report-only inbound email.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid]);
             } else {
                 $unmatched++;
                 $stored = lead_email_record_unmatched($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId, (string)($result['message'] ?? 'No matching lead.'), 'reply');
@@ -424,7 +436,7 @@ function elite_email_poll_with_socket_imap(): array
     elite_email_socket_command($socket, 'A999', 'LOGOUT');
     fclose($socket);
 
-    return ['ok' => count($errors) === 0, 'message' => 'Checked with socket IMAP fallback.', 'handled' => $handled, 'unmatched' => $unmatched, 'errors' => $errors];
+    return ['ok' => count($errors) === 0, 'message' => 'Checked with socket IMAP fallback.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'errors' => $errors];
 }
 
 $result = function_exists('imap_open')

@@ -387,7 +387,7 @@ if ($leadHasBadPhone) {
 
 <div
     class="lead-card<?= $leadNeedsAttention ? ' lead-card-needs-attention' : '' ?> rounded-lg border <?= e($isIncomplete && !$leadHasBadPhone ? 'border-amber-200 bg-white' : $cardStateClass) ?> p-2.5 shadow-sm transition hover:-translate-y-[1px] hover:border-blue-200 hover:shadow-md cursor-pointer"
-    draggable="true"
+    draggable="false"
     data-open-lead-modal="1"
     data-open-tab="communications"
     data-lead-id="<?= e((string)$leadId) ?>"
@@ -470,6 +470,9 @@ if ($leadHasBadPhone) {
             <span class="lead-card-value-preview shrink-0 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                 <span data-role="lead-card-value-text"><?= e($displayValue) ?></span>
             </span>
+            <button type="button" class="lead-drag-handle inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" draggable="true" data-lead-drag-handle title="Drag to another stage" aria-label="Drag <?= e($leadName) ?> to another stage">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="8" cy="5" r="1.5"/><circle cx="16" cy="5" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>
+            </button>
         </div>
     </div>
 
@@ -511,6 +514,7 @@ if ($leadHasBadPhone) {
         <div class="lead-card-bottom-row flex flex-wrap items-center gap-1.5 pt-0.5">
             <span class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"><?= e($leadPreferredContactText) ?></span>
             <span class="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700"><?= e((string)(function_exists('elite_consultation_status_label') ? elite_consultation_status_label($leadConsultText) : ucfirst(str_replace('_', ' ', $leadConsultText)))) ?></span>
+            <button type="button" data-stage-move-trigger class="inline-flex min-h-7 items-center rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" aria-label="Move <?= e($leadName) ?> to another stage">Move stage</button>
             <div class="ml-auto flex justify-end gap-1 text-slate-500">
                 <button type="button" class="lead-open-modal relative inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-slate-100 hover:text-blue-700" data-open-lead-modal="1" data-open-tab="communications" title="Messages" aria-label="Open messages">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">

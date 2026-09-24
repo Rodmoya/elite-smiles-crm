@@ -261,13 +261,17 @@ function elite_email_poll_with_php_imap(): array
             }
 
             $sourceId = 'imap:' . $uid . ':' . $messageId;
+            // Only mark a message seen once it is stored somewhere reviewable.
+            $retained = true;
             $bounce = elite_email_record_delivery_failure($fromEmail, $subject, $body, $sourceId);
             if (!empty($bounce['handled'])) {
                 if ((int)($bounce['matched'] ?? 0) > 0) {
                     $handled += (int)$bounce['matched'];
                 } else {
                     $unmatched++;
-                    esm_log('lead_email', 'Delivery failure did not match a CRM lead.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid]);
+                    $stored = lead_email_record_unmatched($fromEmail, $toEmail, $subject, $body, $sourceId, 'Delivery failure did not match a CRM lead.', 'bounce');
+                    $retained = !empty($stored['ok']);
+                    esm_log('lead_email', 'Delivery failure did not match a CRM lead.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid, 'retained' => $retained]);
                 }
             } else {
                 $result = lead_email_record_inbound($fromEmail, $toEmail, $subject, $body, $sourceId);
@@ -275,13 +279,19 @@ function elite_email_poll_with_php_imap(): array
                     $handled++;
                 } else {
                     $unmatched++;
-                    esm_log('lead_email', 'Inbound email did not match a CRM lead.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid]);
+                    $stored = lead_email_record_unmatched($fromEmail, $toEmail, $subject, $body, $sourceId, (string)($result['message'] ?? 'No matching lead.'), 'reply');
+                    $retained = !empty($stored['ok']);
+                    esm_log('lead_email', 'Inbound email did not match a CRM lead.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid, 'retained' => $retained]);
                 }
             }
             if (!empty($bounce['unmatched'])) {
                 $unmatched += (int)$bounce['unmatched'];
             }
-            imap_setflag_full($imap, (string)$msgNo, '\\Seen');
+            if ($retained) {
+                imap_setflag_full($imap, (string)$msgNo, '\\Seen');
+            } else {
+                $errors[] = 'Left message ' . $uid . ' unread: could not retain unmatched email.';
+            }
         }
     } catch (Throwable $e) {
         $errors[] = $e->getMessage();
@@ -378,13 +388,17 @@ function elite_email_poll_with_socket_imap(): array
         $raw = elite_email_socket_fetch_raw($socket, 'A' . str_pad((string)$counter++, 3, '0', STR_PAD_LEFT), $uid);
         $parsed = elite_email_parse_raw_message($raw);
         $sourceId = 'imap-socket:' . $uid . ':' . $parsed['message_id'];
+        // Only mark a message seen once it is stored somewhere reviewable.
+        $retained = true;
         $bounce = elite_email_record_delivery_failure($parsed['from'], $parsed['subject'], $parsed['body'], $sourceId);
         if (!empty($bounce['handled'])) {
             if ((int)($bounce['matched'] ?? 0) > 0) {
                 $handled += (int)$bounce['matched'];
             } else {
                 $unmatched++;
-                esm_log('lead_email', 'Delivery failure did not match a CRM lead.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid]);
+                $stored = lead_email_record_unmatched($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId, 'Delivery failure did not match a CRM lead.', 'bounce');
+                $retained = !empty($stored['ok']);
+                esm_log('lead_email', 'Delivery failure did not match a CRM lead.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid, 'retained' => $retained]);
             }
         } else {
             $result = lead_email_record_inbound($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId);
@@ -392,13 +406,19 @@ function elite_email_poll_with_socket_imap(): array
                 $handled++;
             } else {
                 $unmatched++;
-                esm_log('lead_email', 'Inbound email did not match a CRM lead.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid]);
+                $stored = lead_email_record_unmatched($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId, (string)($result['message'] ?? 'No matching lead.'), 'reply');
+                $retained = !empty($stored['ok']);
+                esm_log('lead_email', 'Inbound email did not match a CRM lead.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid, 'retained' => $retained]);
             }
         }
         if (!empty($bounce['unmatched'])) {
             $unmatched += (int)$bounce['unmatched'];
         }
-        elite_email_socket_command($socket, 'A' . str_pad((string)$counter++, 3, '0', STR_PAD_LEFT), 'UID STORE ' . $uid . ' +FLAGS.SILENT (\\Seen)');
+        if ($retained) {
+            elite_email_socket_command($socket, 'A' . str_pad((string)$counter++, 3, '0', STR_PAD_LEFT), 'UID STORE ' . $uid . ' +FLAGS.SILENT (\\Seen)');
+        } else {
+            $errors[] = 'Left message ' . $uid . ' unread: could not retain unmatched email.';
+        }
     }
 
     elite_email_socket_command($socket, 'A999', 'LOGOUT');

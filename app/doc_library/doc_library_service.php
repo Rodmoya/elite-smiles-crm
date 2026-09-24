@@ -259,6 +259,7 @@ if (!function_exists('doc_library_templates')) {
                         'type' => 'info',
                         'rows' => [
                             [['type' => 'row_title', 'text' => 'I, the undersigned, hereby authorize the office of Dr. Walter Meden to use the following images to be placed in a book of case samples, or for marketing or advertising purposes:']],
+                            [['type' => 'row_title', 'text' => 'I acknowledge that I have not requested and will not perform any audio/video recording, photography, or live-streaming during my consultation/treatment visit unless prior authorization is provided by Dr. Walter Meden.']],
                             [['type' => 'checkbox_list', 'name' => 'photo_image_authorization', 'options' => ['Before and after pictures of my teeth', 'Before and after pictures of my full face', 'Before and after pictures of the teeth and/or full face of my minor child']]],
                         ],
                     ],

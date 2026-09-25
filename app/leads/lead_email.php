@@ -1365,3 +1365,29 @@ if (!function_exists('lead_email_is_report_only_sender')) {
         return false;
     }
 }
+
+if (!function_exists('lead_email_is_sender_side_rejection')) {
+    /**
+     * True when delivery failed because OUR sending authentication was rejected -
+     * SPF, DKIM or DMARC - rather than because the recipient is unreachable.
+     *
+     * This distinction protects patients. A sender-side rejection says nothing about
+     * the recipient's mailbox, so suppressing them would silently cut off a reachable
+     * person for a fault on our side. That is not hypothetical: an SPF misconfiguration
+     * between 2026-09-12 and 2026-09-15 marked nine valid leads as bounced.
+     */
+    function lead_email_is_sender_side_rejection(string $fromEmail, string $subject, string $body): bool
+    {
+        $haystack = strtolower($fromEmail . "
+    " . $subject . "
+    " . mb_substr($body, 0, 4000));
+
+        return str_contains($haystack, 'spf_invalid')
+            || str_contains($haystack, 'spf record validation failed')
+            || str_contains($haystack, '550-5.7.26')
+            || str_contains($haystack, '550 5.7.26')
+            || str_contains($haystack, 'unauthenticated sender')
+            || str_contains($haystack, 'dmarc policy')
+            || str_contains($haystack, 'dkim signature did not verify');
+    }
+}

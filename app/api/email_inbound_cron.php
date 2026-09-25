@@ -86,6 +86,7 @@ function elite_email_is_delivery_failure(string $fromEmail, string $subject, str
         || str_contains($haystack, 'unauthenticated sender');
 }
 
+
 function elite_email_bounce_recipients(string $body): array
 {
     preg_match_all('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $body, $matches);
@@ -107,6 +108,11 @@ function elite_email_record_delivery_failure(string $fromEmail, string $subject,
 {
     if (!elite_email_is_delivery_failure($fromEmail, $subject, $body)) {
         return ['handled' => false, 'matched' => 0, 'unmatched' => 0];
+    }
+
+    // Never turn our own authentication failure into a recipient suppression.
+    if (lead_email_is_sender_side_rejection($fromEmail, $subject, $body)) {
+        return ['handled' => true, 'matched' => 0, 'unmatched' => 0, 'sender_side' => true];
     }
 
     $matched = 0;
@@ -236,12 +242,13 @@ function elite_email_poll_with_php_imap(): array
 {
     $imap = @imap_open(elite_email_imap_mailbox(), (string)IMAP_USER, (string)IMAP_PASS);
     if (!$imap) {
-        return ['ok' => false, 'message' => 'IMAP connection failed: ' . (imap_last_error() ?: 'Unknown error'), 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'errors' => []];
+        return ['ok' => false, 'message' => 'IMAP connection failed: ' . (imap_last_error() ?: 'Unknown error'), 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'sender_blocked' => 0, 'errors' => []];
     }
 
     $handled = 0;
     $unmatched = 0;
     $skipped = 0;
+    $senderBlocked = 0;
     $errors = [];
 
     try {
@@ -266,7 +273,14 @@ function elite_email_poll_with_php_imap(): array
             $retained = true;
             $bounce = elite_email_record_delivery_failure($fromEmail, $subject, $body, $sourceId);
             if (!empty($bounce['handled'])) {
-                if ((int)($bounce['matched'] ?? 0) > 0) {
+                if (!empty($bounce['sender_side'])) {
+                    // Our authentication was rejected, not the recipient. Keep the notice
+                    // for review, but never suppress a reachable patient over it.
+                    $senderBlocked++;
+                    $stored = lead_email_record_unmatched($fromEmail, $toEmail, $subject, $body, $sourceId, 'Delivery blocked by our own sender authentication.', 'bounce');
+                    $retained = !empty($stored['ok']);
+                    esm_log('lead_email', 'Delivery blocked by sender authentication; recipients not suppressed.', ['from' => $fromEmail, 'subject' => $subject, 'uid' => $uid, 'retained' => $retained]);
+                } elseif ((int)($bounce['matched'] ?? 0) > 0) {
                     $handled += (int)$bounce['matched'];
                 } else {
                     $unmatched++;
@@ -306,7 +320,7 @@ function elite_email_poll_with_php_imap(): array
         imap_close($imap);
     }
 
-    return ['ok' => count($errors) === 0, 'message' => 'Checked with PHP IMAP.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'errors' => $errors];
+    return ['ok' => count($errors) === 0, 'message' => 'Checked with PHP IMAP.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'sender_blocked' => $senderBlocked, 'errors' => $errors];
 }
 
 function elite_email_socket_read_line($socket): string
@@ -374,7 +388,7 @@ function elite_email_poll_with_socket_imap(): array
     $login = elite_email_socket_command($socket, 'A001', 'LOGIN "' . addcslashes((string)IMAP_USER, "\\\"") . '" "' . addcslashes((string)IMAP_PASS, "\\\"") . '"');
     if (!preg_grep('/^A001 OK/i', $login)) {
         fclose($socket);
-        return ['ok' => false, 'message' => 'Socket IMAP login failed.', 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'errors' => ['login failed']];
+        return ['ok' => false, 'message' => 'Socket IMAP login failed.', 'handled' => 0, 'unmatched' => 0, 'skipped' => 0, 'sender_blocked' => 0, 'errors' => ['login failed']];
     }
 
     elite_email_socket_command($socket, 'A002', 'SELECT INBOX');
@@ -389,6 +403,7 @@ function elite_email_poll_with_socket_imap(): array
     $handled = 0;
     $unmatched = 0;
     $skipped = 0;
+    $senderBlocked = 0;
     $errors = [];
     $counter = 4;
     foreach ($uids as $uid) {
@@ -399,7 +414,14 @@ function elite_email_poll_with_socket_imap(): array
         $retained = true;
         $bounce = elite_email_record_delivery_failure($parsed['from'], $parsed['subject'], $parsed['body'], $sourceId);
         if (!empty($bounce['handled'])) {
-            if ((int)($bounce['matched'] ?? 0) > 0) {
+            if (!empty($bounce['sender_side'])) {
+                // Our authentication was rejected, not the recipient. Keep the notice
+                // for review, but never suppress a reachable patient over it.
+                $senderBlocked++;
+                $stored = lead_email_record_unmatched($parsed['from'], $parsed['to'] ?: (string)IMAP_USER, $parsed['subject'], $parsed['body'], $sourceId, 'Delivery blocked by our own sender authentication.', 'bounce');
+                $retained = !empty($stored['ok']);
+                esm_log('lead_email', 'Delivery blocked by sender authentication; recipients not suppressed.', ['from' => $parsed['from'], 'subject' => $parsed['subject'], 'uid' => $uid, 'retained' => $retained]);
+            } elseif ((int)($bounce['matched'] ?? 0) > 0) {
                 $handled += (int)$bounce['matched'];
             } else {
                 $unmatched++;
@@ -436,7 +458,7 @@ function elite_email_poll_with_socket_imap(): array
     elite_email_socket_command($socket, 'A999', 'LOGOUT');
     fclose($socket);
 
-    return ['ok' => count($errors) === 0, 'message' => 'Checked with socket IMAP fallback.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'errors' => $errors];
+    return ['ok' => count($errors) === 0, 'message' => 'Checked with socket IMAP fallback.', 'handled' => $handled, 'unmatched' => $unmatched, 'skipped' => $skipped, 'sender_blocked' => $senderBlocked, 'errors' => $errors];
 }
 
 $result = function_exists('imap_open')

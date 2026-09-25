@@ -31,9 +31,11 @@ unmatched_retention_assert(
     substr_count($cron, 'if ($retained) {') === 2,
     'Both poll paths must guard the seen-marking behind the retention flag.'
 );
+// Per poll path: an unmatched reply, an unmatched bounce, and a delivery
+// blocked by our own sender authentication. Three kinds, two paths.
 unmatched_retention_assert(
-    substr_count($cron, 'lead_email_record_unmatched(') === 4,
-    'Each poll path must retain unmatched replies and unmatched bounces.'
+    substr_count($cron, 'lead_email_record_unmatched(') === 6,
+    'Each poll path must retain unmatched replies, unmatched bounces, and sender-side blocks.'
 );
 
 // Every statement that marks a message read must sit directly inside the guard.

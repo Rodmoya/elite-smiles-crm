@@ -154,6 +154,18 @@ if (!function_exists('lead_conversion_detect_language')) {
     }
 }
 
+if (!function_exists('lead_conversion_scheduling_intent')) {
+    /** Mentioning a consultation, including asking whether it is free, is not a booking request. */
+    function lead_conversion_scheduling_intent(string $message): bool
+    {
+        $text = mb_strtolower(lead_conversion_clean_text($message));
+        if (preg_match('/\b(?:do not|don\'t|not ready to|no quiero|no deseo)\s+(?:want to\s+)?(?:schedule|book|reschedule|agendar|programar|reservar)\b/iu', $text)) return false;
+        return (bool) preg_match('/\b(?:schedule|book|reschedule|agendar|programar|reservar|make an appointment|set up an appointment|quiero (?:una? )?cita|want (?:an? )?(?:appointment|consultation)|ready to come in|can (?:i|we) come in|do you have (?:any )?(?:openings|availability)|tienen (?:horarios|disponibilidad))\b/iu', $text)
+            || (bool) preg_match('/\b(?:monday|tuesday|wednesday|thursday|friday|lunes|martes|mi[eé]rcoles|jueves|viernes|morning|afternoon|ma[ñn]ana|tarde|[1-9]\s*(?:am|pm))\b.{0,45}\b(?:works|best|prefer|free|available|can do|could do|me sirve|puedo|prefiero)\b/iu', $text)
+            || (bool) preg_match('/\b(?:works|best|prefer|free|available|can do|could do|me sirve|puedo|prefiero)\b.{0,45}\b(?:monday|tuesday|wednesday|thursday|friday|lunes|martes|mi[eé]rcoles|jueves|viernes|morning|afternoon|ma[ñn]ana|tarde|[1-9]\s*(?:am|pm))\b/iu', $text);
+    }
+}
+
 if (!function_exists('lead_conversion_extract_signals')) {
     function lead_conversion_extract_signals(array $lead, array $conversation): array
     {
@@ -197,7 +209,7 @@ if (!function_exists('lead_conversion_extract_signals')) {
             'goal' => $goal !== '',
             'day_preference' => $day !== '' || (bool) preg_match('/\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado)\b/iu', $inboundText),
             'time_preference' => $time !== '' || (bool) preg_match('/\b(?:morning|afternoon|evening|am|pm|mañana|tarde)\b/iu', $inboundText),
-            'consultation_interest' => (bool) preg_match('/\b(?:schedule|appointment|consult|come in|available|book|cita|consulta|disponib)\b/iu', $inboundText),
+            'consultation_interest' => (bool) array_filter($inbound, static fn(array $event): bool => lead_conversion_scheduling_intent((string) ($event['body'] ?? ''))),
         ];
         $lastInbound = $inbound !== [] ? $inbound[array_key_last($inbound)] : null;
         $lastOutbound = $outbound !== [] ? $outbound[array_key_last($outbound)] : null;
@@ -212,7 +224,7 @@ if (!function_exists('lead_conversion_extract_signals')) {
         $readiness -= $objection !== '' ? 8 : 0;
         $readiness = max(0, min(100, $closed ? 0 : $readiness));
 
-        $state = $closed ? 'closed' : ($answered['consultation_interest'] || $answered['day_preference'] || $answered['time_preference'] ? 'scheduling' : ($objection !== '' ? 'objection' : (count($inbound) > 0 ? 'engaged' : 'exploring')));
+        $state = $closed ? 'closed' : ($answered['consultation_interest'] || $day !== '' || $time !== '' ? 'scheduling' : ($objection !== '' ? 'objection' : (count($inbound) > 0 ? 'engaged' : 'exploring')));
         $preferredLanguage = lead_language_preference($lead);
         return [
             'language' => $preferredLanguage !== 'unknown' ? $preferredLanguage : lead_conversion_detect_language($inboundText),

@@ -851,6 +851,54 @@ if (!function_exists('lead_agent_policy_flags')) {
     }
 }
 
+if (!function_exists('lead_agent_service_question_kind')) {
+    /** Answer only approved, stable office facts; leave mixed or uncertain questions to Rod. */
+    function lead_agent_service_question_kind(string $body): string
+    {
+        $text = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $body) ?? $body));
+        $asks = str_contains($text, '?') || str_contains($text, '¿')
+            || (bool) preg_match('/\b(?:tell me|i want to know|explain|quiero saber|cu[eé]nteme)\b/iu', $text);
+        if (!$asks) return '';
+        if (lead_call_consent_requested($text)
+            || (preg_match('/\b(?:brother|sister|husband|wife|son|daughter|friend|patient)\b/iu', $text)
+                && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $text))) return 'human_review';
+        if (substr_count($text, '?') > 1
+            || preg_match('/\b(?:and|also|y|adem[aá]s)\b.{0,60}\b(?:what|where|when|how|is|are|do|does|can|could|cu[aá]l|c[oó]mo|d[oó]nde)\b/iu', $text)) return 'human_review';
+        if (preg_match('/\b(?:pain|hurt|recovery|healing|candidate|eligible|last|risk|safe|suitable|side effects?|dolor|recuperaci[oó]n|riesgo|seguro para m[ií]|deal|discount|oferta|descuento|insurance|financ|seguro dental)\b/iu', $text)) return 'human_review';
+        if (preg_match('/\b(?:schedule|book|available|availability|agendar|programar|disponible|disponibilidad|monday|tuesday|wednesday|thursday|friday|lunes|martes|mi[eé]rcoles|jueves|viernes)\b/iu', $text)) {
+            return preg_match('/\b(?:free|complimentary|gratis|gratuita|cost|costo|where|d[oó]nde|what happens)\b/iu', $text) ? 'human_review' : '';
+        }
+        if (preg_match('/\b(?:consult|consultation|consulta|cita)\b/iu', $text)
+            && preg_match('/\b(?:free|complimentary|no cost|cost anything|charge|gratis|gratuita|sin costo|tiene costo|cu[aá]nto cuesta)\b/iu', $text)) return 'consultation_fee';
+        if (preg_match('/\b(?:cost|price|pricing|how much|cu[aá]nto cuesta|precio|costo)\b/iu', $text)) return 'human_review';
+        if (preg_match('/\b(?:where (?:are you|is (?:your|the) (?:office|practice|clinic))|your address|located|location|direcci[oó]n|d[oó]nde (?:est[aá]n|queda|se ubican))\b/iu', $text)) return 'location';
+        if (preg_match('/\b(?:office hours|what (?:are|time).*hours|when (?:are you|is (?:your|the) office) open|horario|a qu[eé] hora abren)\b/iu', $text)) return 'office_hours';
+        if (preg_match('/\b(?:what happens|what (?:is|do you do).*consult|what to expect|qu[eé] (?:pasa|hacen).*consulta|en qu[eé] consiste.*consulta)\b/iu', $text)) return 'consultation_process';
+        if (preg_match('/\b(?:what (?:are|is) (?:porcelain )?veneers?|qu[eé] son las carillas)\b/iu', $text)) return 'what_are_veneers';
+        if (preg_match('/\b(?:what services do you offer|which services do you offer|qu[eé] servicios ofrecen|do you offer (?:veneers|implants|crowns|all-on-x)|ofrecen (?:carillas|implantes|coronas))\b/iu', $text)) return 'services';
+        if (preg_match('/\b(?:schedule|book|appointment|consult|available|come in|agendar|programar|cita|consulta|disponible)\b/iu', $text)) return '';
+        return 'human_review';
+    }
+}
+
+if (!function_exists('lead_agent_service_question_draft')) {
+    function lead_agent_service_question_draft(array $lead, string $kind, string $channel): array
+    {
+        $spanish = lead_language_is_spanish($lead);
+        $body = match ($kind) {
+            'consultation_fee' => $spanish ? 'Sí, la consulta con el Dr. Meden es gratis.' : 'Yes, the consultation with Dr. Meden is complimentary.',
+            'location' => $spanish ? 'Estamos en 11762 South State, Suite 300, Draper, UT 84020.' : 'We are at 11762 South State, Suite 300, Draper, UT 84020.',
+            'office_hours' => $spanish ? 'El horario de la oficina es de lunes a jueves, de 8:30 a. m. a 6:30 p. m., y los viernes de 9:00 a. m. a 1:00 p. m. con cita. Los horarios disponibles para consultas se verifican por separado.' : 'Office hours are Monday through Thursday, 8:30 AM to 6:30 PM, and Friday 9 AM to 1 PM by appointment. Consultation availability is checked separately.',
+            'consultation_process' => $spanish ? 'En la consulta gratuita, el Dr. Meden escucha sus metas, revisa su sonrisa y le explica las opciones que podrían ser adecuadas después de evaluarla. No tiene que decidir nada antes de venir.' : 'At the complimentary consultation, Dr. Meden listens to your goals, reviews your smile, and explains options after evaluating you. You do not need to decide anything beforehand.',
+            'what_are_veneers' => $spanish ? 'Las carillas de porcelana son láminas delgadas hechas a medida que se colocan sobre la parte visible de los dientes. El Dr. Meden tendría que evaluar si son adecuadas para usted.' : 'Porcelain veneers are thin, custom-made coverings for the visible part of teeth. Dr. Meden would need to evaluate whether they are appropriate for you.',
+            'services' => $spanish ? 'Elite Smiles ofrece carillas, implantes dentales y All-on-X, coronas, tratamientos para sonrisa gingival y opciones de sedación. El Dr. Meden puede evaluar qué opción sería adecuada para usted.' : 'Elite Smiles offers veneers, dental implants and All-on-X, crowns, gummy-smile treatment, and sedation options. Dr. Meden can evaluate which option may be appropriate for you.',
+            default => '',
+        };
+        return ['subject' => $channel === 'email' ? ($spanish ? 'Su pregunta para Elite Smiles' : 'Your question for Elite Smiles') : '',
+            'body' => $channel === 'email' ? $body . "\n\nElite Smiles" : $body];
+    }
+}
+
 if (!function_exists('lead_agent_classify_inbound')) {
     function lead_agent_classify_inbound(string $body): string
     {
@@ -867,6 +915,9 @@ if (!function_exists('lead_agent_classify_inbound')) {
         if (preg_match('/\b(not interested|no longer interested|not right now|maybe later|please pause|no thank you|too far|farther than|cannot travel|can\'t travel|do not want|don\'t want|no me interesa|ya no me interesa|ahora no|tal vez despues|tal vez después|no gracias|muy lejos|no puedo viajar)\b/iu', $text)) {
             return 'pause';
         }
+        $serviceQuestion = lead_agent_service_question_kind($text);
+        if ($serviceQuestion === 'human_review') return 'needs_attention';
+        if ($serviceQuestion !== '') return 'service_question';
         if (preg_match('/\b(brother|sister|husband|wife|son|daughter|friend|patient)\b/i', $text)
             && preg_match('/(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/', $text)) {
             return 'needs_attention';
@@ -3629,11 +3680,15 @@ if (!function_exists('lead_agent_handle_inbound')) {
             ], 'Lead Agent');
             return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => false, 'status' => 'human_takeover'];
         }
-        if ($intent === 'needs_attention') {
+        if ($intent === 'needs_attention' || $intent === 'cost_redirect') {
             lead_agent_record_learning($intent, $channel, 'human_review');
             $normalizedBody = strtolower(trim(preg_replace('/\s+/', ' ', $body) ?? $body));
             $handoffContext = [];
-            $handoffReason = 'Inbound message requires human judgment.';
+            $handoffReason = $intent === 'cost_redirect'
+                ? 'Patient asked about treatment cost or financing; Rod should answer before proposing a consultation.'
+                : (lead_agent_service_question_kind($body) === 'human_review'
+                    ? 'Patient asked a question outside the approved office facts. Rod should answer before proposing a consultation.'
+                    : 'Inbound message requires human judgment.');
             if (lead_call_consent_requested($normalizedBody)) {
                 $handoffContext['stage'] = 'call_requested';
                 $handoffReason = 'The lead explicitly requested or accepted a phone call.';
@@ -3645,6 +3700,21 @@ if (!function_exists('lead_agent_handle_inbound')) {
             return lead_agent_internal_handoff($lead, 'needs_attention', $handoffReason, $handoffContext) + ['intent' => $intent, 'handled' => true];
         }
         $schedulingPhase = (string) ($state['scheduling_phase'] ?? '');
+        if ($intent === 'service_question') {
+            $kind = lead_agent_service_question_kind($body);
+            $draft = lead_agent_service_question_draft($lead, $kind, $channel);
+            if (trim((string) ($draft['body'] ?? '')) === '') {
+                return lead_agent_internal_handoff($lead, 'needs_attention', 'No approved answer is available for this question.') + ['intent' => $intent, 'handled' => true];
+            }
+            $send = lead_agent_send_natural_reply($lead, $channel, $draft, 'service-answer-' . $eventKey, $intent);
+            if (empty($send['ok'])) {
+                return lead_agent_internal_handoff($lead, 'needs_attention', 'The approved answer could not be delivered.') + ['intent' => $intent, 'handled' => true];
+            }
+            if (!empty($send['sent']) && $schedulingPhase === '') {
+                lead_agent_pause($leadId, 'approved_question_answered_waiting_for_patient', 'awaiting_patient');
+            }
+            return ['ok' => true, 'handled' => true, 'intent' => $intent, 'sent' => !empty($send['sent'])];
+        }
         if ($schedulingPhase !== '' && $intent === 'cost_redirect') {
             $first = lead_agent_first_name($lead);
             if (lead_language_is_spanish($lead)) {

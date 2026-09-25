@@ -13,14 +13,27 @@ function expect_true(bool $condition, string $message): void
 }
 
 expect_true(lead_agent_classify_inbound('Can I come in Tuesday afternoon?') === 'ready_to_schedule', 'Scheduling preference should hand off.');
-expect_true(lead_agent_classify_inbound('How much does it cost?') === 'cost_redirect', 'Cost question should use approved redirect.');
+expect_true(lead_agent_classify_inbound('How much does it cost?') === 'needs_attention', 'Treatment cost questions require Rod rather than a consultation pitch.');
+expect_true(lead_agent_classify_inbound('Is the consultation free?') === 'service_question', 'A complimentary-consult question should be answered, not treated as scheduling intent.');
+expect_true(lead_agent_classify_inbound('La consulta no tiene costo?') === 'service_question', 'Spanish consultation fee question should receive an approved answer.');
+expect_true(lead_agent_classify_inbound('Where is your office?') === 'service_question', 'An address question should be answered directly.');
+expect_true(lead_agent_classify_inbound('What happens during the consultation?') === 'service_question', 'A process question should be answered directly.');
+expect_true(lead_agent_classify_inbound('What are veneers?') === 'service_question', 'A basic website-backed definition may be answered directly.');
+expect_true(lead_agent_classify_inbound('What services do you offer?') === 'service_question', 'The approved service list may be answered directly.');
+expect_true(lead_agent_classify_inbound('Is the consultation free and can I book Tuesday?') === 'needs_attention', 'Mixed practical and scheduling questions need a contextual human answer.');
+expect_true(lead_agent_classify_inbound('Do veneers hurt?') === 'needs_attention', 'Clinical questions must not get an automated FAQ answer.');
+expect_true(lead_agent_classify_inbound('What are veneers and are they safe for me?') === 'needs_attention', 'Mixed education and suitability questions require clinical review.');
+$feeAnswer = lead_agent_service_question_draft(['preferred_language' => 'en'], 'consultation_fee', 'sms');
+expect_true(str_contains($feeAnswer['body'], 'complimentary') && !str_contains($feeAnswer['body'], '?'), 'The answer must not append a booking pitch.');
+$spanishFeeAnswer = lead_agent_service_question_draft(['preferred_language' => 'es'], 'consultation_fee', 'sms');
+expect_true(str_contains($spanishFeeAnswer['body'], 'gratis'), 'The response must follow the patient language.');
 expect_true(lead_agent_classify_inbound('STOP') === 'opt_out', 'STOP should halt automation.');
 expect_true(lead_agent_classify_inbound('Wrong #') === 'wrong_number', 'Wrong # should be treated as invalid contact data.');
 expect_true(lead_agent_classify_inbound('You have the wrong number') === 'wrong_number', 'Wrong number phrasing should be treated as invalid contact data.');
 expect_true(lead_agent_classify_inbound('No thank you') === 'pause', 'A polite decline must stop automated follow-up.');
 expect_true(lead_agent_classify_inbound('Quiero agendar una cita el martes por la tarde.') === 'ready_to_schedule', 'Spanish scheduling intent must stay in the deterministic scheduling flow.');
 expect_true(lead_agent_classify_inbound('No me interesa, gracias.') === 'pause', 'A Spanish decline must stop automated follow-up.');
-expect_true(lead_agent_classify_inbound('Cuánto cuesta la consulta?') === 'cost_redirect', 'A Spanish cost question must use the safe cost redirect.');
+expect_true(lead_agent_classify_inbound('Cuánto cuesta la consulta?') === 'service_question', 'The approved complimentary-consult answer must handle the Spanish question.');
 expect_true(lead_agent_decline_kind('No thank you') === 'declined', 'An explicit decline must close the Scheduling pipeline record.');
 expect_true(lead_agent_decline_kind('Maybe later') === 'deferred', 'A timing deferral must not be treated as a permanent rejection.');
 expect_true(lead_agent_classify_inbound('That is too far for me to travel') === 'pause', 'A distance-based decline must stop automated follow-up.');

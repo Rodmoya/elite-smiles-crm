@@ -24,6 +24,18 @@ conversion_expect(($signals['conversation_state'] ?? '') === 'scheduling', 'Sche
 $decision = lead_conversion_choose_strategy($signals, 4, ['goal_discovery']);
 conversion_expect(($decision['strategy_key'] ?? '') === 'scheduling_preference', 'Scheduling intent must override routine nurture rotation.');
 
+$freeQuestion = lead_conversion_extract_signals(['procedure_interest' => 'Veneers'], [
+    ['direction' => 'inbound', 'body' => 'Is the consultation free?', 'created_at' => '2026-08-17 09:08:00'],
+    ['direction' => 'outbound', 'body' => 'Yes, the consultation is complimentary.', 'created_at' => '2026-08-17 09:09:00'],
+]);
+conversion_expect(empty($freeQuestion['answered_questions']['consultation_interest']), 'A free-consult question must not be treated as booking intent.');
+conversion_expect(($freeQuestion['conversation_state'] ?? '') === 'engaged', 'A resolved practical question should remain engaged, not scheduling.');
+conversion_expect(lead_conversion_scheduling_intent('Can I book a consultation for Thursday?'), 'Direct booking request must be detected.');
+conversion_expect(lead_conversion_scheduling_intent('Wednesday mornings are best for me.'), 'A stated preference must be detected.');
+conversion_expect(!lead_conversion_scheduling_intent('What are your Friday office hours?'), 'Office-hours question must not be a booking request.');
+conversion_expect(!lead_conversion_scheduling_intent('La consulta no tiene costo?'), 'Spanish consult-cost question must not be booking intent.');
+conversion_expect(!lead_conversion_scheduling_intent("I don't want to schedule yet."), 'Refusal must not be booking intent.');
+
 $exploring = lead_conversion_extract_signals(['procedure_interest' => ''], [
     ['direction' => 'outbound', 'body' => 'Hi, Rod with Elite Smiles.', 'created_at' => '2026-08-17 09:00:00'],
 ]);

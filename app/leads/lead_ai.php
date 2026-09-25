@@ -1304,12 +1304,15 @@ if (!function_exists('lead_ai_default_new_lead_sms')) {
         $firstName = function_exists('lead_email_first_name') ? lead_email_first_name($lead) : '';
         if (lead_language_is_spanish($lead)) {
             $greeting = $firstName !== '' ? 'Hola ' . $firstName . ',' : 'Hola,';
-            return $greeting . ' soy Rod de Elite Smiles. Gracias por contactarnos. ¿Qué le gustaría mejorar más de su sonrisa: color, forma, espacios, dientes desgastados, o está explorando opciones? Responda STOP para cancelar.';
+            return $greeting . ' soy Rod de Elite Smiles. ¿Qué le gustaría mejorar de su sonrisa? Puede responder en español. Responda STOP para cancelar.';
         }
 
         $greeting = $firstName !== '' ? 'Hi ' . $firstName . ',' : 'Hi,';
-        $body = $greeting . ' this is Rod with Elite Smiles. Thanks for reaching out. What are you hoping to improve most—color, shape, spacing, worn teeth, or are you exploring what may be possible? Reply STOP to opt out.';
-        return lead_language_maybe_add_sms_offer($lead, $body);
+        $body = $greeting . ' this is Rod with Elite Smiles. What would you like to improve about your smile?';
+        if (lead_language_preference($lead) === 'unknown') {
+            $body .= ' You can reply in English or Spanish. Puede responder en español.';
+        }
+        return $body . ' Reply STOP to unsubscribe.';
     }
 }
 

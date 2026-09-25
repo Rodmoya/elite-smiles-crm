@@ -402,13 +402,12 @@ expect_true(lead_conversion_stage_legacy_target('lead_answered') === 'in_contact
 
 $firstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example']);
 expect_true(!str_contains(strtolower($firstTouchSms), 'morning') && !str_contains(strtolower($firstTouchSms), 'afternoon'), 'First touch must discover the smile goal before asking for scheduling preferences.');
-expect_true(str_contains(strtolower($firstTouchSms), 'what are you hoping to improve'), 'First-touch SMS should begin a natural goal-focused conversation.');
-expect_true(str_contains($firstTouchSms, 'Reply STOP to opt out.'), 'The first SMS must identify the one-step STOP mechanism.');
-expect_true(str_contains($firstTouchSms, 'English or Spanish is welcome') && str_contains($firstTouchSms, 'ESPANOL'), 'Unknown-language first touch must offer Spanish neutrally.');
+expect_true($firstTouchSms === 'Hi Taylor, this is Rod with Elite Smiles. What would you like to improve about your smile? You can reply in English or Spanish. Puede responder en español. Reply STOP to unsubscribe.', 'Unknown-language first touch must use the approved generic bilingual wording.');
+expect_true(!str_contains(strtolower($firstTouchSms), 'veneers') && !str_contains(strtolower($firstTouchSms), 'implants'), 'Generic ads must not lead the Agent to guess a treatment.');
 $englishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example', 'preferred_language' => 'en']);
-expect_true(!str_contains($englishFirstTouchSms, 'ESPANOL'), 'A confirmed English preference must not receive the unknown-language prompt.');
+expect_true($englishFirstTouchSms === 'Hi Taylor, this is Rod with Elite Smiles. What would you like to improve about your smile? Reply STOP to unsubscribe.', 'A confirmed English preference must not receive the unknown-language prompt.');
 $spanishFirstTouchSms = lead_ai_default_new_lead_sms(['full_name' => 'Taylor Example', 'preferred_language' => 'es']);
-expect_true(str_starts_with($spanishFirstTouchSms, 'Hola Taylor') && str_contains($spanishFirstTouchSms, '¿Qué le gustaría mejorar'), 'A confirmed Spanish preference must receive Spanish first touch.');
+expect_true($spanishFirstTouchSms === 'Hola Taylor, soy Rod de Elite Smiles. ¿Qué le gustaría mejorar de su sonrisa? Puede responder en español. Responda STOP para cancelar.', 'A confirmed Spanish preference must receive Spanish first touch.');
 $firstTouchEmail = lead_email_default_first_touch(['full_name' => 'Taylor Example', 'procedure_interest' => 'Veneers']);
 expect_true(substr_count((string) $firstTouchEmail['body'], '?') === 0, 'First-touch email must add trust and education instead of duplicating the SMS question.');
 expect_true((string) $firstTouchEmail['subject'] === 'The information you requested from Elite Smiles', 'First-touch email needs an accurate subject tied to the lead request.');
